@@ -86,7 +86,9 @@ mkdir -p "$outdir"
 
 echo -e "\n## Looping through input files...\n"
 
-for R1 in "$indir"/*_R1_*.fastq.gz; do
+shopt -s globstar nullglob
+
+for R1 in "$indir"/**/*_R1*.fastq.gz; do
   R1=$(basename "$R1")
   R2=${R1/_R1_/_R2_}
 
