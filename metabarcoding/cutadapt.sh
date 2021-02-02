@@ -16,6 +16,7 @@ conda activate /users/PAS0471/osu5685/.conda/envs/cutadaptenv # Activate cutadap
 # Help:
 Help() {
   # Display Help
+  echo
   echo "## $0: Run cutadapt on all .fastq.gz files found recursively under a specified input dir."
   echo
   echo "## Syntax: $0 -i <input-dir> -o <output-dir> -f <forward-primer> -r <reverse-primer> [-h]"
@@ -84,25 +85,28 @@ mkdir -p "$outdir"
 
 echo -e "\n## Looping through input files...\n"
 
-shopt -s globstar nullglob
+shopt -s globstar nullglob # Turn on recursive globbing
 
 for R1 in "$indir"/**/*_R1*.fastq.gz; do
-  R1=$(basename "$R1")
+
   R2=${R1/_R1_/_R2_}
+
+  R1_basename=$(basename "$R1")
+  R2_basename=$(basename "$R2")
 
   # Report input files:
   echo -e "\n------------------------------------------------------------\n"
   echo "## R1 input file:"
-  ls -lh "$indir"/"$R1"
+  ls -lh "$R1"
   echo "## R2 input file:"
-  ls -lh "$indir"/"$R2"
+  ls -lh "$R2"
 
   # Trim:
   echo -e "\n\n## Running cutadapt..."
 
   cutadapt -a "$primer_f"..."$primer_r_rc" -A "$primer_r"..."$primer_f_rc" \
     --discard-untrimmed --pair-filter=any \
-    -o "$outdir"/"$R1" -p "$outdir"/"$R2" "$indir"/"$R1" "$indir"/"$R2"
+    -o "$outdir"/"$R1_basename" -p "$outdir"/"$R2_basename" "$R1" "$R2"
 
   # Options:
   # "-a"/"-A": Primers for R1/R2
