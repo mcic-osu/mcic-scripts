@@ -6,10 +6,6 @@
 
 set -e -u -o pipefail # Run bash in "safe mode", basically
 
-# Report:
-echo -e "\n## Starting cutadapt script."
-date
-
 # SETUP --------------------------------------------------------
 
 # Software at OSC:
@@ -64,6 +60,8 @@ primer_f_rc=$(echo "$primer_f" | tr ATCGYRKMBDHV TAGCRYMKVHDB | rev)
 primer_r_rc=$(echo "$primer_r" | tr ATCGYRKMBDHV TAGCRYMKVHDB | rev)
 
 # Report:
+echo -e "\n## Starting cutadapt script."
+date
 echo
 echo "## Using the following parameters:"
 echo "## Input dir (-i): $indir"
