@@ -18,13 +18,14 @@ Help() {
   echo
   echo "## $0: Run cutadapt on all .fastq.gz files found recursively under a specified input dir."
   echo
-  echo "## Syntax: $0 -i <input-dir> -o <output-dir> -f <forward-primer> -r <reverse-primer> [-h]"
+  echo "## Syntax: $0 -i <input-dir> -o <output-dir> -f <forward-primer> -r <reverse-primer> [-d] [-h]"
   echo "## Options:"
   echo "## -h     Print help."
   echo "## -i     Input dir (REQUIRED)"
   echo "## -o     Output dir (REQUIRED)"
   echo "## -f     Forward primer (REQUIRED)"
   echo "## -r     Reverse primer (REQUIRED)"
+  echo "## -d     Don't discard untrimmed (default: discard)"
   echo "## Example: $0 -i data/fastq/raw -o data/fastq/trimmed -f GAGTGYCAGCMGCCGCGGTAA -r ACGGACTACNVGGGTWTCTAAT [-h]"
   echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
   echo "## The script will compute and use the reverse complements of both primers."
@@ -36,14 +37,16 @@ indir=""
 outdir=""
 primer_f=""
 primer_r=""
+discard_untrimmed=true
 
 # Get command-line options:
-while getopts ':i:o:f:r:h' flag; do
+while getopts ':i:o:f:r:dh' flag; do
   case "${flag}" in
   i) indir="$OPTARG" ;;
   o) outdir="$OPTARG" ;;
   f) primer_f="$OPTARG" ;;
   r) primer_r="$OPTARG" ;;
+  d) discard_untrimmed=false ;;
   h) Help && exit 0 ;;
   \?) echo "## $0: ERROR: Invalid option" >&2 && exit 1 ;;
   :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
@@ -59,6 +62,13 @@ done
 primer_f_rc=$(echo "$primer_f" | tr ATCGYRKMBDHV TAGCRYMKVHDB | rev)
 primer_r_rc=$(echo "$primer_r" | tr ATCGYRKMBDHV TAGCRYMKVHDB | rev)
 
+# Set discard-untrimmed option:
+if [ $discard_untrimmed = "true" ]; then
+  discard_untrimmed_option="--discard-untrimmed"
+else
+  discard_untrimmed_option=""
+fi
+
 # Report:
 echo -e "\n## Starting cutadapt script."
 date
@@ -68,6 +78,7 @@ echo "## Input dir (-i): $indir"
 echo "## Output dir (-o): $outdir"
 echo "## Forward primer (-f): $primer_f"
 echo "## Reverse primer (-r): $primer_r"
+echo "## Discard untrimmed (-d): $discard_untrimmed"
 echo
 echo "## Reverse complement of forward primer: $primer_f_rc"
 echo "## Reverse complement of reverse primer: $primer_r_rc"
@@ -104,7 +115,7 @@ for R1 in "$indir"/**/*_R1*.fastq.gz; do
   echo -e "\n\n## Running cutadapt..."
 
   cutadapt -a "$primer_f"..."$primer_r_rc" -A "$primer_r"..."$primer_f_rc" \
-    --discard-untrimmed --pair-filter=any \
+    "$discard_untrimmed_option" --pair-filter=any \
     -o "$outdir"/"$R1_basename" -p "$outdir"/"$R2_basename" "$R1" "$R2"
 
   # Options:
