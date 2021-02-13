@@ -9,9 +9,8 @@ set -e -u -o pipefail # Run bash in "safe mode", basically
 # SETUP --------------------------------------------------------
 
 # Software at OSC:
-module load python/3.6-conda5.2                               # Load conda module
-. /apps/python/3.6-conda5.2/etc/profile.d/conda.sh            # conda setup
-conda activate /users/PAS0471/osu5685/.conda/envs/cutadaptenv # Activate cutadapt environment
+module load python/3.6-conda5.2                                # Load conda module
+source activate /users/PAS0471/osu5685/.conda/envs/cutadaptenv # Activate cutadapt environment
 
 # Help:
 Help() {
