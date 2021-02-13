@@ -38,15 +38,17 @@ outdir=""
 primer_f=""
 primer_r=""
 discard_untrimmed=true
+primer_file=false
 
 # Get command-line options:
-while getopts ':i:o:f:r:dh' flag; do
+while getopts ':i:o:f:r:p:dh' flag; do
   case "${flag}" in
   i) indir="$OPTARG" ;;
   o) outdir="$OPTARG" ;;
   f) primer_f="$OPTARG" ;;
   r) primer_r="$OPTARG" ;;
   d) discard_untrimmed=false ;;
+  p) primer_file="$OPTARG" ;;
   h) Help && exit 0 ;;
   \?) echo "## $0: ERROR: Invalid option" >&2 && exit 1 ;;
   :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
@@ -55,12 +57,58 @@ done
 
 [[ $indir = "" ]] && echo "## $0: ERROR: No input dir (-i) provided" >&2 && exit 1
 [[ $outdir = "" ]] && echo "## $0: ERROR: No output dir (-o) provided" >&2 && exit 1
-[[ $primer_f = "" ]] && echo "## $0: ERROR: No forward primer (-f) provided" >&2 && exit 1
-[[ $primer_r = "" ]] && echo "## $0: ERROR: No reverse primer (-r) provided" >&2 && exit 1
 
-# Get reverse primer sequences by reverse complementing:
-primer_f_rc=$(echo "$primer_f" | tr ATCGYRKMBDHV TAGCRYMKVHDB | rev)
-primer_r_rc=$(echo "$primer_r" | tr ATCGYRKMBDHV TAGCRYMKVHDB | rev)
+# Report:
+echo -e "\n## Starting cutadapt script."
+date
+echo
+echo "## Using the following parameters:"
+echo "## Input dir (-i): $indir"
+echo "## Output dir (-o): $outdir"
+
+# Get primers:
+primer_arg=""
+
+if [ "$primer_file" = "false" ]; then
+  
+  echo "## Using forward and reverse primers provided as arguments..."
+
+  [[ $primer_f = "" ]] && echo "## $0: ERROR: No forward primer (-f) provided" >&2 && exit 1
+  [[ $primer_r = "" ]] && echo "## $0: ERROR: No reverse primer (-r) provided" >&2 && exit 1
+
+  primer_f_rc=$(echo "$primer_f" | tr ATCGYRKMBDHV TAGCRYMKVHDB | rev)
+  primer_r_rc=$(echo "$primer_r" | tr ATCGYRKMBDHV TAGCRYMKVHDB | rev)
+
+  primer_arg="-a $primer_f...$primer_r_rc -A $primer_r...$primer_f_rc"
+
+  echo "## Forward primer (-f): $primer_f"
+  echo "## Reverse primer (-r): $primer_r"
+  echo "## Forward primer - reverse complement: $primer_f_rc"
+  echo "## Reverse primer - reverse complement: $primer_r_rc"  
+
+else
+  echo "## Using primer file $primer_file to read primers..."
+
+  [[ ! -f "$primer_file" ]] && echo -e "\n## $0: ERROR: Primer file $primer_file not found\n" >&2 && exit 1
+
+  while read -r primer_f primer_r; do
+    
+    primer_f_rc=$(echo "$primer_f" | tr ATCGYRKMBDHV TAGCRYMKVHDB | rev)
+    primer_r_rc=$(echo "$primer_r" | tr ATCGYRKMBDHV TAGCRYMKVHDB | rev)
+    
+    echo
+    echo "## Forward primer (-f): $primer_f"
+    echo "## Reverse primer (-r): $primer_r"
+    echo "## Forward primer - reverse complement: $primer_f_rc"
+    echo "## Reverse primer - reverse complement: $primer_r_rc"  
+
+    primer_arg="$primer_arg -a $primer_f...$primer_r_rc -A $primer_r...$primer_f_rc"
+    primer_arg=$(echo "$primer_arg" | sed -E 's/^ +//') # Remove leading whitespace
+  
+  done < "$primer_file"
+
+  echo
+fi
 
 # Set options:
 # Including --pair-filter=any is here because cutadapt complains when including empty variable somehow
@@ -73,19 +121,8 @@ else
 fi
 
 # Report:
-echo -e "\n## Starting cutadapt script."
-date
-echo
-echo "## Using the following parameters:"
-echo "## Input dir (-i): $indir"
-echo "## Output dir (-o): $outdir"
-echo "## Forward primer (-f): $primer_f"
-echo "## Reverse primer (-r): $primer_r"
+echo "## Primer argument: $primer_arg"
 echo "## Discard untrimmed (-d): $discard_untrimmed"
-echo
-echo "## Reverse complement of forward primer: $primer_f_rc"
-echo "## Reverse complement of reverse primer: $primer_r_rc"
-echo
 
 # Test:
 [[ ! -d "$indir" ]] && echo -e "\n## $0: ERROR: Input directory not found\n" >&2 && exit 1
@@ -117,8 +154,8 @@ for R1 in "$indir"/**/*_R1*.fastq.gz; do
   # Trim:
   echo -e "\n\n## Running cutadapt..."
 
-  cutadapt -a "$primer_f"..."$primer_r_rc" -A "$primer_r"..."$primer_f_rc" \
-    "$options" -o "$outdir"/"$R1_basename" -p "$outdir"/"$R2_basename" "$R1" "$R2"
+  cutadapt $primer_arg $options \
+    -o "$outdir"/"$R1_basename" -p "$outdir"/"$R2_basename" "$R1" "$R2"
 
   # Options:
   # "-a"/"-A": Primers for R1/R2
