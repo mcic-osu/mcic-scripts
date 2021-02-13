@@ -62,11 +62,14 @@ done
 primer_f_rc=$(echo "$primer_f" | tr ATCGYRKMBDHV TAGCRYMKVHDB | rev)
 primer_r_rc=$(echo "$primer_r" | tr ATCGYRKMBDHV TAGCRYMKVHDB | rev)
 
-# Set discard-untrimmed option:
+# Set options:
+# Including --pair-filter=any is here because cutadapt complains when including empty variable somehow
+# "--discard-untrimmed": Remove pairs with no primer found
+# "--pair-filter=any": Remove pair if one read is filtered (=Default)
 if [ $discard_untrimmed = "true" ]; then
-  discard_untrimmed_option="--discard-untrimmed"
+  options="--discard-untrimmed --pair-filter=any"
 else
-  discard_untrimmed_option=""
+  options="--pair-filter=any"
 fi
 
 # Report:
@@ -115,13 +118,10 @@ for R1 in "$indir"/**/*_R1*.fastq.gz; do
   echo -e "\n\n## Running cutadapt..."
 
   cutadapt -a "$primer_f"..."$primer_r_rc" -A "$primer_r"..."$primer_f_rc" \
-    "$discard_untrimmed_option" --pair-filter=any \
-    -o "$outdir"/"$R1_basename" -p "$outdir"/"$R2_basename" "$R1" "$R2"
+    "$options" -o "$outdir"/"$R1_basename" -p "$outdir"/"$R2_basename" "$R1" "$R2"
 
   # Options:
   # "-a"/"-A": Primers for R1/R2
-  # "--discard-untrimmed": Remove pairs with no primer found
-  # "--pair-filter=any": Remove pair if one read is filtered (=Default)
 done
 
 # REPORT AND FINALIZE --------------------------------------------------------
