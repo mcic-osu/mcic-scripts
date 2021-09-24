@@ -57,3 +57,10 @@ outdir=data/fastq/trimmed
 primer_file=data/meta/primers.txt
 sbatch cutadapt.sh -i "$indir" -o "$outdir" -p "$primer_file"
 ```
+
+## SLURM options
+By default, the script will run using the account (project) "PAS0471", with a time limit of 3 hours,
+and with 1 core. To change these options or add others, provide sbatch option at the command-line
+when submitting the script. For instance, to change the project and time:
+sbatch -A PAS1855 -t 30 cutadapt.sh [other-options]
+

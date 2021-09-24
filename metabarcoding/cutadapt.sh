@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --time=60
+#SBATCH --time=180
 #SBATCH --account=PAS0471
 
 set -e -u -o pipefail # Run bash in "safe mode", basically
@@ -66,6 +66,8 @@ echo "## Using the following parameters:"
 echo "## Input dir (-i): $indir"
 echo "## Output dir (-o): $outdir"
 
+[[ "$indir" = "$outdir" ]] && echo "## $0: ERROR: Input dir should not be the same as output dir" >&2 && exit 1
+
 # Get primers:
 primer_arg=""
 
@@ -126,7 +128,7 @@ echo "## Discard untrimmed (-d): $discard_untrimmed"
 
 # Test:
 [[ ! -d "$indir" ]] && echo -e "\n## $0: ERROR: Input directory not found\n" >&2 && exit 1
-[[ $(find . -name "*fastq.gz" | wc -c) = 0 ]] && echo -e "\n## $0: ERROR: No fastq files found\n" >&2 && exit 1
+[[ $(find "$indir" -name "*fastq.gz" | wc -c) = 0 ]] && echo -e "\n## $0: ERROR: No fastq files found\n" >&2 && exit 1
 
 # Create output directory if it doesn't already exist:
 mkdir -p "$outdir"
