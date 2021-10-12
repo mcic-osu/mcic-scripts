@@ -1,35 +1,31 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=60
+#SBATCH --time=15
 #SBATCH --output=slurm-fastqc-%j.out
 
-PATH="$HOME/miniconda3/bin:$PATH"
-source activate fastqc-env
+set -u -e -o pipefail  # Bash strict settings
 
-set -euo pipefail # Strict settings
+# Load any needed software
+module load fastqc
 
-echo "## Starting script fastqc.sh"
-date
+# Processing command-line arguments
+fastq_file="$1"
+output_dir="$2"
 
-## Command-line args:
-if [ "$#" -ne 2 ]; then
-    echo "Usage: fastqc.sh <input-file.fastq[.gz]> <output-dir>"
-    echo "Exiting."
-    exit 1
-fi
+# Create the output directory if it doesn't already exist
+mkdir -p "$output_dir"
 
-input="$1"
-outdir="$2"
+# Report:
+date                              # Report date+time to time script
+echo "Starting FastQC script..."  # Report what script is being run
+echo "Running fastqc for file: $fastq_file"
+echo "Output dir: $output_dir"
+echo -e "---------\n\n"           # Separate from program output
 
-## Report:
-echo "## Input file:         $input"
-echo "## Output directory:   $outdir"
+# Run FastQC
+fastqc --outdir="$output_dir" "$fastq_file"
 
-mkdir -p "$outdir"
-
-echo "## Running fastqc..."
-fastqc --outdir="$outdir" "$input"
-
-echo -e "\n Done with script."
-date
+# Report
+echo -e "\n---------\nAll done!"  # Separate from program output
+date                              # Report date+time to time script
