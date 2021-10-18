@@ -3,7 +3,7 @@
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
 #SBATCH --cpus-per-task=8
-#SBATCH --output=slurm-trimmomatic-%j.out
+#SBATCH --output=slurm-trimgalore-%j.out
 
 # Software
 module load python/3.6-conda5.2
@@ -20,15 +20,14 @@ Help() {
   echo
   echo "## Syntax: $0 -i <FASTQ input file> -o <FASTQ output dir> -O <FastQC output dir> -q <min seq qual>  -q <min seq len> [-h]"
   echo "## Options:"
-  echo "## -h     Print help."
-  echo "## -i     Input file (REQUIRED)"
-  echo "## -o     Output dir (REQUIRED)"
-  echo "## -f     Forward primer (REQUIRED)"
-  echo "## -r     Reverse primer (REQUIRED)"
-  echo "## -d     Don't discard untrimmed (default: discard)"
-  echo "## Example: $0 -i data/fastq/raw -o data/fastq/trimmed -f GAGTGYCAGCMGCCGCGGTAA -r ACGGACTACNVGGGTWTCTAAT [-h]"
+  echo "## -h     Print this help message"
+  echo "## -i     FASTQ input file (REQUIRED)"
+  echo "## -o     FASTQ output dir (REQUIRED)"
+  echo "## -O     FastQC results output dir (REQUIRED)"
+  echo "## -q     Quality trimming threshold (default: 20)"
+  echo "## -l     Minimum read length (default: 20)"
+  echo "## Example: $0 -i data/fastq/S01_L001_R1.fastq.gz -o results/trimgalore -O results/fastqc [-h]"
   echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
-  echo "## The script will compute and use the reverse complements of both primers."
   echo
 }
 
@@ -79,5 +78,5 @@ file_id=$(basename "$fastq_in" .fastq.gz)
 mv "$outdir_trim"/"$file_id"_trimmed.fq.gz "$outdir_trim"/"$file_id"_trimmed.fastq.gz
 
 ## Report
-echo -e "\nDone with script trimgalore.sh"
+echo -e "\n## Done with script trimgalore.sh"
 date
