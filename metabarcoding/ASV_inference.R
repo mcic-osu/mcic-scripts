@@ -1,9 +1,9 @@
-#!/usr/bin/env Rscript                           # First line of R script
+#!/usr/bin/env Rscript
 
 # SET-UP --------------------------------------
 
 ## Process command-line arguments
-args <- commandArgs(trailingOnly = TRUE)        # Get cmd line args into R
+args <- commandArgs(trailingOnly = TRUE)
 
 fastq_indir <- args[1]          # Dir with input FASTQ files
 outdir <- args[2]               # Dir for output 
@@ -20,9 +20,11 @@ trunc_r <- as.integer(args[6])  # Truncate R reads after trunc_r bases
 # trunc_r <- 180
 
 ## Constants
-save_rds <- FALSE
+save_rds <- TRUE               # Whether to save RDS files after every step
 
 ## Report command-line arguments
+cat("## Starting script ASV_inference.R...")
+Sys.time()
 cat("## Dir with input FASTQ files:", fastq_indir, "\n")
 cat("## Output dir:", outdir, "\n")
 cat("## Number of cores:", n_cores, "\n")
@@ -128,11 +130,12 @@ ggsave(errorplot_R_file, width = 8, height = 7)
 
 
 # INFER ASVS ------------------------------------------------ 
-
 cat("\n----------------\n## Step 4: Inferring ASVs...\n")
 
 dada_Fs <- dada(fastqs_derep_F, err = err_F, pool = FALSE, multithread = n_cores)
 dada_Rs <- dada(fastqs_derep_R, err = err_R, pool = FALSE, multithread = n_cores)
+
+## TODO - USE/TRY POOL=TRUE
 
 ## Save objects to RDS files
 if (save_rds) saveRDS(dada_Fs, file = file.path(outdir, "dada_Fs.rds"))
@@ -158,13 +161,6 @@ seqtab_all <- makeSequenceTable(mergers)
 ## The dimensions of the object are the nr of samples (rows) and the nr of ASVs (columns):
 cat("## Nr of ASVs before chimera removal:", ncol(seqtab_all), "\n")
 
-## Get table of sequence lengths
-cat("## Table of sequence lengths:\n")
-table(nchar(getSequences(seqtab_all)))
-
-## If you need to remove sequences of a particular length (e.g. too long):
-## seqtab2 <- seqtab[, nchar(colnames(seqtab_all)) %in% seq(250,256)]
-
 
 # REMOVE CHIMERAS ----------------------------------------------
 cat("\n----------------\n## Step 7: Removing chimeras...\n")
@@ -179,6 +175,15 @@ cat("## Nr of ASVs after chimera removal:", ncol(seqtab), "\n")
 ## Save objects to RDS files
 if (save_rds) saveRDS(seqtab, file = seqtab_file)
 
+
+# CHECK ASV SEQUENCE LENTGTHS ---------------------------------
+cat("\n----------------\n## Table of sequence lengths:\n")
+table(nchar(getSequences(seqtab)))
+
+## If you need to remove sequences of a particular length (e.g. too long):
+## seqtab2 <- seqtab[, nchar(colnames(seqtab_all)) %in% seq(250,256)]
+
+## TODO - calculate abundance sums for ASVs of different lengths
 
 # CREATE QC SUMMARY TABLE -----------------------------------
 cat("\n----------------\n## Creating QC summary table...\n")
@@ -227,7 +232,7 @@ write(asv_fasta, file = fasta_out)
 # LIST OUTPUT FILES --------------------------------------------------------
 cat("\n----------------\n## Listing output files:\n")
 
-cat("## First few filtered FASTQ files:\n", fastqs_filt_F[1:5], "\n")
+cat("## First few filtered FASTQ files:\n", fastqs_filt_F[1:2], "\n")
 
 cat("## Error profile plot - F:", errorplot_F_file, "\n")
 cat("## Error profile plot - R:", errorplot_R_file, "\n")
@@ -236,4 +241,5 @@ cat("## FASTA:", fasta_out, "\n")
 cat("## Sequence table:", seqtab_file, "\n")
 cat("## QC table:", qc_file, "\n")
 
-cat("## Done with script.\n")
+cat("## Done with script ASV_inference.R.\n")
+Sys.time()
