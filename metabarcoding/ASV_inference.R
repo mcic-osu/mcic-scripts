@@ -10,12 +10,12 @@ pacman::p_load(char = packages)
 
 ## Process command-line arguments
 args <- commandArgs(trailingOnly = TRUE)
-config_file <- args[1]            # File (R script) with config for ASV inference
-n_cores <- as.integer(args[2])    # Number of computer cores to use
+fastq_indir <- args[1]
+outdir <- args[2]
+config_file <- args[3]            # File (R script) with config for ASV inference
+n_cores <- as.integer(args[4])    # Number of computer cores to use
 
 ## Variable defaults
-fastq_indir <- "results/cutadapt" # Dir with input FASTQ files
-outdir <- "results/ASV_inference" # Dir for output 
 trunc_f <- 150                    # Truncate F reads after trunc_f bases
 trunc_r <- 150                    # Truncate R reads after trunc_r bases
 ASV_size_min <- 0                 # Minimum ASV size in bp
@@ -70,26 +70,26 @@ if (!dir.exists(filter_dir)) dir.create(filter_dir, recursive = TRUE)
 if (!dir.exists(rds_dir)) dir.create(rds_dir, recursive = TRUE)
 
 ## Get paths to input FASTQ files
-fastqs_raw_F <- sort(list.files(fastq_indir, pattern = "_R1_001.fastq.gz",
+fq_raw_F <- sort(list.files(fastq_indir, pattern = "_R1_001.fastq.gz",
                                 full.names = TRUE))
-fastqs_raw_R <- sort(list.files(fastq_indir, pattern = "_R2_001.fastq.gz",
+fq_raw_R <- sort(list.files(fastq_indir, pattern = "_R2_001.fastq.gz",
                                 full.names = TRUE))
 
 ## If needed, select only a subset of the FASTQ files
-n_samples_all <- length(fastqs_raw_F)
+n_samples_all <- length(fq_raw_F)
 if (n_samples == "all") n_samples <- n_samples_all
-fastqs_raw_F <- fastqs_raw_F[1:n_samples]
-fastqs_raw_R <- fastqs_raw_R[1:n_samples]
+fq_raw_F <- fq_raw_F[1:n_samples]
+fq_raw_R <- fq_raw_R[1:n_samples]
 
 cat("## Number of samples to be analyzed:", n_samples, "\n")
-cat("## First 6 FASTA files:", head(fastqs_raw_F), "\n")
+cat("## First 6 FASTA files:", head(fq_raw_F), "\n")
 
 ## Extract sample IDs from FASTQ file names 
-sampleIDs <- sub("_L001.*", "", basename(fastqs_raw_F))
+sampleIDs <- sub("_L001.*", "", basename(fq_raw_F))
 
 ## Define output files
-fastqs_filt_F <- file.path(filter_dir, paste0(sampleIDs, "_F_filt.fastq"))
-fastqs_filt_R <- file.path(filter_dir, paste0(sampleIDs, "_R_filt.fastq"))
+fq_filt_F <- file.path(filter_dir, paste0(sampleIDs, "_F_filt.fastq"))
+fq_filt_R <- file.path(filter_dir, paste0(sampleIDs, "_R_filt.fastq"))
 
 errorplot_F_file <- file.path(outdir, "errors_F.png")
 errorplot_R_file <- file.path(outdir, "errors_R.png")
@@ -107,8 +107,8 @@ if (start_at_step <= 1) {
     cat("\n----------------\n## Step 1: Filtering and trimming FASTQ files...\n")
 
     filter_results <-
-    filterAndTrim(fastqs_raw_F, fastqs_filt_F,
-                    fastqs_raw_R, fastqs_filt_R,
+    filterAndTrim(fq_raw_F, fq_filt_F,
+                    fq_raw_R, fq_filt_R,
                     truncLen = c(trunc_f, trunc_r),
                     trimLeft = 0,
                     trimRight = 0,
@@ -127,21 +127,21 @@ if (start_at_step <= 1) {
 if (start_at_step <= 2) {
     cat("\n----------------\n## Step 2: Dereplicating FASTQ files...\n")
 
-    fq_derep_F <- derepFastq(fastqs_filt_F, verbose = FALSE)
-    fq_derep_R <- derepFastq(fastqs_filt_R, verbose = FALSE)
+    fq_derep_F <- derepFastq(fq_filt_F, verbose = FALSE)
+    fq_derep_R <- derepFastq(fq_filt_R, verbose = FALSE)
 
     names(fq_derep_F) <- sampleIDs
     names(fq_derep_R) <- sampleIDs
 
     ## Save objects to RDS files
-    if (save_rds) saveRDS(fq_derep_F, file = file.path(rds_dir, "fastqs_derep_F.rds"))
-    if (save_rds) saveRDS(fq_derep_R, file = file.path(rds_dir, "fastqs_derep_R.rds"))
+    if (save_rds) saveRDS(fq_derep_F, file = file.path(rds_dir, "fq_derep_F.rds"))
+    if (save_rds) saveRDS(fq_derep_R, file = file.path(rds_dir, "fq_derep_R.rds"))
 }
 
 # ERROR LEARNING ----------------------------------------------------
 if (start_at_step >= 3 & start_at_step < 6) {
-    fq_derep_F <- readRDS(file.path(rds_dir, "fastqs_derep_F.rds"))
-    fq_derep_R <- readRDS(file.path(rds_dir, "fastqs_derep_R.rds"))
+    fq_derep_F <- readRDS(file.path(rds_dir, "fq_derep_F.rds"))
+    fq_derep_R <- readRDS(file.path(rds_dir, "fq_derep_R.rds"))
 }
 
 if (start_at_step <= 3) {
@@ -239,7 +239,7 @@ print(table(nchar(getSequences(seqtab_nonchim))))
 
 if (start_at_step <= 8 & !(ASV_size_min == 0 & ASV_size_max == Inf)) {
     cat("\n----------------\n## Step 8: Filtering ASVs by length:\n")
-    seqtab_lenfilter <- seqtab[, nchar(colnames(seqtab_nonchim)) %in% seq(ASV_size_min, ASV_size_max)]
+    seqtab_lenfilter <- seqtab_nonchim[, nchar(colnames(seqtab_nonchim)) %in% seq(ASV_size_min, ASV_size_max)]
 
     cat("## Nr of ASVs after filtering by length:", ncol(seqtab_lenfilter), "\n")
     cat("## Total ASV count after filtering by length:", sum(seqtab_lenfilter), "\n")
@@ -248,7 +248,6 @@ if (start_at_step <= 8 & !(ASV_size_min == 0 & ASV_size_max == Inf)) {
 
     ## Save objects to RDS files
     if (save_rds) saveRDS(seqtab_lenfilter, file = seqtab_lenfilter_file)
-    }
 
     final_seqtab_file <- seqtab_lenfilter_file
 } else {
@@ -305,7 +304,7 @@ write(asv_fasta, file = fasta_out)
 # LIST OUTPUT FILES --------------------------------------------------------
 cat("\n----------------\n## Listing output files:\n")
 
-cat("## First few filtered FASTQ files:\n", fastqs_filt_F[1:2], "\n")
+cat("## First few filtered FASTQ files:\n", fq_filt_F[1:2], "\n")
 
 cat("## Error profile plot - F:", errorplot_F_file, "\n")
 cat("## Error profile plot - R:", errorplot_R_file, "\n")

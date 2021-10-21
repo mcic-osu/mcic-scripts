@@ -7,7 +7,9 @@
 #SBATCH --cpus-per-task=8
 
 ## Process command-line arguments
-config_file=$1
+fastq_indir=$1
+outdir=$2
+config_file=$3
 
 ## Other variables/constants
 n_cores=$SLURM_CPUS_PER_TASK
@@ -17,8 +19,17 @@ module load gnu/9.1.0
 module load mkl/2019.0.5
 module load R/4.0.2
 
-## Run the R script
+## Checks
+[[ ! -d $fastq_indir ]] && echo "ERROR: FASTQ input dir ($fastq_indir) does not exist" && exit 1
+[[ ! -f $config_file ]] && echo "ERROR: Config file ($config_file) does not exist" && exit 1
+
+## Report
+echo "## FASTQ input dir: $fastq_indir"
+echo "## output dir: $outdir"
 echo "## Config file: $config_file"
 echo "## Number of cores: $n_cores"
+
+## Run the R script
 echo -e "## Submitting script scripts/ASV_inference.R...\n"
-Rscript mcic-scripts/metabarcoding/ASV_inference.R "$config_file" "$n_cores"
+Rscript mcic-scripts/metabarcoding/ASV_inference.R \
+    "$fastq_indir" "$outdir" "$config_file" "$n_cores"
