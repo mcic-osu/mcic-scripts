@@ -2,47 +2,72 @@
 
 # SET-UP --------------------------------------
 
-## Process command-line arguments
-args <- commandArgs(trailingOnly = TRUE)
-
-fastq_indir <- args[1]          # Dir with input FASTQ files
-outdir <- args[2]               # Dir for output 
-n_cores <- as.integer(args[3])  # Number of computer cores to use
-n_samples <- args[4]            # Number of samples to run ("all" => all samples, otherwise specify an integer)
-trunc_f <- as.integer(args[5])  # Truncate F reads after trunc_f bases
-trunc_r <- as.integer(args[6])  # Truncate R reads after trunc_r bases
-
-# fastq_indir <- "results/cutadapt"
-# outdir <- "results/ASV_inference"
-# n_cores <- 8
-# n_samples <- "5"
-# trunc_f <- 180
-# trunc_r <- 180
-
-## Constants
-save_rds <- TRUE               # Whether to save RDS files after every step
-
-## Report command-line arguments
-cat("## Starting script ASV_inference.R...")
-Sys.time()
-cat("## Dir with input FASTQ files:", fastq_indir, "\n")
-cat("## Output dir:", outdir, "\n")
-cat("## Number of cores:", n_cores, "\n")
-cat("## Number of samples to analyze:", n_samples, "\n")
-cat("## Truncate F after n bases:", trunc_f, "\n")
-cat("## Truncate R after n bases:", trunc_r, "\n\n")
-
 ## Load packages
 if (!"pacman" %in% installed.packages()) install.packages("pacman")
 packages <- c("tidyverse", "gridExtra", "dada2",
               "phyloseq", "DECIPHER", "phangorn")
 pacman::p_load(char = packages)
 
+## Process command-line arguments
+args <- commandArgs(trailingOnly = TRUE)
+config_file <- args[1]            # File (R script) with config for ASV inference
+n_cores <- as.integer(args[2])    # Number of computer cores to use
+
+## Variable defaults
+fastq_indir <- "results/cutadapt" # Dir with input FASTQ files
+outdir <- "results/ASV_inference" # Dir for output 
+trunc_f <- 150                    # Truncate F reads after trunc_f bases
+trunc_r <- 150                    # Truncate R reads after trunc_r bases
+ASV_size_min <- 0                 # Minimum ASV size in bp
+ASV_size_max <- Inf               # Minimum ASV size in bp
+maxEE <- c(2, 2)                  # Max nr of expected errors in a read
+pool <- TRUE                      # Whether or not to using sample pooling in dada algorithm
+
+n_samples <- 5                    # Number of samples to run ("all" => all samples, otherwise specify an integer)
+save_rds <- TRUE                  # Whether to save RDS files after every step
+start_at_step <- 1                # At which step to start
+                                  # Step 1: Filtering and trimming FASTQ files
+                                  # Step 2: Dereplicating FASTQ files
+                                  # Step 3: Learning erros
+                                  # Step 4: Inferring ASVs
+                                  # Step 5: Merging reads
+                                  # Step 6: Creating the sequence table
+                                  # Step 7: Removing chimeras
+                                  # Step 8: Filtering ASVs by length
+
+## Read config file
+source(config_file)
+
+## Settings dependent on config
+chimera_method <- ifelse(pool == FALSE, "consensus", "pooled")
+if (length(maxEE) == 1) maxEE <- c(maxEE, maxEE) # e.g. maxEE of "2" will be turned into "c(2, 2)"
+
+## Report command-line arguments
+cat("## Starting script ASV_inference.R...\n")
+Sys.time()
+cat("## Dir with input FASTQ files:", fastq_indir, "\n")
+cat("## Output dir:", outdir, "\n")
+
+cat("## Truncate F after n bases:", trunc_f, "\n")
+cat("## Truncate R after n bases:", trunc_r, "\n")
+cat("## Min ASV size:", ASV_size_min, "\n")
+cat("## Max ASV size:", ASV_size_max, "\n")
+cat("## Max nr of expected errors in a read:", maxEE, "\n")
+cat("## Use sample pooling for dada algorithm:", pool, "\n")
+cat("## Chimera ID method:", chimera_method, "\n\n")
+
+cat("## Number of cores:", n_cores, "\n")
+cat("## Number of samples to analyze:", n_samples, "\n")
+cat("## Start at step:", start_at_step, "\n")
+cat("## Save RDS files:", save_rds, "\n\n")
+
 ## Define and create output dirs
 filter_dir <- file.path(outdir, "fastq_filtered")   # For filtered FASTQ files
+rds_dir <- file.path(outdir, "rds")
 
-if (!dir.exists(filter_dir)) dir.create(filter_dir, recursive = TRUE)
 if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
+if (!dir.exists(filter_dir)) dir.create(filter_dir, recursive = TRUE)
+if (!dir.exists(rds_dir)) dir.create(rds_dir, recursive = TRUE)
 
 ## Get paths to input FASTQ files
 fastqs_raw_F <- sort(list.files(fastq_indir, pattern = "_R1_001.fastq.gz",
@@ -50,14 +75,9 @@ fastqs_raw_F <- sort(list.files(fastq_indir, pattern = "_R1_001.fastq.gz",
 fastqs_raw_R <- sort(list.files(fastq_indir, pattern = "_R2_001.fastq.gz",
                                 full.names = TRUE))
 
+## If needed, select only a subset of the FASTQ files
 n_samples_all <- length(fastqs_raw_F)
-
-if (n_samples == "all") {
-  n_samples <- n_samples_all
-} else {
-  n_samples <- as.integer(n_samples)
-}
-
+if (n_samples == "all") n_samples <- n_samples_all
 fastqs_raw_F <- fastqs_raw_F[1:n_samples]
 fastqs_raw_R <- fastqs_raw_R[1:n_samples]
 
@@ -75,115 +95,167 @@ errorplot_F_file <- file.path(outdir, "errors_F.png")
 errorplot_R_file <- file.path(outdir, "errors_R.png")
 
 fasta_out <- file.path(outdir, "ASVs.fa")
-seqtab_file <- file.path(outdir, "seqtab.rds")
 qc_file <- file.path(outdir, "nreads_summary.txt")
+
+seqtab_all_file <- file.path(rds_dir, "seqtab_all.rds")
+seqtab_nonchim_file <- file.path(rds_dir, "seqtab_nonchim.rds")
+seqtab_lenfilter_file <- file.path(rds_dir, "seqtab_nonchim_lenfilter.rds")
 
 
 # FASTQ FILE FILTERING  --------------------------------------------
-cat("\n----------------\n## Step 1: Filtering and trimming FASTQ files...\n")
+if (start_at_step <= 1) {
+    cat("\n----------------\n## Step 1: Filtering and trimming FASTQ files...\n")
 
-filter_results <-
-  filterAndTrim(fastqs_raw_F, fastqs_filt_F,
-                fastqs_raw_R, fastqs_filt_R,
-                truncLen = c(trunc_f, trunc_r), #c(180, 160), 
-                trimLeft = 0,
-                trimRight = 0,
-                maxN = 0,
-                maxEE = c(2,2),
-                truncQ = 2,
-                rm.phix = FALSE,
-                multithread = n_cores, 
-                compress = FALSE, verbose = TRUE) 
+    filter_results <-
+    filterAndTrim(fastqs_raw_F, fastqs_filt_F,
+                    fastqs_raw_R, fastqs_filt_R,
+                    truncLen = c(trunc_f, trunc_r),
+                    trimLeft = 0,
+                    trimRight = 0,
+                    maxN = 0,
+                    maxEE = maxEE,
+                    truncQ = 2,
+                    rm.phix = TRUE,
+                    multithread = n_cores, 
+                    compress = FALSE, verbose = TRUE) 
 
-head(filter_results)
+    head(filter_results)
+}
 
 
 # FASTQ FILE DEREPLICATION ------------------------------------------
-cat("\n----------------\n## Step 2: Dereplicating FASTQ files...\n")
+if (start_at_step <= 2) {
+    cat("\n----------------\n## Step 2: Dereplicating FASTQ files...\n")
 
-fastqs_derep_F <- derepFastq(fastqs_filt_F, verbose = FALSE)
-fastqs_derep_R <- derepFastq(fastqs_filt_R, verbose = FALSE)
+    fq_derep_F <- derepFastq(fastqs_filt_F, verbose = FALSE)
+    fq_derep_R <- derepFastq(fastqs_filt_R, verbose = FALSE)
 
-names(fastqs_derep_F) <- sampleIDs
-names(fastqs_derep_R) <- sampleIDs
+    names(fq_derep_F) <- sampleIDs
+    names(fq_derep_R) <- sampleIDs
 
-## Save objects to RDS files
-if (save_rds) saveRDS(fastqs_derep_F, file = file.path(outdir, "fastqs_derep_F.rds"))
-if (save_rds) saveRDS(fastqs_derep_R, file = file.path(outdir, "fastqs_derep_R.rds"))
-
+    ## Save objects to RDS files
+    if (save_rds) saveRDS(fq_derep_F, file = file.path(rds_dir, "fastqs_derep_F.rds"))
+    if (save_rds) saveRDS(fq_derep_R, file = file.path(rds_dir, "fastqs_derep_R.rds"))
+}
 
 # ERROR LEARNING ----------------------------------------------------
-cat("\n----------------\n## Step 3: Learning errors...\n")
+if (start_at_step >= 3 & start_at_step < 6) {
+    fq_derep_F <- readRDS(file.path(rds_dir, "fastqs_derep_F.rds"))
+    fq_derep_R <- readRDS(file.path(rds_dir, "fastqs_derep_R.rds"))
+}
 
-err_F <- learnErrors(fastqs_derep_F, multithread = n_cores, verbose = TRUE)
-err_R <- learnErrors(fastqs_derep_R, multithread = n_cores, verbose = TRUE)
+if (start_at_step <= 3) {
+    cat("\n----------------\n## Step 3: Learning errors...\n")
 
-## Save objects to RDS files
-if (save_rds) saveRDS(err_F, file = file.path(outdir, "err_F.rds"))
-if (save_rds) saveRDS(err_R, file = file.path(outdir, "err_R.rds"))
+    err_F <- learnErrors(fq_derep_F, multithread = n_cores, verbose = TRUE)
+    err_R <- learnErrors(fq_derep_R, multithread = n_cores, verbose = TRUE)
 
-## Plot errors
-p <- plotErrors(err_F, nominalQ = TRUE)
-ggsave(errorplot_F_file, width = 8, height = 7)
-p <- plotErrors(err_R, nominalQ = TRUE)
-ggsave(errorplot_R_file, width = 8, height = 7)
+    ## Save objects to RDS files
+    if (save_rds) saveRDS(err_F, file = file.path(rds_dir, "err_F.rds"))
+    if (save_rds) saveRDS(err_R, file = file.path(rds_dir, "err_R.rds"))
 
+    ## Plot errors
+    p <- plotErrors(err_F, nominalQ = TRUE)
+    ggsave(errorplot_F_file, width = 8, height = 7)
+    p <- plotErrors(err_R, nominalQ = TRUE)
+    ggsave(errorplot_R_file, width = 8, height = 7)
+}
 
-# INFER ASVS ------------------------------------------------ 
-cat("\n----------------\n## Step 4: Inferring ASVs...\n")
+# INFER ASVS ---------------------------------------------------
+if (start_at_step >= 4 & start_at_step < 6) {
+    err_F <- readRDS(file.path(rds_dir, "err_F.rds"))
+    err_R <- readRDS(file.path(rds_dir, "err_R.rds"))
+}
 
-dada_Fs <- dada(fastqs_derep_F, err = err_F, pool = FALSE, multithread = n_cores)
-dada_Rs <- dada(fastqs_derep_R, err = err_R, pool = FALSE, multithread = n_cores)
+if (start_at_step <= 4) {
+    cat("\n----------------\n## Step 4: Inferring ASVs...\n")
 
-## TODO - USE/TRY POOL=TRUE
+    dada_F <- dada(fq_derep_F, err = err_F, pool = pool, multithread = n_cores)
+    dada_R <- dada(fq_derep_R, err = err_R, pool = pool, multithread = n_cores)
 
-## Save objects to RDS files
-if (save_rds) saveRDS(dada_Fs, file = file.path(outdir, "dada_Fs.rds"))
-if (save_rds) saveRDS(dada_Rs, file = file.path(outdir, "dada_Rs.rds"))
-
+    ## Save objects to RDS files
+    if (save_rds) saveRDS(dada_F, file = file.path(rds_dir, "dada_F.rds"))
+    if (save_rds) saveRDS(dada_R, file = file.path(rds_dir, "dada_R.rds"))
+}
 
 # MERGE READ PAIRS -----------------------------------------
-cat("\n----------------\n## Step 5: Merging read pairs...\n")
+if (start_at_step >= 5) {
+    dada_F <- readRDS(file.path(rds_dir, "dada_F.rds"))
+    dada_R <- readRDS(file.path(rds_dir, "dada_R.rds"))
+}
 
-mergers <- mergePairs(dada_Fs, fastqs_derep_F,
-                      dada_Rs, fastqs_derep_R,
-                      verbose = TRUE)
+if (start_at_step <= 5) {
+    cat("\n----------------\n## Step 5: Merging read pairs...\n")
 
-## Save objects to RDS files
-if (save_rds) saveRDS(mergers, file = file.path(outdir, "mergers.rds"))
+    mergers <- mergePairs(dada_F, fq_derep_F,
+                          dada_R, fq_derep_R,
+                          verbose = TRUE)
+
+    ## Save objects to RDS files
+    if (save_rds) saveRDS(mergers, file = file.path(rds_dir, "mergers.rds"))
+}
 
 
 # CREATE SEQUENCE TABLE --------------------------------------------------
-cat("\n----------------\n## Step 6: Creating the sequence table...\n")
+if (start_at_step >= 6) mergers <- readRDS(file.path(rds_dir, "mergers.rds"))
 
-seqtab_all <- makeSequenceTable(mergers)
+if (start_at_step <= 6) {
+    cat("\n----------------\n## Step 6: Creating the sequence table...\n")
 
-## The dimensions of the object are the nr of samples (rows) and the nr of ASVs (columns):
-cat("## Nr of ASVs before chimera removal:", ncol(seqtab_all), "\n")
+    seqtab_all <- makeSequenceTable(mergers)
 
+    ## The dimensions of the object are the nr of samples (rows) and the nr of ASVs (columns):
+    cat("## Nr of ASVs before chimera removal:", ncol(seqtab_all), "\n")
+    cat("## Total ASV count before chimera removal:", sum(seqtab_all), "\n")
+
+    ## Save objects to RDS files
+    if (save_rds) saveRDS(seqtab_all, file = seqtab_all_file)
+}
 
 # REMOVE CHIMERAS ----------------------------------------------
-cat("\n----------------\n## Step 7: Removing chimeras...\n")
+if (start_at_step >= 7) seqtab_all <- readRDS(seqtab_all_file)
 
-seqtab <- removeBimeraDenovo(seqtab_all,
-                             method = "consensus",
-                             multithread = n_cores,
-                             verbose = TRUE)
+if (start_at_step <= 7) {
+    cat("\n----------------\n## Step 7: Removing chimeras...\n")
 
-cat("## Nr of ASVs after chimera removal:", ncol(seqtab), "\n")
+    seqtab_nonchim <- removeBimeraDenovo(seqtab_all,
+                                         method = chimera_method,
+                                         multithread = n_cores,
+                                         verbose = TRUE)
 
-## Save objects to RDS files
-if (save_rds) saveRDS(seqtab, file = seqtab_file)
+    cat("## Nr of ASVs after chimera removal:", ncol(seqtab_nonchim), "\n")
+    cat("## Total ASV count after chimera removal:", sum(seqtab_nonchim), "\n")
+
+    ## Save objects to RDS files
+    if (save_rds) saveRDS(seqtab_nonchim, file = seqtab_nonchim_file)
+}
 
 
-# CHECK ASV SEQUENCE LENTGTHS ---------------------------------
-cat("\n----------------\n## Table of sequence lengths:\n")
-table(nchar(getSequences(seqtab)))
+# FILTER ASVs BY SIZE  -------------------------------------
+if (start_at_step >= 8) seqtab_nonchim <- readRDS(seqtab_nonchim_file)
 
-## If you need to remove sequences of a particular length (e.g. too long):
-## seqtab2 <- seqtab[, nchar(colnames(seqtab_all)) %in% seq(250,256)]
+cat("Table of sequence lengths:\n")
+print(table(nchar(getSequences(seqtab_nonchim))))
 
-## TODO - calculate abundance sums for ASVs of different lengths
+if (start_at_step <= 8 & !(ASV_size_min == 0 & ASV_size_max == Inf)) {
+    cat("\n----------------\n## Step 8: Filtering ASVs by length:\n")
+    seqtab_lenfilter <- seqtab[, nchar(colnames(seqtab_nonchim)) %in% seq(ASV_size_min, ASV_size_max)]
+
+    cat("## Nr of ASVs after filtering by length:", ncol(seqtab_lenfilter), "\n")
+    cat("## Total ASV count after filtering by length:", sum(seqtab_lenfilter), "\n")
+    cat("## Table of sequence lengths after filtering by length:\n")
+    print(table(nchar(getSequences(seqtab_lenfilter))))
+
+    ## Save objects to RDS files
+    if (save_rds) saveRDS(seqtab_lenfilter, file = seqtab_lenfilter_file)
+    }
+
+    final_seqtab_file <- seqtab_lenfilter_file
+} else {
+    final_seqtab_file <- seqtab_nonchim_file
+    seqtab_lenfilter <- seqtab_nonchim
+}
+
 
 # CREATE QC SUMMARY TABLE -----------------------------------
 cat("\n----------------\n## Creating QC summary table...\n")
@@ -192,8 +264,8 @@ cat("\n----------------\n## Creating QC summary table...\n")
 getN <- function(x) sum(getUniques(x))
 
 ## Calculate nr of unique sequences across denoised and merged seqs
-denoised_F <- sapply(dada_Fs, getN)
-denoised_R <- sapply(dada_Rs, getN)
+denoised_F <- sapply(dada_F, getN)
+denoised_R <- sapply(dada_R, getN)
 merged <- sapply(mergers, getN)
 
 ## Put together the final QC table
@@ -201,7 +273,8 @@ nreads_summary <- data.frame(filter_results,
                              denoised_F,
                              denoised_R,
                              merged,
-                             nonchim = rowSums(seqtab),
+                             nonchim = rowSums(seqtab_nonchim),
+                             lenfilter = rowSums(seqtab_lenfilter),
                              row.names = sampleIDs)
 colnames(nreads_summary)[1:2] <- c("input", "filtered")
 
@@ -238,7 +311,7 @@ cat("## Error profile plot - F:", errorplot_F_file, "\n")
 cat("## Error profile plot - R:", errorplot_R_file, "\n")
 
 cat("## FASTA:", fasta_out, "\n")
-cat("## Sequence table:", seqtab_file, "\n")
+cat("## Sequence table:", final_seqtab_file, "\n")
 cat("## QC table:", qc_file, "\n")
 
 cat("## Done with script ASV_inference.R.\n")
