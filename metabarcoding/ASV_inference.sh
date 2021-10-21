@@ -24,8 +24,9 @@ module load R/4.0.2
 [[ ! -f $config_file ]] && echo "ERROR: Config file ($config_file) does not exist" && exit 1
 
 ## Report
+echo "## Starting submission script ASV_inference.sh..."
 echo "## FASTQ input dir: $fastq_indir"
-echo "## output dir: $outdir"
+echo "## Output dir: $outdir"
 echo "## Config file: $config_file"
 echo "## Number of cores: $n_cores"
 

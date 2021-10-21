@@ -291,8 +291,8 @@ write.table(nreads_summary,
 cat("\n----------------\n## Writing FASTA file...\n")
 
 ## Prepare sequences and headers
-asv_seqs <- colnames(seqtab)
-asv_headers <- paste(">ASV", 1:ncol(seqtab), sep = "_")
+asv_seqs <- colnames(seqtab_lenfilter)
+asv_headers <- paste(">ASV", 1:ncol(seqtab_lenfilter), sep = "_")
 
 ## Interleave headers and sequences
 asv_fasta <- c(rbind(asv_headers, asv_seqs))
