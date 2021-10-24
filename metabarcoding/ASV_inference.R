@@ -122,10 +122,16 @@ if (start_at_step <= 1) {
                     compress = FALSE, verbose = TRUE) 
 
     head(filter_results)
+
+    ## Save objects to RDS files
+    if (save_rds) saveRDS(filter_results, file.path(rds_dir, "filter_results.rds"))
 }
 
-
 # FASTQ FILE DEREPLICATION ------------------------------------------
+if (start_at_step >= 2) {
+    filter_results <- readRDS(file.path(rds_dir, "filter_results.rds"))
+}
+
 if (start_at_step <= 2) {
     cat("\n----------------\n## Step 2: Dereplicating FASTQ files...\n")
 
@@ -136,8 +142,8 @@ if (start_at_step <= 2) {
     names(fq_derep_R) <- sampleIDs
 
     ## Save objects to RDS files
-    if (save_rds) saveRDS(fq_derep_F, file = file.path(rds_dir, "fq_derep_F.rds"))
-    if (save_rds) saveRDS(fq_derep_R, file = file.path(rds_dir, "fq_derep_R.rds"))
+    if (save_rds) saveRDS(fq_derep_F, file.path(rds_dir, "fq_derep_F.rds"))
+    if (save_rds) saveRDS(fq_derep_R, file.path(rds_dir, "fq_derep_R.rds"))
 }
 
 # ERROR LEARNING ----------------------------------------------------
@@ -153,8 +159,8 @@ if (start_at_step <= 3) {
     err_R <- learnErrors(fq_derep_R, multithread = n_cores, verbose = TRUE)
 
     ## Save objects to RDS files
-    if (save_rds) saveRDS(err_F, file = file.path(rds_dir, "err_F.rds"))
-    if (save_rds) saveRDS(err_R, file = file.path(rds_dir, "err_R.rds"))
+    if (save_rds) saveRDS(err_F, file.path(rds_dir, "err_F.rds"))
+    if (save_rds) saveRDS(err_R, file.path(rds_dir, "err_R.rds"))
 
     ## Plot errors
     p <- plotErrors(err_F, nominalQ = TRUE)
@@ -176,8 +182,8 @@ if (start_at_step <= 4) {
     dada_R <- dada(fq_derep_R, err = err_R, pool = pool, multithread = n_cores)
 
     ## Save objects to RDS files
-    if (save_rds) saveRDS(dada_F, file = file.path(rds_dir, "dada_F.rds"))
-    if (save_rds) saveRDS(dada_R, file = file.path(rds_dir, "dada_R.rds"))
+    if (save_rds) saveRDS(dada_F, file.path(rds_dir, "dada_F.rds"))
+    if (save_rds) saveRDS(dada_R, file.path(rds_dir, "dada_R.rds"))
 }
 
 # MERGE READ PAIRS -----------------------------------------
@@ -194,7 +200,7 @@ if (start_at_step <= 5) {
                           verbose = TRUE)
 
     ## Save objects to RDS files
-    if (save_rds) saveRDS(mergers, file = file.path(rds_dir, "mergers.rds"))
+    if (save_rds) saveRDS(mergers, file.path(rds_dir, "mergers.rds"))
 }
 
 
@@ -211,7 +217,7 @@ if (start_at_step <= 6) {
     cat("## Total ASV count before chimera removal:", sum(seqtab_all), "\n")
 
     ## Save objects to RDS files
-    if (save_rds) saveRDS(seqtab_all, file = seqtab_all_file)
+    if (save_rds) saveRDS(seqtab_all, seqtab_all_file)
 }
 
 # REMOVE CHIMERAS ----------------------------------------------
@@ -229,7 +235,7 @@ if (start_at_step <= 7) {
     cat("## Total ASV count after chimera removal:", sum(seqtab_nonchim), "\n")
 
     ## Save objects to RDS files
-    if (save_rds) saveRDS(seqtab_nonchim, file = seqtab_nonchim_file)
+    if (save_rds) saveRDS(seqtab_nonchim, seqtab_nonchim_file)
 }
 
 
@@ -249,7 +255,7 @@ if (start_at_step <= 8 & !(ASV_size_min == 0 & ASV_size_max == Inf)) {
     print(table(nchar(getSequences(seqtab_lenfilter))))
 
     ## Save objects to RDS files
-    if (save_rds) saveRDS(seqtab_lenfilter, file = seqtab_lenfilter_file)
+    if (save_rds) saveRDS(seqtab_lenfilter, seqtab_lenfilter_file)
 
     final_seqtab_file <- seqtab_lenfilter_file
 } else {
@@ -284,8 +290,7 @@ cat("## First few rows of the QC table:\n")
 head(nreads_summary)
 
 ## Write QC summary table to file
-write.table(nreads_summary,
-            file = qc_file,
+write.table(nreads_summary, file = qc_file,
             sep = "\t", quote = FALSE, row.names = TRUE)
 
 
