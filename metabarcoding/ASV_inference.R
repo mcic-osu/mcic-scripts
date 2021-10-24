@@ -64,10 +64,12 @@ cat("## Save RDS files:", save_rds, "\n\n")
 ## Define and create output dirs
 filter_dir <- file.path(outdir, "fastq_filtered")   # For filtered FASTQ files
 rds_dir <- file.path(outdir, "rds")
+plot_dir <- file.path(outdir, "plots")
 
 if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
 if (!dir.exists(filter_dir)) dir.create(filter_dir, recursive = TRUE)
 if (!dir.exists(rds_dir)) dir.create(rds_dir, recursive = TRUE)
+if (!dir.exists(plot_dir)) dir.create(plot_dir, recursive = TRUE)
 
 ## Get paths to input FASTQ files
 fq_raw_F <- sort(list.files(fastq_indir, pattern = "_R1_001.fastq.gz",
@@ -91,8 +93,8 @@ sampleIDs <- sub("_L001.*", "", basename(fq_raw_F))
 fq_filt_F <- file.path(filter_dir, paste0(sampleIDs, "_F_filt.fastq"))
 fq_filt_R <- file.path(filter_dir, paste0(sampleIDs, "_R_filt.fastq"))
 
-errorplot_F_file <- file.path(outdir, "errors_F.png")
-errorplot_R_file <- file.path(outdir, "errors_R.png")
+errorplot_F_file <- file.path(plot_dir, "errors_F.png")
+errorplot_R_file <- file.path(plot_dir, "errors_R.png")
 
 fasta_out <- file.path(outdir, "ASVs.fa")
 qc_file <- file.path(outdir, "nreads_summary.txt")
