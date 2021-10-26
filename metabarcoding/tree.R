@@ -1,38 +1,70 @@
-## ---- eval = FALSE-------------------------------------------------------------------------------
-## #seqtab<- readRDS("seqtab_V4.rds")
-## 
-## seqs <- getSequences(seqtab)
-## 
-## # This propagates to the tip labels of the tree.
-## # At this stage ASV labels are full ASV sequence
-## names(seqs) <- seqs
-## alignment <- AlignSeqs(DNAStringSet(seqs),
-##                        anchor = NA,
-##                        iterations = 5,
-##                        refinements = 5)
-## 
-## print("Computing pairwise distances from ASVs...")
-## Sys.time()
-## phang.align <- phyDat(as(alignment, "matrix"), type = "DNA")
-## dm <- dist.ml(phang.align)
-## treeNJ <- NJ(dm) # Note, tip order is not sequence order
-## fit = pml(treeNJ, data = phang.align)
-## print("...Done.")
-## Sys.time()
-## 
-## print("Fit GTR model...")
-## Sys.time()
-## fitGTR <- update(fit, k = 4, inv = 0.2)
-## print("...Done.")
-## Sys.time()
-## 
-## print("Computing likelihood of tree...")
-## Sys.time()
-## fitGTR <- optim.pml(fitGTR,
-##                     model = "GTR",
-##                     optInv = TRUE,
-##                     optGamma = TRUE,
-##                     rearrangement = "stochastic",
-##                     control = pml.control(trace = 0))
-## print("...Done".)
-## Sys.time()
+# SET-UP -----------------------------------------------------------------------
+## Load packages
+if(!"pacman" %in% installed.packages()) install.packages("pacman")
+packages <- c("dada2", "DECIPHER", "phangorn")
+pacman::p_load(char = packages)
+
+## Process command-line arguments
+args <- commandArgs(trailingOnly = TRUE)
+seqtab_rds <- args[1]             # Sequence table RDS file (input)
+tree_rds <- args[2]               # Tree RDS file (output)
+n_cores <- as.integer(args[3])    # Number of computer cores to use
+
+# seqtab_rds <- "results/dada2/main/rds/seqtab_nonchim_lenfilter.rds"
+# tree_rds <- "results/tree/tree.rds"
+
+## Report
+cat("## Starting script tree.R\n")
+Sys.time()
+cat("## Sequence table RDS file:", seqtab_rds, "\n")
+cat("## Tree RDS file:", tree_rds, "\n")
+cat("## Number of cores:", n_cores, "\n\n")
+
+## Create output dir if needed
+outdir <- dirname(tree_rds)
+if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
+
+## Load the input data
+seqtab <- readRDS(seqtab_rds)
+
+seqs <- getSequences(seqtab)
+names(seqs) <- seqs
+
+# CREATE THE TREE --------------------------------------------------------------
+## 1 - Align
+cat("## Aligning sequences...\n")
+alignment <- AlignSeqs(DNAStringSet(seqs),
+                       anchor = NA,
+                       iterations = 5,
+                       refinements = 5,
+                       processors = n_cores)
+
+## 2- Compute distances
+cat("## Computing pairwise distances from ASVs...\n")
+phang.align <- phyDat(as(alignment, "matrix"), type = "DNA")
+dm <- dist.ml(phang.align)
+treeNJ <- NJ(dm)
+fit = pml(treeNJ, data = phang.align)
+
+## 3 - Create tree
+cat("## Fitting GTR model...\n")
+fitGTR <- update(fit, k = 4, inv = 0.2)
+
+## 4- Compute likelihood
+cat("## Computing likelihood of tree...\n")
+fitGTR <- optim.pml(fitGTR,
+                    model = "GTR",
+                    optInv = TRUE,
+                    optGamma = TRUE,
+                    rearrangement = "stochastic",
+                    control = pml.control(trace = 0))
+
+
+# WRAP UP ----------------------------------------------------------------------
+## Save RDS file
+saveRDS(fitGTR, tree_rds)
+
+## Report
+cat("## Done with script tree.R\n")
+cat("## Main output file:", tree_rds, "\n")
+Sys.time()

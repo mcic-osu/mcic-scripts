@@ -1,75 +1,78 @@
-# SET-UP --------------------------------------
-
-## Set number of cores
-n_cores <- 8
-
+# SET-UP -----------------------------------------------------------------------
 ## Load packages
-print("Loading packages...")
 if(!"pacman" %in% installed.packages()) install.packages("pacman")
-packages <- c("tidyverse", "gridExtra", "dada2",
-              "phyloseq", "DECIPHER", "phangorn")
+packages <- c("dada2", "phyloseq", "DECIPHER")
 pacman::p_load(char = packages)
 
-## Define dirs
-refdata_dir <- "data/ref"                # For reference data like tax db's
+## Process command-line arguments
+args <- commandArgs(trailingOnly = TRUE)
+seqtab_rds <- args[1]
+taxa_rds <- args[2]
+tree_rds <- args[3]
+sampledata_file <- args[4]
+ps_rds <- args[5]
 
-if (!dir.exists(refdata_dir)) dir.create(refdata_dir, recursive = TRUE)
+# seqtab_rds <- "results/ASV/main/seqtab.rds"
+# taxa_rds <- "results/taxonomy/taxa_decipher.rds"
+# tree_rds <- "results/ASV/main/tree.rds"
+# sampledata_file <- "metadata/sample_data.txt"
+# ps_rds <- "results/ASV/main/ps.rds"
 
-## Define FASTA file with training data
-## (Check for an up-to-date version at <https://benjjneb.github.io/dada2/training.html>)
-tax_file <- file.path(refdata_dir, "silva_nr99_v138.1_train_set.fa.gz")
-tax_URL <- "https://zenodo.org/record/4587955/files/silva_nr99_v138.1_train_set.fa.gz"
-if (!file.exists(tax_file)) download.file(url = tax_URL, destfile = tax_file)
+## Create output dir if needed
+outdir <- dirname(ps_rds)
+if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
 
-## Define file with sample metadata
-metadata_file <- "metadata/sample_data.txt"
+## Report
+cat("## Starting script tree.R\n")
+cat("## Sequence table RDS file (input):", seqtab_rds, "\n")
+cat("## Taxa RDS file (input):", taxa_rds, "\n")
+cat("## Tree RDS file (input):", tree_rds, "\n")
+cat("## Sample data file (input):", sampledata_file, "\n")
+cat("## Phyloseq RDS file (output):", ps_rds, "\n\n")
 
+# LOAD INPUT DATA --------------------------------------------------------------
+## Sequence table from dada2
+seqtab <- readRDS(seqtab_rds)
+sampleIDs_seqtab <- sub("_S\\d+$", "", rownames(seqtab)) # Remove "_S16" etc suffix
+rownames(seqtab) <- sampleIDs_seqtab
 
-# PREP METADATA ----------------------------------------------------
+## Taxonomic assignments
+taxa <- readRDS(taxa_rds) 
 
-## Load sample metadata
-print("Load and prepare sample metadata...")
+## Tree
+tree <- readRDS(tree_rds)
 
-metadata_df <- read.table(file = metadata_file, sep = "\t", header = TRUE)
-colnames(metadata_df)[1] <- "SampleID"
-rownames(metadata_df) <- metadata_df$SampleID
+## Sample metadata
+meta <- read.table(sampledata_file, sep = "\t", header = TRUE)
+colnames(meta)[1] <- "sample_ID"
+rownames(meta) <- meta$sample_ID
 
-print("Head of metadata file:")
-head(metadata_df)
-
+# CHECK SAMPLE IDs -------------------------------------------------------------
 ## Check for matching sample names in FASTQ files and metadata file
-print("IDs from metadata:")
-metadata_df$SampleID
-print("FASTQ file names:")
-head(basename(fastqs_raw_F))
+cat("IDs from metadata:\n")
+head(meta$sample_ID)
+cat("IDs from seqtab (i.e., from FASTQ file names):\n")
+head(sampleIDs_seqtab)
 
-print("Are the sample IDs from the metadata and the fastq files the same?")
-identical(sort(metadata_df$SampleID), sampleIDs)
+cat("Are the sample IDs from the metadata and the seqtab the same?\n")
+identical(sort(meta$sample_ID), sampleIDs_seqtab)
 
-print("Are any samples missing from the fastq files?")
-setdiff(sort(metadata_df$SampleID), sampleIDs)
+cat("Are any samples missing from the seqtab?\n")
+setdiff(sort(meta$sample_ID), sampleIDs_seqtab)
 
-print("Are any samples missing from the metadata?")
-setdiff(sampleIDs, sort(metadata_df$SampleID))
+cat("Are any samples missing from the metadata?\n")
+setdiff(sampleIDs_seqtab, sort(meta$sample_ID))
 
 
-# ASSIGN TAXONOMY ------------------------------------------------
-
-print("Assigning taxonomic labels to ASVs...")
-
-taxa <- assignTaxonomy(seqtab, tax_key, multithread = n_cores)
-colnames(taxa) <- c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus")
-
-saveRDS(taxa, file = file.path(outdir, "taxa.rds"))
-# taxa <- readRDS(file.path(outdir, "taxa.rds"))
-
-# CREATE PHYLOSEQ OBJECT -------------------------------------------
-
+# CREATE PHYLOSEQ OBJECT -------------------------------------------------------
 ps <- phyloseq(otu_table(seqtab, taxa_are_rows = FALSE),
-               sample_data(metadata_df),
+               phy_tree(tree$tree),
+               sample_data(meta),
                tax_table(taxa))
 
-saveRDS(ps, file = file.path(outdir, "ps_V4.rds"))
+saveRDS(ps, ps_rds)
 
-
-print("Done with script.")
+## Report
+cat("## Done with script make_ps.R\n")
+cat("## Main output file:", ps_rds,"\n")
+Sys.time()
