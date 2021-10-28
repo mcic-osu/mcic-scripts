@@ -11,7 +11,7 @@ taxa_rds <- args[2]
 n_cores <- as.integer(args[3])
 
 # seqtab_rds <- "results/ASV/main/seqtab.rds"
-# taxa_rds <- "results/ASV/main/taxa_decipher.rds"
+# taxa_rds <- "results/taxonomy/taxa_decipher.rds"
 # n_cores <- 8
 
 ## Create output dir if needed
@@ -85,14 +85,32 @@ taxa <- taxid
 #cat("\n## Now adding species-level assignments...\n")
 #taxa <- addSpecies(taxa, species_file)
 
-## QC: Check proportions of ASVs assigned to taxa
+## Save RDS file
+saveRDS(taxa, taxa_rds)
+
+
+# QC TAX. ASSIGNMENTS ----------------------------------------------------------
+## Create df with proportion assigned
 prop_assigned <- qc_tax(taxa)
-cat("\n## Proportion of ASVs assigned to different taxonomic levels - DECIPHER:\n")
+cat("\n## Proportion of ASVs assigned to different taxonomic levels - DADA:\n")
 print(prop_assigned)
 write.table(prop_assigned, qc_file, sep = "\t", quote = FALSE, row.names = FALSE)
 
-## Save RDS file
-saveRDS(taxa, taxa_rds)
+## Create barplot
+tax_levels <- c("domain", "phylum", "class", "order", "family", "genus", "species")
+qc_tax <- qc_tax %>% 
+  mutate(tax_level = factor(tax_level, levels = tax_levels))
+
+p <- ggplot(qc_tax) +
+  geom_col(aes(x = tax_level, y = prop, fill = tax_level),
+           color = "grey20") +
+  scale_fill_brewer(palette = "Greens") +
+  labs(y = "Proportion of ASVs assigned", x = NULL) +
+  guides(fill = "none") +
+  theme_bw(base_size = 14) +
+  scale_y_continuous(expand = c(0, 0))
+
+ggsave(plot_file, p, width = 7, height = 7)
 
 
 # WRAP UP ----------------------------------------------------------------------

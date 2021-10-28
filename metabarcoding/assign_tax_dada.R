@@ -1,7 +1,7 @@
 # SET-UP -----------------------------------------------------------------------
 ## Load packages
 if(!"pacman" %in% installed.packages()) install.packages("pacman")
-packages <- c("dada2", "DECIPHER")
+packages <- c("dada2", "DECIPHER", "tidyverse")
 pacman::p_load(char = packages)
 
 ## Process command-line arguments
@@ -11,7 +11,7 @@ taxa_rds <- args[2]
 n_cores <- as.integer(args[3])
 
 # seqtab_rds <- "results/ASV/main/seqtab.rds"
-# taxa_rds <- "results/ASV/main/taxa_decipher.rds"
+# taxa_rds <- "results/taxonomy/taxa_dada.rds"
 # n_cores <- 8
 
 ## Create output dir if needed
@@ -25,6 +25,7 @@ species_URL <- "https://zenodo.org/record/4587955/files/silva_species_assignment
 species_file <- file.path(outdir, basename(species_URL))
 
 qc_file <- file.path(outdir, "tax_prop_assigned_dada.txt")
+plot_file <- file.path(outdir, "tax_prop_assigned_dada.png")
 
 ## Report
 cat("## Starting script assign_tax_dada.R\n")
@@ -63,20 +64,38 @@ if (!file.exists(species_file)) download.file(url = species_URL, destfile = spec
 ## Assign taxonomy
 cat("\n## Now assigning taxonomy...\n")
 taxa <- assignTaxonomy(seqtab, tax_file, multithread = n_cores)
-colnames(taxa) <- c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus")
 
 cat("\n## Now adding species-level assignments...\n")
 taxa <- addSpecies(taxa, species_file)
 
-## QC
+tax_levels <- c("domain", "phylum", "class", "order", "family", "genus", "species")
+colnames(taxa) <- tax_levels
+
+## Save RDS file
+saveRDS(taxa, taxa_rds)
+
+
+# QC TAX. ASSIGNMENTS ----------------------------------------------------------
+## Create df with proportion assigned
 prop_assigned <- qc_tax(taxa)
 cat("\n## Proportion of ASVs assigned to different taxonomic levels - DADA:\n")
 print(prop_assigned)
 write.table(prop_assigned, qc_file, sep = "\t", quote = FALSE, row.names = FALSE)
 
-## Save RDS file
-saveRDS(taxa, taxa_rds)
+## Create barplot
+qc_tax <- qc_tax %>% 
+    mutate(tax_level = factor(tax_level, levels = tax_levels))
+    
+p <- ggplot(qc_tax) +
+    geom_col(aes(x = tax_level, y = prop, fill = tax_level),
+             color = "grey20") +
+    scale_fill_brewer(palette = "Greens") +
+    labs(y = "Proportion of ASVs assigned", x = NULL) +
+    guides(fill = "none") +
+    theme_bw(base_size = 14) +
+    scale_y_continuous(expand = c(0, 0))
 
+ggsave(plot_file, p, width = 7, height = 7)
 
 # WRAP UP ----------------------------------------------------------------------
 ## Report
