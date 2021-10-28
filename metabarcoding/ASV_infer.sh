@@ -32,5 +32,5 @@ echo "## Number of cores: $n_cores"
 
 ## Run the R script
 echo -e "## Submitting script ASV_inference.R...\n"
-Rscript mcic-scripts/metabarcoding/ASV_inference.R \
+Rscript mcic-scripts/metabarcoding/ASV_infer.R \
     "$fastq_indir" "$outdir" "$config_file" "$n_cores"
