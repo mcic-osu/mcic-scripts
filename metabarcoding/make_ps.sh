@@ -2,7 +2,7 @@
 
 #SBATCH --account=PAS0471
 #SBATCH --time=15
-#SBATCH --output=slurm-assign_tax-%j.out
+#SBATCH --output=slurm-make_ps-%j.out
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 
