@@ -5,6 +5,7 @@
 #SBATCH --output=slurm-ASV_inference-%j.out
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
+#SBATCH --mem=50G
 
 ## Process command-line arguments
 fastq_indir=$1
