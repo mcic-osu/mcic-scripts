@@ -76,7 +76,8 @@ fq_filt_R <- file.path(filter_dir, paste0(sampleIDs, "_R_filt.fastq"))
 errorplot_F_file <- file.path(qc_dir, "errors_F.png")
 errorplot_R_file <- file.path(qc_dir, "errors_R.png")
 
-qc_file <- file.path(qc_dir, "nseqs_summary.txt")
+nseq_file <- file.path(qc_dir, "nseq_summary.txt")
+nASV_file <- file.path(qc_dir, "nASV_summary.txt")
 fasta_out <- file.path(outdir, "ASVs.fa")
 
 seqtab_all_file <- file.path(rds_dir, "seqtab_all.rds")
@@ -155,8 +156,10 @@ if (start_at_step >= 3 & start_at_step < 6) {
 if (start_at_step <= 3) {
     cat("\n----------------\n## Step 3: Learning errors...\n")
 
-    err_F <- learnErrors(fq_derep_F, multithread = n_cores, verbose = TRUE)
-    err_R <- learnErrors(fq_derep_R, multithread = n_cores, verbose = TRUE)
+    err_F <- learnErrors(fq_derep_F,
+                         multithread = n_cores)
+    err_R <- learnErrors(fq_derep_R,
+                         multithread = n_cores)
 
     ## Save objects to RDS files
     if (save_rds) saveRDS(err_F, file.path(rds_dir, "err_F.rds"))
@@ -178,8 +181,12 @@ if (start_at_step >= 4 & start_at_step < 6) {
 if (start_at_step <= 4) {
     cat("\n----------------\n## Step 4: Inferring ASVs...\n")
 
-    dada_F <- dada(fq_derep_F, err = err_F, pool = pool, multithread = n_cores)
-    dada_R <- dada(fq_derep_R, err = err_R, pool = pool, multithread = n_cores)
+    dada_F <- dada(fq_derep_F, err = err_F,
+                   pool = pool,
+                   multithread = n_cores)
+    dada_R <- dada(fq_derep_R, err = err_R,
+                   pool = pool,
+                   multithread = n_cores)
 
     ## Save objects to RDS files
     if (save_rds) saveRDS(dada_F, file.path(rds_dir, "dada_F.rds"))
@@ -196,11 +203,16 @@ if (start_at_step <= 5) {
     cat("\n----------------\n## Step 5: Merging read pairs...\n")
 
     mergers <- mergePairs(dada_F, fq_derep_F,
-                          dada_R, fq_derep_R,
-                          verbose = TRUE)
+                          dada_R, fq_derep_R)
 
     ## Save objects to RDS files
     if (save_rds) saveRDS(mergers, file.path(rds_dir, "mergers.rds"))
+
+    rm(dada_F)
+    rm(dada_R)
+    rm(fq_derep_F)
+    rm(fq_derep_R)
+    gc()
 }
 
 
@@ -228,8 +240,7 @@ if (start_at_step <= 7) {
 
     seqtab_nonchim <- removeBimeraDenovo(seqtab_all,
                                          method = chimera_method,
-                                         multithread = n_cores,
-                                         verbose = TRUE)
+                                         multithread = FALSE) # Multithreading often fails for this step    
 
     cat("## Nr of ASVs after chimera removal:", ncol(seqtab_nonchim), "\n")
     cat("## Total ASV count after chimera removal:", sum(seqtab_nonchim), "\n")
@@ -264,8 +275,8 @@ if (start_at_step <= 8 & !(ASV_size_min == 0 & ASV_size_max == Inf)) {
 }
 
 
-# CREATE QC SUMMARY TABLE ------------------------------------------------------
-cat("\n----------------\n## Creating QC summary table...\n")
+# CREATE QC SUMMARY TABLE: NR OF SEQS ------------------------------------------
+cat("\n----------------\n## Creating QC summary tables...\n")
 
 ## Define a function to get the nr of unique sequences
 getN <- function(x) sum(getUniques(x))
@@ -276,21 +287,30 @@ denoised_R <- sapply(dada_R, getN)
 merged <- sapply(mergers, getN)
 
 ## Put together the final QC table
-nseqs_summary <- data.frame(filter_results,
-                             denoised_F,
-                             denoised_R,
-                             merged,
-                             nonchim = rowSums(seqtab_nonchim),
-                             lenfilter = rowSums(seqtab_lenfilter),
-                             row.names = sampleIDs)
-colnames(nseqs_summary)[1:2] <- c("input", "filtered")
+nseq_summary <- data.frame(filter_results,
+                           denoised_F,
+                           denoised_R,
+                           merged,
+                           nonchim = rowSums(seqtab_nonchim),
+                           lenfilter = rowSums(seqtab_lenfilter),
+                           row.names = sampleIDs)
+colnames(nseq_summary)[1:2] <- c("input", "filtered")
 
 ## Have a look at the first few rows
-cat("## First few rows of the QC table:\n")
-head(nseqs_summary)
+cat("## First few rows of the QC table with nr of sequences:\n")
+head(nseq_summary)
 
 ## Write QC summary table to file
-write.table(nseqs_summary, file = qc_file,
+write.table(nseq_summary, file = nseq_file,
+            sep = "\t", quote = FALSE, row.names = TRUE)
+
+
+# CREATE QC SUMMARY TABLE: NR OF UNIQUE ASVs -----------------------------------
+nASV_summary <- data.frame(step = c("initial", "non_chimeric", "lenfilter"),
+                           n_asv = c(ncol(seqtab_all), ncol(seqtab_nonchim),
+                                     ncol(seqtab_lenfilter))
+
+write.table(nASV_summary, file = nASV_file,
             sep = "\t", quote = FALSE, row.names = TRUE)
 
 
@@ -318,7 +338,7 @@ cat("## Error profile plot - R:", errorplot_R_file, "\n")
 
 cat("## FASTA:", fasta_out, "\n")
 cat("## Sequence table:", seqtab_final_file, "\n")
-cat("## QC table:", qc_file, "\n")
+cat("## QC table:", nseq_file, "\n")
 
 cat("## Done with script ASV_inference.R.\n")
 Sys.time()
