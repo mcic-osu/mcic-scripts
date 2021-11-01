@@ -30,7 +30,10 @@ seqtab <- readRDS(seqtab_rds)
 seqs <- getSequences(seqtab)
 names(seqs) <- seqs
 
-# CREATE THE TREE --------------------------------------------------------------
+
+# BUILD THE TREE ---------------------------------------------------------------
+# See https://cran.r-project.org/web/packages/phangorn/vignettes/Trees.html
+
 ## 1 - Align
 cat("## Aligning sequences...\n")
 alignment <- AlignSeqs(DNAStringSet(seqs),
@@ -39,19 +42,19 @@ alignment <- AlignSeqs(DNAStringSet(seqs),
                        refinements = 5,
                        processors = n_cores)
 
-## 2- Compute distances
+## 2 - Compute distances
 cat("## Computing pairwise distances from ASVs...\n")
-phang.align <- phyDat(as(alignment, "matrix"), type = "DNA")
-dm <- dist.ml(phang.align)
-treeNJ <- NJ(dm)
-fit = pml(treeNJ, data = phang.align)
+alignment_mat <- phyDat(as(alignment, "matrix"), type = "DNA")
+dist_mat <- dist.ml(alignment_mat)
 
-## 3 - Create tree
-cat("## Fitting GTR model...\n")
-fitGTR <- update(fit, k = 4, inv = 0.2)
+## 3 - Build neighbor-joining tree and compute its likelihood
+cat("## Building a tree...\n")
+treeNJ <- NJ(dist_mat)                     # Build NJ tree
+fit <- pml(treeNJ, data = alignment_mat)   # Compute likelihood
+fitGTR <- update(fit, k = 4, inv = 0.2)    # Update to GTR model
 
-## 4- Compute likelihood
-cat("## Computing likelihood of tree...\n")
+## 4 - Compute likelihood
+cat("## Optimizing the tree...\n")
 fitGTR <- optim.pml(fitGTR,
                     model = "GTR",
                     optInv = TRUE,
