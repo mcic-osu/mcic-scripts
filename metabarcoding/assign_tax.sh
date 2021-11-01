@@ -26,7 +26,7 @@ module load R/4.0.2
 echo "## Starting submission script dada2_qc_plots.sh..."
 echo "## Seqtab RDS (input file): $seqtab_rds"
 echo "## Taxa RDS (output file): $taxa_rds"
-echo "## Taxonomic assignment algorith: $algo"
+echo "## Taxonomic assignment algorithm: $algo"
 
 ## Run the R script
 if [ "$algo" = "dada" ]; then

@@ -27,6 +27,8 @@ species_file <- file.path(outdir, basename(species_URL))
 qc_file <- file.path(outdir, "tax_prop_assigned_dada.txt")
 plot_file <- file.path(outdir, "tax_prop_assigned_dada.png")
 
+tax_levels <- c("domain", "phylum", "class", "order", "family", "genus", "species")
+
 ## Report
 cat("## Starting script assign_tax_dada.R\n")
 Sys.time()
@@ -38,12 +40,14 @@ cat("## Taxonomic assignment file (downloaded input):", tax_file, "\n")
 cat("## Species assignment file (downloaded input):", species_file, "\n\n")
 
 ## Function to get the proportion of ASVs assigned to taxa
-qc_tax <- function(taxa) {
+qc_tax <- function(taxa, tax_levels) {
     prop <- apply(taxa, 2,
                   function(x) round(length(which(!is.na(x))) / nrow(taxa), 4))
-    prop <- data.frame(prop)
-    prop$tax_level <- rownames(prop) 
-    rownames(prop) <- NULL
+    
+    prop <- data.frame(prop) %>%
+        rownames_to_column("tax_level") %>%
+        mutate(tax_level = factor(tax_level, levels = tax_levels))
+
     return(prop)
 }
 
@@ -55,7 +59,6 @@ dna <- DNAStringSet(getSequences(seqtab))
 
 
 # DADA2 TAX. ASSIGNMENT --------------------------------------------------------
-
 ## Get and load DADA training set
 ## (Check for an up-to-date version at <https://benjjneb.github.io/dada2/training.html>)
 if (!file.exists(tax_file)) download.file(url = tax_URL, destfile = tax_file)
@@ -67,8 +70,6 @@ taxa <- assignTaxonomy(seqtab, tax_file, multithread = n_cores)
 
 cat("\n## Now adding species-level assignments...\n")
 taxa <- addSpecies(taxa, species_file)
-
-tax_levels <- c("domain", "phylum", "class", "order", "family", "genus", "species")
 colnames(taxa) <- tax_levels
 
 ## Save RDS file
@@ -77,23 +78,22 @@ saveRDS(taxa, taxa_rds)
 
 # QC TAX. ASSIGNMENTS ----------------------------------------------------------
 ## Create df with proportion assigned
-prop_assigned <- qc_tax(taxa)
+prop_assigned <- qc_tax(taxa, tax_levels = tax_levels)
+write.table(prop_assigned, qc_file,
+            sep = "\t", quote = FALSE, row.names = FALSE)
+
 cat("\n## Proportion of ASVs assigned to different taxonomic levels - DADA:\n")
 print(prop_assigned)
-write.table(prop_assigned, qc_file, sep = "\t", quote = FALSE, row.names = FALSE)
 
 ## Create barplot
-qc_tax <- qc_tax %>% 
-    mutate(tax_level = factor(tax_level, levels = tax_levels))
-    
-p <- ggplot(qc_tax) +
+p <- ggplot(prop_assigned) +
     geom_col(aes(x = tax_level, y = prop, fill = tax_level),
              color = "grey20") +
     scale_fill_brewer(palette = "Greens") +
+    scale_y_continuous(limits = c(0, 1), expand = c(0, 0)) +
     labs(y = "Proportion of ASVs assigned", x = NULL) +
     guides(fill = "none") +
-    theme_bw(base_size = 14) +
-    scale_y_continuous(expand = c(0, 0))
+    theme_bw(base_size = 14)
 
 ggsave(plot_file, p, width = 7, height = 7)
 
@@ -102,4 +102,5 @@ ggsave(plot_file, p, width = 7, height = 7)
 cat("\n## Done with script assign_tax_dada.R\n")
 cat("## Taxa RDS output file:", taxa_rds, "\n")
 cat("## Proportion-assigned QC file:", qc_file, "\n")
+cat("## Plot:", plot_file, "\n")
 Sys.time()

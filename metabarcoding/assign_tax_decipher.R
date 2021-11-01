@@ -1,7 +1,7 @@
 # SET-UP -----------------------------------------------------------------------
 ## Load packages
 if(!"pacman" %in% installed.packages()) install.packages("pacman")
-packages <- c("dada2", "DECIPHER")
+packages <- c("dada2", "DECIPHER", "tidyverse")
 pacman::p_load(char = packages)
 
 ## Process command-line arguments
@@ -25,6 +25,9 @@ species_URL <- "https://zenodo.org/record/4587955/files/silva_species_assignment
 species_file <- file.path(outdir, basename(species_URL))
 
 qc_file <- file.path(outdir, "tax_prop_assigned_decipher.txt")
+plot_file <- file.path(outdir, "tax_prop_assigned_dada.png")
+
+tax_levels <- c("domain", "phylum", "class", "order", "family", "genus", "species")
 
 ## Report
 cat("## Starting script assign_tax_decipher.R\n")
@@ -37,14 +40,17 @@ cat("## Taxonomic assignment file (downloaded input):", tax_file, "\n")
 cat("## Species assignment file (downloaded input):", species_file, "\n\n")
 
 ## Function to get the proportion of ASVs assigned to taxa
-qc_tax <- function(taxa) {
+qc_tax <- function(taxa, tax_levels) {
     prop <- apply(taxa, 2,
                   function(x) round(length(which(!is.na(x))) / nrow(taxa), 4))
-    prop <- data.frame(prop)
-    prop$tax_level <- rownames(prop) 
-    rownames(prop) <- NULL
+    
+    prop <- data.frame(prop) %>%
+        rownames_to_column("tax_level") %>%
+        mutate(tax_level = factor(tax_level, levels = tax_levels))
+
     return(prop)
 }
+
 
 # PREPARE INPUT DATA -----------------------------------------------------------
 ## Create a DNAStringSet from the ASVs
@@ -91,24 +97,22 @@ saveRDS(taxa, taxa_rds)
 
 # QC TAX. ASSIGNMENTS ----------------------------------------------------------
 ## Create df with proportion assigned
-prop_assigned <- qc_tax(taxa)
+prop_assigned <- qc_tax(taxa, tax_levels = tax_levels)
+write.table(prop_assigned, qc_file,
+            sep = "\t", quote = FALSE, row.names = FALSE)
+
 cat("\n## Proportion of ASVs assigned to different taxonomic levels - DADA:\n")
 print(prop_assigned)
-write.table(prop_assigned, qc_file, sep = "\t", quote = FALSE, row.names = FALSE)
 
-## Create barplot
-tax_levels <- c("domain", "phylum", "class", "order", "family", "genus", "species")
-qc_tax <- qc_tax %>% 
-  mutate(tax_level = factor(tax_level, levels = tax_levels))
-
-p <- ggplot(qc_tax) +
+## Make plot
+p <- ggplot(prop_assigned) +
   geom_col(aes(x = tax_level, y = prop, fill = tax_level),
            color = "grey20") +
   scale_fill_brewer(palette = "Greens") +
+  scale_y_continuous(limits = c(0, 1), expand = c(0, 0)) +
   labs(y = "Proportion of ASVs assigned", x = NULL) +
   guides(fill = "none") +
-  theme_bw(base_size = 14) +
-  scale_y_continuous(expand = c(0, 0))
+  theme_bw(base_size = 14)
 
 ggsave(plot_file, p, width = 7, height = 7)
 
@@ -118,4 +122,5 @@ ggsave(plot_file, p, width = 7, height = 7)
 cat("\n## Done with script assign_tax_decipher.R\n")
 cat("## Taxa RDS output file:", taxa_rds, "\n")
 cat("## Proportion-assigned QC file:", qc_file, "\n")
+cat("## Plot:", plot_file, "\n")
 Sys.time()
