@@ -8,6 +8,25 @@ args <- commandArgs(trailingOnly = TRUE)
 qc_file <- args[1]
 outdir <- args[2]
 
+# qc_file <- "results/ASV/main/qc/nseq_summary.txt"
+# outdir <- "results/ASV/main/qc"
+
+## Files and settings
+props_df_file <- file.path(outdir, "nseq_props.txt")
+meanprops_df_file <- file.path(outdir, "nseq_meanprops.txt")
+meancounts_df_file <- file.path(outdir, "nseq_mean.txt")
+
+plotfile_bars <- file.path(outdir, "nseq_bars.png")
+plotfile_lines <- file.path(outdir,"nseq_lines.png")
+plotfile_bars_prop <- file.path(outdir,"nseq_prop_bars.png")
+plotfile_lines_prop <- file.path(outdir, "nseq_prop_lines.png")
+
+### Plotting order
+status_levels <- c("input", "fastq_filtered", "denoised", "reads_merged",
+                   "non_chimeric", "length_filtered")
+status_levels2 <- c("fastq_filtering", "denoising", "read_merging",
+                    "chimera_removal", "length_filtering", "(remaining)")
+
 ## Load packages
 if (! "tidyverse" %in% installed.packages()) install.packages("tidyverse")
 library(tidyverse)
@@ -28,12 +47,6 @@ qc <- read.table(qc_file, row.names = 1) %>%
          denoised = denoised_R,
          length_filtered = lenfilter) %>%
   select(-denoised_F)
-
-## Plotting order
-status_levels <- c("input", "fastq_filtered", "denoised", "reads_merged",
-                   "non_chimeric", "length_filtered")
-status_levels2 <- c("fastq_filtering", "denoising", "read_merging",
-                    "chimera_removal", "length_filtering", "(remaining)")
 
 
 # PLOTS WITH ABS NUMBERS -------------------------------------------------------
@@ -92,7 +105,7 @@ p_bars_prop <- qc_prop %>%
          read_merging = denoised - reads_merged,
          chimera_removal = reads_merged - non_chimeric,
          length_filtering = non_chimeric - length_filtered,
-         `(remaining)` = non_chimeric) %>%
+         `(remaining)` = length_filtered) %>%
   select(SampleID, fastq_filtering, denoising, read_merging, chimera_removal,
          length_filtering, `(remaining)`) %>%
   pivot_longer(cols = -SampleID,
@@ -127,24 +140,23 @@ qc_mean <- qc %>% summarise_if(is.numeric, ~ round(mean(.x)))
 
 
 # SAVE PLOTS AND DFs -----------------------------------------------------------
-
-ggsave(file.path(outdir, "nreads_bars.png"), p_bars,
+ggsave(plotfile_bars, p_bars,
        bg = "white", width = 7, height = 15)
-ggsave(file.path(outdir,"nreads_lines.png"), p_lines,
+ggsave(plotfile_lines, p_lines,
        bg = "white", width = 7, height = 5)
 
-ggsave(file.path(outdir,"nreads_prop_bars.png"), p_bars_prop,
+ggsave(plotfile_bars_prop, p_bars_prop,
        bg = "white", width = 7, height = 15)
-
-ggsave(file.path(outdir, "nreads_prop_lines.png"), p_lines_prop,
+ggsave(plotfile_lines_prop, p_lines_prop,
        bg = "white", width = 7, height = 5)
 
-write_tsv(qc_prop, file.path(outdir, "nreads_props.txt"))
-write_tsv(qc_prop_mean, file.path(outdir, "nreads_meanprops.txt"))
-write_tsv(qc_mean, file.path(outdir, "nreads_mean.txt"))
+write_tsv(qc_prop, props_df_file)
+write_tsv(qc_prop_mean, meanprops_df_file)
+write_tsv(qc_mean, meancounts_df_file)
 
 ## Report
 cat("Done with script dada2_qc_plots.R\n")
+
 
 # POINTS PLOT ------------------------------------------------------------------
 
@@ -167,8 +179,8 @@ cat("Done with script dada2_qc_plots.R\n")
 #   theme_bw() +
 #   labs(y = NULL)
 
-#ggsave(file.path(outdir, "nreads_points.png"), p_points,
+#ggsave(file.path(outdir, "nseq_points.png"), p_points,
 #       bg = "white", width = 7, height = 15)
 
-#ggsave(file.path(outdir,"nreads_prop_points.png"), p_points_prop,
+#ggsave(file.path(outdir,"nseq_prop_points.png"), p_points_prop,
 #       bg = "white", width = 7, height = 15)
