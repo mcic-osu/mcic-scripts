@@ -5,15 +5,15 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 
-set -euo pipefail # Bash strict mode
+## Bash strict mode
+set -euo pipefail
 
 # SETUP --------------------------------------------------------
-
-# Software at OSC:
+## Load software
 module load python/3.6-conda5.2                                # Load conda module
 source activate /users/PAS0471/osu5685/.conda/envs/cutadaptenv # Activate cutadapt environment
 
-# Help:
+## Help function
 Help() {
     # Display Help
     echo
@@ -35,7 +35,7 @@ Help() {
     echo
 }
 
-# Option defaults:
+## Option defaults
 indir=""
 outdir=""
 primer_f=""
@@ -43,7 +43,7 @@ primer_r=""
 discard_untrimmed=true
 primer_file=false
 
-# Get command-line options:
+## Get command-line options
 while getopts ':i:o:f:r:p:dh' flag; do
     case "${flag}" in
     i) indir="$OPTARG" ;;
@@ -58,10 +58,7 @@ while getopts ':i:o:f:r:p:dh' flag; do
     esac
 done
 
-[[ $indir = "" ]] && echo "## $0: ERROR: No input dir (-i) provided" >&2 && exit 1
-[[ $outdir = "" ]] && echo "## $0: ERROR: No output dir (-o) provided" >&2 && exit 1
-
-# Report:
+## Report
 echo -e "\n## Starting cutadapt script."
 date
 echo
@@ -69,9 +66,7 @@ echo "## Using the following parameters:"
 echo "## Input dir (-i): $indir"
 echo "## Output dir (-o): $outdir"
 
-[[ "$indir" = "$outdir" ]] && echo "## $0: ERROR: Input dir should not be the same as output dir" >&2 && exit 1
-
-# Get primers:
+## Get primers
 primer_arg=""
 
 if [ "$primer_file" = "false" ]; then
@@ -115,7 +110,7 @@ else
     echo
 fi
 
-# Set options:
+## Define cutadapt options
 # Including --pair-filter=any is here because cutadapt complains when including empty variable somehow
 # "--discard-untrimmed": Remove pairs with no primer found
 # "--pair-filter=any": Remove pair if one read is filtered (=Default)
@@ -125,19 +120,22 @@ else
     options="--pair-filter=any"
 fi
 
-# Report:
+## Report
 echo "## Primer argument: $primer_arg"
 echo "## Discard untrimmed (-d): $discard_untrimmed"
 
-# Test:
+## Test input
+[[ $indir = "" ]] && echo "## $0: ERROR: No input dir (-i) provided" >&2 && exit 1
+[[ $outdir = "" ]] && echo "## $0: ERROR: No output dir (-o) provided" >&2 && exit 1
 [[ ! -d "$indir" ]] && echo -e "\n## $0: ERROR: Input directory not found\n" >&2 && exit 1
 [[ $(find "$indir" -name "*fastq.gz" | wc -c) = 0 ]] && echo -e "\n## $0: ERROR: No fastq files found\n" >&2 && exit 1
+[[ "$indir" = "$outdir" ]] && echo "## $0: ERROR: Input dir should not be the same as output dir" >&2 && exit 1
 
-# Create output directory if it doesn't already exist:
+## Create output directory if it doesn't already exist
 mkdir -p "$outdir"
 
-# RUN CUTADAPT --------------------------------------------------------
 
+# RUN CUTADAPT ------------------------------------------------------------------
 echo -e "\n## Looping through input files...\n"
 
 shopt -s globstar nullglob # Turn on recursive globbing
@@ -150,7 +148,7 @@ for R1 in "$indir"/**/*_R1*.fastq.gz; do
     R2_basename=$(basename "$R2")
 
     # Report input files:
-    echo -e "\n------------------------------------------------------------\n"
+    echo -e "\n---------------------------------------\n"
     echo "## R1 input file:"
     ls -lh "$R1"
     echo "## R2 input file:"
