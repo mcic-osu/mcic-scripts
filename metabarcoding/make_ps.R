@@ -13,7 +13,7 @@ sampledata_file <- args[4]
 ps_rds <- args[5]
 
 # seqtab_rds <- "results/ASV/main/seqtab.rds"
-# taxa_rds <- "results/taxonomy/taxa_decipher.rds"
+# taxa_rds <- "results/taxonomy/taxa_dada.rds"
 # tree_rds <- "results/ASV/main/tree.rds"
 # sampledata_file <- "metadata/sample_data.txt"
 # ps_rds <- "results/ASV/main/ps.rds"

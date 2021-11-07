@@ -1,14 +1,13 @@
 #!/bin/bash
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --time=30
+#SBATCH --time=10
 #SBATCH --account=PAS0471
-#SBATCH --output=slurm-subsampleFASTQ-%j.out
 
 set -e -u -o pipefail
 
 # Report:
-echo -e "\n\n----------\n## Starting subsample_fastq script."
+echo -e "\n## Starting subsample_fastq script."
 date
 
 # SET-UP & PARSE ARGS ----------------------------------------------------------
@@ -43,11 +42,11 @@ do
     I)  R2_in="$OPTARG" ;;
     o)  R1_out="$OPTARG" ;;
     O)  R2_out="$OPTARG" ;;
-	n)  n_reads="$OPTARG" ;;
-	p)  prop_reads="$OPTARG" ;;
+	  n)  n_reads="$OPTARG" ;;
+	  p)  prop_reads="$OPTARG" ;;
     h)  Help && exit 0 ;;
-	\?) echo "## trim.sh: ERROR: Invalid option" && exit 1 ;;
-	:)  echo "## trim.sh: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
+	  \?) echo "## trim.sh: ERROR: Invalid option" && exit 1 ;;
+	  :)  echo "## trim.sh: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
   esac
 done
 
@@ -56,17 +55,13 @@ done
   echo "Error: neither a number of reads (-n) or a proportion of reads (-p) is provided" && exit 1
 
 # Number of reads in input fastq file:
-n_reads_total=$(zcat "$R1_in" | awk '{ s++ } END{ print s/4 }')
+n_reads_total=$(zcat $R1_in | awk '{ s++ } END{ print s/4 }')
 
 # If prop_reads is given, calculate n_reads:
 [[ $prop_reads != "NA" ]] && n_reads=$(python -c "print(int($n_reads_total * $prop_reads))")
 
 # Random seed:
 random_seed=$RANDOM
-
-# Create output dir
-outdir=$(dirname "$R1_out")
-mkdir -p "$outdir"
 
 # REPORT -----------------------------------------------------------------------
 
@@ -80,38 +75,35 @@ echo "## Total (input) number of reads: $n_reads_total"
 echo "## Number of reads to keep: $n_reads"
 echo
 echo "## Listing R1 input file:"
-ls -lh "$R1_in"
+ls -lh $R1_in
 echo "## Listing R2 input file:"
-ls -lh "$R2_in"
+ls -lh $R2_in
 echo
 echo "## Random seed: $random_seed"
 echo
 
-
 # RUN SEQTK TO SUBSAMPLE FASTQ -------------------------------------------------
 
 # Forward:
-echo "## Subsampling forward reads..."
-seqtk sample -s"$random_seed" "$R1_in" "$n_reads" | gzip > "$R1_out"
+seqtk sample -s$random_seed $R1_in $n_reads | gzip > $R1_out
 
 # Reverse:
-echo "## Subsampling reverse reads..."
-seqtk sample -s"$random_seed" "$R2_in" "$n_reads" | gzip > "$R2_out"
+seqtk sample -s$random_seed $R2_in $n_reads | gzip > $R2_out
 
 
 # REPORT AND FINALIZE --------------------------------------------------------
 
 # Count reads in output:
-n_reads_R1_out=$(zcat "$R1_out" | awk '{ s++ } END{ print s/4 }')
-n_reads_R2_out=$(zcat "$R2_out" | awk '{ s++ } END{ print s/4 }')
+n_reads_R1_out=$(zcat $R1_out | awk '{ s++ } END{ print s/4 }')
+n_reads_R2_out=$(zcat $R2_out | awk '{ s++ } END{ print s/4 }')
 echo -e "\n## Number of reads in output files:"
 echo "R1 out: $n_reads_R1_out"
 echo "R2 out: $n_reads_R2_out"
 
 # List files in output:
 echo -e "\n## Listing output files:"
-ls -lh "$R1_out"
-ls -lh "$R2_out"
+ls -lh $R1_out
+ls -lh $R2_out
 
 echo -e "\n## Done with script."
 date

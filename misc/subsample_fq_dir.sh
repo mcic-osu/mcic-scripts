@@ -4,17 +4,15 @@
 #SBATCH --time=120
 #SBATCH --account=PAS0471
 
-set -e -u -o pipefail
 
-# Report:
-echo -e "\n## Starting subsample_fastq_dir script."
-date
+# SETUP ------------------------------------------------------------------------
+## Bash strict settings
+set -euo pipefail
 
-subsample_script="$HOME/mcic-scripts/misc/subsample_fastq.sh"
+## Constants
+SUBSAMPLE_SCRIPT="mcic-scripts/misc/subsample_fq.sh"
 
-# SETUP --------------------------------------------------------
-
-# Help:
+## Help function
 Help()
 {
    # Display Help
@@ -30,11 +28,11 @@ Help()
    echo
 }
 
-# Option defaults:
+## Option defaults
 n_reads="NA"
 prop_reads="NA"
 
-# Get command-line options:
+## Parse command-line options
 while getopts ':i:o:n:p:h' flag
 do
   case "${flag}" in
@@ -48,43 +46,43 @@ do
   esac
 done
 
-# Report:
+## Report
+echo -e "\n## Starting script subsample_fastq_dir.sh"
+date
 echo "## Input dir: $indir"
 echo "## Output dir: $outdir"
-echo
 echo "## Number of reads to keep: $n_reads"
 echo "## Proportion of reads to keep: $prop_reads"
-echo
+echo -e "----------------------------------\n\n"
 
-# Make output dir if needed:
+## Make output dir if needed
 mkdir -p "$outdir"
 
-# RUN SCRIPT FOR EACH PAIR ---------------------------------------------------
 
-for R1 in "$indir"*_R1*.fastq.gz
-do
-  R1=$(basename "$R1")
-  R2=${R1/_R1/_R2}
+# RUN SCRIPT FOR EACH PAIR OF FASTQ FILES --------------------------------------
+for R1 in "$indir"/*_R1*.fastq.gz; do
+    R1=$(basename "$R1")
+    R2=${R1/_R1/_R2}
 
-  # Report input files:
-  echo "## R1 input file:"
-  ls -lh "$indir/$R1"
-  echo "## R2 input file:"
-  ls -lh "$indir/$R2"
+    ## Report input files:
+    echo "## R1 input file:"
+    ls -lh "$indir/$R1"
+    echo "## R2 input file:"
+    ls -lh "$indir/$R2"
 
-  # SLURM log file:
-  sample_id=$(basename "$R1" .fastq.gz)
-  log=slurm-subsample-fastq_"$sample_id"_%j.out
+    ## SLURM log file
+    sample_id=$(basename "$R1" .fastq.gz)
+    log=slurm-subsample-fastq_"$sample_id"_%j.out
 
-  sbatch -o "$log" "$subsample_script" -i "$indir/$R1" -I "$indir/$R2" \
-    -o "$outdir/$R1" -O "$outdir/$R2" \
-    -n "$n_reads" -p "$prop_reads"
+    sbatch -o "$log" "$SUBSAMPLE_SCRIPT" \
+        -i "$indir/$R1" -I "$indir/$R2" \
+        -o "$outdir/$R1" -O "$outdir/$R2" \
+        -n "$n_reads" -p "$prop_reads"
   
-  echo -e "\n\n-------------------------------------------------------------\n"
+    echo -e "\n--------------------------------------------------------\n"
 done
 
 
 # REPORT AND FINALIZE --------------------------------------------------------
-
-echo -e "\n\n## Done with script subsample_fastq_dir."
+echo -e "\n\n## Done with script subsample_fastq_dir.sh."
 date
