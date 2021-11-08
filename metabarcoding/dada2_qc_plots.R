@@ -29,7 +29,7 @@ status_levels2 <- c("fastq_filtering", "denoising", "read_merging",
 
 ## Load packages
 if (! "tidyverse" %in% installed.packages()) install.packages("tidyverse")
-library(tidyverse)
+suppressPackageStartupMessages(library(tidyverse))
 
 ## Report
 cat("Input file:", qc_file, "\n")
@@ -71,7 +71,7 @@ p_bars <- qc %>%
   scale_fill_brewer(palette = "Set3") +
   theme_bw() +
   theme(panel.grid.major.y = element_blank()) +
-  labs(fill = "Removed by", x = "Proportion of sequences", y = NULL)
+  labs(fill = "Removed by", x = "Number of sequences", y = NULL)
 
 ## Line plot
 p_lines <- qc %>%
