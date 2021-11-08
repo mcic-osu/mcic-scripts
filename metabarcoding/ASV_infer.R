@@ -29,7 +29,7 @@ pool <- TRUE                      # Whether or not to using sample pooling in da
 
 n_samples <- 5                    # Number of samples to run ("all" => all samples, otherwise specify an integer)
 save_rds <- TRUE                  # Whether to save RDS files after every step
-techrep_file <- NA
+techrep_file <- NA                # File with technical replicates
 start_at_step <- 1                # At which step to start
                                   # Step 1: Filtering and trimming FASTQ files
                                   # Step 2: Dereplicating FASTQ files
@@ -72,10 +72,11 @@ fq_raw_F <- fq_raw_F[1:n_samples]
 fq_raw_R <- fq_raw_R[1:n_samples]
 
 cat("## Number of samples to be analyzed:", n_samples, "\n")
-cat("## First 6 FASTA files:", head(fq_raw_F), "\n")
+cat("## First 6 FASTQ files:", head(fq_raw_F), "\n")
 
 ## Extract sample IDs from FASTQ file names 
-sampleIDs <- sub("_L001.*", "", basename(fq_raw_F))
+sampleIDs <- sub("_?S?\\d?\\d?_?L?0?0?\\d?_R1_.*", "", basename(fq_raw_F))
+cat("## First 6 sample IDs:", head(sampleIDs), "\n")
 
 ## Define output files
 fq_filt_F <- file.path(filter_dir, paste0(sampleIDs, "_F_filt.fastq"))
@@ -380,16 +381,13 @@ write(asv_fasta, file = fasta_out)
 
 
 # LIST OUTPUT FILES ------------------------------------------------------------
-cat("\n----------------\n## Listing output files:\n")
-
+cat("\n-----------------------\n## Listing output files:\n\n")
 cat("## First few filtered FASTQ files:\n", fq_filt_F[1:2], "\n")
-
-cat("## Error profile plot - F:", errorplot_F_file, "\n")
-cat("## Error profile plot - R:", errorplot_R_file, "\n")
-
+cat("## Plot with error profile - F:", errorplot_F_file, "\n")
+cat("## Plot with error profile - R:", errorplot_R_file, "\n")
 cat("## FASTA:", fasta_out, "\n")
 cat("## Sequence table:", seqtab_final_file, "\n")
 cat("## QC table:", nseq_file, "\n")
 
-cat("## Done with script ASV_inference.R.\n")
+cat("\n## Done with script ASV_inference.R.\n")
 Sys.time()
