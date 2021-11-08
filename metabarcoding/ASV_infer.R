@@ -41,7 +41,9 @@ start_at_step <- 1                # At which step to start
                                   # Step 8: Filtering ASVs by length
 
 ## Read config file
+cat("## Sourcing config file...")
 source(config_file)
+cat("Done.\n")
 
 ## Settings dependent on config
 chimera_method <- ifelse(pool == FALSE, "consensus", "pooled")
