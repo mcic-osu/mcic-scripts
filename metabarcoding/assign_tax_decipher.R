@@ -25,7 +25,7 @@ species_URL <- "https://zenodo.org/record/4587955/files/silva_species_assignment
 species_file <- file.path(outdir, basename(species_URL))
 
 qc_file <- file.path(outdir, "tax_prop_assigned_decipher.txt")
-plot_file <- file.path(outdir, "tax_prop_assigned_dada.png")
+plot_file <- file.path(outdir, "tax_prop_assigned_decipher.png")
 
 tax_levels <- c("domain", "phylum", "class", "order", "family", "genus", "species")
 
