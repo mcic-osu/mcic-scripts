@@ -3,7 +3,7 @@
 #SBATCH --time=180
 #SBATCH --output=slurm-cutadapt-%j.out
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=4
 
 ## Bash strict settings
 set -euo pipefail
@@ -43,7 +43,7 @@ primer_r=""
 discard_untrimmed=true
 primer_file=false
 
-# Get command-line options:
+## Parse command-line options
 while getopts ':i:o:f:r:p:dh' flag; do
     case "${flag}" in
     i) R1_in="$OPTARG" ;;
@@ -58,6 +58,7 @@ while getopts ':i:o:f:r:p:dh' flag; do
     esac
 done
 
+## Test input/options
 [[ $R1_in = "" ]] && echo "## $0: ERROR: No input FASTQ file (-i) provided" >&2 && exit 1
 [[ $outdir = "" ]] && echo "## $0: ERROR: No output dir (-o) provided" >&2 && exit 1
 
@@ -144,13 +145,16 @@ echo -e "-----------------------------\n"
 ## Create output directory if it doesn't already exist
 mkdir -p "$outdir"
 
+## Number of cores
+n_cores=$SLURM_CPUS_PER_TASK
 
 # RUN CUTADAPT --------------------------------------------------------
 echo "## Running cutadapt..."
 
 cutadapt $primer_arg $options \
-    -o "$outdir"/"$R1_basename" \
-    -p "$outdir"/"$R2_basename" \
+    --cores "$n_cores" \
+    --output "$outdir"/"$R1_basename" \
+    --paired-output "$outdir"/"$R2_basename" \
     "$R1_in" "$R2_in"
 
 
