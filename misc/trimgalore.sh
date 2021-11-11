@@ -8,7 +8,7 @@
 
 # SETUP ------------------------------------------------------------------------
 ## Software
-module load python/3.6-conda5.2
+[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
 source activate trimgalore-env
 
 ## Bash strict settings
@@ -16,7 +16,6 @@ set -euo pipefail
 
 ## Help
 Help() {
-  # Display Help
   echo
   echo "## $0: Run TrimGalore for a FASTQ file."
   echo
@@ -29,7 +28,7 @@ Help() {
   echo "## -q INT   Quality trimming threshold (default: 20)"
   echo "## -l INT   Minimum read length (default: 20)"
   echo "## -s       Input is single-end (default: paired-end)"
-  echo "## Example: $0 -i data/fastq/S01_L001_R1.fastq.gz -o results/trimgalore -O results/fastqc [-h]"
+  echo "## Example: $0 -i data/fastq/S01_L001_R1.fastq.gz -o results/trimgalore -O results/fastqc"
   echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
   echo
 }
