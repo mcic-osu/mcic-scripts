@@ -58,9 +58,10 @@ echo "Genome index dir (output): $index_dir"
 echo "Index size (genomeSAindexNbases): $index_size"
 echo -e "-----------------------\n"
 
-## Process args
+## Make output dir if needed
 mkdir -p "$index_dir"
 
+## The FASTA file can't be zipped for STAR to work -- unzip if needed
 if [[ $ref_fa = *gz ]]; then
     echo "## Unzipping gzipped FASTA file"
     gunzip "$ref_fa"
@@ -79,7 +80,7 @@ STAR --runThreadN "$SLURM_CPUS_ON_NODE" \
 
 
 # WRAP UP ----------------------------------------------------------------------
-echo -e "\n## Listing output files files"
+echo -e "\n## Listing output files:"
 ls -lh "$index_dir"
 echo -e "\n## Done with script star_index.sh"
 date
