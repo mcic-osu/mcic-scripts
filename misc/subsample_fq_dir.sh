@@ -25,34 +25,38 @@ Help()
    echo "## -o     Output dir (REQUIRED)"
    echo "## -n     Number of reads"
    echo "## -p     Proportion of reads"
+   echo "## -p     Sample ID pattern (to select only matching filenames)"
    echo
 }
 
 ## Option defaults
 n_reads="NA"
 prop_reads="NA"
+sample_pattern=""
 
 ## Parse command-line options
-while getopts ':i:o:n:p:h' flag
-do
-  case "${flag}" in
-    i)  indir="$OPTARG" ;;
-    o)  outdir="$OPTARG" ;;
-	  n)  n_reads="$OPTARG" ;;
-	  p)  prop_reads="$OPTARG" ;;
-    h)  Help && exit 0 ;;
-	  \?) echo "## trim.sh: ERROR: Invalid option" && exit 1 ;;
-	  :)  echo "## trim.sh: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
-  esac
+while getopts ':i:o:n:p:s:h' flag; do
+    case "${flag}" in
+        i)  indir="$OPTARG" ;;
+        o)  outdir="$OPTARG" ;;
+	    n)  n_reads="$OPTARG" ;;
+	    p)  prop_reads="$OPTARG" ;;
+        s)  sample_pattern="$OPTARG" ;;
+        h)  Help && exit 0 ;;
+	    \?) echo "## trim.sh: ERROR: Invalid option" && exit 1 ;;
+	    :)  echo "## trim.sh: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
+    esac
 done
 
 ## Report
-echo -e "\n## Starting script subsample_fastq_dir.sh"
+echo
+echo -e "\n## Starting script subsample_fq_dir.sh"
 date
 echo "## Input dir: $indir"
 echo "## Output dir: $outdir"
 echo "## Number of reads to keep: $n_reads"
 echo "## Proportion of reads to keep: $prop_reads"
+echo "## Sample ID pattern: $sample_pattern"
 echo -e "----------------------------------\n\n"
 
 ## Make output dir if needed
@@ -60,7 +64,7 @@ mkdir -p "$outdir"
 
 
 # RUN SCRIPT FOR EACH PAIR OF FASTQ FILES --------------------------------------
-for R1 in "$indir"/*_R1*.fastq.gz; do
+for R1 in "$indir"/"$sample_pattern"*_R1*.fastq.gz; do
     R1=$(basename "$R1")
     R2=${R1/_R1/_R2}
 
@@ -84,5 +88,5 @@ done
 
 
 # REPORT AND FINALIZE --------------------------------------------------------
-echo -e "\n\n## Done with script subsample_fastq_dir.sh."
+echo -e "\n\n## Done with script subsample_fq_dir.sh."
 date
