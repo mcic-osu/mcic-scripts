@@ -3,11 +3,13 @@
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
 #SBATCH --cpus-per-task=8
+#SBATCH --job-name=trimgalore
 #SBATCH --output=slurm-trimgalore-%j.out
 
 
 # SETUP ------------------------------------------------------------------------
 ## Software
+source ~/.bashrc
 [[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
 source activate trimgalore-env
 
@@ -19,10 +21,10 @@ Help() {
   echo
   echo "## $0: Run TrimGalore for a FASTQ file."
   echo
-  echo "## Syntax: $0 -i <FASTQ input file> -o <FASTQ output dir> -O <FastQC output dir> -q <min seq qual>  -q <min seq len> [-sh]"
+  echo "## Syntax: $0 -i <R1 FASTQ input file> -o <FASTQ output dir> -O <FastQC output dir> -q <min seq qual>  -q <min seq len> [-sh]"
   echo "## Options:"
   echo "## -h       Print this help message"
-  echo "## -i STR   FASTQ input file (REQUIRED)"
+  echo "## -i STR   R1 FASTQ input file (REQUIRED)"
   echo "## -o STR   FASTQ output dir (REQUIRED)"
   echo "## -O STR   FastQC results output dir (REQUIRED)"
   echo "## -q INT   Quality trimming threshold (default: 20)"
@@ -55,13 +57,15 @@ done
 
 ## Process variables and args
 if [ "$single_end" != "true" ]; then
-    R2_in=${R1/_R1_/_R2_}
+    R2_in=${R1_in/_R1_/_R2_}
     R2_id=$(basename "$R2_in" .fastq.gz)
     input_arg="--paired $R1_in $R2_in"
 else
     input_arg="$R1_in"
 fi
+
 R1_id=$(basename "$R1_in" .fastq.gz)
+
 n_threads="$SLURM_CPUS_PER_TASK"
 
 ## Make output dirs
@@ -101,5 +105,6 @@ fi
 # WRAP UP ----------------------------------------------------------------------
 echo -e "\n## Listing output files:"
 ls -lh "$outdir_trim"/"$R1_id".fastq.gz "$outdir_trim"/"$R2_id".fastq.gz
+
 echo -e "\n## Done with script trimgalore.sh"
 date
