@@ -4,6 +4,7 @@
 #SBATCH --time=8:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=12
+#SBATCH --mem=100G
 #SBATCH --job-name=STAR_align
 #SBATCH --output=slurm-STAR-align-%j.out
 
@@ -55,57 +56,87 @@ while getopts ':i:o:r:m:h' flag; do
 done
 
 ## Process args
-fq_R2=${R1_in/_R1_/_R2_}
-sampleID=$(basename "$R1_in" | sed 's/_R1_.*//')
-dir_flagstat="$bam_dir"/flagstat
-flagstat_out="$dir_flagstat"/"$sampleID"_flagstat.txt
+R2_in=${R1_in/_R1_/_R2_}
+sample_id=$(basename "$R1_in" | sed 's/_R1_.*//')
+
+flagstat_dir="$bam_dir"/flagstat
+flagstat_out="$flagstat_dir"/"$sample_id"_flagstat.txt
+
+unmapped_dir="$bam_dir"/unmapped
+starlog_dir="$bam_dir"/star_logs
 
 ## Report
 echo "## Starting script star_align.sh"
 date
 echo "## R1 FASTQ file (input): $R1_in"
-echo "## R2 FASTQ file (input - inferred): $fq_R2"
-echo "## Sample ID (inferred): $sampleID"
-echo "## Genome index dir (input): $index_dir"
-echo "## BAM dir (output): $bam_dir"
-echo "## Max nr of alignments for a read (setting): $max_map"  # If exceeded, read is considered unmapped
+echo "## Genome index dir: $index_dir"
+echo "## Output BAM dir: $bam_dir"
+echo "## Max nr of alignments for a read: $max_map"  # If this nr is exceeded, read is considered unmapped
+echo
+echo "## Sample ID (inferred): $sample_id"
+echo "## R2 FASTQ file (input - inferred): $R2_in"
 echo -e "------------------------\n"
 
 ## Check inputs
 [[ ! -f "$R1_in" ]] && echo "## ERROR: Input file $R1_in does not exist" && exit 1
-[[ ! -f "$fq_R2" ]] && echo "## ERROR: Input file $fq_R2 does not exist" && exit 1
+[[ ! -f "$R2_in" ]] && echo "## ERROR: Input file $R2_in does not exist" && exit 1
 [[ ! -d "$index_dir" ]] && echo "## ERROR: Input dir $index_dir does not exist" && exit 1
 
 ## Create output dirs if needed
 mkdir -p "$bam_dir"
-mkdir -p "$dir_flagstat"
+mkdir -p "$flagstat_dir"
+mkdir -p "$starlog_dir"
+mkdir -p "$unmapped_dir"
+
 
 # ALIGN ------------------------------------------------------------------------
-echo "## Running STAR...."
+echo "## Aligning reads with STAR...."
 STAR --runThreadN "$SLURM_CPUS_ON_NODE" \
    --genomeDir "$index_dir" \
-   --readFilesIn "$R1_in" "$fq_R2" \
+   --readFilesIn "$R1_in" "$R2_in" \
    --readFilesCommand zcat \
-   --outFileNamePrefix "$bam_dir/$sampleID"_ \
+   --outFileNamePrefix "$bam_dir/$sample_id"_ \
    --outFilterMultimapNmax $max_map \
    --outSAMtype BAM SortedByCoordinate \
-   --outReadsUnmapped Fastx \
-   --alignIntronMin 5 --alignIntronMax 350000
+   --outBAMsortingBinsN 100 \
+   --outReadsUnmapped Fastx
 
-## Move logfiles
-mkdir -p "$bam_dir"/star_logs  
-mv "$bam_dir"/"$sampleID"*out "$bam_dir"/"$sampleID"*tab "$bam_dir"/star_logs/
+# --alignIntronMin 5 --alignIntronMax 350000
 
 
-# RUN FLAGSTAT -----------------------------------------------------------------
-echo "## Running samtools flagstat...."
-samtools flagstat "$bam_dir/$sampleID"_*bam > "$flagstat_out"
+# ORGANIZE STAR OUTPUT ---------------------------------------------------------
+## Move files with unmapped reads
+echo -e "\n## Moving, renaming and zipping unmapped FASTQ files...."
+for oldpath in "$bam_dir/$sample_id"_*Unmapped.out.mate*; do
+    oldname=$(basename "$oldpath")
+    newname=$(echo "$oldname" | sed -E s'/_Unmapped.out.mate([12])/_R\1.fastq/')
+    newpath="$unmapped_dir"/"$newname"
+
+    echo "## Old filename: $oldpath"
+    echo "## New filename: $newpath"
+
+    mv -v "$oldpath" "$newpath"
+    gzip -f "$newpath"
+
+    echo
+done
+
+## Move STAR log files
+echo -e "\n## Moving STAR log files...."
+mv -v "$bam_dir"/"$sample_id"*out "$bam_dir"/"$sample_id"*tab "$starlog_dir"
+
+
+# RUN SAMTOOLS FLAGSTAT --------------------------------------------------------
+echo -e "\n## Running samtools flagstat...."
+samtools flagstat "$bam_dir/$sample_id"_*bam > "$flagstat_out"
 
 
 # WRAP-UP ----------------------------------------------------------------------
-echo -e "\n\n----------------------"
+echo -e "\n-------------------------------"
 echo "## Listing output BAM file:"
-ls -lh "$bam_dir/$sampleID"_*bam
+ls -lh "$bam_dir/$sample_id"_*bam
+echo "## Listing unmapped FASTQ files:"
+ls -lh "$unmapped_dir/$sample_id"*fastq.gz
 echo "## Listing flagstat file:"
 ls -lh "$flagstat_out"
 
