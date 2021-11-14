@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=5:00:00
+#SBATCH --time=24:00:00
 #SBATCH --output=slurm-ASV_inference-%j.out
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
