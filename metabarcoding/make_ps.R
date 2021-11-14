@@ -12,6 +12,7 @@ tree_rds <- args[3]
 sampledata_file <- args[4]
 ps_rds <- args[5]
 
+## Example parameters for interactive testing:
 # seqtab_rds <- "results/ASV/main/seqtab.rds"
 # taxa_rds <- "results/taxonomy/taxa_dada.rds"
 # tree_rds <- "results/ASV/main/tree.rds"
@@ -23,7 +24,7 @@ outdir <- dirname(ps_rds)
 if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
 
 ## Report
-cat("## Starting script tree.R\n")
+cat("## Starting script make_ps.R\n")
 cat("## Sequence table RDS file (input):", seqtab_rds, "\n")
 cat("## Taxa RDS file (input):", taxa_rds, "\n")
 cat("## Tree RDS file (input):", tree_rds, "\n")
@@ -54,7 +55,7 @@ head(meta$sample_ID)
 cat("IDs from seqtab (i.e., from FASTQ file names):\n")
 head(sampleIDs_seqtab)
 
-cat("Are the sample IDs from the metadata and the seqtab the same?\n")
+cat("\nAre the sample IDs from the metadata and the seqtab the same?\n")
 identical(sort(meta$sample_ID), sampleIDs_seqtab)
 
 cat("Are any samples missing from the seqtab?\n")
@@ -70,9 +71,24 @@ ps <- phyloseq(otu_table(seqtab, taxa_are_rows = FALSE),
                sample_data(meta),
                tax_table(taxa))
 
+
+# RENAME ASVs AND STORE SEQS SEPARATELY ----------------------------------------
+## Extract ASV sequences (which are the taxa_names)
+dna <- Biostrings::DNAStringSet(taxa_names(ps))
+names(dna) <- taxa_names(ps)
+
+## Merge sequence object into the phyloseq object:
+ps <- merge_phyloseq(ps, dna)
+
+## Rename ASVs from full sequences to ASV1...ASVx
+taxa_names(ps) <- paste("ASV", 1:ntaxa(ps), sep = "_")
+
+
+# SAVE AND WRAP UP -------------------------------------------------------------
+## Save phyloseq object in an RDS file
 saveRDS(ps, ps_rds)
 
 ## Report
-cat("## Done with script make_ps.R\n")
+cat("\n## Done with script make_ps.R\n")
 cat("## Main output file:", ps_rds,"\n")
 Sys.time()
