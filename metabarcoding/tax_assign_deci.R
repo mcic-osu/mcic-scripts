@@ -1,3 +1,5 @@
+#!/usr/bin/env Rscript
+
 # SET-UP -----------------------------------------------------------------------
 ## Load packages
 if(!"pacman" %in% installed.packages()) install.packages("pacman")
