@@ -130,13 +130,15 @@ if ( !is.na(contam_check_method == TRUE)) {
     write.table(contam_df, outfile_contam_df,
                 sep = "\t", quote = FALSE, row.names = TRUE, col.names = FALSE)
     
-    ## Create a plot with up to the first 6 contaminants
-    p_contam <- plot_frequency(ps_raw,
-                               contam_df$ASV,
-                               conc = conc_column) +
-      labs(x = "DNA concentration", y = "ASV abundance") +
-      theme_bw(base_size = 14)
-    ggsave(outfile_contam_plot, p_contam, width = 8, height = 8)
+    if (!is.null(conc_column)) {
+      ## Create a plot correlating DNA concentration with abundance for up to the first 6 contaminants
+      p_contam <- plot_frequency(ps_raw,
+                                 contam_df$ASV,
+                                 conc = conc_column) +
+        labs(x = "DNA concentration", y = "ASV abundance") +
+        theme_bw(base_size = 14)
+      ggsave(outfile_contam_plot, p_contam, width = 8, height = 8)
+    }
     
     ## What proportion of our count data were removed as contaminants?
     prop_retained <- sum(sample_sums(ps_noncontam)) / sum(sample_sums(ps_raw))
@@ -196,7 +198,7 @@ ps <- subset_samples(ps_target,
 
 ## Report how many samples were removed
 nsamples_rm <- nrow(ps_target@otu_table) - nrow(ps@otu_table)
-cat("## Nr of samples removed after ASV count filtering:", nsamples_rm, "ASVs:\n")
+cat("## Nr of samples removed after ASV count filtering:", nsamples_rm, "\n")
 cat("## IDs of samples removed after ASV count filtering:\n")
 setdiff(sample_names(ps_target), sample_names(ps))
 
@@ -209,7 +211,7 @@ saveRDS(ps, ps_out)
 cat("\n## Listing output files:\n")
 system(paste("ls -lh", ps_out))
 system(paste("ls -lh", outfile_contam_df))
-system(paste("ls -lh", outfile_contam_plot))
+if (!is.null(conc_column)) system(paste("ls -lh", outfile_contam_plot))
 
 cat("\n## Done with script ps_filter.R\n")
 Sys.time()
