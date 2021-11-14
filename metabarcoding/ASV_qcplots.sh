@@ -10,6 +10,9 @@
 nreads_file=$1
 outdir=$2
 
+## Other scripts
+QC_SCRIPT=mcic-scripts/metabarcoding/ASV_qcplots.R
+
 ## Load modules
 module load gnu/9.1.0
 module load mkl/2019.0.5
@@ -19,10 +22,9 @@ module load R/4.0.2
 [[ ! -f $nreads_file ]] && echo "ERROR: Input file ($nreads_file) does not exist" && exit 1
 
 ## Report
-echo "## Starting submission script dada2_qc_plots.sh..."
+echo "## Starting submission script ASV_qcplots.sh..."
 echo "## Input file: $nreads_file"
 echo "## Output dir: $outdir"
 
 ## Run the R script
-echo -e "## Submitting script dada2_qc_plots.R...\n"
-Rscript mcic-scripts/metabarcoding/dada2_qc_plots.R "$nreads_file" "$outdir"
+Rscript "$QC_SCRIPT" "$nreads_file" "$outdir"

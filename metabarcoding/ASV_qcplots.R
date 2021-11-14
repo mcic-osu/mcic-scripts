@@ -1,8 +1,6 @@
 #!/usr/bin/env Rscript
 
-
 # SET-UP -----------------------------------------------------------------------
-
 ## Process command-line args
 args <- commandArgs(trailingOnly = TRUE)
 qc_file <- args[1]
@@ -10,6 +8,11 @@ outdir <- args[2]
 
 # qc_file <- "results/ASV/main/qc/nseq_summary.txt"
 # outdir <- "results/ASV/main/qc"
+
+## Report
+cat("## Starting script ASV_qcplots.R\n")
+cat("## Input file:", qc_file, "\n")
+cat("## Output dir:", outdir, "\n\n")
 
 ## Files and settings
 props_df_file <- file.path(outdir, "nseq_props.txt")
@@ -31,14 +34,11 @@ status_levels2 <- c("fastq_filtering", "denoising", "read_merging",
 if (! "tidyverse" %in% installed.packages()) install.packages("tidyverse")
 suppressPackageStartupMessages(library(tidyverse))
 
-## Report
-cat("Input file:", qc_file, "\n")
-cat("Output dir:", outdir, "\n\n")
-
 ## Create output dir if necessary
 if (! dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
 
-## Read QC table
+
+# READ INPUT FILES -------------------------------------------------------------
 qc <- read.table(qc_file, row.names = 1) %>%
   rownames_to_column("SampleID") %>%
   rename(fastq_filtered = filtered,
@@ -49,8 +49,7 @@ qc <- read.table(qc_file, row.names = 1) %>%
   select(-denoised_F)
 
 
-# PLOTS WITH ABS NUMBERS -------------------------------------------------------
-
+# PLOTSS WITH ABSOLUTE NUMBERS -------------------------------------------------
 ## Barplot
 p_bars <- qc %>%
   mutate(fastq_filtering = input - fastq_filtered,
@@ -87,8 +86,7 @@ p_lines <- qc %>%
   labs(y = "Number of sequences retained")
 
 
-# PROPORTIONS ------------------------------------------------------------------
-
+# PLOTS WITH PROPORTIONS -------------------------------------------------------
 ## Make df with proportions
 qc_prop <- qc %>%
   mutate(fastq_filtered = round(fastq_filtered / input, 3),
@@ -155,7 +153,16 @@ write_tsv(qc_prop_mean, meanprops_df_file)
 write_tsv(qc_mean, meancounts_df_file)
 
 ## Report
-cat("Done with script dada2_qc_plots.R\n")
+cat("\n## Listing output files:\n")
+system(paste("ls -lh", props_df_file))
+system(paste("ls -lh", meanprops_df_file))
+system(paste("ls -lh", meancounts_df_file))
+system(paste("ls -lh", plotfile_bars))
+system(paste("ls -lh", plotfile_lines))
+system(paste("ls -lh", plotfile_bars_prop))
+system(paste("ls -lh", plotfile_lines_prop))
+
+cat("\n## Done with script ASV_qcplots.R\n")
 
 
 # POINTS PLOT ------------------------------------------------------------------
