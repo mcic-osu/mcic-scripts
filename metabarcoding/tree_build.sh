@@ -11,6 +11,7 @@ seqtab_rds=$1
 tree_rds=$2
 
 ## Other variables/constants
+TREE_SCRIPT=mcic-scripts/metabarcoding/tree_build.R
 n_cores=$SLURM_CPUS_PER_TASK
 
 ## Load modules
@@ -29,4 +30,4 @@ echo "## Number of cores: $n_cores"
 
 ## Run the R script
 echo -e "## Submitting script tree.R...\n"
-Rscript mcic-scripts/metabarcoding/tree.R "$seqtab_rds" "$tree_rds" "$n_cores"
+Rscript "$TREE_SCRIPT" "$seqtab_rds" "$tree_rds" "$n_cores"

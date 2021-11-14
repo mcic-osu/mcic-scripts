@@ -12,6 +12,8 @@ taxa_rds=$2
 algo=${3-decipher}
 
 ## Other variables
+SCRIPT_DADA=mcic-scripts/metabarcoding/tax_assign_dada.R
+SCRIPT_DECI=mcic-scripts/metabarcoding/tax_assign_deci.R
 n_cores="$SLURM_CPUS_PER_TASK"
 
 ## Load modules
@@ -31,10 +33,10 @@ echo "## Taxonomic assignment algorithm: $algo"
 ## Run the R script
 if [ "$algo" = "dada" ]; then
     echo -e "## Submitting script assign_tax_dada.R...\n"
-    Rscript mcic-scripts/metabarcoding/assign_tax_dada.R "$seqtab_rds" "$taxa_rds" "$n_cores"
+    Rscript "$SCRIPT_DADA" "$seqtab_rds" "$taxa_rds" "$n_cores"
 fi
 
 if [ "$algo" = "decipher" ]; then
     echo -e "## Submitting script assign_tax_decipher.R...\n"
-    Rscript mcic-scripts/metabarcoding/assign_tax_decipher.R "$seqtab_rds" "$taxa_rds" "$n_cores"
+    Rscript "$SCRIPT_DECI" "$seqtab_rds" "$taxa_rds" "$n_cores"
 fi

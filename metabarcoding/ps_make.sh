@@ -14,6 +14,7 @@ sampledata_file=$4 # Sample data text file
 ps_rds=$5          # Output phyloseq object RDS file
 
 ## Other variables
+PS_SCRIPT=mcic-scripts/metabarcoding/ps_make.R
 n_cores="$SLURM_CPUS_PER_TASK"
 
 ## Load modules
@@ -34,8 +35,7 @@ echo "## Taxa RDS file (input): $taxa_rds"
 echo "## Tree RDS file (input): $tree_rds"
 echo "## Sample metadat file (input): $sampledata_file"
 echo "## Phyloseq RDS file (output): $ps_rds"
+echo
 
 ## Run the R script
-echo -e "## Submitting script make_ps.R...\n"
-Rscript mcic-scripts/metabarcoding/make_ps.R \
-    "$seqtab_rds" "$taxa_rds" "$tree_rds" "$sampledata_file" "$ps_rds" "$n_cores"
+Rscript "$PS_SCRIPT" "$seqtab_rds" "$taxa_rds" "$tree_rds" "$sampledata_file" "$ps_rds" "$n_cores"
