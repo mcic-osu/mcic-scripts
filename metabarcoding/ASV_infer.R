@@ -75,7 +75,7 @@ cat("## Number of samples to be analyzed:", n_samples, "\n")
 cat("## First 6 FASTQ files:", head(fq_raw_F), "\n")
 
 ## Extract sample IDs from FASTQ file names 
-sampleIDs <- sub("_?S?\\d?\\d?_?L?0?0?\\d?_R1_.*", "", basename(fq_raw_F))
+sampleIDs <- sub("(_S\\d\\d)?_L00\\d_R1_.*", "", basename(fq_raw_F))
 cat("## First 6 sample IDs:", head(sampleIDs), "\n")
 
 ## Define output files
