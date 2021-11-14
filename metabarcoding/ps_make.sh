@@ -29,7 +29,7 @@ module load R/4.0.2
 [[ ! -f $sampledata_file ]] && echo "ERROR: Input file ($sampledata_file) does not exist" && exit 1
 
 ## Report
-echo "## Starting submission script make_ps.sh..."
+echo "## Starting submission script ps_make.sh..."
 echo "## Seqtab RDS file (input): $seqtab_rds"
 echo "## Taxa RDS file (input): $taxa_rds"
 echo "## Tree RDS file (input): $tree_rds"

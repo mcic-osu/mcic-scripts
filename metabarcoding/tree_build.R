@@ -68,6 +68,8 @@ fitGTR <- optim.pml(fitGTR,
 saveRDS(fitGTR, tree_rds)
 
 ## Report
+cat("\n## Listing output files:\n")
+system(paste("ls -lh", tree_rds))
+
 cat("## Done with script tree.R\n")
-cat("## Main output file:", tree_rds, "\n")
 Sys.time()

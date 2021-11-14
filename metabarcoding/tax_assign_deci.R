@@ -30,7 +30,7 @@ plot_file <- file.path(outdir, "tax_prop_assigned_decipher.png")
 tax_levels <- c("domain", "phylum", "class", "order", "family", "genus", "species")
 
 ## Report
-cat("## Starting script assign_tax_decipher.R\n")
+cat("\n## Starting script tax_assign_deci.R\n")
 Sys.time()
 cat("## Sequence table RDS file (input):", seqtab_rds, "\n")
 cat("## Taxa RDS file (output):", taxa_rds, "\n")
@@ -119,8 +119,10 @@ ggsave(plot_file, p, width = 7, height = 7)
 
 # WRAP UP ----------------------------------------------------------------------
 ## Report
-cat("\n## Done with script assign_tax_decipher.R\n")
-cat("## Taxa RDS output file:", taxa_rds, "\n")
-cat("## Proportion-assigned QC file:", qc_file, "\n")
-cat("## Plot:", plot_file, "\n")
+cat("\n## Listing output files:\n")
+system(paste("ls -lh", taxa_rds))
+system(paste("ls -lh", qc_file))
+system(paste("ls -lh", plot_file))
+
+cat("\n## Done with script tax_assign_deci.R\n")
 Sys.time()

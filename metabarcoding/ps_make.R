@@ -24,7 +24,7 @@ outdir <- dirname(ps_rds)
 if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
 
 ## Report
-cat("## Starting script make_ps.R\n")
+cat("\n## Starting script ps_make.R\n")
 Sys.time()
 cat("## Sequence table RDS file (input):", seqtab_rds, "\n")
 cat("## Taxa RDS file (input):", taxa_rds, "\n")
@@ -90,4 +90,8 @@ taxa_names(ps) <- paste("ASV", 1:ntaxa(ps), sep = "_")
 saveRDS(ps, ps_rds)
 
 ## Report
-q
+cat("\n## Listing output files:\n")
+system(paste("ls -lh", ps_rds))
+
+cat("\n## Done with script ps_make.R\n")
+Sys.time()
