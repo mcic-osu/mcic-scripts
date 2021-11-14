@@ -25,6 +25,7 @@ if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
 
 ## Report
 cat("## Starting script make_ps.R\n")
+Sys.time()
 cat("## Sequence table RDS file (input):", seqtab_rds, "\n")
 cat("## Taxa RDS file (input):", taxa_rds, "\n")
 cat("## Tree RDS file (input):", tree_rds, "\n")
@@ -50,18 +51,18 @@ rownames(meta) <- meta$sample_ID
 
 # CHECK SAMPLE IDs -------------------------------------------------------------
 ## Check for matching sample names in FASTQ files and metadata file
-cat("IDs from metadata:\n")
+cat("## IDs from metadata:\n")
 head(meta$sample_ID)
-cat("IDs from seqtab (i.e., from FASTQ file names):\n")
+cat("## IDs from seqtab (i.e., from FASTQ file names):\n")
 head(sampleIDs_seqtab)
 
-cat("\nAre the sample IDs from the metadata and the seqtab the same?\n")
+cat("\n## Are the sample IDs from the metadata and the seqtab the same?\n")
 identical(sort(meta$sample_ID), sampleIDs_seqtab)
 
-cat("Are any samples missing from the seqtab?\n")
+cat("## Are any samples missing from the seqtab?\n")
 setdiff(sort(meta$sample_ID), sampleIDs_seqtab)
 
-cat("Are any samples missing from the metadata?\n")
+cat("## Are any samples missing from the metadata?\n")
 setdiff(sampleIDs_seqtab, sort(meta$sample_ID))
 
 
@@ -89,6 +90,4 @@ taxa_names(ps) <- paste("ASV", 1:ntaxa(ps), sep = "_")
 saveRDS(ps, ps_rds)
 
 ## Report
-cat("\n## Done with script make_ps.R\n")
-cat("## Main output file:", ps_rds,"\n")
-Sys.time()
+q
