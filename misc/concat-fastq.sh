@@ -48,7 +48,7 @@ done
 
 ## Input checks
 [[ $indir = "" ]] && echo "## ERROR: Please specify input dir with -i" && exit 1
-[[ "$outdir" = "" ]] && echo "## ERROR: Please specify input dir with -i" && exit 1
+[[ "$outdir" = "" ]] && echo "## ERROR: Please specify output dir with -o" && exit 1
 [[ "$indir" = "$outdir" ]] && echo "## ERROR: Input dir should not be the same as the output dir" && exit 1
 [[ ! -d "$indir" ]] && echo "## ERROR: Input dir does not exist" && exit 1
 
@@ -63,11 +63,16 @@ echo "## Output dir: $outdir"
 echo "## Dir globbing pattern: $dir_pattern"
 echo "## Pattern/string to remove from file names: $remove_pattern"
 echo "## Number of files expected for each sample and read direction: $nfiles"
-echo -e "-------------------\n\n"
+echo -e "-------------------\n"
+
+## Make input dir read-only
+echo "## Making input files read-only..."
+chmod -R a-w "$indir"
 
 ## Find per-sample directories
 dirs=( $(find $indir -mindepth 1 -type d -name "$dir_pattern") )
-echo "Number of directories (samples): ${#dirs[@]}"
+echo "## Number of directories (samples): ${#dirs[@]}"
+echo -e "-------------------\n"
 
 ## Loop over per-sample directories
 for fdir in "${dirs[@]}"; do
@@ -95,9 +100,6 @@ for fdir in "${dirs[@]}"; do
     ## Output files
     R1_out="$outdir"/"$sample_id"_R1_001.fastq.gz
     R2_out="$outdir"/"$sample_id"_R2_001.fastq.gz
-    echo "## Output files:"
-    echo "$R1_out"
-    echo "$R2_out"
 
     ## Concatenate FASTQ files
     find "$fdir" -name "*_R1_001.fastq.gz" -print0 | sort -z | xargs -0 -I{} cat {} > "$R1_out"
@@ -105,10 +107,9 @@ for fdir in "${dirs[@]}"; do
 
     ## List output files
     echo "## Output files:"
-    du -h "$outdir"/"$sample_id"_R1.fastq.gz
-    du -h "$outdir"/"$sample_id"_R2.fastq.gz
+    du -h "$R1_out" "$R2_out"
 
-    echo -e "---------\n"
+    echo -e "------------------\n"
 done
 
 ## Make concatenated files read-only to protect against accidental removal and overwriting
