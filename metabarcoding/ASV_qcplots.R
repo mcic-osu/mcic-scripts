@@ -60,7 +60,7 @@ p_bars <- qc %>%
          read_merging = denoised - reads_merged,
          chimera_removal = reads_merged - non_chimeric,
          length_filtering = non_chimeric - length_filtered,
-         `(remaining)` = non_chimeric) %>%
+         `(remaining)` = length_filtered) %>%
   select(SampleID, fastq_filtering, denoising, read_merging,
          chimera_removal, length_filtering, `(remaining)`) %>%
   pivot_longer(cols = -SampleID,
