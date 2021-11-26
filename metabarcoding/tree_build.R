@@ -1,5 +1,12 @@
 #!/usr/bin/env Rscript
 
+#SBATCH --account=PAS0471
+#SBATCH --time=48:00:00
+#SBATCH --output=slurm-tree-%j.out
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+
+
 # SET-UP -----------------------------------------------------------------------
 ## Load packages
 if (!"pacman" %in% installed.packages()) install.packages("pacman")
@@ -10,7 +17,8 @@ pacman::p_load(char = packages)
 args <- commandArgs(trailingOnly = TRUE)
 seqtab_rds <- args[1] # Sequence table RDS file (input)
 tree_rds <- args[2] # Tree RDS file (output)
-n_cores <- as.integer(args[3]) # Number of computer cores to use
+
+n_cores <- as.integer(system("echo $SLURM_CPUS_PER_TASK", intern = TRUE))
 
 # seqtab_rds <- "results/dada2/main/rds/seqtab_nonchim_lenfilter.rds"
 # tree_rds <- "results/tree/tree.rds"
@@ -52,13 +60,13 @@ dist_mat <- dist.ml(alignment_mat)
 
 ## 3 - Build neighbor-joining tree and compute its likelihood
 cat("## Building a tree...\n")
-treeNJ <- NJ(dist_mat) # Build NJ tree
-fit <- pml(treeNJ, data = alignment_mat) # Compute likelihood
-fitGTR <- update(fit, k = 4, inv = 0.2) # Update to GTR model
+nj_tree <- NJ(dist_mat) # Build NJ tree
+fit <- pml(nj_tree, data = alignment_mat) # Compute likelihood
+fit_gtr <- update(fit, k = 4, inv = 0.2) # Update to GTR model
 
 ## 4 - Compute likelihood
 cat("## Optimizing the tree...\n")
-fitGTR <- optim.pml(fitGTR,
+fit_gtr <- optim.pml(fit_gtr,
     model = "GTR",
     optInv = TRUE,
     optGamma = TRUE,
@@ -69,7 +77,7 @@ fitGTR <- optim.pml(fitGTR,
 
 # WRAP UP ----------------------------------------------------------------------
 ## Save RDS file
-saveRDS(fitGTR, tree_rds)
+saveRDS(fit_gtr, tree_rds)
 
 ## Report
 cat("\n## Listing output files:\n")

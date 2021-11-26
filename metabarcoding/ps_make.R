@@ -1,5 +1,11 @@
 #!/usr/bin/env Rscript
 
+#SBATCH --account=PAS0471
+#SBATCH --time=15
+#SBATCH --output=slurm-make_ps-%j.out
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=2
+
 # SET-UP -----------------------------------------------------------------------
 ## Load packages
 if(!"pacman" %in% installed.packages()) install.packages("pacman")
@@ -27,6 +33,7 @@ cat("## Tree RDS file (input):", tree_rds, "\n")
 cat("## Sample data file (input):", sampledata_file, "\n")
 cat("## Phyloseq RDS file (output):", ps_rds, "\n\n")
 
+
 # LOAD INPUT DATA --------------------------------------------------------------
 ## Sequence table from dada2
 seqtab <- readRDS(seqtab_rds)
@@ -43,6 +50,7 @@ tree <- readRDS(tree_rds)
 meta <- read.table(sampledata_file, sep = "\t", header = TRUE)
 colnames(meta)[1] <- "sample_ID"
 rownames(meta) <- meta$sample_ID
+
 
 # CHECK SAMPLE IDs -------------------------------------------------------------
 ## Check for matching sample names in FASTQ files and metadata file
