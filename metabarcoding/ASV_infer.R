@@ -15,7 +15,6 @@ Sys.time()
 if (!"pacman" %in% installed.packages()) install.packages("pacman")
 packages <- c("BiocManager", "tidyverse", "dada2")
 pacman::p_load(char = packages)
-
 ## Process command-line arguments
 args <- commandArgs(trailingOnly = TRUE)
 fastq_indir <- args[1]
@@ -311,15 +310,15 @@ if (!is.na(techrep_file)) {
     cat("\n-------------\n## Step 9: Merging techreps in sequence table...\n")
 
     ## Read the file with technical replicates
-    dup_df <- read.table(techrep_file, col.names = c("seqID", "sampleID"))
-    n_sample_rep <- length(unique(dup_df$sampleID))
+    dup_df <- read.table(techrep_file, col.names = c("seqID", "sample_id"))
+    n_sample_rep <- length(unique(dup_df$sample_id))
     n_rep <- nrow(dup_df) - n_sample_rep
     cat("## Nr of samples with technical replicates:", n_sample_rep, "\n")
     cat("## Nr of technical replicates:", n_rep, "\n")
 
     ## Function to merge technical replicates in a sequence table
     sum_dup <- function(sampleid_dup, seqtab, dup_df) {
-        seqids_dup <- dup_df$seqID[dup_df$sampleID == sampleid_dup]
+        seqids_dup <- dup_df$seqID[dup_df$sample_id == sampleid_dup]
         dup_idxs <- which(sample_ids %in% seqids_dup)
         stopifnot(length(seqids_dup) == length(dup_idxs))
         dup_sum_row <- t(as.data.frame(colSums(seqtab[dup_idxs, ],
@@ -329,7 +328,7 @@ if (!is.na(techrep_file)) {
     }
 
     ## Apply sum_dup function to all samples with multiple techreps
-    sample_ids_dup <- unique(dup_df$sampleID) # ID of sample with techreps
+    sample_ids_dup <- unique(dup_df$sample_id) # ID of sample with techreps
     seqtab_dups <- do.call(
         rbind,
         lapply(sample_ids_dup, sum_dup, seqtab_curr, dup_df)
@@ -366,7 +365,7 @@ merged <- sapply(mergers, function(x) sum(getUniques(x)))
 
 ## Put together the final QC table
 nseq_summary <- data.frame(filt_res,
-    sampleID = sample_ids,
+    sample_id = sample_ids,
     denoised_f,
     denoised_r,
     merged,

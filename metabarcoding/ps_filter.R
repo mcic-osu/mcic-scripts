@@ -177,10 +177,10 @@ if ( !is.na(contam_check_method)) {
       ## Create a df for plotting that includes the ASV aundance values
       contam_plot_df <- otu_table(transform(ps_raw, "compositional")) %>%
         as.data.frame() %>% 
-        rownames_to_column("sample_ID") %>%
-        pivot_longer(cols = -sample_ID, names_to = "ASV", values_to = "ASV_freq") %>% 
+        rownames_to_column("sample_id") %>%
+        pivot_longer(cols = -sample_id, names_to = "ASV", values_to = "ASV_freq") %>% 
         filter(ASV %in% contam_freq_df$ASV) %>%
-        merge(., as(sample_data(ps_raw), "data.frame"), by = "sample_ID") %>%
+        merge(., as(sample_data(ps_raw), "data.frame"), by = "sample_id") %>%
         merge(., select(contam_freq_df, ASV, p.freq), by = "ASV") %>%
         mutate(ASV = factor(ASV, levels = levels(contam_freq_df$ASV)))
       

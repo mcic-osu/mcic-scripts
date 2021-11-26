@@ -1,14 +1,14 @@
 #!/usr/bin/env Rscript
 
-#SBATCH --account=PAS0471
-#SBATCH --time=15
-#SBATCH --output=slurm-make_ps-%j.out
-#SBATCH --nodes=1
-#SBATCH --cpus-per-task=2
+# SBATCH --account=PAS0471
+# SBATCH --time=15
+# SBATCH --output=slurm-make_ps-%j.out
+# SBATCH --nodes=1
+# SBATCH --cpus-per-task=2
 
 # SET-UP -----------------------------------------------------------------------
 ## Load packages
-if(!"pacman" %in% installed.packages()) install.packages("pacman")
+if (!"pacman" %in% installed.packages()) install.packages("pacman")
 packages <- c("BiocManager", "dada2", "phyloseq", "DECIPHER")
 pacman::p_load(char = packages)
 
@@ -37,43 +37,45 @@ cat("## Phyloseq RDS file (output):", ps_rds, "\n\n")
 # LOAD INPUT DATA --------------------------------------------------------------
 ## Sequence table from dada2
 seqtab <- readRDS(seqtab_rds)
-sampleIDs_seqtab <- sub("_S\\d+$", "", rownames(seqtab)) # Remove "_S16" etc suffix
-rownames(seqtab) <- sampleIDs_seqtab
+sample_ids_seqtab <- sub("_S\\d+$", "", rownames(seqtab)) # Remove "_S16" suffix
+rownames(seqtab) <- sample_ids_seqtab
 
 ## Taxonomic assignments
-taxa <- readRDS(taxa_rds) 
+taxa <- readRDS(taxa_rds)
 
 ## Tree
 tree <- readRDS(tree_rds)
 
 ## Sample metadata
 meta <- read.table(sampledata_file, sep = "\t", header = TRUE)
-colnames(meta)[1] <- "sample_ID"
-rownames(meta) <- meta$sample_ID
+colnames(meta)[1] <- "sample_id"
+rownames(meta) <- meta$sample_id
 
 
 # CHECK SAMPLE IDs -------------------------------------------------------------
 ## Check for matching sample names in FASTQ files and metadata file
 cat("## IDs from metadata:\n")
-head(meta$sample_ID)
+head(meta$sample_id)
 cat("## IDs from seqtab (i.e., from FASTQ file names):\n")
-head(sampleIDs_seqtab)
+head(sample_ids_seqtab)
 
 cat("\n## Are the sample IDs from the metadata and the seqtab the same?\n")
-identical(sort(meta$sample_ID), sampleIDs_seqtab)
+identical(sort(meta$sample_id), sample_ids_seqtab)
 
 cat("## Are any samples missing from the seqtab?\n")
-setdiff(sort(meta$sample_ID), sampleIDs_seqtab)
+setdiff(sort(meta$sample_id), sample_ids_seqtab)
 
 cat("## Are any samples missing from the metadata?\n")
-setdiff(sampleIDs_seqtab, sort(meta$sample_ID))
+setdiff(sample_ids_seqtab, sort(meta$sample_id))
 
 
 # CREATE PHYLOSEQ OBJECT -------------------------------------------------------
-ps <- phyloseq(otu_table(seqtab, taxa_are_rows = FALSE),
-               phy_tree(tree$tree),
-               sample_data(meta),
-               tax_table(taxa))
+ps <- phyloseq(
+    otu_table(seqtab, taxa_are_rows = FALSE),
+    phy_tree(tree$tree),
+    sample_data(meta),
+    tax_table(taxa)
+)
 
 
 # RENAME ASVs AND STORE SEQS SEPARATELY ----------------------------------------

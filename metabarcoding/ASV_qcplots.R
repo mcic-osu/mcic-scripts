@@ -42,15 +42,14 @@ if (! dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
 
 
 # READ INPUT FILES -------------------------------------------------------------
-qc <- read.table(qc_file, row.names = 1) %>%
-  rownames_to_column("SampleID") %>%
+qc <- read_tsv(qc_file, show_col_types = FALSE) %>%
   rename(fastq_filtered = filtered,
          reads_merged = merged,
          non_chimeric = nonchim,
          denoised = denoised_R,
          length_filtered = lenfilter) %>%
   select(-denoised_F)
-
+colnames(qc)[1] <- "sample_id"
 
 # PLOTSS WITH ABSOLUTE NUMBERS -------------------------------------------------
 ## Barplot
