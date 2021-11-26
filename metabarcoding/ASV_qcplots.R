@@ -1,5 +1,11 @@
 #!/usr/bin/env Rscript
 
+#SBATCH --account=PAS0471
+#SBATCH --time=15
+#SBATCH --output=slurm-dada2-qc-plots-%j.out
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=1
+
 # SET-UP -----------------------------------------------------------------------
 ## Load packages
 if (! "tidyverse" %in% installed.packages()) install.packages("tidyverse")
