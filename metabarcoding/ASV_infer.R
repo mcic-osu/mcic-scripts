@@ -1,7 +1,14 @@
 #!/usr/bin/env Rscript
 
+#SBATCH --account=PAS0471
+#SBATCH --time=24:00:00
+#SBATCH --output=slurm-ASV_infer-%j.out
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=50G
+
 # SET-UP -----------------------------------------------------------------------
-cat("## Starting script ASV_inference.R...\n")
+cat("## Starting script ASV_infer.R...\n")
 Sys.time()
 
 ## Load packages
@@ -14,7 +21,8 @@ args <- commandArgs(trailingOnly = TRUE)
 fastq_indir <- args[1]
 outdir <- args[2]
 config_file <- args[3] # File (R script) with config for ASV inference
-n_cores <- as.integer(args[4]) # Number of computer cores to use
+
+n_cores <- as.integer(system("echo $SLURM_CPUS_PER_TASK", intern = TRUE))
 
 # fastq_indir <- "sandbox/fq_subset"
 # outdir <- "results/ASV/subset"
@@ -358,24 +366,20 @@ merged <- sapply(mergers, function(x) sum(getUniques(x)))
 
 ## Put together the final QC table
 nseq_summary <- data.frame(filt_res,
+    sampleID = sample_ids,
     denoised_f,
     denoised_r,
     merged,
     nonchim = rowSums(seqtab_nochim),
     lenfilter = rowSums(seqtab_lenfilt),
-    row.names = sample_ids
+    row.names = NULL
 )
-colnames(nseq_summary)[1:2] <- c("input", "filtered")
+colnames(nseq_summary)[2:3] <- c("input", "filtered")
+write_tsv(nseq_summary, nseq_file)
 
 ## Have a look at the first few rows
 cat("## First few rows of the QC table with nr of sequences:\n")
 head(nseq_summary)
-
-## Write QC summary table to file
-write.table(nseq_summary,
-    file = nseq_file,
-    sep = "\t", quote = FALSE, row.names = TRUE
-)
 
 
 # CREATE QC SUMMARY TABLE: NR OF UNIQUE ASVs -----------------------------------
@@ -386,11 +390,7 @@ nasv_summary <- data.frame(
         ncol(seqtab_lenfilt)
     )
 )
-
-write.table(nasv_summary,
-    file = nasv_file,
-    sep = "\t", quote = FALSE, row.names = TRUE
-)
+write_tsv(nasv_summary, nasv_file)
 
 
 # CREATE AND WRITE FINAL SEQTAB AND FASTA FILE ---------------------------------
@@ -410,12 +410,16 @@ write(asv_fasta, file = fasta_out)
 
 # LIST OUTPUT FILES ------------------------------------------------------------
 cat("\n-----------------------\n## Listing output files:\n\n")
-cat("## First few filtered FASTQ files:\n", fq_filt_f[1:2], "\n")
-cat("## Plot with error profile - F:", errorplot_f_file, "\n")
-cat("## Plot with error profile - R:", errorplot_r_file, "\n")
-cat("## FASTA:", fasta_out, "\n")
-cat("## Sequence table:", seqtab_final_file, "\n")
-cat("## QC table:", nseq_file, "\n")
+cat("## First filtered FASTQ file:\n")
+system(paste("ls -lh", fq_filt))
+cat("## Plot with error profile:\n")
+system(paste("ls -lh", errorplot_file))
+cat("## FASTA file:\n")
+system(paste("ls -lh", fasta_out))
+cat("## Sequence table:\n")
+system(paste("ls -lh", seqtab_final_file))
+cat("## QC table:\n")
+system(paste("ls -lh", nseq_file))
 
-cat("\n## Done with script ASV_inference.R.\n")
+cat("\n## Done with script ASV_infer.R.\n")
 Sys.time()
