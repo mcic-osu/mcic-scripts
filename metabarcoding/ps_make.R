@@ -3,7 +3,7 @@
 # SET-UP -----------------------------------------------------------------------
 ## Load packages
 if(!"pacman" %in% installed.packages()) install.packages("pacman")
-packages <- c("dada2", "phyloseq", "DECIPHER")
+packages <- c("BiocManager", "dada2", "phyloseq", "DECIPHER")
 pacman::p_load(char = packages)
 
 ## Process command-line arguments
@@ -13,13 +13,6 @@ taxa_rds <- args[2]
 tree_rds <- args[3]
 sampledata_file <- args[4]
 ps_rds <- args[5]
-
-## Example parameters for interactive testing:
-# seqtab_rds <- "results/ASV/main/seqtab.rds"
-# taxa_rds <- "results/taxonomy/taxa_dada.rds"
-# tree_rds <- "results/ASV/main/tree.rds"
-# sampledata_file <- "metadata/sample_data.txt"
-# ps_rds <- "results/ASV/main/ps.rds"
 
 ## Create output dir if needed
 outdir <- dirname(ps_rds)

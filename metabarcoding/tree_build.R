@@ -2,15 +2,15 @@
 
 # SET-UP -----------------------------------------------------------------------
 ## Load packages
-if(!"pacman" %in% installed.packages()) install.packages("pacman")
-packages <- c("dada2", "DECIPHER", "phangorn")
+if (!"pacman" %in% installed.packages()) install.packages("pacman")
+packages <- c("BiocManager", "dada2", "DECIPHER", "phangorn")
 pacman::p_load(char = packages)
 
 ## Process command-line arguments
 args <- commandArgs(trailingOnly = TRUE)
-seqtab_rds <- args[1]             # Sequence table RDS file (input)
-tree_rds <- args[2]               # Tree RDS file (output)
-n_cores <- as.integer(args[3])    # Number of computer cores to use
+seqtab_rds <- args[1] # Sequence table RDS file (input)
+tree_rds <- args[2] # Tree RDS file (output)
+n_cores <- as.integer(args[3]) # Number of computer cores to use
 
 # seqtab_rds <- "results/dada2/main/rds/seqtab_nonchim_lenfilter.rds"
 # tree_rds <- "results/tree/tree.rds"
@@ -39,10 +39,11 @@ names(seqs) <- seqs
 ## 1 - Align
 cat("## Aligning sequences...\n")
 alignment <- AlignSeqs(DNAStringSet(seqs),
-                       anchor = NA,
-                       iterations = 5,
-                       refinements = 5,
-                       processors = n_cores)
+    anchor = NA,
+    iterations = 5,
+    refinements = 5,
+    processors = n_cores
+)
 
 ## 2 - Compute distances
 cat("## Computing pairwise distances from ASVs...\n")
@@ -51,18 +52,19 @@ dist_mat <- dist.ml(alignment_mat)
 
 ## 3 - Build neighbor-joining tree and compute its likelihood
 cat("## Building a tree...\n")
-treeNJ <- NJ(dist_mat)                     # Build NJ tree
-fit <- pml(treeNJ, data = alignment_mat)   # Compute likelihood
-fitGTR <- update(fit, k = 4, inv = 0.2)    # Update to GTR model
+treeNJ <- NJ(dist_mat) # Build NJ tree
+fit <- pml(treeNJ, data = alignment_mat) # Compute likelihood
+fitGTR <- update(fit, k = 4, inv = 0.2) # Update to GTR model
 
 ## 4 - Compute likelihood
 cat("## Optimizing the tree...\n")
 fitGTR <- optim.pml(fitGTR,
-                    model = "GTR",
-                    optInv = TRUE,
-                    optGamma = TRUE,
-                    rearrangement = "stochastic",
-                    control = pml.control(trace = 0))
+    model = "GTR",
+    optInv = TRUE,
+    optGamma = TRUE,
+    rearrangement = "stochastic",
+    control = pml.control(trace = 0)
+)
 
 
 # WRAP UP ----------------------------------------------------------------------

@@ -3,7 +3,7 @@
 # SET-UP -----------------------------------------------------------------------
 ## Load packages
 if (!"pacman" %in% installed.packages()) install.packages("pacman")
-packages <- c("tidyverse", "dada2")
+packages <- c("BiocManager", "tidyverse", "dada2")
 pacman::p_load(char = packages)
 
 ## Process command-line arguments

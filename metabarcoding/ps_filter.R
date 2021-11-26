@@ -6,7 +6,7 @@
 # SETUP ------------------------------------------------------------------------
 ## Load packages
 if (!"pacman" %in% installed.packages()) install.packages("pacman")
-packages <- c("tidyverse", "phyloseq", "decontam", "microbiome")
+packages <- c("BiocManager", "tidyverse", "phyloseq", "decontam", "microbiome")
 pacman::p_load(char = packages)
 
 ## Process command-line arguments
@@ -14,11 +14,6 @@ args <- commandArgs(trailingOnly = TRUE)
 ps_in <- args[1]
 ps_out <- args[2]
 config_file <- args[3]
-
-## Example values for args:
-#ps_in <- "results/phyloseq/ps_dadatax_raw.rds"
-#ps_out <- "results/phyloseq/ps_dadatax_filt.rds"
-#config_file <- "workflow/config/config_ps-filt.R"
 
 ## Default parameter values
 contam_check_method <- "either"  # "prevalence" (neg. control), "frequence" (DNA conc.), "either", "both", or "NA"
@@ -57,6 +52,7 @@ if (!dir.exists(qc_dir)) dir.create(qc_dir, recursive = TRUE)
 
 ## Report
 cat("\n## Starting script ps_filter.R\n")
+Sys.time()
 cat("## Input phyloseq RDS file:                        ", ps_in, "\n")
 cat("## Output phyloseq RDS file:                       ", ps_out, "\n")
 cat("## Output QC file dir:                             ", qc_dir, "\n\n")

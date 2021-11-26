@@ -1,13 +1,14 @@
 #!/usr/bin/env Rscript
 
 # SET-UP -----------------------------------------------------------------------
+## Load packages
+if (! "tidyverse" %in% installed.packages()) install.packages("tidyverse")
+suppressPackageStartupMessages(library(tidyverse))
+
 ## Process command-line args
 args <- commandArgs(trailingOnly = TRUE)
 qc_file <- args[1]
 outdir <- args[2]
-
-# qc_file <- "results/ASV/main/qc/nseq_summary.txt"
-# outdir <- "results/ASV/main/qc"
 
 ## Report
 cat("## Starting script ASV_qcplots.R\n")
@@ -29,10 +30,6 @@ status_levels <- c("input", "fastq_filtered", "denoised", "reads_merged",
                    "non_chimeric", "length_filtered")
 status_levels2 <- c("fastq_filtering", "denoising", "read_merging",
                     "chimera_removal", "length_filtering", "(remaining)")
-
-## Load packages
-if (! "tidyverse" %in% installed.packages()) install.packages("tidyverse")
-suppressPackageStartupMessages(library(tidyverse))
 
 ## Create output dir if necessary
 if (! dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
