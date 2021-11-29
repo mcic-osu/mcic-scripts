@@ -1,10 +1,10 @@
 #!/usr/bin/env Rscript
 
-# SBATCH --account=PAS0471
-# SBATCH --time=15
-# SBATCH --output=slurm-make_ps-%j.out
-# SBATCH --nodes=1
-# SBATCH --cpus-per-task=2
+#SBATCH --account=PAS0471 # nolint
+#SBATCH --time=15 # nolint
+#SBATCH --output=slurm-make_ps-%j.out # nolint
+#SBATCH --nodes=1 # nolint
+#SBATCH --cpus-per-task=2 # nolint
 
 # SET-UP -----------------------------------------------------------------------
 ## Load packages
