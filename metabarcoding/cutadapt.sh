@@ -5,17 +5,18 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=4
 
-## Bash strict settings
-set -euo pipefail
 
 # SETUP ------------------------------------------------------------------------
 ## Load software
-module load python/3.6-conda5.2                                # Load conda module
-source activate /users/PAS0471/osu5685/.conda/envs/cutadaptenv # Activate cutadapt environment
+source ~/.bashrc
+[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2  # Load conda module
+source activate /users/PAS0471/osu5685/.conda/envs/cutadaptenv                    # Activate cutadapt environment
 
-## Help
+## Bash strict settings
+set -euo pipefail
+
+## Help function
 Help() {
-    # Display Help
     echo
     echo "## $0: Run cutadapt for a single pair of FASTQ files."
     echo
@@ -35,7 +36,7 @@ Help() {
     echo
 }
 
-## Option defaults:
+## Option defaults
 R1_in=""
 outdir=""
 primer_f=""
@@ -58,6 +59,9 @@ while getopts ':i:o:f:r:p:dh' flag; do
     esac
 done
 
+## Other parameters
+n_cores=$SLURM_CPUS_PER_TASK
+
 ## Test input/options
 [[ $R1_in = "" ]] && echo "## $0: ERROR: No input FASTQ file (-i) provided" >&2 && exit 1
 [[ $outdir = "" ]] && echo "## $0: ERROR: No output dir (-o) provided" >&2 && exit 1
@@ -69,6 +73,7 @@ echo
 echo "## Using the following parameters:"
 echo "## Input FASTQ file R1 (-i): $R1_in"
 echo "## Output dir (-o): $outdir"
+echo
 
 ## Get primers
 primer_arg=""
@@ -145,8 +150,6 @@ echo -e "-----------------------------\n"
 ## Create output directory if it doesn't already exist
 mkdir -p "$outdir"
 
-## Number of cores
-n_cores=$SLURM_CPUS_PER_TASK
 
 # RUN CUTADAPT --------------------------------------------------------
 echo "## Running cutadapt..."
