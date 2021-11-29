@@ -4,9 +4,12 @@
 #SBATCH --time=60
 #SBATCH --out=slurm-multiqc-%j.out
 
+
+# SETUP ------------------------------------------------------------------------
 ## Load software 
+source ~/.bashrc
 [[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
-conda activate multiqc-env
+source activate multiqc-env
 
 ## Bash strict mode
 set -euo pipefail
@@ -52,16 +55,20 @@ mkdir -p "$outdir"
 ## Report
 echo "## Starting script multiqc.sh..."
 date
-echo "Input dir :    $indir"
-echo "Output dir:    $outdir"
+echo "## Input dir :    $indir"
+echo "## Output dir:    $outdir"
 echo -e "------------------\n\n"
 
-## Run MultiQC
+
+# RUN MULTIQC ------------------------------------------------------------------
 #? --interactive will ensure interactive plots, regardless of number of samples
 #? --force will overwrite any old report
+
+echo "## Starting MultiQC run..."
 multiqc --interactive --force "$indir" -o "$outdir"
 
-## Report
+
+# WRAP UP ----------------------------------------------------------------------
 echo -e "\n## Listing output files:"
 ls -lh "$outdir"
 echo -e "\n## Done with script multiqc.sh"
