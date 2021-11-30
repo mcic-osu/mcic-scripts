@@ -43,7 +43,7 @@ done
 ## Input checks
 [[ $infile = "" ]] && echo "## ERROR: Please specify input file with -i" && exit 1
 [[ ! -f "$infile" ]] && echo "## ERROR: Input file does not exist" && exit 1
-[[ "$outdir" = "" ]] && echo "## ERROR: Please specify output dir with -i" && exit 1
+[[ "$outdir" = "" ]] && echo "## ERROR: Please specify output dir with -o" && exit 1
 
 ## Create the output directory if it doesn't already exist
 mkdir -p "$outdir"
