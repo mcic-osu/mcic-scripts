@@ -10,14 +10,14 @@
 
 # SETUP ---------------------------------------------------------------------
 ## Load software
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
 source ~/.bashrc
-source activate star-env
+[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
+source activate /users/PAS0471/jelmer/.conda/envs/star-env
 
 ## Strict bash settings
 set -euo pipefail
 
-## Help
+## Help function
 Help() {
   echo
   echo "## $0: Index a reference genome FASTA file with STAR."
@@ -38,7 +38,7 @@ ref_fa=""
 index_dir=""
 index_size=13
 
-# Get command-line options:
+## Parse command-line options
 while getopts ':i:o:s:h' flag; do
   case "${flag}" in
   i) ref_fa="$OPTARG" ;;
@@ -53,21 +53,22 @@ done
 ## Report
 echo "## Starting script star_index.sh"
 date 
-echo "Genome FASTA file: $ref_fa"
-echo "Genome index dir (output): $index_dir"
-echo "Index size (genomeSAindexNbases): $index_size"
+echo "## Genome FASTA file (input): $ref_fa"
+echo "## Genome index dir (output): $index_dir"
+echo "## Index size (genomeSAindexNbases): $index_size"
 echo -e "-----------------------\n"
 
 ## Make output dir if needed
 mkdir -p "$index_dir"
 
-## The FASTA file can't be zipped for STAR to work -- unzip if needed
+## STAR doesn't accept zipped FASTA files -- unzip if needed
 if [[ $ref_fa = *gz ]]; then
     echo "## Unzipping gzipped FASTA file"
     gunzip "$ref_fa"
     ref_fa=${ref_fa/.gz/}
     echo "## Genome FASTA file: $ref_fa"
 fi
+
 
 # RUN STAR ---------------------------------------------------------------------
 echo "## Running STAR...."
