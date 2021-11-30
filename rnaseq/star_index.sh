@@ -27,7 +27,7 @@ Help() {
   echo "## -h       Print this help message"
   echo "## -i STR   R1 FASTQ input file (REQUIRED)"
   echo "## -o STR   Output dir for index files (REQUIRED)"
-  echo "## -s INT   Index size (default: 13)"
+  echo "## -s INT   Index size (default: automatically determined from genome size)"
   echo "## Example: $0 -i refdata/my_genome.fa -o refdata/star_index -s 10"
   echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
   echo
@@ -36,7 +36,7 @@ Help() {
 ## Option defaults
 ref_fa=""
 index_dir=""
-index_size=13
+index_size=""
 
 ## Parse command-line options
 while getopts ':i:o:s:h' flag; do
@@ -50,6 +50,14 @@ while getopts ':i:o:s:h' flag; do
   esac
 done
 
+## Determine index size
+if [ "$index_size" = "" ]; then
+    echo "## Automatically determining index size..."
+    genome_size=$(grep -v "^>" "$ref_fa" | wc -c)
+    index_size=$(python -c "import math; print(math.ceil(math.log($genome_size, 2)/2 -1))")
+    echo "Genome size: $genome_size / Index size: $index_size"
+fi
+
 ## Report
 echo "## Starting script star_index.sh"
 date 
@@ -61,16 +69,16 @@ echo -e "-----------------------\n"
 ## Make output dir if needed
 mkdir -p "$index_dir"
 
+
+# RUN STAR ---------------------------------------------------------------------
 ## STAR doesn't accept zipped FASTA files -- unzip if needed
 if [[ $ref_fa = *gz ]]; then
-    echo "## Unzipping gzipped FASTA file"
+    echo "## Unzipping gzipped FASTA file..."
     gunzip "$ref_fa"
     ref_fa=${ref_fa/.gz/}
     echo "## Genome FASTA file: $ref_fa"
 fi
 
-
-# RUN STAR ---------------------------------------------------------------------
 echo "## Running STAR...."
 STAR --runThreadN "$SLURM_CPUS_ON_NODE" \
      --runMode genomeGenerate \
