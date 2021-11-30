@@ -9,7 +9,7 @@
 ## Load software 
 source ~/.bashrc
 [[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
-source activate multiqc-env
+source activate /users/PAS0471/jelmer/.conda/envs/multiqc-env
 
 ## Bash strict mode
 set -euo pipefail
