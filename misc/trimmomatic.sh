@@ -5,17 +5,18 @@
 #SBATCH --cpus-per-task=12
 #SBATCH --output=slurm-trim-%j.out
 
-# Software:
-source ~/.bashrc
-source activate trimmomatic-env
 
+# SETUP ------------------------------------------------------------------------
+## Load software
+source ~/.bashrc
+[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
+source activate /users/PAS0471/jelmer/miniconda3/envs/trimmomatic-env
+
+## Bash strict settings
 set -euo pipefail
 
-n_cores="$SLURM_CPUS_ON_NODE"
-
-# Help:
+## Help function
 Help() {
-    # Display Help
     echo "## script to trim sequences in FASTQC files using Trimmomatic"
     echo
     echo "## Syntax: trim.sh -b barcode-file -i input-dir -l library-ID -o output-dir -s steps-to-skip [-h]"
@@ -28,13 +29,13 @@ Help() {
     echo
 }
 
-## Option defaults:
+## Option defaults
 R1_in=""
 outdir="results/trim"
 stats_dir="$outdir/log"
 adapter_file="NA"
 
-## Parse options:
+## Parse options
 while getopts ':i:o:t:a:h' flag; do
     case "${flag}" in
     i) R1_in="$OPTARG" ;;
@@ -47,9 +48,13 @@ while getopts ':i:o:t:a:h' flag; do
     esac
 done
 
+## Other parameters
+n_cores="$SLURM_CPUS_ON_NODE"
+
+## Check input
 [[ -z "$R1_in" ]] && echo "## ERROR: Please provide R1 input FASTQ file with -i flag" && exit 1
 
-## Process args:
+## Process options
 R1_suffix=$(echo "$R1_in" | sed -E 's/.*(_R?[0-9]).*fastq.gz/\1/')
 
 R2_suffix=${R1_suffix/1/2}
@@ -69,14 +74,14 @@ R2_out="$outdir"/"$R2_basename".fastq.gz # Output R2 file
 R1_discard=$discard_dir/"$R1_basename"_U1.fastq.gz # Output file for discarded R1 reads
 R2_discard=$discard_dir/"$R2_basename"_U2.fastq.gz # Output file for discarded R2 reads
 
-## Adapter argument:
+## Adapter argument
 if [[ $adapter_file = "NA" ]]; then
     adapter_arg=""
 else
     adapter_arg=" ILLUMINACLIP:$adapter_file:2:30:10"
 fi
 
-## Report:
+## Report
 echo "## Starting script trimmomatic.sh"
 date
 echo "## Input R1: $R1_in"
@@ -97,22 +102,24 @@ echo
 echo "## Listing input files:"
 ls -lh "$R1_in"
 ls -lh "$R2_in"
-echo
 
-## Run Trimmomatic:
+
+# RUN TRIMMOMATIC --------------------------------------------------------------
+echo -e "## Starting Trimmomatic run..."
 trimmomatic PE -threads "$n_cores" -phred33 \
     "$R1_in" "$R2_in" "$R1_out" "$R1_discard" "$R2_out" "$R2_discard"$adapter_arg \
     AVGQUAL:28 LEADING:20 TRAILING:20 MINLEN:36 \
     2>&1 | tee "$trimstats_file"
 
-## Report:
+
+# WRAP UP ----------------------------------------------------------------------
 nreads_raw=$(zcat "$R1_in" | awk '{ s++ } END{ print s/4 }')
 nreads_trim=$(zcat "$R1_out" | awk '{ s++ } END{ print s/4 }')
-echo "Number of raw / trimmed read-pairs: $nreads_raw / $nreads_trim"
+echo -e "\n## Number of raw / trimmed read-pairs: $nreads_raw / $nreads_trim"
 
 echo -e "\n## Listing output files:"
 ls -lh "$R1_out"
 ls -lh "$R2_out"
 
-echo "## Done with script."
+echo "## Done with script trimmomatic.sh"
 date

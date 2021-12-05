@@ -11,10 +11,10 @@
 
 # SETUP ---------------------------------------------------------------------
 ## Load software
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
 source ~/.bashrc
-source activate star-env
-conda activate --stack samtools-env
+[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
+source activate /users/PAS0471/jelmer/.conda/envs/star-env
+conda activate --stack /users/PAS0471/jelmer/.conda/envs/samtools-env
 
 ## Bash strict mode
 set -euo pipefail
@@ -42,7 +42,7 @@ bam_dir=""
 index_dir=""
 max_map=10
 
-# Get command-line options:
+## Parse command-line options
 while getopts ':i:o:r:m:h' flag; do
   case "${flag}" in
   i) R1_in="$OPTARG" ;;
@@ -55,7 +55,7 @@ while getopts ':i:o:r:m:h' flag; do
   esac
 done
 
-## Process args
+## Process options
 R2_in=${R1_in/_R1_/_R2_}
 sample_id=$(basename "$R1_in" | sed 's/_R1_.*//')
 
@@ -101,6 +101,7 @@ STAR --runThreadN "$SLURM_CPUS_ON_NODE" \
    --outBAMsortingBinsN 100 \
    --outReadsUnmapped Fastx
 
+## TODO - Make intron size option to script
 # --alignIntronMin 5 --alignIntronMax 350000
 
 
