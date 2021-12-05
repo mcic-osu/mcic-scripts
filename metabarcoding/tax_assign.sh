@@ -17,9 +17,7 @@ SCRIPT_DECI=mcic-scripts/metabarcoding/tax_assign_deci.R
 n_cores="$SLURM_CPUS_PER_TASK"
 
 ## Load modules
-module load gnu/9.1.0
-module load mkl/2019.0.5
-module load R/4.0.2
+module load R/4.0.2-gnu9.1
 
 ## Checks
 [[ ! -f $seqtab_rds ]] && echo "ERROR: Input file ($seqtab_rds) does not exist" && exit 1
