@@ -31,6 +31,8 @@ Help() {
   echo "## -o STR   BAM output dir (REQUIRED)"
   echo "## -r STR   Reference index dir (REQUIRED)"
   echo "## -m INT   Max. number of locations a read can map to, before being considered unmapped (default: 10)"
+  echo "## -t INT   Min. intron size (default: 21)"
+  echo "## -T INT   Max. intron size (default: 0 => determined by STAR)"
   echo "## Example: $0 -i data/fastq/S01_L001_R1.fastq.gz -o results/star -r refdata/star_index"
   echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
   echo
@@ -41,14 +43,18 @@ R1_in=""
 bam_dir=""
 index_dir=""
 max_map=10
+intron_min=21
+intron_max=0
 
 ## Parse command-line options
-while getopts ':i:o:r:m:h' flag; do
+while getopts ':i:o:r:m:t:T:h' flag; do
   case "${flag}" in
   i) R1_in="$OPTARG" ;;
   o) bam_dir="$OPTARG" ;;
   r) index_dir="$OPTARG" ;;
   m) max_map="$OPTARG" ;;
+  t) intron_min="$OPTARG" ;;
+  T) intron_max="$OPTARG" ;;
   h) Help && exit 0 ;;
   \?) echo "## $0: ERROR: Invalid option" >&2 && exit 1 ;;
   :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
@@ -95,14 +101,12 @@ STAR --runThreadN "$SLURM_CPUS_ON_NODE" \
    --genomeDir "$index_dir" \
    --readFilesIn "$R1_in" "$R2_in" \
    --readFilesCommand zcat \
-   --outFileNamePrefix "$bam_dir/$sample_id"_ \
    --outFilterMultimapNmax $max_map \
+   --alignIntronMin $intron_min --alignIntronMax $intron_max \
+   --outFileNamePrefix "$bam_dir/$sample_id"_ \
    --outSAMtype BAM SortedByCoordinate \
    --outBAMsortingBinsN 100 \
    --outReadsUnmapped Fastx
-
-## TODO - Make intron size option to script
-# --alignIntronMin 5 --alignIntronMax 350000
 
 
 # ORGANIZE STAR OUTPUT ---------------------------------------------------------
