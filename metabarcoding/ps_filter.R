@@ -1,13 +1,15 @@
 #!/usr/bin/env Rscript
 
-#SBATCH --account=PAS0471 # nolint 
+#SBATCH --account=PAS0471 # nolint
 #SBATCH --output=slurm-ps_filter-%j.out # nolint
 
 # SETUP ------------------------------------------------------------------------
 ## Load packages
 if (!"pacman" %in% installed.packages()) install.packages("pacman")
-packages <- c("BiocManager", "tidyverse", "phyloseq", "decontam",
-              "microbiome", "biomformat")
+packages <- c(
+    "BiocManager", "tidyverse", "phyloseq", "decontam",
+    "microbiome", "biomformat"
+)
 pacman::p_load(char = packages)
 
 ## Process command-line arguments
@@ -22,13 +24,13 @@ config_file <- args[3]
 # config_file <- "workflow/config/config_ps-filt.R"
 
 ## Default parameter values
-contam_method <- "either"   # "prevalence" (neg. control), "frequence" (DNA conc.), "either", "both", or "NA" # nolint
-contam_thres <- 0.1         # P-value for an ASV to be considered a contaminant # nolint
-conc_column <- NA           # Name of the column in the metadata containing DNA concentrations # nolint
-batch_column <- NA          # Name of the column in the metadata containing batch IDs # nolint
-neg_column <- NA            # Name of the column in the metadata indicating neg. control status; specify either `neg_column` or `neg_ids` to identify negative controls # nolint
-neg_ids <- NA               # IDs of samples that are neg. controls; specify either `neg_column` or `neg_ids` to identify negative controls # nolint
-min_ASV <- 1000             # Min. total ASV count for a sample; sample will be excluded if it has a lower value # nolint
+contam_method <- "either" # "prevalence" (neg. control), "frequence" (DNA conc.), "either", "both", or "NA" # nolint
+contam_thres <- 0.1 # P-value for an ASV to be considered a contaminant # nolint
+conc_column <- NA # Name of the column in the metadata containing DNA concentrations # nolint
+batch_column <- NA # Name of the column in the metadata containing batch IDs # nolint
+neg_column <- NA # Name of the column in the metadata indicating neg. control status; specify either `neg_column` or `neg_ids` to identify negative controls # nolint
+neg_ids <- NA # IDs of samples that are neg. controls; specify either `neg_column` or `neg_ids` to identify negative controls # nolint
+min_ASV <- 1000 # Min. total ASV count for a sample; sample will be excluded if it has a lower value # nolint
 qc_dir <- NA
 
 ## Check input
@@ -51,7 +53,7 @@ if (is.na(qc_dir)) qc_dir <- file.path(outdir, "qc")
 
 outfile_biom <- file.path(outdir, paste0(file_id, ".biom"))
 outfile_contam_df <- file.path(qc_dir, "contam_df.txt")
-outfile_contam_plot_prefix <- file.path(qc_dir, "contam_abund-plot")
+contam_plot_prefix <- file.path(qc_dir, "contam_abund-plot")
 outfile_neg_control <- file.path(qc_dir, "neg_control_ASVs.txt")
 
 ## Process parameters
@@ -102,7 +104,7 @@ conc_plot <- function(ASVs, plot_id, df) {
         labs(x = "DNA concentration", y = "ASV abundance") +
         theme_bw()
 
-    outfile_p_contam <- paste0(outfile_contam_plot_prefix, "_", plot_id, ".png")
+    outfile_p_contam <- paste0(contam_plot_prefix, "_", plot_id, ".png")
     ggsave(outfile_p_contam, p, width = 8, height = 8)
 }
 
@@ -154,10 +156,8 @@ if (!is.na(contam_method)) {
     neg_df <- cbind(neg_df, total_count = rowSums(neg_df)) %>%
         rownames_to_column("ASV") %>%
         arrange(desc(total_count))
-    cat("## Total nr of distinct ASVs in the negative control(s):",
-        nrow(neg_df), "\n")
-    cat("## Total ASV count in the negative control(s):",
-        sum(neg_df$total_count), "\n")
+    cat("## Nr of distinct ASVs in neg. control(s):", nrow(neg_df), "\n")
+    cat("## Total ASV count in neg. control(s):", sum(neg_df$total_count), "\n")
     write_tsv(neg_df, outfile_neg_control)
 
     ## Check which ASVs are contaminants
@@ -195,18 +195,23 @@ if (!is.na(contam_method)) {
         contam_plot_df <- otu_table(transform(ps_raw, "compositional")) %>%
             as.data.frame() %>%
             rownames_to_column("sample_id") %>%
-            pivot_longer(cols = -sample_id,
-                         names_to = "ASV",
-                         values_to = "ASV_freq") %>%
+            pivot_longer(
+                cols = -sample_id,
+                names_to = "ASV",
+                values_to = "ASV_freq"
+            ) %>%
             filter(ASV %in% contam_freq_df$ASV) %>%
             merge(., as(sample_data(ps_raw), "data.frame"),
-                  by = "sample_id") %>%
+                by = "sample_id"
+            ) %>%
             merge(., select(contam_freq_df, ASV, p.freq), by = "ASV") %>%
             mutate(ASV = factor(ASV, levels = levels(contam_freq_df$ASV)))
 
         ## Split the ASVs into groups of 20, and create a plot for each group
-        ASV_list <- split(contam_freq_df$ASV,
-                          ceiling(seq_along(contam_freq_df$ASV) / 12))
+        ASV_list <- split(
+            contam_freq_df$ASV,
+            ceiling(seq_along(contam_freq_df$ASV) / 12)
+        )
         plot_ids <- seq_along(ASV_list)
         foo <- mapply(conc_plot, ASV_list, plot_ids,
             MoreArgs = list(df = contam_plot_df)
@@ -240,8 +245,10 @@ if (!is.na(contam_method)) {
 
         ## What proportion of our count data were removed as contaminants?
         prop_kept <- sum(sample_sums(ps_noncontam)) / sum(sample_sums(ps_raw))
-        cat("## Prop count data retained after contaminant removal:",
-            prop_kept, "\n")
+        cat(
+            "## Prop count data retained after contaminant removal:",
+            prop_kept, "\n"
+        )
     } else {
         ps_noncontam <- ps_raw
     }
@@ -286,7 +293,7 @@ cat("## Prop count data kept after removing off-target taxa:", prop_kept, "\n")
 
 
 # FILTER SAMPLES ---------------------------------------------------------------
-cat("\n------------------------------------------\n")
+cat("\n------------------------------------\n")
 cat("## Removing samples with a total ASV count less than", min_ASV, "...\n")
 cat("## Samples with the lowest total ASV counts:\n")
 sums <- sample_sums(ps_target)
@@ -304,24 +311,20 @@ cat("## Nr of samples removed after ASV count filtering:", nsamples_rm, "\n")
 cat("## IDs of samples removed after ASV count filtering:\n")
 setdiff(sample_names(ps_target), sample_names(ps))
 
-
-# WRAP UP ----------------------------------------------------------------------
 ## Save RDS file of phyloseq object
 saveRDS(ps, ps_out)
 
-## Save BIOM file
-# biom <- make_biom(data = t(otu_table(ps)),
-#                   sample_metadata = sample_data(ps),
-#                   observation_metadata = tax_table(ps))
-biom <- make_biom(data = t(otu_table(ps)))
+# CREATE BIOM FILE -------------------------------------------------------------
+ps_biom <- subset_taxa(ps, taxa_sums(ps) > 1) # Filter out singleton ASVs
+biom <- make_biom(data = t(otu_table(ps_biom))) # Create biom object
 write_biom(biom, outfile_biom)
 
-## Report
-cat("\n------------------------------------------\n")
+# WRAP UP ----------------------------------------------------------------------
+cat("\n---------------------------------\n")
 cat("## Listing output files:\n")
 system(paste("ls -lh", ps_out))
 system(paste("ls -lh", outfile_contam_df))
-if (!is.null(conc_column)) system(paste0("ls -lh ", outfile_contam_plot_prefix, "*"))
+if (!is.null(conc_column)) system(paste0("ls -lh ", contam_plot_prefix, "*"))
 
 cat("\n## Done with script ps_filter.R\n")
 Sys.time()
