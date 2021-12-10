@@ -1,8 +1,10 @@
 #!/bin/bash
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --time=10
+#SBATCH --time=15
 #SBATCH --account=PAS0471
+#SBATCH --job-name=fqsub
+#SBATCH --output=slurm-fqsub-%j.out
 
 
 # SET-UP & PARSE ARGS ----------------------------------------------------------
@@ -26,13 +28,16 @@ Help()
    echo "## -I     R2 input file (REQUIRED)"
    echo "## -o     R1 output file (REQUIRED)"
    echo "## -O     R2 output file (REQUIRED)"
-   echo "## -n     Number of reads"
+   echo "## -n     Number of reads (default: 100,000)"
    echo "## -p     Proportion of reads"
    echo
 }
 
+## Other parameters
+random_seed=$RANDOM
+
 ## Option defaults
-n_reads="NA"
+n_reads=100000
 prop_reads="NA"
 
 ## Parse command-line options
@@ -45,32 +50,34 @@ while getopts ':i:I:o:O:n:p:h' flag; do
 	n)  n_reads="$OPTARG" ;;
 	p)  prop_reads="$OPTARG" ;;
     h)  Help && exit 0 ;;
-	\?) echo "## trim.sh: ERROR: Invalid option" && exit 1 ;;
-	:)  echo "## trim.sh: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
+	\?) echo "## ERROR: Invalid option" >&2 && exit 1 ;;
+	:)  echo "## ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
   esac
 done
 
 ## Check input - error out if neither n_reads or prop_reads is provided
 [[ $n_reads = "NA" ]] && [[ $prop_reads = "NA" ]] && \
-  echo "Error: neither a number of reads (-n) or a proportion of reads (-p) is provided" && exit 1
-
-## Other parameters
-random_seed=$RANDOM
+  echo "ERROR: neither a number of reads (-n) or a proportion of reads (-p) is provided" >&2 && exit 1
+[[ ! -f "$R1_in" ]] && echo "ERROR: Input file $R1_in does not exist" >&2 && exit 1
+[[ ! -f "$R2_in" ]] && echo "ERROR: Input file $R2_in does not exist" >&2 && exit 1
 
 ## Process parameters
-### Number of reads in input fastq file
+### Number of reads in input FASTQ file
 n_reads_total=$(zcat "$R1_in" | awk '{ s++ } END{ print s/4 }')
 ### If prop_reads is given, calculate n_reads
 [[ $prop_reads != "NA" ]] && n_reads=$(python -c "print(int($n_reads_total * $prop_reads))")
+### Create output dir if needed
+outdir=$(dirname "$R1_in")
+mkdir -p "$outdir"
 
 ## Report
 echo -e "\n## Starting script subsample_fq.sh..."
 date
-echo "## Input R1: $R1_in"
-echo "## Input R2: $R2_in"
-echo "## Output R1: $R1_out"
-echo "## Output R2: $R2_out"
-echo "## Random seed: $random_seed"
+echo "## Input R1:       $R1_in"
+echo "## Input R2:       $R2_in"
+echo "## Output R1:      $R1_out"
+echo "## Output R2:      $R2_out"
+echo "## Random seed:    $random_seed"
 echo
 echo "## Total (input) number of reads: $n_reads_total"
 [[ $prop_reads != "NA" ]] && echo "## Proportion of reads to keep: $prop_reads"
@@ -79,7 +86,7 @@ echo
 echo "## Listing input files:"
 ls -lh "$R1_in"
 ls -lh "$R2_in"
-echo
+echo -e "----------------------------------\n\n"
 
 
 # RUN SEQTK TO SUBSAMPLE FASTQ -------------------------------------------------
@@ -96,7 +103,8 @@ echo "R1 out: $n_reads_R1_out"
 echo "R2 out: $n_reads_R2_out"
 
 ## List output files
-echo -e "\n## Listing output files:"
+echo -e "\n----------------------------------"
+echo -e "## Listing output files:"
 ls -lh "$R1_out"
 ls -lh "$R2_out"
 
