@@ -22,7 +22,7 @@ set -euo pipefail
 ## Help
 Help() {
   echo
-  echo "## $0: Index a reference genome FASTA file with STAR."
+  echo "## $0: Align sequences from a FASTQ file to a reference genome with STAR."
   echo
   echo "## Syntax: $0 -i <R1 FASTQ input file> -o <BAM output dir> -r <ref genome index dir> [ -m <max multi-map> ] [-h]"
   echo "## Options:"
@@ -30,6 +30,7 @@ Help() {
   echo "## -i STR   R1 FASTQ input file (REQUIRED; note that the name of the R2 file will be inferred by the script.)"
   echo "## -o STR   BAM output dir (REQUIRED)"
   echo "## -r STR   Reference index dir (REQUIRED)"
+  echo "## -g STR   Reference GFF file (REQUIRED)"
   echo "## -m INT   Max. number of locations a read can map to, before being considered unmapped (default: 10)"
   echo "## -t INT   Min. intron size (default: 21)"
   echo "## -T INT   Max. intron size (default: 0 => determined by STAR)"
@@ -42,14 +43,16 @@ Help() {
 R1_in=""
 bam_dir=""
 index_dir=""
+gff=""
 max_map=10
 intron_min=21
 intron_max=0
 
 ## Parse command-line options
-while getopts ':i:o:r:m:t:T:h' flag; do
+while getopts ':i:o:r:m:t:T:g:h' flag; do
   case "${flag}" in
   i) R1_in="$OPTARG" ;;
+  g) gff="$OPTARG" ;;
   o) bam_dir="$OPTARG" ;;
   r) index_dir="$OPTARG" ;;
   m) max_map="$OPTARG" ;;
@@ -74,19 +77,24 @@ starlog_dir="$bam_dir"/star_logs
 ## Report
 echo "## Starting script star_align.sh"
 date
-echo "## R1 FASTQ file (input): $R1_in"
-echo "## Genome index dir: $index_dir"
-echo "## Output BAM dir: $bam_dir"
-echo "## Max nr of alignments for a read: $max_map"  # If this nr is exceeded, read is considered unmapped
+echo "## Input R1 FASTQ file:                 $R1_in"
+echo "## Input STAR genome index dir:         $index_dir"
+echo "## Input GFF file:                      $gff"
+echo "## Output BAM dir:                      $bam_dir"
 echo
-echo "## Sample ID (inferred): $sample_id"
-echo "## R2 FASTQ file (input - inferred): $R2_in"
+echo "## Max nr of alignments for a read:     $max_map"  # If this nr is exceeded, read is considered unmapped
+echo "## Min intron size:                     $intron_min"
+echo "## Max intron size (0 => STAR default): $intron_max"
+echo
+echo "## Sample ID (inferred):                $sample_id"
+echo "## R2 FASTQ file (input - inferred):    $R2_in"
 echo -e "------------------------\n"
 
 ## Check inputs
-[[ ! -f "$R1_in" ]] && echo "## ERROR: Input file $R1_in does not exist" && exit 1
-[[ ! -f "$R2_in" ]] && echo "## ERROR: Input file $R2_in does not exist" && exit 1
-[[ ! -d "$index_dir" ]] && echo "## ERROR: Input dir $index_dir does not exist" && exit 1
+[[ ! -f "$R1_in" ]] && echo "## ERROR: Input file $R1_in does not exist" >&2 && exit 1
+[[ ! -f "$R2_in" ]] && echo "## ERROR: Input file $R2_in does not exist" >&2 && exit 1
+[[ ! -f "$gff" ]] && echo "## ERROR: Input file $gff does not exist" >&2 && exit 1
+[[ ! -d "$index_dir" ]] && echo "## ERROR: Input dir $index_dir does not exist" >&2 && exit 1
 
 ## Create output dirs if needed
 mkdir -p "$bam_dir"
@@ -99,6 +107,7 @@ mkdir -p "$unmapped_dir"
 echo "## Aligning reads with STAR...."
 STAR --runThreadN "$SLURM_CPUS_ON_NODE" \
    --genomeDir "$index_dir" \
+   --sjdbGTFfile "$gff" \
    --readFilesIn "$R1_in" "$R2_in" \
    --readFilesCommand zcat \
    --outFilterMultimapNmax $max_map \
@@ -106,7 +115,8 @@ STAR --runThreadN "$SLURM_CPUS_ON_NODE" \
    --outFileNamePrefix "$bam_dir/$sample_id"_ \
    --outSAMtype BAM SortedByCoordinate \
    --outBAMsortingBinsN 100 \
-   --outReadsUnmapped Fastx
+   --outReadsUnmapped Fastx \
+   --quantMode GeneCounts
 
 
 # ORGANIZE STAR OUTPUT ---------------------------------------------------------

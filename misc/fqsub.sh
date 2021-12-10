@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --time=15
+#SBATCH --mem=12G
+#SBATCH --time=30
 #SBATCH --account=PAS0471
 #SBATCH --job-name=fqsub
 #SBATCH --output=slurm-fqsub-%j.out
