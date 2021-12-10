@@ -59,7 +59,9 @@ echo -e "--------------------\n"
 fastqc --outdir="$outdir" "$infile"
 
 ## Report
+sample_id=$(basename "$infile" .fastq.gz)
 echo -e "\n## Listing output files:"
-ls -lh "$outdir"
+ls -lh "$outdir"/"$sample_id"*fastqc*
+
 echo -e "\n## Done with script fastqc.sh"
 date
