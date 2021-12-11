@@ -19,9 +19,9 @@ set -euo pipefail
 ## Help function
 Help()
 {
-   echo "## subsample_fastq.sh: script to subsample fastq files using seqtk"
+   echo "## fqsub.sh: script to subsample fastq files using seqtk"
    echo
-   echo "## Syntax: subsample_fastq.sh -i <R1_in> -I <R2_in> -o <R1_out> -o <R2_out> [ -n <n_reads> | -p <prop_reads> ] [-h]"
+   echo "## Syntax: fqsub.sh -i <R1_in> -I <R2_in> -o <R1_out> -o <R2_out> [ -n <n_reads> | -p <prop_reads> ] [-h]"
    echo "## Options:"
    echo "## -h     Print help."
    echo "## -i     R1 input file (REQUIRED)"
@@ -71,7 +71,7 @@ outdir=$(dirname "$R1_in")
 mkdir -p "$outdir"
 
 ## Report
-echo -e "\n## Starting script subsample_fq.sh..."
+echo -e "\n## Starting script fqsub_dir.sh..."
 date
 echo "## Input R1:       $R1_in"
 echo "## Input R2:       $R2_in"
@@ -108,5 +108,5 @@ echo -e "## Listing output files:"
 ls -lh "$R1_out"
 ls -lh "$R2_out"
 
-echo -e "\n## Done with script."
+echo -e "\n## Done with script fqsub.sh"
 date

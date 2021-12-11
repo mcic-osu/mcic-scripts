@@ -6,14 +6,14 @@
 set -euo pipefail
 
 ## Constants
-SUBSAMPLE_SCRIPT="mcic-scripts/misc/subsample_fq.sh"
+SUBSAMPLE_SCRIPT="mcic-scripts/misc/fqsub.sh"
 
 ## Help function
 Help()
 {
-   echo "## subsample_fastq.sh: script to subsample fastq files using seqtk"
+   echo "## fqsub_dir.sh: script to subsample fastq files using seqtk"
    echo
-   echo "## Syntax: subsample_fastq.sh -i <R1_in> -I <R2_in> -o <R1_out> -o <R2_out> [ -n <n_reads> | -p <prop_reads> ] [-h]"
+   echo "## Syntax: fqsub_dir.sh -i <input-dir> -o <output-dir> [ -n <n_reads> | -p <prop_reads> ] [-h]"
    echo "## Options:"
    echo "## -h     Print help."
    echo "## -i     Input dir (REQUIRED)"
@@ -48,7 +48,7 @@ done
 
 ## Report
 echo
-echo -e "\n## Starting script subsample_fq_dir.sh"
+echo -e "\n## Starting script fqsub_dir.sh"
 date
 echo "## Input dir: $indir"
 echo "## Output dir: $outdir"
@@ -86,5 +86,5 @@ done
 
 
 # REPORT AND FINALIZE --------------------------------------------------------
-echo -e "## Done with script subsample_fq_dir.sh"
+echo -e "## Done with script fqsub_dir.sh"
 date
