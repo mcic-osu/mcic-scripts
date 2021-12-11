@@ -14,7 +14,7 @@
 source ~/.bashrc
 [[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
 source activate /users/PAS0471/jelmer/.conda/envs/star-env
-conda activate --stack /users/PAS0471/jelmer/.conda/envs/samtools-env
+conda activate --stack /users/PAS0471/jelmer/miniconda3/envs/samtools-env
 
 ## Bash strict mode
 set -euo pipefail
@@ -24,16 +24,18 @@ Help() {
   echo
   echo "## $0: Align sequences from a FASTQ file to a reference genome with STAR."
   echo
-  echo "## Syntax: $0 -i <R1 FASTQ input file> -o <BAM output dir> -r <ref genome index dir> [ -m <max multi-map> ] [-h]"
+  echo "## Syntax: $0 -i <R1-FASTQ-infile> -o <BAM-outdir> -r <ref-index-dir> [ -g <gff-file> ... ] [-h]"
+  echo
   echo "## Options:"
-  echo "## -h       Print this help message"
-  echo "## -i STR   R1 FASTQ input file (REQUIRED; note that the name of the R2 file will be inferred by the script.)"
-  echo "## -o STR   BAM output dir (REQUIRED)"
-  echo "## -r STR   Reference index dir (REQUIRED)"
-  echo "## -g STR   Reference GFF file (REQUIRED)"
-  echo "## -m INT   Max. number of locations a read can map to, before being considered unmapped (default: 10)"
-  echo "## -t INT   Min. intron size (default: 21)"
-  echo "## -T INT   Max. intron size (default: 0 => determined by STAR)"
+  echo "##    -h        Print this help message"
+  echo "##    -i STR    R1 FASTQ input file (REQUIRED; note that the name of the R2 file will be inferred by the script.)"
+  echo "##    -o STR    BAM output dir (REQUIRED)"
+  echo "##    -r STR    Reference index dir (REQUIRED)"
+  echo "##    -g STR    Reference GFF file (default: no GFF, and therefore no gene counting)"
+  echo "##    -m INT    Max. number of locations a read can map to, before being considered unmapped (default: 10)"
+  echo "##    -t INT    Min. intron size (default: 21)"
+  echo "##    -T INT    Max. intron size (default: 0 => determined by STAR)"
+  echo
   echo "## Example: $0 -i data/fastq/S01_L001_R1.fastq.gz -o results/star -r refdata/star_index"
   echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
   echo
@@ -74,12 +76,17 @@ flagstat_out="$flagstat_dir"/"$sample_id"_flagstat.txt
 unmapped_dir="$bam_dir"/unmapped
 starlog_dir="$bam_dir"/star_logs
 
+## If a GFF file is provided, build the appropriate argument for STAR
+## _and_ add `--quantMode GeneCounts` so as to do gene counting 
+[[ "$gff" != "" ]] && gff_arg="--sjdbGTFfile $gff --quantMode GeneCounts"
+
 ## Report
 echo "## Starting script star_align.sh"
 date
+echo
 echo "## Input R1 FASTQ file:                 $R1_in"
 echo "## Input STAR genome index dir:         $index_dir"
-echo "## Input GFF file:                      $gff"
+[[ "$gff" != "" ]] && echo "## Input GFF file:                      $gff"
 echo "## Output BAM dir:                      $bam_dir"
 echo
 echo "## Max nr of alignments for a read:     $max_map"  # If this nr is exceeded, read is considered unmapped
@@ -91,10 +98,10 @@ echo "## R2 FASTQ file (input - inferred):    $R2_in"
 echo -e "------------------------\n"
 
 ## Check inputs
-[[ ! -f "$R1_in" ]] && echo "## ERROR: Input file $R1_in does not exist" >&2 && exit 1
-[[ ! -f "$R2_in" ]] && echo "## ERROR: Input file $R2_in does not exist" >&2 && exit 1
-[[ ! -f "$gff" ]] && echo "## ERROR: Input file $gff does not exist" >&2 && exit 1
-[[ ! -d "$index_dir" ]] && echo "## ERROR: Input dir $index_dir does not exist" >&2 && exit 1
+[[ ! -f "$R1_in" ]] && echo "## ERROR: Input file R1_in (-i) $R1_in does not exist" >&2 && exit 1
+[[ ! -f "$R2_in" ]] && echo "## ERROR: Input file R2_in $R2_in does not exist" >&2 && exit 1
+[[ ! -f "$gff" ]] && echo "## ERROR: Input file GFF (-f) $gff does not exist" >&2 && exit 1
+[[ ! -d "$index_dir" ]] && echo "## ERROR: Input ref genome dir (-r) $index_dir does not exist" >&2 && exit 1
 
 ## Create output dirs if needed
 mkdir -p "$bam_dir"
@@ -107,7 +114,6 @@ mkdir -p "$unmapped_dir"
 echo "## Aligning reads with STAR...."
 STAR --runThreadN "$SLURM_CPUS_ON_NODE" \
    --genomeDir "$index_dir" \
-   --sjdbGTFfile "$gff" \
    --readFilesIn "$R1_in" "$R2_in" \
    --readFilesCommand zcat \
    --outFilterMultimapNmax $max_map \
@@ -115,8 +121,7 @@ STAR --runThreadN "$SLURM_CPUS_ON_NODE" \
    --outFileNamePrefix "$bam_dir/$sample_id"_ \
    --outSAMtype BAM SortedByCoordinate \
    --outBAMsortingBinsN 100 \
-   --outReadsUnmapped Fastx \
-   --quantMode GeneCounts
+   --outReadsUnmapped Fastx $gff_arg
 
 
 # ORGANIZE STAR OUTPUT ---------------------------------------------------------
