@@ -38,6 +38,7 @@ Help() {
   echo "##    -m INT    Max. number of locations a read can map to, before being considered unmapped (default: 10)"
   echo "##    -t INT    Min. intron size (default: 21)"
   echo "##    -T INT    Max. intron size (default: 0 => determined by STAR)"
+  echo "##    -A STR   Additional arguments to pass to STAR"
   echo
   echo "## Example: $0 -i data/fastq/S01_L001_R1.fastq.gz -o results/star -r refdata/star_index"
   echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
@@ -57,7 +58,7 @@ intron_min=21
 intron_max=0
 
 ## Parse command-line options
-while getopts ':i:o:r:m:t:T:a:h' flag; do
+while getopts ':i:o:r:m:t:T:a:A:h' flag; do
   case "${flag}" in
   i) R1_in="$OPTARG" ;;
   a) gff="$OPTARG" ;;
@@ -66,6 +67,7 @@ while getopts ':i:o:r:m:t:T:a:h' flag; do
   m) max_map="$OPTARG" ;;
   t) intron_min="$OPTARG" ;;
   T) intron_max="$OPTARG" ;;
+  A) more_args="$OPTARG" ;;
   h) Help && exit 0 ;;
   \?) echo "## $0: ERROR: Invalid option" >&2 && exit 1 ;;
   :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
@@ -102,6 +104,7 @@ echo
 echo "## Max nr of alignments for a read:              $max_map"  # If this nr is exceeded, read is considered unmapped
 echo "## Min intron size:                              $intron_min"
 echo "## Max intron size (0 => STAR default):          $intron_max"
+echo "## Additional args to pass to STAR:              $more_args"
 echo
 echo "## Sample ID (as inferred by the script):        $sample_id"
 echo "## R2 FASTQ file (as inferred by the script):    $R2_in"
@@ -131,7 +134,7 @@ STAR --runThreadN "$SLURM_CPUS_ON_NODE" \
    --outFileNamePrefix "$bam_dir/$sample_id"_ \
    --outSAMtype BAM SortedByCoordinate \
    --outBAMsortingBinsN 100 \
-   --outReadsUnmapped Fastx $gff_arg
+   --outReadsUnmapped Fastx $gff_arg $more_args
 
 
 # ORGANIZE STAR OUTPUT ---------------------------------------------------------
@@ -139,10 +142,13 @@ STAR --runThreadN "$SLURM_CPUS_ON_NODE" \
 echo -e "\n## Moving, renaming and zipping unmapped FASTQ files...."
 for oldpath in "$bam_dir/$sample_id"_*Unmapped.out.mate*; do
     oldname=$(basename "$oldpath")
-    newname=$(echo "$oldname" | sed -E s'/_Unmapped.out.mate([12])/_R\1.fastq/')
+    newname=$(echo "$oldname" | sed -E s'/_Unmapped.out.mate([12])/_R\1.fastq.gz/')
     newpath="$unmapped_dir"/"$newname"
-    mv -v "$oldpath" "$newpath"
-    gzip -f "$newpath"
+
+    #> The unmapped FASTQ files output by STAR have a weird format with "0:N" for R1 reads (instead of "1:N")
+    #> and "1:N" (instead of "2:N") for R2 reads, which Trinity doesn't accept. The code below will fix that:
+    [[ "$newpath" = *R1.fastq.gz ]] && sed -E 's/(^@.*) 0:N: (.*)/\1 1:N: \2/' "$oldpath" | gzip -f > "$newpath"
+    [[ "$newpath" = *R2.fastq.gz ]] && sed -E 's/(^@.*) 1:N: (.*)/\1 2:N: \2/' "$oldpath" | gzip -f > "$newpath"
 done
 
 ## Move STAR log files
