@@ -31,7 +31,7 @@ batch_column <- NA # Name of the column in the metadata containing batch IDs # n
 neg_column <- NA # Name of the column in the metadata indicating neg. control status; specify either `neg_column` or `neg_ids` to identify negative controls # nolint
 neg_ids <- NA # IDs of samples that are neg. controls; specify either `neg_column` or `neg_ids` to identify negative controls # nolint
 min_ASV <- 1000 # Min. total ASV count for a sample; sample will be excluded if it has a lower value # nolint
-qc_dir <- NA
+outdir_qc <- NA
 
 ## Check input
 stopifnot(file.exists(ps_in))
@@ -49,12 +49,20 @@ source(config_file)
 file_id <- sub("ps_", "", sub(".rds", "", basename(ps_out)))
 
 outdir <- dirname(ps_out)
-if (is.na(qc_dir)) qc_dir <- file.path(outdir, "qc")
+if (is.na(outdir_qc)) outdir_qc <- file.path(outdir, "qc")
+outdir_glom <- file.path(outdir, "glom")
 
 outfile_biom <- file.path(outdir, paste0(file_id, ".biom"))
-outfile_contam_df <- file.path(qc_dir, "contam_df.txt")
-contam_plot_prefix <- file.path(qc_dir, "contam_abund-plot")
-outfile_neg_control <- file.path(qc_dir, "neg_control_ASVs.txt")
+outfile_contam_df <- file.path(outdir_qc, "contam_df.txt")
+outprefix_contamplot <- file.path(outdir_qc, "contam_abund-plot")
+outfile_neg_control <- file.path(outdir_qc, "neg_control_ASVs.txt")
+
+outfile_phylum <- file.path(outdir_glom, paste0(file_id, "_phylum.rds"))
+outfile_class <- file.path(outdir_glom, paste0(file_id, "_class.rds"))
+outfile_order <- file.path(outdir_glom, paste0(file_id, "_order.rds"))
+outfile_family <- file.path(outdir_glom, paste0(file_id, "_family.rds"))
+outfile_genus <- file.path(outdir_glom, paste0(file_id, "_genus.rds"))
+outfile_species <- file.path(outdir_glom, paste0(file_id, "_species.rds"))
 
 ## Process parameters
 if (is.na(batch_column)) batch_column <- NULL
@@ -63,14 +71,15 @@ if (is.na(neg_column)) neg_column <- NULL
 
 ## Create output dirs if needed
 if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
-if (!dir.exists(qc_dir)) dir.create(qc_dir, recursive = TRUE)
+if (!dir.exists(outdir_glom)) dir.create(outdir, recursive = TRUE)
+if (!dir.exists(outdir_qc)) dir.create(outdir_qc, recursive = TRUE)
 
 ## Report
 cat("\n## Starting script ps_filter.R\n")
 Sys.time()
 cat("## Input phyloseq RDS file:                      ", ps_in, "\n")
 cat("## Output phyloseq RDS file:                     ", ps_out, "\n")
-cat("## Output QC file dir:                           ", qc_dir, "\n\n")
+cat("## Output QC file dir:                           ", outdir_qc, "\n\n")
 cat("## Contaminant-checking method:                  ", contam_method, "\n")
 cat("## Contaminant-checking threshold:               ", contam_thres, "\n\n")
 cat("## Name of metadata column w/ DNA concentrations:", conc_column, "\n")
@@ -104,7 +113,7 @@ conc_plot <- function(ASVs, plot_id, df) {
         labs(x = "DNA concentration", y = "ASV abundance") +
         theme_bw()
 
-    outfile_p_contam <- paste0(contam_plot_prefix, "_", plot_id, ".png")
+    outfile_p_contam <- paste0(outprefix_contamplot, "_", plot_id, ".png")
     ggsave(outfile_p_contam, p, width = 8, height = 8)
 }
 
@@ -284,7 +293,6 @@ if (any(ps_noncontam@tax_table[, "domain"] == "Eukaryota", na.rm = TRUE)) {
 bad_taxa <- c(taxa_names(chlr), taxa_names(mit), taxa_names(euk))
 all_taxa <- taxa_names(ps_noncontam)
 good_taxa <- all_taxa[!(all_taxa %in% bad_taxa)]
-
 ps_target <- prune_taxa(good_taxa, ps_noncontam)
 
 ## What proportion of ASVs were kept?
@@ -314,17 +322,35 @@ setdiff(sample_names(ps_target), sample_names(ps))
 ## Save RDS file of phyloseq object
 saveRDS(ps, ps_out)
 
+
+# CREATE PHYLOSEQ OBJECTS AGGLOMERATED BY TAXRANK ------------------------------
+ps_phylum <- tax_glom(ps, taxrank = "phylum")
+ps_class <- tax_glom(ps, taxrank = "class")
+ps_order <- tax_glom(ps, taxrank = "order")
+ps_family <- tax_glom(ps, taxrank = "family")
+ps_genus <- tax_glom(ps, taxrank = "genus")
+ps_species <- tax_glom(ps, taxrank = "species")
+
+saveRDS(ps_phylum, outfile_phylum)
+saveRDS(ps_class, outfile_class)
+saveRDS(ps_order, outfile_order)
+saveRDS(ps_family, outfile_family)
+saveRDS(ps_genus, outfile_genus)
+saveRDS(ps_species, outfile_species)
+
+
 # CREATE BIOM FILE -------------------------------------------------------------
 ps_biom <- subset_taxa(ps, taxa_sums(ps) > 1) # Filter out singleton ASVs
 biom <- make_biom(data = t(otu_table(ps_biom))) # Create biom object
 write_biom(biom, outfile_biom)
+
 
 # WRAP UP ----------------------------------------------------------------------
 cat("\n---------------------------------\n")
 cat("## Listing output files:\n")
 system(paste("ls -lh", ps_out))
 system(paste("ls -lh", outfile_contam_df))
-if (!is.null(conc_column)) system(paste0("ls -lh ", contam_plot_prefix, "*"))
+if (!is.null(conc_column)) system(paste0("ls -lh ", outprefix_contamplot, "*"))
 
 cat("\n## Done with script ps_filter.R\n")
 Sys.time()
