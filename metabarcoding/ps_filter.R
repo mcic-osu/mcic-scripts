@@ -24,13 +24,13 @@ config_file <- args[3]
 # config_file <- "workflow/config/config_ps-filt.R"
 
 ## Default parameter values
-contam_method <- "either" # "prevalence" (neg. control), "frequence" (DNA conc.), "either", "both", or "NA" # nolint
-contam_thres <- 0.1 # P-value for an ASV to be considered a contaminant # nolint
-conc_column <- NA # Name of the column in the metadata containing DNA concentrations # nolint
-batch_column <- NA # Name of the column in the metadata containing batch IDs # nolint
-neg_column <- NA # Name of the column in the metadata indicating neg. control status; specify either `neg_column` or `neg_ids` to identify negative controls # nolint
-neg_ids <- NA # IDs of samples that are neg. controls; specify either `neg_column` or `neg_ids` to identify negative controls # nolint
-min_ASV <- 1000 # Min. total ASV count for a sample; sample will be excluded if it has a lower value # nolint
+contam_method <- "either"     # "prevalence" (neg. control), "frequence" (DNA conc.), "either", "both", or "NA" # nolint
+contam_thres <- 0.1           # P-value for an ASV to be considered a contaminant # nolint
+conc_column <- NA             # Name of the column in the metadata containing DNA concentrations # nolint
+batch_column <- NA            # Name of the column in the metadata containing batch IDs # nolint
+neg_column <- NA              # Name of the column in the metadata indicating neg. control status; specify either `neg_column` or `neg_ids` to identify negative controls # nolint
+neg_ids <- NA                 # IDs of samples that are neg. controls; specify either `neg_column` or `neg_ids` to identify negative controls # nolint
+min_ASV <- 1000               # Min. total ASV count for a sample; sample will be excluded if it has a lower value # nolint
 outdir_qc <- NA
 
 ## Check input
@@ -71,7 +71,7 @@ if (is.na(neg_column)) neg_column <- NULL
 
 ## Create output dirs if needed
 if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
-if (!dir.exists(outdir_glom)) dir.create(outdir, recursive = TRUE)
+if (!dir.exists(outdir_glom)) dir.create(outdir_glom, recursive = TRUE)
 if (!dir.exists(outdir_qc)) dir.create(outdir_qc, recursive = TRUE)
 
 ## Report
@@ -82,9 +82,9 @@ cat("## Output phyloseq RDS file:                     ", ps_out, "\n")
 cat("## Output QC file dir:                           ", outdir_qc, "\n\n")
 cat("## Contaminant-checking method:                  ", contam_method, "\n")
 cat("## Contaminant-checking threshold:               ", contam_thres, "\n\n")
-cat("## Name of metadata column w/ DNA concentrations:", conc_column, "\n")
-cat("## Name of metadata column w/ batch IDs:         ", batch_column, "\n")
-cat("## Name of metadata column w/ negative controls: ", neg_column, "\n")
+cat("## Metadata column w/ DNA concentrations:        ", conc_column, "\n")
+cat("## Metadata column w/ batch IDs:                 ", batch_column, "\n")
+cat("## Metadata column w/ negative controls:         ", neg_column, "\n")
 cat("## IDs of samples that are negative controls:    ", neg_ids, "\n\n")
 cat("## Minimum nr of ASVs for a sample to be kept:   ", min_ASV, "\n")
 cat("-----------------------------\n\n")
@@ -200,7 +200,7 @@ if (!is.na(contam_method)) {
             nrow(contam_freq_df), "\n"
         )
 
-        ## Create a df for plotting that includes the ASV aundance values
+        ## Create a df for plotting that includes the ASV abundance values
         contam_plot_df <- otu_table(transform(ps_raw, "compositional")) %>%
             as.data.frame() %>%
             rownames_to_column("sample_id") %>%
@@ -211,20 +211,18 @@ if (!is.na(contam_method)) {
             ) %>%
             filter(ASV %in% contam_freq_df$ASV) %>%
             merge(., as(sample_data(ps_raw), "data.frame"),
-                by = "sample_id"
-            ) %>%
+                  by.x = "sample_id", by.y = "row.names") %>%
             merge(., select(contam_freq_df, ASV, p.freq), by = "ASV") %>%
             mutate(ASV = factor(ASV, levels = levels(contam_freq_df$ASV)))
 
         ## Split the ASVs into groups of 20, and create a plot for each group
-        ASV_list <- split(
+        asv_list <- split(
             contam_freq_df$ASV,
             ceiling(seq_along(contam_freq_df$ASV) / 12)
         )
-        plot_ids <- seq_along(ASV_list)
-        foo <- mapply(conc_plot, ASV_list, plot_ids,
-            MoreArgs = list(df = contam_plot_df)
-        )
+        plot_ids <- seq_along(asv_list)
+        foo <- mapply(conc_plot, asv_list, plot_ids,
+                      MoreArgs = list(df = contam_plot_df))
     }
 
     if (any(contam_df$p.prev < contam_thres)) {
@@ -348,9 +346,10 @@ write_biom(biom, outfile_biom)
 # WRAP UP ----------------------------------------------------------------------
 cat("\n---------------------------------\n")
 cat("## Listing output files:\n")
-system(paste("ls -lh", ps_out))
 system(paste("ls -lh", outfile_contam_df))
 if (!is.null(conc_column)) system(paste0("ls -lh ", outprefix_contamplot, "*"))
+system(paste("ls -lh", outdir_glom))
+system(paste("ls -lh", ps_out))
 
 cat("\n## Done with script ps_filter.R\n")
 Sys.time()
