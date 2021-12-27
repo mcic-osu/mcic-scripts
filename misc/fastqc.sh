@@ -5,7 +5,7 @@
 #SBATCH --output=slurm-fastqc-%j.out
 
 ## Bash strict settings
-set -ueo pipefail  # Bash strict settings
+set -ueo pipefail
 
 ## Load software
 module load fastqc
@@ -51,8 +51,9 @@ mkdir -p "$outdir"
 ## Report
 echo "## Starting script fastqc.sh..."
 date
-echo "Input FASTQ file:       $infile"
-echo "Output dir:             $outdir"
+echo
+echo "## Input FASTQ file:       $infile"
+echo "## Output dir:             $outdir"
 echo -e "--------------------\n"
 
 ## Run FastQC
