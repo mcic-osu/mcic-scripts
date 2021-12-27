@@ -60,7 +60,7 @@ echo -e "--------------------\n"
 fastqc --outdir="$outdir" "$infile"
 
 ## Report
-sample_id=$(basename "$infile" .fastq.gz)
+sample_id=$(basename "$infile" | sed 's/.fastq.*//')
 echo -e "\n## Listing output files:"
 ls -lh "$outdir"/"$sample_id"*fastqc*
 
