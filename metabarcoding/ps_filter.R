@@ -33,6 +33,9 @@ neg_ids <- NA                 # IDs of samples that are neg. controls; specify e
 min_ASV <- 1000               # Min. total ASV count for a sample; sample will be excluded if it has a lower value # nolint
 outdir_qc <- NA
 
+## Source config script
+source(config_file)
+
 ## Check input
 stopifnot(file.exists(ps_in))
 stopifnot(file.exists(config_file))
@@ -41,9 +44,6 @@ if (!is.na(neg_column) & !is.na(neg_ids)) {
     cat("## neg_column is", neg_column, "and neg_ids is", neg_ids, "\n")
     stop()
 }
-
-## Source config script
-source(config_file)
 
 ## Define output files
 file_id <- sub("ps_", "", sub(".rds", "", basename(ps_out)))
@@ -55,14 +55,15 @@ outdir_glom <- file.path(outdir, "glom")
 outfile_biom <- file.path(outdir, paste0(file_id, ".biom"))
 outfile_contam_df <- file.path(outdir_qc, "contam_df.txt")
 outprefix_contamplot <- file.path(outdir_qc, "contam_abund-plot")
+outfile_contam_plot_df <- file.path(outdir_qc, "contam_abund-plot_df.txt")
 outfile_neg_control <- file.path(outdir_qc, "neg_control_ASVs.txt")
 
-outfile_phylum <- file.path(outdir_glom, paste0(file_id, "_phylum.rds"))
-outfile_class <- file.path(outdir_glom, paste0(file_id, "_class.rds"))
-outfile_order <- file.path(outdir_glom, paste0(file_id, "_order.rds"))
-outfile_family <- file.path(outdir_glom, paste0(file_id, "_family.rds"))
-outfile_genus <- file.path(outdir_glom, paste0(file_id, "_genus.rds"))
-outfile_species <- file.path(outdir_glom, paste0(file_id, "_species.rds"))
+outfile_phylum <- file.path(outdir_glom, paste0("ps_", file_id, "_phylum.rds"))
+outfile_class <- file.path(outdir_glom, paste0("ps_", file_id, "_class.rds"))
+outfile_order <- file.path(outdir_glom, paste0("ps_", file_id, "_order.rds"))
+outfile_family <- file.path(outdir_glom, paste0("ps_", file_id, "_family.rds"))
+outfile_genus <- file.path(outdir_glom, paste0("ps_", file_id, "_genus.rds"))
+outfile_species <- file.path(outdir_glom, paste0("ps_", file_id, "_species.rds"))
 
 ## Process parameters
 if (is.na(batch_column)) batch_column <- NULL
@@ -106,7 +107,7 @@ conc_plot <- function(ASVs, plot_id, df) {
         filter(ASV %in% ASVs) %>%
         ggplot(aes(x = .data[[conc_column]], y = ASV_freq)) +
         geom_smooth(method = "lm", se = FALSE, size = 0.5, color = "red") +
-        geom_point(aes(color = salt_level, shape = inoculated)) +
+        #geom_point(aes(color = salt_level, shape = inoculated)) +
         facet_wrap(vars(ASV_p)) +
         scale_x_log10() +
         scale_y_log10() +
@@ -186,7 +187,7 @@ if (!is.na(contam_method)) {
     n_contam <- sum(contam_df$contaminant)
     cat("## FINAL nr of ASVs IDed as contaminants:", n_contam, "\n")
 
-    if (any(contam_df$p.freq < contam_thres)) {
+    if (any(contam_df$p.freq < contam_thres, na.rm = TRUE)) {
         ## For ASVs IDed as contaminants using the DNA concentration method,
         ## create a plot correlating DNA concentration with abundance
 
@@ -214,6 +215,7 @@ if (!is.na(contam_method)) {
                   by.x = "sample_id", by.y = "row.names") %>%
             merge(., select(contam_freq_df, ASV, p.freq), by = "ASV") %>%
             mutate(ASV = factor(ASV, levels = levels(contam_freq_df$ASV)))
+        write_tsv(contam_plot_df, outfile_contam_plot_df)
 
         ## Split the ASVs into groups of 20, and create a plot for each group
         asv_list <- split(
@@ -225,7 +227,7 @@ if (!is.na(contam_method)) {
                       MoreArgs = list(df = contam_plot_df))
     }
 
-    if (any(contam_df$p.prev < contam_thres)) {
+    if (any(contam_df$p.prev < contam_thres, na.rm = TRUE)) {
         ## First get ASVs with a significant value for neg-control based testing
         contam_prev_df <- contam_df %>%
             filter(p.prev < contam_thres)
@@ -245,8 +247,8 @@ if (!is.na(contam_method)) {
         contam_df$abund <- colSums(ps_raw@otu_table)
         contam_tax <- tax_table(prune_taxa(contam_df$contaminant, ps_raw))
         contam_df_yes <- contam_df %>% filter(contaminant == TRUE)
-        contam_df <- merge(contam_df_yes, contam_tax, by = "row.names") %>%
-            rename(ASV = Row.names) %>%
+        contam_df <- merge(contam_df_yes, contam_tax,
+                           by.x = "ASV", by.y = "row.names") %>%
             as_tibble() %>%
             arrange(p.freq, p.prev)
 
