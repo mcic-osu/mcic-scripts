@@ -1,9 +1,9 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=12:00:00
+#SBATCH --time=3:00:00
 #SBATCH --cpus-per-task=12
-#SBATCH --output=slurm-trim-%j.out
+#SBATCH --output=slurm-trimmomatic-%j.out
 
 
 # SETUP ------------------------------------------------------------------------
@@ -17,31 +17,36 @@ set -euo pipefail
 
 ## Help function
 Help() {
-    echo "## script to trim sequences in FASTQC files using Trimmomatic"
     echo
-    echo "## Syntax: trim.sh -b barcode-file -i input-dir -l library-ID -o output-dir -s steps-to-skip [-h]"
+    echo "## $0: Script to trim sequences in FASTQ files using Trimmomatic"
+    echo
+    echo "## Syntax: $0 -i <input R1 FASTQ> [ -o <output dir> ] [ -a <adapter-file ] [-h]"
     echo "## Options:"
-    echo "## -h     Print help."
-    echo "## -i     Input R1 sequence file (REQUIRED)"
-    echo "## -o     Output dir (default: results/trim/)"
-    echo "## -t     Trimming-stats dir (default: $outdir/log)"
-    echo "## -a     Adapter file (default: none. Other options: NexteraPE-PE.fa, TruSeq2-PE.fa, TruSeq3-PE.fa)"
+    echo "## -h         Print help."
+    echo "## -i STR     Input R1 sequence file (REQUIRED)"
+    echo "## -o STR     Output dir (default: 'results/trimmomatic/')"
+    echo "## -a STR     Adapter file (default: none. Other options: NexteraPE-PE.fa, TruSeq2-PE.fa, TruSeq3-PE.fa)"
+    echo "## -p STR     Trimming paramaters for Trimmomatic (default: 'LEADING:3 TRAILING:3 SLIDINGWINDOW:4:20 MINLEN:36')"
+    echo
+    echo "## Example command:"
+    echo "$0 -i data/fastq -o results/trimmomatic"
     echo
 }
 
 ## Option defaults
 R1_in=""
-outdir="results/trim"
-stats_dir="$outdir/log"
+outdir="results/trimmomatic"
 adapter_file="NA"
+trim_param="LEADING:3 TRAILING:3 SLIDINGWINDOW:4:20 MINLEN:36"
+# Strict mode: "AVGQUAL:28 LEADING:20 TRAILING:20 MINLEN:36"
 
 ## Parse options
-while getopts ':i:o:t:a:h' flag; do
+while getopts ':i:o:a:p:h' flag; do
     case "${flag}" in
     i) R1_in="$OPTARG" ;;
     o) outdir="$OPTARG" ;;
-    t) stats_dir="$OPTARG" ;;
     a) adapter_file="$OPTARG" ;;
+    p) trim_param="$OPTARG" ;;
     h) Help && exit 0 ;;
     \?) echo "## ERROR: Invalid option" && exit 1 ;;
     :) echo "## ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
@@ -51,12 +56,8 @@ done
 ## Other parameters
 n_cores="$SLURM_CPUS_ON_NODE"
 
-## Check input
-[[ -z "$R1_in" ]] && echo "## ERROR: Please provide R1 input FASTQ file with -i flag" && exit 1
-
-## Process options
+## Process parameters
 R1_suffix=$(echo "$R1_in" | sed -E 's/.*(_R?[0-9]).*fastq.gz/\1/')
-
 R2_suffix=${R1_suffix/1/2}
 R2_in=${R1_in/$R1_suffix/$R2_suffix}
 
@@ -65,7 +66,8 @@ R2_basename=$(basename "$R2_in" .fastq.gz)
 
 sample_ID=${R1_basename/"$R1_suffix"/}
 
-discard_dir="$outdir"/discard                   # Dir for discarded sequences
+stats_dir="$outdir/log"
+discard_dir="$outdir"/discard                          # Dir for discarded sequences
 trimstats_file="$stats_dir"/"$sample_ID".trimstats.txt # File with Trimmomatic stdout
 
 R1_out="$outdir"/"$R1_basename".fastq.gz # Output R1 file
@@ -81,34 +83,47 @@ else
     adapter_arg=" ILLUMINACLIP:$adapter_file:2:30:10"
 fi
 
+## Trimming parameters arg
+trim_param_arg=" $trim_param"
+
 ## Report
 echo "## Starting script trimmomatic.sh"
 date
-echo "## Input R1: $R1_in"
-echo "## Input R2: $R2_in"
-echo "## Output R1: $R1_out"
-echo "## Output R2: $R2_out"
-echo "## File for discarded R1 seqs: $R1_discard"
-echo "## File for discarded R2 seqs: $R2_discard"
-echo "## Adapter argument: $adapter_arg"
 echo
-
-[[ ! -d $discard_dir ]] && mkdir -p "$discard_dir" # Create dir for discarded sequences if it doesn't exist
-[[ ! -d $stats_dir ]] && mkdir -p "$stats_dir"     # Create dir for stdout file if it doesn't exist
-
-[[ ! -f $R1_in ]] && echo "## ERROR: Input file R1_in does not exist" && exit 1
-[[ ! -f $R2_in ]] && echo "## ERROR: Input file R2_in does not exist" && exit 1
-
+echo "## Input R1:                     $R1_in"
+echo "## Output dir:                   $outdir"
+echo "## Trimming params:              $trim_param"
+echo "## Adapter argument:             $adapter_arg"
+echo
+echo "## Input R2:                     $R2_in"
+echo "## Output R1:                    $R1_out"
+echo "## Output R2:                    $R2_out"
+echo "## File for discarded R1 seqs:   $R1_discard"
+echo "## File for discarded R2 seqs:   $R2_discard"
+echo
 echo "## Listing input files:"
 ls -lh "$R1_in"
 ls -lh "$R2_in"
+echo -e "--------------------------------------\n"
+
+## Check input
+[[ -z "$R1_in" ]] && echo "## ERROR: Please provide R1 input FASTQ file with -i flag" && exit 1
+[[ ! -f $R1_in ]] && echo "## ERROR: Input file R1_in ($R1_in) does not exist" && exit 1
+[[ ! -f $R2_in ]] && echo "## ERROR: Input file R2_in ($R2_in) does not exist" && exit 1
+
+## Create output dirs
+mkdir -p "$discard_dir"   # Create dir for discarded sequences if it doesn't exist
+mkdir -p "$stats_dir"     # Create dir for stdout file if it doesn't exist
 
 
 # RUN TRIMMOMATIC --------------------------------------------------------------
 echo -e "## Starting Trimmomatic run..."
-trimmomatic PE -threads "$n_cores" -phred33 \
-    "$R1_in" "$R2_in" "$R1_out" "$R1_discard" "$R2_out" "$R2_discard"$adapter_arg \
-    AVGQUAL:28 LEADING:20 TRAILING:20 MINLEN:36 \
+trimmomatic PE \
+    -threads "$n_cores" \
+    -phred33 \
+    "$R1_in" "$R2_in" \
+    "$R1_out" "$R1_discard" \
+    "$R2_out" "$R2_discard"${adapter_arg}${trim_param_arg} \
     2>&1 | tee "$trimstats_file"
 
 
