@@ -26,7 +26,7 @@ Help() {
     echo "## -i STR     Input R1 sequence file (REQUIRED)"
     echo "## -o STR     Output dir (default: 'results/trimmomatic/')"
     echo "## -a STR     Adapter file (default: none. Other options: NexteraPE-PE.fa, TruSeq2-PE.fa, TruSeq3-PE.fa)"
-    echo "## -p STR     Trimming paramaters for Trimmomatic (default: 'LEADING:3 TRAILING:3 SLIDINGWINDOW:4:20 MINLEN:36')"
+    echo "## -p STR     Trimming paramaters for Trimmomatic (default: 'LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36')"
     echo
     echo "## Example command:"
     echo "$0 -i data/fastq -o results/trimmomatic"
@@ -37,8 +37,10 @@ Help() {
 R1_in=""
 outdir="results/trimmomatic"
 adapter_file="NA"
-trim_param="LEADING:3 TRAILING:3 SLIDINGWINDOW:4:20 MINLEN:36"
-# Strict mode: "AVGQUAL:28 LEADING:20 TRAILING:20 MINLEN:36"
+
+trim_param="LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36"
+# Same as https://rpubs.com/ednachiang/MetaG_Pipeline
+# Alternatively, example of a much stricter mode: "AVGQUAL:28 LEADING:20 TRAILING:20 MINLEN:36"
 
 ## Parse options
 while getopts ':i:o:a:p:h' flag; do
