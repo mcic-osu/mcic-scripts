@@ -9,19 +9,7 @@
 #SBATCH --output=slurm-STAR-align-%j.out
 
 
-# SETUP ---------------------------------------------------------------------
-## Load software
-STAR_ENV=/users/PAS0471/jelmer/.conda/envs/star-env
-SAMTOOLS_ENV=/users/PAS0471/jelmer/miniconda3/envs/samtools-env
-
-source ~/.bashrc
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
-source activate $STAR_ENV
-conda activate --stack $SAMTOOLS_ENV
-
-## Bash strict mode
-set -euo pipefail
-
+# PARSE OPTIONS ----------------------------------------------------------------
 ## Help
 Help() {
   echo
@@ -44,9 +32,6 @@ Help() {
   echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
   echo
 }
-
-## Hardcoded parameters
-GFF_FORMAT="--sjdbGTFtagExonParentTranscript Parent --sjdbGTFtagExonParentGene Parent"
 
 ## Option defaults
 R1_in=""
@@ -73,6 +58,23 @@ while getopts ':i:o:r:m:t:T:a:A:h' flag; do
   :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
   esac
 done
+
+
+# SETUP ---------------------------------------------------------------------
+## Load software
+STAR_ENV=/users/PAS0471/jelmer/.conda/envs/star-env
+SAMTOOLS_ENV=/users/PAS0471/jelmer/miniconda3/envs/samtools-env
+
+source ~/.bashrc
+[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
+source activate $STAR_ENV
+conda activate --stack $SAMTOOLS_ENV
+
+## Bash strict mode
+set -euo pipefail
+
+## Hardcoded parameters
+GFF_FORMAT="--sjdbGTFtagExonParentTranscript Parent --sjdbGTFtagExonParentGene Parent"
 
 ## Process parameters
 R2_in=${R1_in/_R1_/_R2_}                            # R2 FASTQ file
