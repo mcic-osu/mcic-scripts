@@ -8,15 +8,7 @@
 #SBATCH --output=slurm-STAR-index-%j.out
 
 
-# SETUP ---------------------------------------------------------------------
-## Load software
-source ~/.bashrc
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/.conda/envs/star-env
-
-## Strict bash settings
-set -euo pipefail
-
+# PARSE OPTIONS ----------------------------------------------------------------
 ## Help function
 Help() {
   echo
@@ -36,9 +28,6 @@ Help() {
   echo
 }
 
-## Hardcoded parameters
-READLEN=150
-
 ## Option defaults
 ref_fa=""
 index_dir=""
@@ -57,6 +46,19 @@ while getopts ':i:a:o:s:h' flag; do
   :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
   esac
 done
+
+
+# SETUP ------------------------------------------------------------------------
+## Load software
+source ~/.bashrc
+[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
+source activate /users/PAS0471/jelmer/.conda/envs/star-env
+
+## Strict bash settings
+set -euo pipefail
+
+## Hardcoded parameters
+READLEN=150
 
 ## Report
 echo "## Starting script star_index.sh"
