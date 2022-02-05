@@ -51,7 +51,7 @@ qc <- read_tsv(qc_file, show_col_types = FALSE) %>%
   select(-denoised_F)
 colnames(qc)[1] <- "sample_id"
 
-# PLOTSS WITH ABSOLUTE NUMBERS -------------------------------------------------
+# PLOTS WITH ABSOLUTE NUMBERS --------------------------------------------------
 ## Barplot
 p_bars <- qc %>%
   mutate(fastq_filtering = input - fastq_filtered,
@@ -62,7 +62,7 @@ p_bars <- qc %>%
          `(remaining)` = length_filtered) %>%
   select(SampleID, fastq_filtering, denoising, read_merging,
          chimera_removal, length_filtering, `(remaining)`) %>%
-  pivot_longer(cols = -SampleID,
+  pivot_longer(cols = -sample_id,
                names_to = "status",
                values_to = "proportion") %>%
   mutate(status = factor(status, levels = status_levels2)) %>%
@@ -165,31 +165,3 @@ system(paste("ls -lh", plotfile_bars_prop))
 system(paste("ls -lh", plotfile_lines_prop))
 
 cat("\n## Done with script ASV_qcplots.R\n")
-
-
-# POINTS PLOT ------------------------------------------------------------------
-
-# p_points <- qc %>%
-#   pivot_longer(cols = -SampleID, names_to = "status", values_to = "count") %>%
-#   mutate(status = factor(status, levels = status_levels)) %>%
-#   ggplot(aes(x = count, y = SampleID, color = status)) +
-#   geom_point(size = 3) +
-#   theme_bw() +
-#   labs(x = "Number of sequences", y = NULL)
-
-# p_points_prop <- qc_prop %>%
-#   pivot_longer(cols = -SampleID,
-#                names_to = "status",
-#                values_to = "proportion_retained") %>%
-#   mutate(status = factor(status, levels = status_levels)) %>%
-#   ggplot(aes(x = proportion_retained, y = SampleID, color = status)) +
-#   geom_point(size = 3) +
-#   scale_x_continuous(limits = c(NA, 1), expand = c(0, 0)) +
-#   theme_bw() +
-#   labs(y = NULL)
-
-#ggsave(file.path(outdir, "nseq_points.png"), p_points,
-#       bg = "white", width = 7, height = 15)
-
-#ggsave(file.path(outdir,"nseq_prop_points.png"), p_points_prop,
-#       bg = "white", width = 7, height = 15)
