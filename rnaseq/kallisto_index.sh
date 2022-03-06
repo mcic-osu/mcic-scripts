@@ -7,19 +7,19 @@
 #SBATCH --job-name=kallisto_index
 #SBATCH --output=slurm-kallisto_index-%j.out
 
-
-# PARSE OPTIONS ----------------------------------------------------------------
 ## Help function
 Help() {
   echo
   echo "## $0: Index a transcriptome with Kallisto."
   echo
-  echo "## Syntax: $0 -i <transcriptome-fasta> -o <transcriptome-index> [-h]"
+  echo "## Syntax: $0 -i <transcriptome-fasta> -o <transcriptome-index> ..."
   echo
-  echo "## Options:"
+  echo "## Required options:"
+  echo "##    -i STR    Input: transcriptomoe FASTA file"
+  echo "##    -o STR    Output: transcriptome index file"
+  echo
+  echo "## Other options:"
   echo "##    -h        Print this help message"
-  echo "##    -i STR    Input: transcriptomoe FASTA file (REQUIRED)"
-  echo "##    -o STR    Output: transcriptome index file (REQUIRED)"
   echo
   echo "## Example: $0 -i -o results/trinity/trans.fa -r results/kallisto/trans.idx"
   echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
@@ -27,7 +27,7 @@ Help() {
 }
 
 ## Parse command-line options
-while getopts ':i:o:r::h' flag; do
+while getopts ':i:o:h' flag; do
   case "${flag}" in
   i) transcriptome="$OPTARG" ;;
   o) index="$OPTARG" ;;
@@ -40,8 +40,7 @@ done
 
 # SETUP ---------------------------------------------------------------------
 ## Load software
-source ~/.bashrc
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
+module load python/3.6-conda5.2
 source activate /users/PAS0471/jelmer/miniconda3/envs/kallisto-env
 
 ## Bash strict mode
@@ -51,12 +50,14 @@ set -euo pipefail
 echo "## Starting script kallisto_index.sh"
 date
 echo
-echo "## Transcriptome FASTA (input):                  $transcriptome"
-echo "## Transcriptome index (output):                 $index"
-echo -e "------------------------\n"
 
 ## Check inputs
 [[ ! -f "$transcriptome" ]] && echo "## ERROR: Input transcriptome file (-i) $transcriptome does not exist" >&2 && exit 1
+
+## Report
+echo "## Transcriptome FASTA (input):                  $transcriptome"
+echo "## Transcriptome index (output):                 $index"
+echo -e "------------------------\n"
 
 ## Create output dirs if needed
 outdir=$(dirname "$index")
@@ -68,9 +69,7 @@ kallisto index -i "$index" "$transcriptome"
 
 
 # WRAP-UP ----------------------------------------------------------------------
-echo -e "\n-------------------------------"
-
-echo -e "\n## Listing output file:"
+echo -e "\n----------------------------\n## Listing output file:"
 ls -lh "$index"
 
 echo -e "\n## Done with script kallisto_index.sh"

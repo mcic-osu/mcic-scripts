@@ -7,20 +7,20 @@
 #SBATCH --job-name=kallisto
 #SBATCH --output=slurm-kallisto-%j.out
 
-
-# PARSE OPTIONS ----------------------------------------------------------------
 ## Help function
 Help() {
   echo
   echo "## $0: Quantify transcripts with Kallisto."
   echo
-  echo "## Syntax: $0 -i <R1-FASTQ-infile> -o <BAM-outdir> -r <ref-index-dir> [ -a <gff-file> ... ] [-h]"
+  echo "## Syntax: $0 -i <R1-FASTQ-infile> -o <BAM-outdir> -r <ref-index-dir> ..."
   echo
-  echo "## Options:"
+  echo "## Required options:"
+  echo "##    -i STR    R1 FASTQ input file (The name of the R2 file will be inferred by the script.)"
+  echo "##    -r STR    Reference index"
+  echo "##    -o STR    Output dir"
+  echo
+  echo "## Other options:"
   echo "##    -h        Print this help message"
-  echo "##    -i STR    R1 FASTQ input file (REQUIRED; note that the name of the R2 file will be inferred by the script.)"
-  echo "##    -r STR    Reference index (REQUIRED)"
-  echo "##    -o STR    Output dir (REQUIRED)"
   echo
   echo "## Example: $0 -i data/fastq/S01_L001_R1.fastq.gz -o results/kallisto -r refdata/trans.idx"
   echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
@@ -42,8 +42,7 @@ done
 
 # SETUP ---------------------------------------------------------------------
 ## Load software
-source ~/.bashrc
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
+module load python/3.6-conda5.2
 source activate /users/PAS0471/jelmer/miniconda3/envs/kallisto-env
 
 ## Bash strict mode
@@ -58,6 +57,12 @@ outdir_full=$outdir/"$sample_id"
 echo "## Starting script kallisto_quant.sh"
 date
 echo
+
+## Check inputs
+[[ ! -f "$R1" ]] && echo "## ERROR: Input file R1_in (-i) $R1 does not exist" >&2 && exit 1
+[[ ! -f "$R2" ]] && echo "## ERROR: Input file R2_in $R2 does not exist" >&2 && exit 1
+
+## Report
 echo "## Input R1 FASTQ file:                          $R1"
 echo "## Transcriptome index:                          $index"
 echo "## Output dir - base:                            $outdir"
@@ -66,10 +71,6 @@ echo "## Output dir - full:                            $outdir_full"
 echo "## Sample ID (as inferred by the script):        $sample_id"
 echo "## R2 FASTQ file (as inferred by the script):    $R2"
 echo -e "------------------------\n"
-
-## Check inputs
-[[ ! -f "$R1" ]] && echo "## ERROR: Input file R1_in (-i) $R1 does not exist" >&2 && exit 1
-[[ ! -f "$R2" ]] && echo "## ERROR: Input file R2_in $R2 does not exist" >&2 && exit 1
 
 ## Create output dir if needed
 mkdir -p "$outdir"
@@ -84,11 +85,9 @@ kallisto quant \
 
 #? -b = number of bootstraps
 
+
 # WRAP-UP ----------------------------------------------------------------------
-echo -e "\n-------------------------------"
-
-echo -e "\n## Listing output files:"
+echo -e "\n--------------------------\n## Listing output files:"
 ls -lh "$outdir_full"
-
 echo -e "\n## Done with script kallisto_quant.sh"
 date
