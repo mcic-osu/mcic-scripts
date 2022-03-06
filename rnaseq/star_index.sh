@@ -14,14 +14,17 @@ Help() {
   echo
   echo "## $0: Index a reference genome FASTA file with STAR."
   echo
-  echo "## Syntax: $0 -i <input-FASTA> -o <output-dir> [ -a <ref-annotation> ] [ -s <index-size> ] [-sh]"
+  echo "## Syntax: $0 -i <input-FASTA> -o <output-dir> ..."
   echo
-  echo "## Options:"
-  echo "## -h         Print this help message"
-  echo "## -i STR     Input reference FASTA file (REQUIRED)"
-  echo "## -o STR     Output dir for index files (REQUIRED)"
+  echo "## Required options:"
+  echo "## -i STR     Input reference FASTA file"
+  echo "## -o STR     Output dir for index files"
+  echo
+  echo "## Other options:"
   echo "## -a STR     Reference annotation (GFF/GTF) file (default: no GFF/GTF, but this is not recommended)"
   echo "## -s INT     Index size (default: automatically determined from genome size)"
+  echo "## -r INT     Index size (default: '150' (bp))"
+  echo "## -h         Print this help message"
   echo
   echo "## Example: $0 -i refdata/my_genome.fa -o refdata/star_index -a refdata/my_genome.gff"
   echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
@@ -33,14 +36,16 @@ ref_fa=""
 index_dir=""
 index_size=""
 gff=""
+read_len=150
 
 ## Parse command-line options
-while getopts ':i:a:o:s:h' flag; do
+while getopts ':i:a:o:s:r:h' flag; do
   case "${flag}" in
   i) ref_fa="$OPTARG" ;;
   a) gff="$OPTARG" ;;
   o) index_dir="$OPTARG" ;;
   s) index_size="$OPTARG" ;;
+  r) read_len="$OPTARG" ;;
   h) Help && exit 0 ;;
   \?) echo "## $0: ERROR: Invalid option" >&2 && exit 1 ;;
   :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
@@ -50,28 +55,27 @@ done
 
 # SETUP ------------------------------------------------------------------------
 ## Load software
-source ~/.bashrc
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
+module load python/3.6-conda5.2
 source activate /users/PAS0471/jelmer/.conda/envs/star-env
 
 ## Strict bash settings
 set -euo pipefail
 
-## Hardcoded parameters
-READLEN=150
-
 ## Report
 echo "## Starting script star_index.sh"
 date
-echo
-echo "## Input FASTA file:             $ref_fa"
-[[ "$gff" != "" ]] && echo "## Input GFF file:               $gff"
-echo "## Genome index dir (output):    $index_dir"
 echo
 
 ## Check inputs
 [[ ! -f "$ref_fa" ]] && echo "## ERROR: Input FASTA (-i) $ref_fa does not exist" >&2 && exit 1
 [[ "$gff" != "" ]] && [[ ! -f "$gff" ]] && echo "## ERROR: Input file GFF (-a) $gff does not exist" >&2 && exit 1
+
+## Report
+echo "## Input FASTA file:             $ref_fa"
+[[ "$gff" != "" ]] && echo "## Input GFF file:               $gff"
+echo "## Genome index dir (output):    $index_dir"
+echo "## Read length:                  $read_len"
+echo
 
 ## Determine index size
 if [ "$index_size" = "" ]; then
@@ -91,7 +95,7 @@ else
 fi
 
 ## Overhang length should be read length minus 1
-overhang=$(( READLEN - 1 ))
+overhang=$(( read_len - 1 ))
 
 ## Make output dir if needed
 mkdir -p "$index_dir"
