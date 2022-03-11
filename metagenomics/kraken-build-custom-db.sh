@@ -8,21 +8,20 @@
 
 ## Help function
 Help() {
-    # Display Help
     echo
     echo "## $0: Build a custom Kraken db."
     echo
-    echo "## Syntax: $0 -d <kraken-db-dir> -g <genome-dir> [-u <URL>] [-U <URL-file>] [-h]"
+    echo "## Syntax: $0 -d <kraken-db-dir> ..."
     echo 
     echo "## Required options:"
-    echo "## -d     Dir for Kraken db (REQUIRED)"
+    echo "## -d     Dir for Kraken db"
     echo
     echo "## Other options"
-    echo "## -g     Dir with/for custom genomes (default: 'genomes' in the Kraken db dir)"
-    echo "## -a     Custom genomes are already downloaded - add all genomes in the -g dir"
-    echo "## -u     URL for genome FASTA file"
-    echo "## -U     File with URLs for genome FASTA files"
-    echo "## -h     Print help."
+    echo "## -g     Custom genome FASTA file to be added to the db"
+    echo "## -G     Dir with (if files are already present) or for (if files are to be downloaded) custom genomes"
+    echo "## -u     URL for genome FASTA file to be downloaded and added to the db"
+    echo "## -U     File with URLs for genome FASTA files to be downloaded and added to the db"
+    echo "## -h     Print this help message"
     echo
     echo "## Example: $0 -d refdata/kraken/my-db -g refdata/kraken/my-db/genomes -u https://genome.fa"
     echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
@@ -36,14 +35,13 @@ echo -e "\n## Starting script kraken-build-custom-db.sh..."
 date
 
 ## Software
-### DB-building needs to be done with a manually Kraken2 -- Conda version gives errors
+### DB-building needs to be done with a manually installed Kraken2 -- Conda version gives errors
 KRAK_BINDIR=/fs/project/PAS0471/jelmer/software/kraken2-2.0.8-beta
 KRAK_BIN="$KRAK_BINDIR"/kraken2-build
 
 ### Still need to load kraken2-env for "dustmasker", needed to mask low-complexity sequences
 ### https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#masking-of-low-complexity-sequences
-source ~/.bashrc
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
+module load python/3.6-conda5.2
 source activate /users/PAS0471/jelmer/miniconda3/envs/kraken2-env
 
 ## Bash strict mode
@@ -55,15 +53,16 @@ genome_dir=""
 genome_url=""
 genome_url_file=""
 genome_dir_all=false
+genome_fa=""
 
 ## Get command-line options
-while getopts ':d:u:U:g:ah' flag; do
+while getopts ':d:u:U:g:G:h' flag; do
     case "${flag}" in
     d) db_dir="$OPTARG" ;;
-    g) genome_dir="$OPTARG" ;;
+    g) genome_fa="$OPTARG" ;;
+    G) genome_dir="$OPTARG" ;;
     u) genome_url="$OPTARG" ;;
     U) genome_url_file="$OPTARG" ;;
-    a) genome_dir_all="true" ;;
     h) Help && exit 0 ;;
     \?) echo "## ERROR: Invalid option" >&2 && exit 1 ;;
     :) echo "## ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
@@ -79,20 +78,17 @@ lib_dir="$db_dir"/library
     echo -e "\n## ERROR: Use either -u (genome URL) or -U (URL file), not both" && exit 1
 
 ## If no URLs were specified, then use all genomes in the genome dir 
-[[ "$genome_url" = "" ]] && [[ "$genome_url_file" = "" ]] && \
+[[ "$genome_url" = "" ]] && [[ "$genome_url_file" = "" ]] && [[ "$genome_fa" = "" ]] && [[ "$genome_dir" != "" ]] && \
     genome_dir_all=true && \
-    echo -e "\n## NOTE: no URLs specified, using all genomes in genome dir"
-
-## Define genome dir if it wasn't specified with an option
-[[ "$genome_dir" = "" ]] && genome_dir="$db_dir"/genomes
+    echo -e "\n## NOTE: Using all genomes in genome dir $genome_dir"
 
 ## Report
 echo
-echo "## Database dir:                      $db_dir"
-echo "## Genome dir:                        $genome_dir"
-echo "## Using all genomes in genome dir:   $genome_dir_all"
-[[ "$genome_url" != "" ]] && echo "## Custom genome URL:                 $genome_url"
-[[ "$genome_url_file" != "" ]] && echo "## Custom genome URL file:            $genome_url_file"
+echo "## Database dir:                 $db_dir"
+[[ "$genome_dir" = "" ]] && echo "## Genome dir:                   $genome_dir"
+[[ "$genome_fa" != "" ]] && echo "## Custom genome FASTA:          $genome_fa"
+[[ "$genome_url" != "" ]] && echo "## Custom genome URL:            $genome_url"
+[[ "$genome_url_file" != "" ]] && echo "## Custom genome URL file:       $genome_url_file"
 echo -e "---------------\n\n"
 
 ## Make DB directory
@@ -119,22 +115,22 @@ fi
 
 if [ "$genome_url_file" != "" ]; then
     while read -r genome_url; do
-        genome_fa="$genome_dir"/"$(basename "$genome_url")"
-        genome_fa=${genome_fa%.*}  # Remove .gz
+        genome_fa_one="$genome_dir"/"$(basename "$genome_url")"
+        genome_fa_one=${genome_fa_one%.*}  # Remove .gz
 
-        echo "## Custom genome: $genome_fa"
+        echo "## Custom genome: $genome_fa_one"
 
-        if [ ! -f "$genome_fa" ]; then
+        if [ ! -f "$genome_fa_one" ]; then
             echo "## Custom genome not present, will download..."
             wget -q -P "$genome_dir" "$genome_url"
             echo "## Unzipping custom genome..."
-            gunzip "$genome_fa".gz
+            gunzip "$genome_fa_one".gz
         else
             echo "## Custom genome already present."
         fi
 
         echo "## Listing custom genome:"
-        ls -lh "$genome_fa"
+        ls -lh "$genome_fa_one"
         echo
     done<"$genome_url_file"
 fi
@@ -180,11 +176,21 @@ fi
 
 
 # ADD CUSTOM GENOMES -----------------------------------------------------------
-if [ "$genome_url" != "" ]; then
+## If there is a single genome to be added
+if [ "$genome_fa" != "" ]; then
     echo -e "\n## Adding custom genome $genome_fa to Kraken library..."
     "$KRAK_BIN" --add-to-library "$genome_fa" --db "$db_dir"
 fi
 
+## If all genomes in a dir should be added
+if [ "$genome_dir_all" = true ]; then
+    for genome_fa in "$genome_dir"/*; do
+        echo -e "\n## Adding custom genome $genome_fa to Kraken library..."
+        "$KRAK_BIN" --add-to-library "$genome_fa" --db "$db_dir"
+    done
+fi
+
+## If a file with URLs was provided
 if [ "$genome_url_file" != "" ]; then
     while read -r genome_url; do
         genome_fa="$genome_dir"/"$(basename "$genome_url")"
@@ -194,13 +200,6 @@ if [ "$genome_url_file" != "" ]; then
         "$KRAK_BIN" --add-to-library "$genome_fa" --db "$db_dir"
 
     done<"$genome_url_file"
-fi
-
-if [ "$genome_dir_all" = true ]; then
-    for genome_fa in "$genome_dir"/*; do
-        echo -e "\n## Adding custom genome $genome_fa to Kraken library..."
-        "$KRAK_BIN" --add-to-library "$genome_fa" --db "$db_dir"
-    done
 fi
 
 
