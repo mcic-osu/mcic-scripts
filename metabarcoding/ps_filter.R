@@ -245,10 +245,8 @@ if (!is.na(contam_method)) {
 
         ## What proportion of our count data were removed as contaminants?
         prop_kept <- sum(sample_sums(ps_noncontam)) / sum(sample_sums(ps_raw))
-        cat(
-            "## Prop count data retained after contaminant removal:",
-            prop_kept, "\n"
-        )
+        cat("## Prop count data retained after contaminant removal:",
+            prop_kept, "\n")
     } else {
         ps_noncontam <- ps_raw
     }
@@ -289,7 +287,7 @@ ps_target <- prune_taxa(good_taxa, ps_noncontam)
 ## What proportion of ASVs were kept?
 prop_kept <- sum(sample_sums(ps_target)) / sum(sample_sums(ps_noncontam))
 cat("## Prop count data kept after removing off-target taxa:", prop_kept, "\n")
-
+cat("## Nr of ASVs removed:", nsamples(ps_target) - nsamples(ps), "\n")
 
 # FILTER SAMPLES ---------------------------------------------------------------
 cat("\n------------------------------------\n")
@@ -299,13 +297,11 @@ sums <- sample_sums(ps_target)
 head(sums[order(sums)])
 
 ## Remove samples with low counts
-ps <- subset_samples(
-    ps_target,
-    sample_sums(ps_target) > min_ASV
-)
+ps <- subset_samples(ps_target,
+                     sample_sums(ps_target) > min_ASV)
 
 ## Report how many samples were removed
-nsamples_rm <- nrow(ps_target@otu_table) - nrow(ps@otu_table)
+nsamples_rm <- nsamples(ps_target) - nsamples(ps)
 cat("## Nr of samples removed after ASV count filtering:", nsamples_rm, "\n")
 cat("## IDs of samples removed after ASV count filtering:\n")
 setdiff(sample_names(ps_target), sample_names(ps))
@@ -322,6 +318,9 @@ write_biom(biom, outfile_biom)
 
 # WRAP UP ----------------------------------------------------------------------
 cat("\n---------------------------------\n")
+cat("## Number of samples in final object:", nsamples(ps), "\n")
+cat("## Number of ASVs in final object:", ntaxa(ps), "\n")
+
 cat("## Listing output files:\n")
 system(paste("ls -lh", outfile_contam_df))
 if (!is.null(conc_column)) system(paste0("ls -lh ", outprefix_contamplot, "*"))

@@ -8,33 +8,33 @@
 
 
 # SETUP ---------------------------------------------------------------------
-## Load software
-source ~/.bashrc
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/.conda/envs/subread-env
-
-## Strict bash settings
-set -euo pipefail
-
 ## Help function
 Help() {
   echo
   echo "## $0: Create a matrix with per-gene read counts for a directory of BAM files."
   echo
-  echo "## Syntax: $0 -i <input-FASTA> -o <output-dir> [ -a <ref-annotation> ] [ -s <index-size> ] [-sh]"
+  echo "## Syntax: $0 -i <input-FASTA> -o <output-dir> -a <gff-file> ..."
   echo
-  echo "## Options:"
-  echo "## -h         Print this help message"
-  echo "## -i STR     Input directory with BAM files (REQUIRED)"
-  echo "## -o STR     Output directory (REQUIRED)"
-  echo "## -a STR     Reference annotation (GFF/GTF) file (REQUIRED"
+  echo "## Required options:"
+  echo "## -i STR     Input directory with BAM files"
+  echo "## -o STR     Output directory"
+  echo "## -a STR     Reference annotation (GFF/GTF) file"
+  echo "## Other options:"
   echo "## -t STR     Feature type in GFF file to count (default: 'gene')"
   echo "## -g STR     Name of the feature type in the GFF file (default: 'Name')"
+  echo "## -h         Print this help message"
   echo
   echo "## Example: $0 -i results/bam -o results/featurecounts -a refdata/my_genome.gff"
   echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
   echo
 }
+
+## Load software
+module load python/3.6-conda5.2
+source activate /users/PAS0471/jelmer/.conda/envs/subread-env
+
+## Strict bash settings
+set -euo pipefail
 
 ## Option defaults
 indir=""
@@ -63,8 +63,14 @@ outfile=$outdir/counts.txt
 ## Report
 echo
 echo "## Starting script featurecounts.sh"
+date
 echo
-date 
+
+## Check inputs
+[[ ! -d "$indir" ]] && echo "## ERROR: Input dir (-d) $indir does not exist" >&2 && exit 1
+[[ ! -f "$gff" ]] && echo "## ERROR: Input file GFF (-a) $gff does not exist" >&2 && exit 1
+
+## Report
 echo "## BAM input dir (-i):              $indir"
 echo "## Output dir (-o):                 $outdir"
 echo "## Annotation (GTF/GFF) file (-a):  $gff"
@@ -74,10 +80,6 @@ echo
 echo "## Output file:                     $outfile"
 echo "## Number of BAM files:             $(find "$indir"/*bam | wc -l)"
 echo -e "-------------------\n"
-
-## Check inputs
-[[ ! -d "$indir" ]] && echo "## ERROR: Input dir (-d) $indir does not exist" >&2 && exit 1
-[[ ! -f "$gff" ]] && echo "## ERROR: Input file GFF (-a) $gff does not exist" >&2 && exit 1
 
 ## Make output dir if needed
 mkdir -p "$outdir"
@@ -109,8 +111,7 @@ featureCounts \
 
 
 # WRAP UP ----------------------------------------------------------------------
-echo -e "\n------------------------"
-echo -e "\n## Listing output file:"
+echo -e "\n------------------------\n## Listing output file:"
 ls -lh "$outfile"
 
 echo -e "\n## Done with script featurecounts.sh"
