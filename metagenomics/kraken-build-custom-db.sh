@@ -144,19 +144,14 @@ fi
 
 
 # DOWNLOAD TAXON-SPECIFIC LIBRARIES --------------------------------------------
-if [ ! -d "$lib_dir"/bacteria ]; then
-    echo -e "\n## Downloading library: bacteria..."
-    "$KRAK_BIN" --download-library bacteria --db "$db_dir"
-fi
-
 if [ ! -d "$lib_dir"/archaea ]; then
     echo -e "\n## Downloading library: archaea..."
     "$KRAK_BIN" --download-library archaea --db "$db_dir"
 fi
 
-if [ ! -d "$lib_dir"/viral ]; then
-    echo -e "\n## Downloading library: viral..."
-    "$KRAK_BIN" --download-library viral --db "$db_dir"
+if [ ! -d "$lib_dir"/bacteria ]; then
+    echo -e "\n## Downloading library: bacteria..."
+    "$KRAK_BIN" --download-library bacteria --db "$db_dir"
 fi
 
 if [ ! -d "$lib_dir"/plasmid ]; then
@@ -164,9 +159,29 @@ if [ ! -d "$lib_dir"/plasmid ]; then
     "$KRAK_BIN" --download-library plasmid --db "$db_dir"
 fi
 
+if [ ! -d "$lib_dir"/viral ]; then
+    echo -e "\n## Downloading library: viral..."
+    "$KRAK_BIN" --download-library viral --db "$db_dir"
+fi
+
 if [ ! -d "$lib_dir"/human ]; then
     echo -e "\n## Downloading library: human..."
     "$KRAK_BIN" --download-library human --db "$db_dir"
+fi
+
+if [ ! -d "$lib_dir"/fungi ]; then
+    echo -e "\n## Downloading library: fungi..."
+    "$KRAK_BIN" --download-library fungi --db "$db_dir"
+fi
+
+if [ ! -d "$lib_dir"/plant ]; then
+    echo -e "\n## Downloading library: plant..."
+    "$KRAK_BIN" --download-library plant --db "$db_dir"
+fi
+
+if [ ! -d "$lib_dir"/protozoa ]; then
+    echo -e "\n## Downloading library: protozoa..."
+    "$KRAK_BIN" --download-library protozoa --db "$db_dir"
 fi
 
 if [ ! -d "$lib_dir"/UniVec_Core ]; then
