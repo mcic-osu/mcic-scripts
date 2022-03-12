@@ -10,19 +10,21 @@ SUBSAMPLE_SCRIPT="mcic-scripts/misc/fqsub.sh"
 ## Help function
 Help()
 {
-   echo "## fqsub_dir.sh: script to subsample a dir of FASTQ files using seqtk"
+   echo
+   echo "## fqsub_dir.sh: script to subsample a dir with FASTQ files using seqtk"
    echo
    echo "## Syntax: fqsub_dir.sh -i <input-dir> -o <output-dir> ..."
+   echo "## NOTE: Don't submit this script to the SLURM queue -- it will itself spawn jobs instead."
    echo
    echo "## Required options:"
-   echo "## -i     Input dir with FASTQ files"
-   echo "## -o     Output dir for subsamples FASTQ files"
+   echo "## -i     Input dir"
+   echo "## -o     Output dir"
    echo
    echo "## Other options:"
    echo "## -n     Number of reads (default: 100,000)"
-   echo "## -p     Proportion of reads (alternative to -n)"
+   echo "## -p     Proportion of reads (alternative to -n, not applied by default)"
    echo "## -s     Sample ID pattern (to select only matching filenames)"
-   echo "## -h     Print help."
+   echo "## -h     Print this help message"
    echo
 }
 

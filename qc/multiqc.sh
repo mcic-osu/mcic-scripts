@@ -4,27 +4,23 @@
 #SBATCH --time=60
 #SBATCH --out=slurm-multiqc-%j.out
 
-
 # SETUP ------------------------------------------------------------------------
-## Load software 
-source ~/.bashrc
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/.conda/envs/multiqc-env
-
-## Bash strict mode
-set -euo pipefail
-
 ## Help function
 Help() {
   echo
-  echo "## $0: Run FastQC for a single FASTQ file."
+  echo "## $0: Run MultiQC."
   echo
   echo "## Syntax: $0 -i <input-dir> -o <output-dir> [-h]"
-  echo "## Options:"
-  echo "## -h       Print this help message"
+  echo
+  echo "## Required options:"
   echo "## -i STR   Input directory with e.g. FastQC output files (REQUIRED)"
-  echo "## -o STR   Output directory (REQUIRED)"
-  echo "## Example: $0 -i results/fastqc -o results/multiqc"
+  echo "## -o STR   Output directory for MultiQC report (REQUIRED)"
+  echo
+  echo "## Other options:"
+  echo "## -h       Print this help message"
+  echo
+  echo "## Example command:"
+  echo "## $0 -i results/fastqc -o results/multiqc"
   echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
   echo
 }
@@ -43,6 +39,14 @@ while getopts ':i:o:h' flag; do
   :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
   esac
 done
+
+## Load software 
+source ~/.bashrc
+[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
+source activate /users/PAS0471/jelmer/.conda/envs/multiqc-env
+
+## Bash strict mode
+set -euo pipefail
 
 ## Input checks
 [[ $indir = "" ]] && echo "## ERROR: Please specify input file with -i" && exit 1
