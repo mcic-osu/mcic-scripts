@@ -50,6 +50,7 @@ max_map=10
 intron_min=21
 intron_max=0
 do_count=false
+more_args=""
 
 ## Parse command-line options
 while getopts ':i:o:r:m:t:T:a:A:ch' flag; do
@@ -116,7 +117,7 @@ echo "## Also perform read counting:                   $do_count"
 echo "## Max nr of alignments for a read:              $max_map"  # If this nr is exceeded, read is considered unmapped
 echo "## Min intron size:                              $intron_min"
 echo "## Max intron size (0 => STAR default):          $intron_max"
-echo "## Additional args to pass to STAR:              $more_args"
+[[ "$more_args" != "" ]] && echo "## Additional args to pass to STAR:              $more_args"
 echo
 echo "## Sample ID (as inferred by the script):        $sample_id"
 echo "## R2 FASTQ file (as inferred by the script):    $R2_in"
@@ -177,3 +178,5 @@ fi
 
 echo -e "\n## Done with script star_align.sh"
 date
+echo
+echo
