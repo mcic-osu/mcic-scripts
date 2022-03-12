@@ -4,7 +4,7 @@
 #SBATCH --time=24:00:00
 #SBATCH --mem=80G
 #SBATCH --cpus-per-task=20
-#SBATCH --output=slurm-kraken-build-%j.out
+#SBATCH --output=slurm-kraken-build-standard-%j.out
 
 ## Help function
 Help() {
@@ -31,12 +31,6 @@ echo -e "\n## Starting script kraken-build-std-db.sh..."
 date
 
 ## Software
-### DB-building needs to be done with a manually installed Kraken2 -- Conda version gives errors
-KRAK_BINDIR=/fs/project/PAS0471/jelmer/software/kraken2-2.0.8-beta
-KRAK_BIN="$KRAK_BINDIR"/kraken2-build
-
-### Still need to load kraken2-env for "dustmasker", needed to mask low-complexity sequences
-### https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#masking-of-low-complexity-sequences
 module load python/3.6-conda5.2
 source activate /users/PAS0471/jelmer/miniconda3/envs/kraken2-env
 
@@ -59,17 +53,19 @@ done
 ## Check input
 [[ "$db_dir" = "" ]] && echo -e "\n## ERROR: must specify a db dir with -d" && exit 1
 
+## Make DB directory
+mkdir -p "$db_dir" #/taxonomy "$db_dir"/library
+
 ## Report
 echo
 echo "## Database dir:                 $db_dir"
-echo -e "---------------\n\n"
+echo -e "------------------\n"
 
-## Make DB directory
-mkdir -p "$db_dir"
 
 # BUILD THE KRAKEN2 DATABASE ---------------------------------------------------
 echo "## Building the Kraken database..."
-"$KRAK_BIN" --build \
+#"$KRAK_BIN" --standard \
+kraken2-build --standard \
     --db "$db_dir" \
     --threads "$SLURM_CPUS_ON_NODE"
 
