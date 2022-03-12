@@ -2,15 +2,13 @@
 
 #SBATCH --account=PAS0471
 #SBATCH --time=3:00:00
-#SBATCH --ntasks=1
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=100G
-#SBATCH --job-name=STAR_align
+#SBATCH --ntasks=1
+#SBATCH --job-name=STAR-align
 #SBATCH --output=slurm-STAR-align-%j.out
 
-
-# PARSE OPTIONS ----------------------------------------------------------------
-## Help
+## Help function
 Help() {
   echo
   echo "## $0: Align sequences from a FASTQ file to a reference genome with STAR."
@@ -19,8 +17,8 @@ Help() {
   echo
   echo "## Required options:"
   echo "##    -i STR    R1 FASTQ input file name (The name of the R2 file will be inferred by the script.)"
-  echo "##    -r STR    STAR reference genome index dir"
   echo "##    -o STR    BAM output dir"
+  echo "##    -r STR    STAR reference genome index dir"
   echo
   echo "## Other options:"
   echo "##    -a STR    Reference annotation (GFF/GTF) file (default: no GFF/GTF, but this is not recommended)"
@@ -36,6 +34,13 @@ Help() {
   echo
 }
 
+## Report
+echo "## Starting script star_align.sh"
+date
+echo
+
+
+# PARSE OPTIONS ----------------------------------------------------------------
 ## Option defaults
 R1_in=""
 bam_dir=""
@@ -93,11 +98,6 @@ if [ "$gff" != "" ]; then
 else
     gff_arg=""
 fi
-
-## Report
-echo "## Starting script star_align.sh"
-date
-echo
 
 ## Check inputs
 [[ ! -f "$R1_in" ]] && echo "## ERROR: Input file R1_in (-i) $R1_in does not exist" >&2 && exit 1
