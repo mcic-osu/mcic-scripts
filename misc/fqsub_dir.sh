@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 # SETUP ------------------------------------------------------------------------
 ## Bash strict settings
 set -euo pipefail
@@ -11,16 +10,19 @@ SUBSAMPLE_SCRIPT="mcic-scripts/misc/fqsub.sh"
 ## Help function
 Help()
 {
-   echo "## fqsub_dir.sh: script to subsample fastq files using seqtk"
+   echo "## fqsub_dir.sh: script to subsample a dir of FASTQ files using seqtk"
    echo
-   echo "## Syntax: fqsub_dir.sh -i <input-dir> -o <output-dir> [ -n <n_reads> | -p <prop_reads> ] [-h]"
-   echo "## Options:"
-   echo "## -h     Print help."
-   echo "## -i     Input dir (REQUIRED)"
-   echo "## -o     Output dir (REQUIRED)"
-   echo "## -n     Number of reads (default: 100000)"
-   echo "## -p     Proportion of reads"
+   echo "## Syntax: fqsub_dir.sh -i <input-dir> -o <output-dir> ..."
+   echo
+   echo "## Required options:"
+   echo "## -i     Input dir with FASTQ files"
+   echo "## -o     Output dir for subsamples FASTQ files"
+   echo
+   echo "## Other options:"
+   echo "## -n     Number of reads (default: 100,000)"
+   echo "## -p     Proportion of reads (alternative to -n)"
    echo "## -s     Sample ID pattern (to select only matching filenames)"
+   echo "## -h     Print help."
    echo
 }
 
@@ -50,12 +52,12 @@ done
 echo
 echo -e "\n## Starting script fqsub_dir.sh"
 date
-echo "## Input dir: $indir"
-echo "## Output dir: $outdir"
-echo "## Number of reads to keep: $n_reads"
-echo "## Proportion of reads to keep: $prop_reads"
-echo "## Sample ID pattern: $sample_pattern"
-echo -e "----------------------------------\n\n"
+echo "## Input dir:                    $indir"
+echo "## Output dir:                   $outdir"
+echo "## Number of reads to keep:      $n_reads"
+echo "## Proportion of reads to keep:  $prop_reads"
+echo "## Sample ID pattern:            $sample_pattern"
+echo -e "------------------------\n"
 
 ## Make output dir if needed
 mkdir -p "$outdir"
