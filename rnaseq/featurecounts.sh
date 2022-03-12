@@ -6,8 +6,6 @@
 #SBATCH --job-name=featurecounts
 #SBATCH --out=slurm-featurecounts-%j.out
 
-
-# SETUP ---------------------------------------------------------------------
 ## Help function
 Help() {
   echo
@@ -17,8 +15,9 @@ Help() {
   echo
   echo "## Required options:"
   echo "## -i STR     Input directory with BAM files"
-  echo "## -o STR     Output directory"
+  echo "## -o STR     Output file (e.g. 'counts.txt')"
   echo "## -a STR     Reference annotation (GFF/GTF) file"
+  echo
   echo "## Other options:"
   echo "## -t STR     Feature type in GFF file to count (default: 'gene')"
   echo "## -g STR     Name of the feature type in the GFF file (default: 'Name')"
@@ -29,6 +28,13 @@ Help() {
   echo
 }
 
+# SETUP ---------------------------------------------------------------------
+## Report
+echo
+echo "## Starting script featurecounts.sh"
+date
+echo
+
 ## Load software
 module load python/3.6-conda5.2
 source activate /users/PAS0471/jelmer/.conda/envs/subread-env
@@ -38,7 +44,7 @@ set -euo pipefail
 
 ## Option defaults
 indir=""
-outdir=""
+outfile=""
 gff=""
 t_opt=gene
 g_opt=Name
@@ -47,24 +53,18 @@ g_opt=Name
 while getopts ':i:o:a:t:g:h' flag; do
   case "${flag}" in
   i) indir="$OPTARG" ;;
-  o) outdir="$OPTARG" ;;
+  o) outfile="$OPTARG" ;;
   a) gff="$OPTARG" ;;
   t) g_opt="$OPTARG" ;;
   g) t_opt="$OPTARG" ;;
   h) Help && exit 0 ;;
-  \?) echo "## $0: ERROR: Invalid option" >&2 && exit 1 ;;
-  :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
+  \?) echo -e "\n## $0: ERROR: Invalid option -$OPTARG\n\n" >&2 && exit 1 ;;
+  :) echo -e "\n## $0: ERROR: Option -$OPTARG requires an argument\n\n" >&2 && exit 1 ;;
   esac
 done
 
 ## Process parameters
-outfile=$outdir/counts.txt
-
-## Report
-echo
-echo "## Starting script featurecounts.sh"
-date
-echo
+outdir=$(dirname "$outfile")
 
 ## Check inputs
 [[ ! -d "$indir" ]] && echo "## ERROR: Input dir (-d) $indir does not exist" >&2 && exit 1
@@ -72,7 +72,7 @@ echo
 
 ## Report
 echo "## BAM input dir (-i):              $indir"
-echo "## Output dir (-o):                 $outdir"
+echo "## Output file (-o):                $outfile"
 echo "## Annotation (GTF/GFF) file (-a):  $gff"
 echo "## Feature type (-t):               $t_opt"
 echo "## Aggregation ID (-g):             $g_opt"
@@ -111,8 +111,11 @@ featureCounts \
 
 
 # WRAP UP ----------------------------------------------------------------------
-echo -e "\n------------------------\n## Listing output file:"
+echo -e "\n------------------------"
+echo "## Listing output file:"
 ls -lh "$outfile"
 
 echo -e "\n## Done with script featurecounts.sh"
 date
+echo
+echo

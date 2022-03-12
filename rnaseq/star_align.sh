@@ -2,15 +2,13 @@
 
 #SBATCH --account=PAS0471
 #SBATCH --time=3:00:00
-#SBATCH --ntasks=1
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=100G
-#SBATCH --job-name=STAR_align
+#SBATCH --ntasks=1
+#SBATCH --job-name=STAR-align
 #SBATCH --output=slurm-STAR-align-%j.out
 
-
-# PARSE OPTIONS ----------------------------------------------------------------
-## Help
+## Help function
 Help() {
   echo
   echo "## $0: Align sequences from a FASTQ file to a reference genome with STAR."
@@ -19,8 +17,8 @@ Help() {
   echo
   echo "## Required options:"
   echo "##    -i STR    R1 FASTQ input file name (The name of the R2 file will be inferred by the script.)"
-  echo "##    -r STR    STAR reference genome index dir"
   echo "##    -o STR    BAM output dir"
+  echo "##    -r STR    STAR reference genome index dir"
   echo
   echo "## Other options:"
   echo "##    -a STR    Reference annotation (GFF/GTF) file (default: no GFF/GTF, but this is not recommended)"
@@ -36,6 +34,13 @@ Help() {
   echo
 }
 
+## Report
+echo "## Starting script star_align.sh"
+date
+echo
+
+
+# PARSE OPTIONS ----------------------------------------------------------------
 ## Option defaults
 R1_in=""
 bam_dir=""
@@ -45,6 +50,7 @@ max_map=10
 intron_min=21
 intron_max=0
 do_count=false
+more_args=""
 
 ## Parse command-line options
 while getopts ':i:o:r:m:t:T:a:A:ch' flag; do
@@ -94,11 +100,6 @@ else
     gff_arg=""
 fi
 
-## Report
-echo "## Starting script star_align.sh"
-date
-echo
-
 ## Check inputs
 [[ ! -f "$R1_in" ]] && echo "## ERROR: Input file R1_in (-i) $R1_in does not exist" >&2 && exit 1
 [[ ! -f "$R2_in" ]] && echo "## ERROR: Input file R2_in $R2_in does not exist" >&2 && exit 1
@@ -116,7 +117,7 @@ echo "## Also perform read counting:                   $do_count"
 echo "## Max nr of alignments for a read:              $max_map"  # If this nr is exceeded, read is considered unmapped
 echo "## Min intron size:                              $intron_min"
 echo "## Max intron size (0 => STAR default):          $intron_max"
-echo "## Additional args to pass to STAR:              $more_args"
+[[ "$more_args" != "" ]] && echo "## Additional args to pass to STAR:              $more_args"
 echo
 echo "## Sample ID (as inferred by the script):        $sample_id"
 echo "## R2 FASTQ file (as inferred by the script):    $R2_in"
@@ -177,3 +178,5 @@ fi
 
 echo -e "\n## Done with script star_align.sh"
 date
+echo
+echo

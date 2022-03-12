@@ -6,32 +6,33 @@
 #SBATCH --job-name=fqsub
 #SBATCH --output=slurm-fqsub-%j.out
 
+## Help function
+Help()
+{
+   echo "## $0: Script to subsample FASTQ files using seqtk"
+   echo
+   echo "## Syntax: fqsub.sh -i <R1_in> -I <R2_in> -o <R1_out> -o <R2_out>"
+   echo
+   echo "## Required options:"
+   echo "## -i     R1 (forward) FASTQ input file"
+   echo "## -I     R2 (reverse) FASTQ input file"
+   echo "## -o     R1 (forward) FASTQ output file"
+   echo "## -O     R2 (reverse) FASTQ output file"
+   echo
+   echo "## Other options:"
+   echo "## -n     Number of reads to select (default: 100,000)"
+   echo "## -p     Proportion of reads to select"
+   echo "## -h     Print this help message"
+   echo
+}
 
 # SET-UP & PARSE ARGS ----------------------------------------------------------
 ## Load software
-source ~/.bashrc
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
+module load python/3.6-conda5.2
 source activate /users/PAS0471/jelmer/miniconda3/envs/seqtk-env
 
 ## Bash strict settings
 set -euo pipefail
-
-## Help function
-Help()
-{
-   echo "## fqsub.sh: script to subsample fastq files using seqtk"
-   echo
-   echo "## Syntax: fqsub.sh -i <R1_in> -I <R2_in> -o <R1_out> -o <R2_out> [ -n <n_reads> | -p <prop_reads> ] [-h]"
-   echo "## Options:"
-   echo "## -h     Print help."
-   echo "## -i     R1 input file (REQUIRED)"
-   echo "## -I     R2 input file (REQUIRED)"
-   echo "## -o     R1 output file (REQUIRED)"
-   echo "## -O     R2 output file (REQUIRED)"
-   echo "## -n     Number of reads (default: 100,000)"
-   echo "## -p     Proportion of reads"
-   echo
-}
 
 ## Other parameters
 random_seed=$RANDOM
@@ -61,32 +62,33 @@ done
 [[ ! -f "$R1_in" ]] && echo "ERROR: Input file $R1_in does not exist" >&2 && exit 1
 [[ ! -f "$R2_in" ]] && echo "ERROR: Input file $R2_in does not exist" >&2 && exit 1
 
-## Process parameters
-### Number of reads in input FASTQ file
+## Number of reads in input FASTQ file
 n_reads_total=$(zcat "$R1_in" | awk '{ s++ } END{ print s/4 }')
-### If prop_reads is given, calculate n_reads
+
+## If prop_reads is given, calculate n_reads
 [[ $prop_reads != "NA" ]] && n_reads=$(python -c "print(int($n_reads_total * $prop_reads))")
-### Create output dir if needed
+
+## Create output dir if needed
 outdir=$(dirname "$R1_in")
 mkdir -p "$outdir"
 
 ## Report
 echo -e "\n## Starting script fqsub_dir.sh..."
 date
-echo "## Input R1:       $R1_in"
-echo "## Input R2:       $R2_in"
-echo "## Output R1:      $R1_out"
-echo "## Output R2:      $R2_out"
-echo "## Random seed:    $random_seed"
+echo "## Input R1 file:               $R1_in"
+echo "## Input R2 file:               $R2_in"
+echo "## Output R1 file:              $R1_out"
+echo "## Output R2 file:              $R2_out"
+echo "## Random seed:                 $random_seed"
 echo
-echo "## Total (input) number of reads: $n_reads_total"
+echo "## Total (input) nr of reads:   $n_reads_total"
 [[ $prop_reads != "NA" ]] && echo "## Proportion of reads to keep: $prop_reads"
-echo "## Number of reads to keep: $n_reads"
+echo "## Number of reads to keep:     $n_reads"
 echo
 echo "## Listing input files:"
 ls -lh "$R1_in"
 ls -lh "$R2_in"
-echo -e "----------------------------------\n\n"
+echo -e "---------------------------\n"
 
 
 # RUN SEQTK TO SUBSAMPLE FASTQ -------------------------------------------------
