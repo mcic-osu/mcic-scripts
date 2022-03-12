@@ -39,8 +39,8 @@ date
 
 ## Software
 ### DB-building needs to be done with a manually installed Kraken2 -- Conda version gives errors
-KRAK_BINDIR=/fs/project/PAS0471/jelmer/software/kraken2-2.0.8-beta
-KRAK_BIN="$KRAK_BINDIR"/kraken2-build
+#KRAK_BINDIR=/fs/project/PAS0471/jelmer/software/kraken2-2.0.8-beta
+#KRAK_BIN="$KRAK_BINDIR"/kraken2-build
 
 ### Still need to load kraken2-env for "dustmasker", needed to mask low-complexity sequences
 ### https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#masking-of-low-complexity-sequences
@@ -188,88 +188,92 @@ fi
 # DOWNLOAD NCBI TAXONOMY -------------------------------------------------------
 if [ ! -d "$db_dir"/taxonomy ]; then
     echo -e "\n## Downloading taxonomy..."
-    "$KRAK_BIN" --download-taxonomy --db "$db_dir"
+    kraken2-build --download-taxonomy --db "$db_dir"
 fi
 
 
 # DOWNLOAD TAXON-SPECIFIC LIBRARIES --------------------------------------------
 if [ ! -d "$lib_dir"/archaea ] && [ "$include_archaea" = true ]; then
     echo -e "\n## Downloading library: archaea..."
-    "$KRAK_BIN" --download-library archaea --db "$db_dir"
+    kraken2-build --download-library archaea --db "$db_dir"
 fi
 
 if [ ! -d "$lib_dir"/bacteria ] && [ "$include_bacteria" = true ]; then
     echo -e "\n## Downloading library: bacteria..."
-    "$KRAK_BIN" --download-library bacteria --db "$db_dir"
+    kraken2-build --download-library bacteria --db "$db_dir"
 fi
 
 if [ ! -d "$lib_dir"/plasmid ] && [ "$include_plasmid" = true ]; then
     echo -e "\n## Downloading library: plasmid..."
-    "$KRAK_BIN" --download-library plasmid --db "$db_dir"
+    kraken2-build --download-library plasmid --db "$db_dir"
 fi
 
 if [ ! -d "$lib_dir"/viral ] && [ "$include_viral" = true ]; then
     echo -e "\n## Downloading library: viral..."
-    "$KRAK_BIN" --download-library viral --db "$db_dir"
+    kraken2-build --download-library viral --db "$db_dir"
 fi
 
 if [ ! -d "$lib_dir"/human ] && [ "$include_human" = true ]; then
     echo -e "\n## Downloading library: human..."
-    "$KRAK_BIN" --download-library human --db "$db_dir"
+    kraken2-build --download-library human --db "$db_dir"
 fi
 
 if [ ! -d "$lib_dir"/fungi ] && [ "$include_fungi" = true ]; then
     echo -e "\n## Downloading library: fungi..."
-    "$KRAK_BIN" --download-library fungi --db "$db_dir"
+    kraken2-build --download-library fungi --db "$db_dir"
 fi
 
 if [ ! -d "$lib_dir"/plant ] && [ "$include_archaea" = true ]; then
     echo -e "\n## Downloading library: plant..."
-    "$KRAK_BIN" --download-library plant --db "$db_dir"
+    kraken2-build --download-library plant --db "$db_dir"
 fi
 
 if [ ! -d "$lib_dir"/protozoa ] && [ "$include_protozoa" = true ]; then
     echo -e "\n## Downloading library: protozoa..."
-    "$KRAK_BIN" --download-library protozoa --db "$db_dir"
+    kraken2-build --download-library protozoa --db "$db_dir"
 fi
 
 if [ ! -d "$lib_dir"/UniVec_Core ] && [ "$include_univec" = true ]; then
     echo -e "\n## Downloading library: UniVec_Core..."
-    "$KRAK_BIN" --download-library UniVec_Core --db "$db_dir"
+    kraken2-build --download-library UniVec_Core --db "$db_dir"
 fi
 
 
 # ADD CUSTOM GENOMES -----------------------------------------------------------
-## If there is a single genome to be added
 if [ "$genome_fa" != "" ]; then
+    
+    ## If there is a single genome to be added
     echo -e "\n## Adding custom genome $genome_fa to Kraken library..."
-    "$KRAK_BIN" --add-to-library "$genome_fa" --db "$db_dir"
-fi
+    kraken2-build --add-to-library "$genome_fa" --db "$db_dir"
 
-## If all genomes in a dir should be added
-if [ "$genome_dir_all" = true ]; then
+elif [ "$genome_dir_all" = true ]; then
+    
+    ## If all genomes in a dir should be added
     for genome_fa in "$genome_dir"/*; do
         echo -e "\n## Adding custom genome $genome_fa to Kraken library..."
-        "$KRAK_BIN" --add-to-library "$genome_fa" --db "$db_dir"
+        kraken2-build --add-to-library "$genome_fa" --db "$db_dir"
     done
-fi
 
-## If a file with URLs was provided
-if [ "$genome_url_file" != "" ]; then
+elif [ "$genome_url_file" != "" ]; then
+    
+    ## If a file with URLs was provided
     while read -r genome_url; do
         genome_fa="$genome_dir"/"$(basename "$genome_url")"
         genome_fa=${genome_fa%.*}  # Remove .gz
 
         echo -e "\n## Adding custom genome $genome_fa to Kraken library..."
-        "$KRAK_BIN" --add-to-library "$genome_fa" --db "$db_dir"
-
+        kraken2-build --add-to-library "$genome_fa" --db "$db_dir"
     done<"$genome_url_file"
+
+else
+    echo -e "\n## Not adding any custom genomes..."
 fi
 
 
 # BUILD THE KRAKEN2 DATABASE ---------------------------------------------------
-echo -e "\n## Building final database..."
-"$KRAK_BIN" --build \
+echo -e "\n## Building the final database..."
+kraken2-build \
+    --build \
     --db "$db_dir" \
     --threads "$SLURM_CPUS_ON_NODE"
 
