@@ -16,30 +16,35 @@ n_cores <- as.integer(args[3])
 # taxa_rds <- "results/taxonomy/taxa_dada.rds"
 # n_cores <- 8
 
+## Constants
+TAX_URL <- "https://zenodo.org/record/4587955/files/silva_nr99_v138.1_train_set.fa.gz"
+SPECIES_URL <- "https://zenodo.org/record/4587955/files/silva_species_assignment_v138.1.fa.gz"
+
 ## Create output dir if needed
 outdir <- dirname(taxa_rds)
 if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
 
-## Other variables/constants
-tax_URL <- "https://zenodo.org/record/4587955/files/silva_nr99_v138.1_train_set.fa.gz"
-tax_file <- file.path(outdir, basename(tax_URL))
-species_URL <- "https://zenodo.org/record/4587955/files/silva_species_assignment_v138.1.fa.gz"
-species_file <- file.path(outdir, basename(species_URL))
-
+## OUtput files
+tax_file <- file.path(outdir, basename(TAX_URL))
+species_file <- file.path(outdir, basename(SPECIES_URL))
 qc_file <- file.path(outdir, "tax_prop_assigned_dada.txt")
 plot_file <- file.path(outdir, "tax_prop_assigned_dada.png")
 
+## Settings
 tax_levels <- c("domain", "phylum", "class", "order", "family", "genus", "species")
 
 ## Report
-cat("\n## Starting script tax_assign_dada.R\n")
+message("\n## Starting script tax_assign_dada.R\n")
 Sys.time()
-cat("## Sequence table RDS file (input):", seqtab_rds, "\n")
-cat("## Taxa RDS file (output):", taxa_rds, "\n")
-cat("## Proportion-assigned QC file (output):", qc_file, "\n")
-cat("## Number of cores:", n_cores, "\n\n")
-cat("## Taxonomic assignment file (downloaded input):", tax_file, "\n")
-cat("## Species assignment file (downloaded input):", species_file, "\n\n")
+message()
+message("## Sequence table RDS file (input):", seqtab_rds)
+message("## Taxa RDS file (output):", taxa_rds)
+message("## Proportion-assigned QC file (output):", qc_file)
+message("## Number of cores:", n_cores)
+message()
+message("## Taxonomic assignment file (downloaded input):", tax_file)
+message("## Species assignment file (downloaded input):", species_file)
+message()
 
 ## Function to get the proportion of ASVs assigned to taxa
 qc_tax <- function(taxa, tax_levels) {
@@ -67,10 +72,10 @@ if (!file.exists(tax_file)) download.file(url = tax_URL, destfile = tax_file)
 if (!file.exists(species_file)) download.file(url = species_URL, destfile = species_file)
 
 ## Assign taxonomy
-cat("\n## Now assigning taxonomy...\n")
+message("\n## Assigning taxonomy...")
 taxa <- assignTaxonomy(seqtab, tax_file, multithread = n_cores)
 
-cat("\n## Now adding species-level assignments...\n")
+message("\n## Adding species-level assignments...")
 taxa <- addSpecies(taxa, species_file)
 colnames(taxa) <- tax_levels
 
@@ -81,10 +86,8 @@ saveRDS(taxa, taxa_rds)
 # QC TAX. ASSIGNMENTS ----------------------------------------------------------
 ## Create df with proportion assigned
 prop_assigned <- qc_tax(taxa, tax_levels = tax_levels)
-write.table(prop_assigned, qc_file,
-            sep = "\t", quote = FALSE, row.names = FALSE)
-
-cat("\n## Proportion of ASVs assigned to different taxonomic levels - DADA:\n")
+write_tsv(prop_assigned, qc_file)
+message("\n## Prop. ASVs assigned to taxonomy:")
 print(prop_assigned)
 
 ## Create barplot
@@ -100,11 +103,11 @@ ggsave(plot_file, p, width = 7, height = 7)
 
 
 # WRAP UP ----------------------------------------------------------------------
-## Report
-cat("\n## Listing output files:\n")
+message("\n## Listing output files:")
 system(paste("ls -lh", taxa_rds))
 system(paste("ls -lh", qc_file))
 system(paste("ls -lh", plot_file))
 
-cat("\n## Done with script tax_assign_dada.R\n")
+message("\n## Done with script tax_assign_dada.R")
 Sys.time()
+message()
