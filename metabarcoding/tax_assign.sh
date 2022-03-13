@@ -2,14 +2,13 @@
 
 #SBATCH --account=PAS0471
 #SBATCH --time=5:00:00
-#SBATCH --output=slurm-assign_tax-%j.out
-#SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
+#SBATCH --output=slurm-assign_tax-%j.out
 
 ## Process command-line arguments
 seqtab_rds=$1
 taxa_rds=$2
-algo=${3-decipher}
+algo=${3-dada}
 
 ## Other variables
 SCRIPT_DADA=mcic-scripts/metabarcoding/tax_assign_dada.R
@@ -30,11 +29,15 @@ echo "## Taxonomic assignment algorithm: $algo"
 
 ## Run the R script
 if [ "$algo" = "dada" ]; then
-    echo -e "## Submitting script assign_tax_dada.R...\n"
+    echo -e "## Running script assign_tax_dada.R...\n"
     Rscript "$SCRIPT_DADA" "$seqtab_rds" "$taxa_rds" "$n_cores"
 fi
 
 if [ "$algo" = "decipher" ]; then
-    echo -e "## Submitting script assign_tax_decipher.R...\n"
+    echo -e "## Running script assign_tax_decipher.R...\n"
     Rscript "$SCRIPT_DECI" "$seqtab_rds" "$taxa_rds" "$n_cores"
 fi
+
+echo "## Done with script tax_assign.sh"
+date
+echo
