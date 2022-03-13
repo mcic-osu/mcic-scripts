@@ -1,21 +1,34 @@
 #!/usr/bin/env Rscript
 
-#SBATCH --account=PAS0471 # nolint
-#SBATCH --output=slurm-ps_split-%j.out # nolint
+#SBATCH --account=PAS0471
+#SBATCH --output=slurm-ps_agglomtaxaqq-%j.out
+
 
 # SETUP ------------------------------------------------------------------------
-## Load packages
-if (!"pacman" %in% installed.packages()) install.packages("pacman")
-packages <- c(
-    "BiocManager", "tidyverse", "phyloseq", "decontam",
-    "microbiome", "biomformat"
-)
-pacman::p_load(char = packages)
+message("\n## Starting script ps_agglomtaxa.R")
+Sys.time()
+message()
 
 ## Process command-line arguments
-args <- commandArgs(trailingOnly = TRUE)
-ps_in <- args[1]
-outdir <- args[2]
+if(!"argparse" %in% installed.packages()) install.packages("argparse")
+library(argparse)
+
+parser <- ArgumentParser()
+parser$add_argument("-i", "--ps",
+                    type = "character", required = TRUE,
+                    help = "Input file (phyloseq object RDS) (REQUIRED)")
+parser$add_argument("-o", "--outdir",
+                    type = "character", required = TRUE,
+                    help = "Output dir (REQUIRED)")
+args <- parser$parse_args()
+ps_in <- args$ps
+outdir <- args$outdir
+
+## Load packages
+if (!"pacman" %in% installed.packages()) install.packages("pacman")
+packages <- c("BiocManager", "tidyverse", "phyloseq", "decontam",
+              "microbiome", "biomformat")
+pacman::p_load(char = packages)
 
 ## Define output files
 file_id <- sub(".rds", "", basename(ps_in))
@@ -28,11 +41,9 @@ outfile_genus <- file.path(outdir, paste0(file_id, "_genus.rds"))
 outfile_species <- file.path(outdir, paste0(file_id, "_species.rds"))
 
 ## Report
-cat("\n## Starting script ps_split.R\n")
-Sys.time()
-cat("## Input phyloseq RDS file:             ", ps_in, "\n")
-cat("## Output dir:                          ", outdir, "\n")
-cat("-----------------------------\n\n")
+message("## Input phyloseq RDS file:             ", ps_in)
+message("## Output dir:                          ", outdir)
+message("-----------------------------\n")
 
 
 # CREATE PHYLOSEQ OBJECTS AGGLOMERATED BY TAXRANK ------------------------------
@@ -47,6 +58,7 @@ ps_family <- tax_glom(ps, taxrank = "family")
 ps_genus <- tax_glom(ps, taxrank = "genus")
 ps_species <- tax_glom(ps, taxrank = "species")
 
+## Save output files
 saveRDS(ps_phylum, outfile_phylum)
 saveRDS(ps_class, outfile_class)
 saveRDS(ps_order, outfile_order)
@@ -56,8 +68,9 @@ saveRDS(ps_species, outfile_species)
 
 
 # WRAP UP ----------------------------------------------------------------------
-cat("\n\n## Listing output files:\n")
+message("\n## Listing output files:")
 system(paste("ls -lh", outdir))
 
-cat("\n## Done with script ps_split.R\n")
+message("\n## Done with script ps_agglomtaxa.R")
 Sys.time()
+message()

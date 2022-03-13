@@ -9,46 +9,43 @@
 
 # SET-UP -----------------------------------------------------------------------
 ## Report
-message("## Starting script ASV_infer.R...")
+message("## Starting script dada.R")
 Sys.time()
 message()
 
-## Load packages
-if (!"pacman" %in% installed.packages()) install.packages("pacman")
-packages <- c("BiocManager", "tidyverse", "dada2", "argparse")
-pacman::p_load(char = packages)
-
 ## Parse command-line arguments
+if(!"argparse" %in% installed.packages()) install.packages("argparse")
+library(argparse)
+
 parser <- ArgumentParser()
 parser$add_argument("-i", "--indir",
-                    type = "character", default = NULL,
+                    type = "character", required = TRUE,
                     help = "Input dir with FASTQ files (REQUIRED)")
+parser$add_argument("-o", "--outdir",
+                    type = "character", default = "results/dada",
+                    help = "Output directory [default %(default)s]")
 parser$add_argument("-c", "--config",
                     type = "character", default = NULL,
                     help = "Config file")
 parser$add_argument("-t", "--threads",
-                    type = "integer", default = NULL,
-                    help = "Number of threads")
-parser$add_argument("-o", "--outdir",
-                    type = "character", default = "results/dada",
-                    help = "Output directory (default: 'results/dada'")
+                    type = "integer", default = 1,
+                    help = "Number of threads [default %(default)s]")
 args <- parser$parse_args()
 
-## Process command-line arguments
 fastq_indir <- args$indir
 outdir <- args$outdir
 config_file <- args$config
 n_threads <- args$threads
 
+## Load packages
+if (!"pacman" %in% installed.packages()) install.packages("pacman")
+packages <- c("BiocManager", "tidyverse", "dada2")
+pacman::p_load(char = packages)
+
+## Other variables
 if (is.null(n_threads)) {
     n_threads <- as.integer(system("echo $SLURM_CPUS_PER_TASK", intern = TRUE))
 }
-
-## For interatcive testing
-# fastq_indir <- "results/cutadapt"
-# outdir <- "results/ASV"
-# config_file <- "workflow/config/ASV_config.R"
-# n_threads <- 4
 
 ## Variable defaults
 trunc_f <- 150           # Truncate F reads after trunc_f bases
@@ -424,6 +421,6 @@ system(paste("ls -lh", nseq_file))
 message("## QC table -- ASVs:")
 system(paste("ls -lh", nasv_file))
 
-message("\n## Done with script ASV_infer.R.")
+message("\n## Done with script dada.R.")
 Sys.time()
 message()

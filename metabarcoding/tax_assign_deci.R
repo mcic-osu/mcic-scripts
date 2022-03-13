@@ -1,54 +1,76 @@
 #!/usr/bin/env Rscript
 
+#SBATCH --account=PAS0471
+#SBATCH --output=slurm-tax-assign-dada-%j.out
+
+
 # SET-UP -----------------------------------------------------------------------
-## Load packages
+## Report
+message("\n## Starting script tax_assign_deci.R")
+Sys.time()
+message()
+
+## Parse command-line arguments
+if(!"argparse" %in% installed.packages()) install.packages("argparse")
+library(argparse)
+
+parser <- ArgumentParser()
+parser$add_argument("-i", "--seqtab_in",
+                    type = "character", required = TRUE,
+                    help = "Input file (sequence table RDS) (REQUIRED)")
+parser$add_argument("-o", "--taxa_out",
+                    type = "character", required = TRUE,
+                    help = "Output file (taxa RDS file) (REQUIRED)")
+parser$add_argument("-r", "--ref_url",
+                    type = "character",
+                    default = "http://www2.decipher.codes/Classification/TrainingSets/SILVA_SSU_r138_2019.RData",
+                    help = "Taxonomic reference URL [default %(default)s]")
+parser$add_argument("-c", "--cores",
+                    type = "integer", default = 1,
+                    help = "Number of cores (threads) to use [default %(default)s]")
+args <- parser$parse_args()
+
+seqtab_rds <- args$seqtab_in
+taxa_rds <- args$taxa_out
+ref_url <- args$ref_url
+n_cores <- args$cores
+
+## Load other packages
 if(!"pacman" %in% installed.packages()) install.packages("pacman")
-packages <- c("dada2", "DECIPHER", "tidyverse")
+packages <- c("BiocManager", "dada2", "DECIPHER", "tidyverse")
 pacman::p_load(char = packages)
 
-## Process command-line arguments
-args <- commandArgs(trailingOnly = TRUE)
-seqtab_rds <- args[1]
-taxa_rds <- args[2]
-n_cores <- as.integer(args[3])
-
-# seqtab_rds <- "results/ASV/main/seqtab.rds"
-# taxa_rds <- "results/taxonomy/taxa_decipher.rds"
-# n_cores <- 8
+## Constants
+TAX_LEVELS <- c("domain", "phylum", "class", "order", "family", "genus", "species")
 
 ## Create output dir if needed
 outdir <- dirname(taxa_rds)
 if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
 
-## Other variables/constants
-tax_URL <- "http://www2.decipher.codes/Classification/TrainingSets/SILVA_SSU_r138_2019.RData"
-tax_file <- file.path(outdir, basename(tax_URL))
-species_URL <- "https://zenodo.org/record/4587955/files/silva_species_assignment_v138.1.fa.gz"
-species_file <- file.path(outdir, basename(species_URL))
-
+## Define output files
+tax_file <- file.path(outdir, basename(ref_url))
 qc_file <- file.path(outdir, "tax_prop_assigned_decipher.txt")
 plot_file <- file.path(outdir, "tax_prop_assigned_decipher.png")
 
-tax_levels <- c("domain", "phylum", "class", "order", "family", "genus", "species")
-
 ## Report
-cat("\n## Starting script tax_assign_deci.R\n")
-Sys.time()
-cat("## Sequence table RDS file (input):", seqtab_rds, "\n")
-cat("## Taxa RDS file (output):", taxa_rds, "\n")
-cat("## Proportion-assigned QC file (output):", qc_file, "\n")
-cat("## Number of cores:", n_cores, "\n\n")
-cat("## Taxonomic assignment file (downloaded input):", tax_file, "\n")
-cat("## Species assignment file (downloaded input):", species_file, "\n\n")
+message("## Sequence table RDS file (input):               ", seqtab_rds)
+message("## Taxa RDS file (output):                        ", taxa_rds)
+message("## Proportion-assigned QC file (output):          ", qc_file)
+message("## Number of cores:                               ", n_cores)
+message()
+message("## Taxonomic assignment file (downloaded input):  ", tax_file)
+message()
 
+
+# FUNCTIONS --------------------------------------------------------------------
 ## Function to get the proportion of ASVs assigned to taxa
-qc_tax <- function(taxa, tax_levels) {
+qc_tax <- function(taxa, TAX_LEVELS) {
     prop <- apply(taxa, 2,
                   function(x) round(length(which(!is.na(x))) / nrow(taxa), 4))
     
     prop <- data.frame(prop) %>%
         rownames_to_column("tax_level") %>%
-        mutate(tax_level = factor(tax_level, levels = tax_levels))
+        mutate(tax_level = factor(tax_level, levels = TAX_LEVELS))
 
     return(prop)
 }
@@ -61,17 +83,15 @@ dna <- DNAStringSet(getSequences(seqtab))
 
 
 # DECIPHER TAXONOMIC ASSIGNMENT ------------------------------------------------
-cat("## Assigning taxonomic labels to ASVs...\n")
 
 ## Get and load DECIPHER training set
-### https://www.bioconductor.org/packages/devel/bioc/vignettes/DECIPHER/inst/doc/ClassifySequences.pdf
-### http://www2.decipher.codes/Downloads.html
-if (!file.exists(tax_file)) download.file(url = tax_URL, destfile = tax_file)
+#? https://www.bioconductor.org/packages/devel/bioc/vignettes/DECIPHER/inst/doc/ClassifySequences.pdf
+#? http://www2.decipher.codes/Downloads.html
+if (!file.exists(tax_file)) download.file(url = ref_url, destfile = tax_file)
 load(tax_file)   # Will create object "trainingSet"
-if (!file.exists(species_file)) download.file(url = species_URL, destfile = species_file)
 
 ## Assign taxonomy
-cat("\n## Now assigning taxonomy...\n")
+message("\n## Assigning taxonomy...")
 ids <- IdTaxa(dna, trainingSet,
               strand = "top",
               threshold = 60,
@@ -89,24 +109,19 @@ colnames(taxid) <- ranks
 rownames(taxid) <- getSequences(seqtab)
 taxa <- taxid
 
-## addSpecies doesn't work after idtaxa!
-#cat("\n## Now adding species-level assignments...\n")
-#taxa <- addSpecies(taxa, species_file)
-
 ## Save RDS file
 saveRDS(taxa, taxa_rds)
 
 
 # QC TAX. ASSIGNMENTS ----------------------------------------------------------
 ## Create df with proportion assigned
-prop_assigned <- qc_tax(taxa, tax_levels = tax_levels)
-write.table(prop_assigned, qc_file,
-            sep = "\t", quote = FALSE, row.names = FALSE)
+prop_assigned <- qc_tax(taxa, TAX_LEVELS = TAX_LEVELS)
+write_tsv(prop_assigned, qc_file)
 
-cat("\n## Proportion of ASVs assigned to different taxonomic levels - DADA:\n")
+message("\n## Prop. ASVs assigned to taxonomy:")
 print(prop_assigned)
 
-## Make plot
+## Create barplot
 p <- ggplot(prop_assigned) +
   geom_col(aes(x = tax_level, y = prop, fill = tax_level),
            color = "grey20") +
@@ -115,16 +130,15 @@ p <- ggplot(prop_assigned) +
   labs(y = "Proportion of ASVs assigned", x = NULL) +
   guides(fill = "none") +
   theme_bw(base_size = 14)
-
 ggsave(plot_file, p, width = 7, height = 7)
 
 
 # WRAP UP ----------------------------------------------------------------------
-## Report
-cat("\n## Listing output files:\n")
+message("\n## Listing output files:")
 system(paste("ls -lh", taxa_rds))
 system(paste("ls -lh", qc_file))
 system(paste("ls -lh", plot_file))
 
-cat("\n## Done with script tax_assign_deci.R\n")
+message("\n## Done with script tax_assign_deci.R")
 Sys.time()
+message()

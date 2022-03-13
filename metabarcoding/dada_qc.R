@@ -5,29 +5,29 @@
 #SBATCH --output=slurm-dada2-qc-plots-%j.out
 
 # SET-UP -----------------------------------------------------------------------
-## Load packages
-if (!"pacman" %in% installed.packages()) install.packages("pacman")
-packages <- c("tidyverse", "argparse")
-pacman::p_load(char = packages)
+message("## Starting script ASV_qcplots.R")
+Sys.time()
+message()
 
-## Process command-line args
 ## Parse command-line arguments
 parser <- ArgumentParser()
 parser$add_argument("-i", "--infile",
-                    type = "character", default = NULL,
+                    type = "character", required = TRUE,
                     help = "Input file with dada2 QC stats (REQUIRED)")
 parser$add_argument("-o", "--outdir",
                     type = "character", default = "results/dada/qc",
-                    help = "Output directory (default: 'results/dada/qc'")
+                    help = "Output directory [default %(default)s]")
 args <- parser$parse_args()
 
 infile <- args$infile
 outdir <- args$outdir
 
+## Load packages
+if (!"pacman" %in% installed.packages()) install.packages("pacman")
+packages <- c("tidyverse")
+pacman::p_load(char = packages)
+
 ## Report
-message("## Starting script ASV_qcplots.R")
-Sys.time()
-message()
 message("## Input file:     ", infile)
 message("## Output dir:     ", outdir)
 message()
