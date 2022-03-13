@@ -3,23 +3,34 @@
 #SBATCH --account=PAS0471
 #SBATCH --time=15
 #SBATCH --output=slurm-dada2-qc-plots-%j.out
-#SBATCH --nodes=1
-#SBATCH --cpus-per-task=1
 
 # SET-UP -----------------------------------------------------------------------
 ## Load packages
-if (! "tidyverse" %in% installed.packages()) install.packages("tidyverse")
-suppressPackageStartupMessages(library(tidyverse))
+if (!"pacman" %in% installed.packages()) install.packages("pacman")
+packages <- c("tidyverse", "argparse")
+pacman::p_load(char = packages)
 
 ## Process command-line args
-args <- commandArgs(trailingOnly = TRUE)
-qc_file <- args[1]
-outdir <- args[2]
+## Parse command-line arguments
+parser <- ArgumentParser()
+parser$add_argument("-i", "--infile",
+                    type = "character", default = NULL,
+                    help = "Input file with dada2 QC stats (REQUIRED)")
+parser$add_argument("-o", "--outdir",
+                    type = "character", default = "results/dada/qc",
+                    help = "Output directory (default: 'results/dada/qc'")
+args <- parser$parse_args()
+
+infile <- args$infile
+outdir <- args$outdir
 
 ## Report
-cat("## Starting script ASV_qcplots.R\n")
-cat("## Input file:", qc_file, "\n")
-cat("## Output dir:", outdir, "\n\n")
+message("## Starting script ASV_qcplots.R")
+Sys.time()
+message()
+message("## Input file:     ", infile)
+message("## Output dir:     ", outdir)
+message()
 
 ## Files and settings
 props_df_file <- file.path(outdir, "nseq_props.txt")
@@ -42,13 +53,13 @@ if (! dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
 
 
 # READ INPUT FILES -------------------------------------------------------------
-qc <- read_tsv(qc_file, show_col_types = FALSE) %>%
+qc <- read_tsv(infile, show_col_types = FALSE) %>%
   rename(fastq_filtered = filtered,
          reads_merged = merged,
          non_chimeric = nonchim,
-         denoised = denoised_R,
+         denoised = denoised_r,
          length_filtered = lenfilter) %>%
-  select(-denoised_F)
+  select(-denoised_f)
 colnames(qc)[1] <- "sample_id"
 
 # PLOTS WITH ABSOLUTE NUMBERS --------------------------------------------------
@@ -68,7 +79,7 @@ p_bars <- qc %>%
   mutate(status = factor(status, levels = status_levels2)) %>%
   ggplot(aes(x = proportion, y = sample_id, fill = status)) +
   geom_col(color = "grey50") +
-  scale_x_continuous(expand = c(0, 0)) +
+  scale_x_continuous(expand = c(0, 0), labels = scales::comma) +
   scale_fill_brewer(palette = "Set3") +
   theme_bw() +
   theme(panel.grid.major.y = element_blank()) +
@@ -155,7 +166,7 @@ write_tsv(qc_prop_mean, meanprops_df_file)
 write_tsv(qc_mean, meancounts_df_file)
 
 ## Report
-cat("\n## Listing output files:\n")
+message("\n## Listing output files:")
 system(paste("ls -lh", props_df_file))
 system(paste("ls -lh", meanprops_df_file))
 system(paste("ls -lh", meancounts_df_file))
@@ -164,4 +175,6 @@ system(paste("ls -lh", plotfile_lines))
 system(paste("ls -lh", plotfile_bars_prop))
 system(paste("ls -lh", plotfile_lines_prop))
 
-cat("\n## Done with script ASV_qcplots.R\n")
+message("\n## Done with script ASV_qcplots.R")
+Sys.time()
+message()
