@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 # SETUP ------------------------------------------------------------------------
 ## Bash strict settings
 set -euo pipefail
@@ -14,7 +13,7 @@ Help()
    echo
    echo "## fqsub_dir.sh: script to subsample a dir with FASTQ files using seqtk"
    echo
-   echo "## Syntax: fqsub_dir.sh -i <input-dir> -o <output-dir> [ -n <n_reads> | -p <prop_reads> ] [-h]"
+   echo "## Syntax: fqsub_dir.sh -i <input-dir> -o <output-dir> ..."
    echo "## NOTE: Don't submit this script to the SLURM queue -- it will itself spawn jobs instead."
    echo
    echo "## Required options:"
@@ -55,12 +54,12 @@ done
 echo
 echo -e "\n## Starting script fqsub_dir.sh"
 date
-echo "## Input dir: $indir"
-echo "## Output dir: $outdir"
-echo "## Number of reads to keep: $n_reads"
-echo "## Proportion of reads to keep: $prop_reads"
-echo "## Sample ID pattern: $sample_pattern"
-echo -e "----------------------------------\n\n"
+echo "## Input dir:                    $indir"
+echo "## Output dir:                   $outdir"
+echo "## Number of reads to keep:      $n_reads"
+echo "## Proportion of reads to keep:  $prop_reads"
+echo "## Sample ID pattern:            $sample_pattern"
+echo -e "------------------------\n"
 
 ## Make output dir if needed
 mkdir -p "$outdir"

@@ -7,31 +7,32 @@
 
 
 # SETUP ------------------------------------------------------------------------
-## Load software
-source ~/.bashrc
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/miniconda3/envs/trimmomatic-env
-
-## Bash strict settings
-set -euo pipefail
-
 ## Help function
 Help() {
     echo
     echo "## $0: Script to trim sequences in FASTQ files using Trimmomatic"
     echo
-    echo "## Syntax: $0 -i <input R1 FASTQ> [ -o <output dir> ] [ -a <adapter-file ] [-h]"
+    echo "## Syntax: $0 -i <input R1 FASTQ> [ -o <output dir> ] [ -a <adapter-file ] [ -p <trim-params> ] [-h]"
     echo "## Options:"
     echo "## -h         Print help."
     echo "## -i STR     Input R1 sequence file (REQUIRED)"
     echo "## -o STR     Output dir (default: 'results/trimmomatic/')"
     echo "## -a STR     Adapter file (default: none. Other options: NexteraPE-PE.fa, TruSeq2-PE.fa, TruSeq3-PE.fa)"
-    echo "## -p STR     Trimming paramaters for Trimmomatic (default: 'LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36')"
+    echo "              Or provide your own FASTA file with adapters, e.g. 'adapters.fa' from BBduk"
+    echo "## -p STR     Trimming paramaters for Trimmomatic"
+    echo "              (default: 'LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36')"
     echo
     echo "## Example command:"
-    echo "$0 -i data/fastq -o results/trimmomatic"
+    echo "$0 -i data/fastq/A1_L001_R1_001.fastq.gz -o results/trimmomatic"
     echo
 }
+
+## Load software
+module load python/3.6-conda5.2
+source activate /users/PAS0471/jelmer/miniconda3/envs/trimmomatic-env
+
+## Bash strict settings
+set -euo pipefail
 
 ## Option defaults
 R1_in=""

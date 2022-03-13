@@ -8,14 +8,6 @@
 
 
 # SETUP ------------------------------------------------------------------------
-## Software
-source ~/.bashrc
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/.conda/envs/trimgalore-env
-
-## Bash strict settings
-set -euo pipefail
-
 ## Help
 Help() {
   echo
@@ -35,10 +27,17 @@ Help() {
   echo
 }
 
+## Software
+module load python/3.6-conda5.2
+source activate /users/PAS0471/jelmer/.conda/envs/trimgalore-env
+
+## Bash strict settings
+set -euo pipefail
+
 ## Option defaults
-qual=0                  # => no quality trimming
+qual=0                  # => 0 = no actual quality trimming
 len=20                  # => 20 is also the TrimGalore default
-single_end=fastq_file   # => paired-end by defaults
+single_end=false        # => paired-end by default
 
 # Get command-line options:
 while getopts ':i:o:O:q:l:sh' flag; do
