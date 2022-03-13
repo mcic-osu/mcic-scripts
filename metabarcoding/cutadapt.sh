@@ -5,36 +5,44 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=4
 
-
-# SETUP ------------------------------------------------------------------------
-## Load software
-source ~/.bashrc
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2  # Load conda module
-source activate /users/PAS0471/osu5685/.conda/envs/cutadaptenv                    # Activate cutadapt environment
-
-## Bash strict settings
-set -euo pipefail
-
 ## Help function
 Help() {
     echo
-    echo "## $0: Run cutadapt for a single pair of FASTQ files."
+    echo "## $0: Run Cutadapt for a single pair of FASTQ files."
     echo
-    echo "## Syntax: $0 -i <input-dir> -o <output-dir> -f <forward-primer> -r <reverse-primer> [-d] [-h]"
-    echo "## Options:"
-    echo "## -h     Print help."
-    echo "## -i     Input R1 FASTQ file (REQUIRED)"
-    echo "## -o     Output dir (REQUIRED)"
-    echo "## -f     Forward primer"
-    echo "## -r     Reverse primer"
-    echo "## -p     Primer file"
-    echo "## -d     Don't discard untrimmed sequences (default: discard)"
-    echo "## Example: $0 -i data/sample1_R1.fastq.gz -o results/cutadapt -f GAGTGYCAGCMGCCGCGGTAA -r ACGGACTACNVGGGTWTCTAAT [-h]"
-    echo "## When you have multiple primer pairs, specify a primer file with -p."
+    echo "## Syntax: $0 -i <input-R1-FASTQ> -o <output-dir> ..."
+    echo
+    echo "## Required options:"
+    echo "## -i STR     Input R1 FASTQ file (corresponding R2 will be inferred)"
+    echo "## -o STR     Output dir"
+    echo
+    echo "## Other options:"
+    echo "## -f STR     Forward primer sequence"
+    echo "## -r STR     Reverse primer sequence"
+    echo "## -p STR     File with primer sequences, one pair per line"
+    echo "## -d         Don't discard untrimmed sequences (default: discard)"
+    echo "## -h         Print this help message"
+    echo
+    echo "## Example: $0 -i data/sample1_R1.fastq.gz -o results/cutadapt -f GAGTGYCAGCMGCCGCGGTAA -r ACGGACTACNVGGGTWTCTAAT"
     echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
+    echo
+    echo "## When you have multiple primer pairs, specify a primer file with -p."
     echo "## The script will compute and use the reverse complements of both primers."
     echo
 }
+
+# SETUP ------------------------------------------------------------------------
+## Report
+echo -e "\n## Starting script cutadapt.sh"
+date
+echo
+
+## Load software
+module load python/3.6-conda5.2  # Load OSC conda module
+source activate /users/PAS0471/osu5685/.conda/envs/cutadaptenv # Activate cutadapt environment
+
+## Bash strict settings
+set -euo pipefail
 
 ## Option defaults
 R1_in=""
@@ -67,12 +75,8 @@ n_cores=$SLURM_CPUS_PER_TASK
 [[ $outdir = "" ]] && echo "## $0: ERROR: No output dir (-o) provided" >&2 && exit 1
 
 ## Report
-echo -e "\n## Starting script cutadapt_single.sh"
-date
-echo
-echo "## Using the following parameters:"
-echo "## Input FASTQ file R1 (-i): $R1_in"
-echo "## Output dir (-o): $outdir"
+echo "## Input FASTQ file R1 (-i):   $R1_in"
+echo "## Output dir (-o):            $outdir"
 echo
 
 ## Get primers
@@ -165,5 +169,6 @@ cutadapt $primer_arg $options \
 echo -e "\n## Listing output files:"
 ls -lh "$outdir"/"$sample_id"*
 
-echo -e "\n## Done with script cutadapt_single.sh."
+echo -e "\n## Done with script cutadapt.sh."
 date
+echo
