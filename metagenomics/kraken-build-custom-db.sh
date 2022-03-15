@@ -38,12 +38,6 @@ echo -e "\n## Starting script kraken-build-custom-db.sh..."
 date
 
 ## Software
-### DB-building needs to be done with a manually installed Kraken2 -- Conda version gives errors
-#KRAK_BINDIR=/fs/project/PAS0471/jelmer/software/kraken2-2.0.8-beta
-#KRAK_BIN="$KRAK_BINDIR"/kraken2-build
-
-### Still need to load kraken2-env for "dustmasker", needed to mask low-complexity sequences
-### https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#masking-of-low-complexity-sequences
 module load python/3.6-conda5.2
 source activate /users/PAS0471/jelmer/miniconda3/envs/kraken2-env
 
