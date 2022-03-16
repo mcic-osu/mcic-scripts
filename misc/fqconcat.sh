@@ -9,7 +9,7 @@
 ## Bash strict settings
 set -euo pipefail
 
-## Help
+## Help function
 Help() {
   echo
   echo "## $0: Concatenate FASTQ files from the same sample but different lanes."
@@ -17,14 +17,14 @@ Help() {
   echo "## Syntax: $0 -i <input-dir> -o <output-dir> [-p <dir-glob-pattern>] [-r <remove-pattern>] [-n <n-files> ] [-h]"
   echo
   echo "## Required options:"
-  echo "## -i STR   Input directory containing FASTQ files, possibly in separate underlying dirs"
-  echo "## -o STR   Output directory for concatenated FASTQ files; all will be placed directly in this dir"
+  echo "## -i STRING      Input directory containing FASTQ files, possibly in separate underlying dirs"
+  echo "## -o STRING      Output directory for concatenated FASTQ files; all will be placed directly in this dir"
   echo
   echo "## Other options:"
-  echo "## -h       Print this help message"
-  echo "## -p STR   Globbing pattern for underlying dirs (default: '*' i.e. any dir)"
-  echo "## -r STR   Literal string or regex pattern to remove from file names (default: none)"
-  echo "## -n INT   Number of files expected per sample per read direction (default: 2)"
+  echo "## -p STRING      Globbing pattern for underlying dirs (default: '*' i.e. any dir)"
+  echo "## -r STRING      Literal string or regex pattern to remove from file names (default: none)"
+  echo "## -n INTEGER     Number of files expected per sample per read direction (default: 2)"
+  echo "## -h             Print this help message"
   echo
   echo "## Example command:"
   echo "## $0 -i data/fastq/original -o data/fastq/concat -n 2"
@@ -48,7 +48,7 @@ while getopts ':i:o:p:r:n:h' flag; do
   r) remove_pattern="$OPTARG" ;;
   n) nfiles="$OPTARG" ;;
   h) Help && exit 0 ;;
-  \?) echo "## $0: ERROR: Invalid option" >&2 && exit 1 ;;
+  \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
   :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
   esac
 done
@@ -56,28 +56,29 @@ done
 ## Input checks
 [[ $indir = "" ]] && echo "## ERROR: Please specify input dir with -i" && exit 1
 [[ "$outdir" = "" ]] && echo "## ERROR: Please specify output dir with -o" && exit 1
-[[ "$indir" = "$outdir" ]] && echo "## ERROR: Input dir should not be the same as the output dir" && exit 1
-[[ ! -d "$indir" ]] && echo "## ERROR: Input dir does not exist" && exit 1
+[[ "$indir" = "$outdir" ]] && echo "## ERROR: Input dir $indir should not be the same as the output dir" && exit 1
+[[ ! -d "$indir" ]] && echo "## ERROR: Input dir $indir does not exist" && exit 1
 
 ## Create output dir, if necessary
 mkdir -p "$outdir"
 
 ## Report
-echo "## Starting script concat-fastq.sh"
+echo "## Starting script fqconcat.sh"
 date
-echo "## Input dir:: $indir"
-echo "## Output dir: $outdir"
 echo
-echo "## Dir globbing pattern: $dir_pattern"
+echo "## Input dir:                  $indir"
+echo "## Output dir:                 $outdir"
+echo
+echo "## Dir globbing pattern:       $dir_pattern"
 echo "## Pattern/string to remove from file names: $remove_pattern"
-echo "## Number of files expected for each sample and read direction: $nfiles"
+echo "## Nr files expected for each sample and read direction: $nfiles"
 echo -e "-------------------\n"
 
 
 # CONCAT FASTQ FILES -----------------------------------------------------------
 ## Find per-sample directories
 dirs=( $(find $indir -mindepth 1 -type d -name "$dir_pattern") )
-echo "## Number of directories (samples): ${#dirs[@]}"
+echo "## Nr directories (samples):   ${#dirs[@]}"
 echo -e "-------------------\n"
 
 ## Loop over per-sample directories
@@ -132,5 +133,6 @@ echo "## Making concatenated files read-only..."
 chmod a-w "$outdir"/*fastq.gz
 
 ## Report
-echo -e "\n## Done with script concat-fastq.sh."
+echo -e "\n## Done with script fqconct.sh."
 date
+echo
