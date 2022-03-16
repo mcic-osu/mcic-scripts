@@ -58,6 +58,11 @@ done
 
 
 # SETUP ------------------------------------------------------------------------
+## Report
+echo "## Starting script kraken-run..."
+date
+echo
+
 ## Load software
 module load python/3.6-conda5.2
 source activate /users/PAS0471/jelmer/miniconda3/envs/kraken2-env
@@ -66,12 +71,9 @@ source activate /users/PAS0471/jelmer/miniconda3/envs/kraken2-env
 set -euo pipefail
 
 ## Report
-echo "## Starting script kraken-run..."
-date
-echo "## Command-line args:"
-echo "## Input file: $infile"
-echo "## Output dir: $outdir"
-echo "## Kraken db dir: $krakendb_dir"
+echo "## Input file:              $infile"
+echo "## Output dir:              $outdir"
+echo "## Kraken db dir:           $krakendb_dir"
 echo "## Add tax. names (Krona compatibility): $add_names"
 echo
 
@@ -96,16 +98,16 @@ if [[ "$infile" =~ \.fastq.gz$ ]]; then
     sample_ID=${R1_basename/"$R1_suffix"/}
 
     if [[ -f $R2_in ]]; then
-        echo "## Input is: paired FASTQ files"
-        echo "## Input FASTQ file - R1: $R1_in"
-        echo "## Input FASTQ file - R2: $R2_in"
+        echo "## Input is:                  paired FASTQ files"
+        echo "## Input FASTQ file - R1:     $R1_in"
+        echo "## Input FASTQ file - R2:     $R2_in"
         infile_arg="--gzip-compressed --paired $R1_in $R2_in"
     else
-        echo -e "\n## Input is: single-end FASTQ file"
+        echo "## Input is:                  single-end FASTQ file"
         infile_arg="--gzip-compressed $R1_in"
     fi
 else
-    echo -e "\n## Input is: FASTA file"
+    echo -e "## Input is: FASTA file"
     infile_basename=$(basename "$infile")
     sample_ID=${infile_basename%%.*}
     infile_arg="$infile"
@@ -116,7 +118,7 @@ outfile_main="$outdir"/"$sample_ID"_main.txt
 outfile_report="$outdir"/"$sample_ID"_report.txt
 
 ## Report
-echo "## add_names / add_names arg:     $add_names $names_arg"
+echo
 echo "## Input file arg:                $infile_arg"
 echo "## Sample ID:                     $sample_ID"
 echo
