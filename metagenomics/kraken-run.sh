@@ -6,34 +6,29 @@
 #SBATCH --cpus-per-task=20
 #SBATCH --output=slurm-kraken-run-%j.out
 
+# HELP AND COMMAND-LINE OPTIONS ------------------------------------------------
 ## Help function
 Help() {
     echo
-    echo "## $0: Run Kraken2."
+    echo "## $0: Run Kraken2 to assign taxonomy to sequences in a FASTA/FASTQ file"
     echo
     echo "## Syntax: $0 -i <input-sequence-file> -o <output-dir> -d <kraken-db-dir> ..."
     echo 
     echo "## Required options:"
-    echo "## -i     Input sequence file (FASTA, single-end FASTQ, or R1 from paired-end FASTQ)"
-    echo "## -o     Output dir"
-    echo "## -d     Kraken database dir"
+    echo "## -i        Input sequence file (FASTA, single-end FASTQ, or R1 from paired-end FASTQ)"
+    echo "             (If an R1 paired-end FASTQ file is provided, the name of the R2 file will be inferred.)"
+    echo "## -o        Output directory"
+    echo "## -d        Directory with an existing Kraken database"
+    echo "             (Use one of the scripts 'kraken-build-custom-db.sh' or 'kraken-build-std-db.sh' to create a Kraken database)"
     echo
     echo "## Other options:"
-    echo "## -h     Print help."
-    echo "## -n     Add taxonomic names to 'main' file (not compatible with Krona)"
+    echo "## -n        Add taxonomic names to the Kraken 'main' output file (not compatible with Krona)"
+    echo "## -h        Print this help message and exit"
+    echo
     echo "## Example: $0 -i refdata/kraken/my-db -u https://genome.fa -g refdata/kraken/my-db/genomes"
     echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
     echo
 }
-
-
-# SETUP ------------------------------------------------------------------------
-## Load software
-module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/miniconda3/envs/kraken2-env
-
-## Bash strict settings
-set -euo pipefail
 
 ## Option defaults
 infile=""
@@ -49,15 +44,26 @@ while getopts 'i:o:d:nh' flag; do
     d) krakendb_dir="$OPTARG" ;;
     n) add_names=true ;;
     h) Help && exit 0 ;;
-    \?) echo "## $0: ERROR: Invalid option" >&2 && exit 1 ;;
+    \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
     :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
     esac
 done
 
 ## Process options
-[[ "$infile" = "" ]] && echo "ERROR: must specify an input file with -i" && exit 1
-[[ "$outdir" = "" ]] && echo "ERROR: must specify an output dir with -o" && exit 1
-[[ "$krakendb_dir" = "" ]] && echo "ERROR: must specify an Kraken DB dir with -d" && exit 1
+[[ "$infile" = "" ]] && echo "ERROR: must specify input file with -i" >&2 && exit 1
+[[ ! -f "$infile" ]] && echo "ERROR: input file $infile does note exist" >&2 && exit 1
+[[ "$krakendb_dir" = "" ]] && echo "ERROR: must specify Kraken DB dir with -d" >&2 && exit 1
+[[ ! -d "$krakendb_dir" ]] && echo "ERROR: input file $infile does note exist" >&2 && exit 1
+[[ "$outdir" = "" ]] && echo "ERROR: must specify output dir with -o" >&2 && exit 1
+
+
+# SETUP ------------------------------------------------------------------------
+## Load software
+module load python/3.6-conda5.2
+source activate /users/PAS0471/jelmer/miniconda3/envs/kraken2-env
+
+## Bash strict settings
+set -euo pipefail
 
 ## Report
 echo "## Starting script kraken-run..."
@@ -110,11 +116,12 @@ outfile_main="$outdir"/"$sample_ID"_main.txt
 outfile_report="$outdir"/"$sample_ID"_report.txt
 
 ## Report
-echo "## add_names / add_names arg: $add_names $names_arg"
-echo "## Input file arg: $infile_arg"
-echo "## Sample ID: $sample_ID"
-echo "## Output file - main: $outfile_main"
-echo "## Output file - report: $outfile_report"
+echo "## add_names / add_names arg:     $add_names $names_arg"
+echo "## Input file arg:                $infile_arg"
+echo "## Sample ID:                     $sample_ID"
+echo
+echo "## Output file - main:            $outfile_main"
+echo "## Output file - report:          $outfile_report"
 echo -e "------------------------------\n"
 
 
@@ -131,5 +138,6 @@ kraken2 ${names_arg}--threads "$SLURM_CPUS_ON_NODE" \
 # WRAP UP ----------------------------------------------------------------------
 echo -e "\n## Listing output files:"
 ls -lh "$outfile_main" "$outfile_report"
-echo -e "\n## Done with script kraken-run.sh."
+echo -e "\n## Done with script kraken-run.sh"
 date
+echo
