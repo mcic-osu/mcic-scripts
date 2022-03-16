@@ -6,9 +6,6 @@
 
 
 # SETUP ------------------------------------------------------------------------
-## Bash strict settings
-set -ueo pipefail
-
 ## Help function
 Help() {
   echo
@@ -39,26 +36,31 @@ while getopts ':i:o:h' flag; do
   i) infile="$OPTARG" ;;
   o) outdir="$OPTARG" ;;
   h) Help && exit 0 ;;
-  \?) echo "## $0: ERROR: Invalid option" >&2 && exit 1 ;;
+  \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
   :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
   esac
 done
-
-## Load software
-module load fastqc
-
-## Input checks
-[[ $infile = "" ]] && echo "## ERROR: Please specify input file with -i" && exit 1
-[[ ! -f "$infile" ]] && echo "## ERROR: Input file does not exist" && exit 1
-[[ "$outdir" = "" ]] && echo "## ERROR: Please specify output dir with -o" && exit 1
-
-## Create the output directory if it doesn't already exist
-mkdir -p "$outdir"
 
 ## Report
 echo "## Starting script fastqc.sh..."
 date
 echo
+
+## Load software
+module load fastqc
+
+## Bash strict settings
+set -euo pipefail
+
+## Input checks
+[[ $infile = "" ]] && echo "## ERROR: Please specify input file with -i" >&2 && exit 1
+[[ ! -f "$infile" ]] && echo "## ERROR: Input file does not exist" >&2 && exit 1
+[[ "$outdir" = "" ]] && echo "## ERROR: Please specify output dir with -o"  >&2 && exit 1
+
+## Create the output directory if it doesn't already exist
+mkdir -p "$outdir"
+
+## Report
 echo "## Input FASTQ file:       $infile"
 echo "## Output dir:             $outdir"
 echo -e "--------------------\n"
@@ -75,3 +77,4 @@ ls -lh "$outdir"/"$sample_id"*fastqc*
 
 echo -e "\n## Done with script fastqc.sh"
 date
+echo
