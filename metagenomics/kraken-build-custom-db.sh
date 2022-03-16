@@ -217,7 +217,7 @@ if [ ! -d "$lib_dir"/fungi ] && [ "$include_fungi" = true ]; then
     kraken2-build --download-library fungi --db "$db_dir"
 fi
 
-if [ ! -d "$lib_dir"/plant ] && [ "$include_archaea" = true ]; then
+if [ ! -d "$lib_dir"/plant ] && [ "$include_plants" = true ]; then
     echo -e "\n## Downloading library: plant..."
     kraken2-build --download-library plant --db "$db_dir"
 fi
