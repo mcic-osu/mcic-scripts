@@ -13,11 +13,11 @@ Help() {
   echo "## Syntax: $0 -i <input-dir> -o <output-dir> [-h]"
   echo
   echo "## Required options:"
-  echo "## -i STR   Input directory with e.g. FastQC output files (REQUIRED)"
-  echo "## -o STR   Output directory for MultiQC report (REQUIRED)"
+  echo "## -i STRING     Input directory with e.g. FastQC output files"
+  echo "## -o STRING     Output directory for MultiQC report"
   echo
   echo "## Other options:"
-  echo "## -h       Print this help message"
+  echo "## -h            Print this help message and exit"
   echo
   echo "## Example command:"
   echo "## $0 -i results/fastqc -o results/multiqc"
@@ -35,33 +35,35 @@ while getopts ':i:o:h' flag; do
   i) indir="$OPTARG" ;;
   o) outdir="$OPTARG" ;;
   h) Help && exit 0 ;;
-  \?) echo "## $0: ERROR: Invalid option" >&2 && exit 1 ;;
+  \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
   :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
   esac
 done
 
+## Report
+echo "## Starting script multiqc.sh..."
+date
+echo
+
 ## Load software 
-source ~/.bashrc
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/.conda/envs/multiqc-env
+module load python/3.6-conda5.2
+source activate /fs/project/PAS0471/jelmer/conda/multiqc-1.12
 
 ## Bash strict mode
 set -euo pipefail
 
 ## Input checks
-[[ $indir = "" ]] && echo "## ERROR: Please specify input file with -i" && exit 1
-[[ ! -d "$indir" ]] && echo "## ERROR: Input dir does not exist" && exit 1
-[[ "$outdir" = "" ]] && echo "## ERROR: Please specify output dir with -i" && exit 1
+[[ $indir = "" ]] && echo "## ERROR: Please specify input file with -i" >&2 && exit 1
+[[ ! -d "$indir" ]] && echo "## ERROR: Input dir does not exist" >&2 && exit 1
+[[ "$outdir" = "" ]] && echo "## ERROR: Please specify output dir with -i" >&2 && exit 1
 
 ## If necessary, create the output dir
 mkdir -p "$outdir"
 
 ## Report
-echo "## Starting script multiqc.sh..."
-date
-echo "## Input dir :    $indir"
-echo "## Output dir:    $outdir"
-echo -e "------------------\n\n"
+echo "## Input dir :       $indir"
+echo "## Output dir:       $outdir"
+echo -e "------------------\n"
 
 
 # RUN MULTIQC ------------------------------------------------------------------
@@ -77,4 +79,4 @@ echo -e "\n## Listing output files:"
 ls -lh "$outdir"
 echo -e "\n## Done with script multiqc.sh"
 date
-
+echo
