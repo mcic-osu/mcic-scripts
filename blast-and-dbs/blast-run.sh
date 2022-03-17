@@ -8,22 +8,23 @@
 ## Help function
 Help() {
     echo
-    echo "## $0: Run BLAST for an input (query) FASTA file, either locally or remotely."
+    echo "## $0: Run BLAST locally or remotely."
     echo
-    echo "## Syntax: $0 -i <input-fasta> -o <output-file> ..."
+    echo "## Syntax: $0 -i <input-fasta> -o <output-file> [ -d <blast-DB> ] ..."
     echo
     echo "## Required options ('STR' means that the option requires a string as an argument):"
-    echo "## -i STR    Input file ('query', a FASTA file)"
-    echo "## -o STR    Output file"
+    echo "## -i STR    Input file ('query', a FASTA file) [NOTE: NEEDS TO BE AN ABSOLUTE PATH]"
+    echo "## -o STR    Output file [NOTE: NEEDS TO BE AN ABSOLUTE PATH]"
     echo
     echo "## Other options:"
     echo "## -d STR    Blast DB [default: 'nr']"
     echo "             If remote, e.g. 'nt' or 'nr'."
-    echo "             If local, make sure to specify the dir AND THE DB name, e.g. 'refdata/blast/nr-db/nr'"
+    echo "             If local, make sure to specify the ABSOLUTE PATH to the dir AND THE DB name"
+    echo "             e.g. '/fs/project/PAS0471/blast/nr-db/nr'"
     echo "## -l        Run BLAST locally [default: run BLAST remotely]"
     echo "## -h        Print this help message and exit"
     echo
-    echo "## Example: $0 -i data/my.fasta -o results/blast/blast.out -d refdata/blast/nt-db/nt"
+    echo "## Example: $0 -i /fs/project/PAS0471/data/my.fa -o /fs/project/PAS0471/results/blast/blast.out -d /fs/project/PAS0471/blast/nt-db/nt"
     echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
     echo
 }
