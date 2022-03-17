@@ -23,16 +23,16 @@ parser$add_argument("-m", "--meta",
                     type = "character", required = TRUE,
                     help = "Input file with metadata (REQUIRED)")
 parser$add_argument("-s", "--seqtab",
-                    type = "character", required = TRUE
+                    type = "character", required = TRUE,
                     help = "RDS file with sequence table (REQUIRED)")
 parser$add_argument("-t", "--tree",
-                    type = "character", required = TRUE
+                    type = "character", required = TRUE,
                     help = "RDS file with tree (REQUIRED)")
 parser$add_argument("-x", "--taxa",
-                    type = "character", required = TRUE
+                    type = "character", required = TRUE,
                     help = "RDS file with tax. assignments (REQUIRED)")
 parser$add_argument("-o", "--outfile",
-                    type = "character", required = TRUE
+                    type = "character", required = TRUE,
                     help = "Output phyloseq RDS file (REQUIRED)")
 args <- parser$parse_args()
 
