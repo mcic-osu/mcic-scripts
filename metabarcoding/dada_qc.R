@@ -10,6 +10,9 @@ Sys.time()
 message()
 
 ## Parse command-line arguments
+if(!"argparse" %in% installed.packages()) install.packages("argparse")
+library(argparse)
+
 parser <- ArgumentParser()
 parser$add_argument("-i", "--infile",
                     type = "character", required = TRUE,
