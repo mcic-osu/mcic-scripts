@@ -65,16 +65,19 @@ set -euo pipefail
 outdir=$(dirname "$blast_out")
 mkdir -p "$outdir"
 
+n_cores=$SLURM_CPUS_PER_TASK
+
 ## Test input
 [[ $query_fa = "" ]] && echo "## $0: ERROR: No input file (-i) provided" >&2 && exit 1
 [[ $blast_out = "" ]] && echo "## $0: ERROR: No output file (-o) provided" >&2 && exit 1
 [[ ! -f $query_fa ]] && echo "## $0: ERROR: Input file $query_fa does not exist" >&2 && exit 1
 
 ## Report
-echo "## Input FASTA file:       $query_fa"
-echo "## BLAST output file:      $blast_out"
-echo "## BLAST database:         $blast_db"
-echo "## Run blast remotely?     $remote"
+echo "## Input FASTA file:            $query_fa"
+echo "## BLAST output file:           $blast_out"
+echo "## BLAST database:              $blast_db"
+echo "## Run blast remotely?          $remote"
+echo "## Number of cores:             $n_cores"
 echo -e "--------------------\n"
 
 
@@ -107,7 +110,7 @@ else
         -query "$query_fa" \
         -out "$blast_out" \
         -outfmt 6 -evalue 1e-6 \
-        -num_threads "$SLURM_CPUS_ON_NODE"
+        -num_threads "$n_cores"
 
 fi
 
