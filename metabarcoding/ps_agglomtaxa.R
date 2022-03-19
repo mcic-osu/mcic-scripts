@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
 #SBATCH --account=PAS0471
-#SBATCH --output=slurm-ps_agglomtaxaqq-%j.out
+#SBATCH --output=slurm-ps_agglomtaxa-%j.out
 
 
 # SETUP ------------------------------------------------------------------------

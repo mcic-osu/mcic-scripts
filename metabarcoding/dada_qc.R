@@ -10,6 +10,9 @@ Sys.time()
 message()
 
 ## Parse command-line arguments
+if(!"argparse" %in% installed.packages()) install.packages("argparse")
+library(argparse)
+
 parser <- ArgumentParser()
 parser$add_argument("-i", "--infile",
                     type = "character", required = TRUE,
@@ -60,7 +63,7 @@ qc <- read_tsv(infile, show_col_types = FALSE) %>%
          denoised = denoised_r,
          length_filtered = lenfilter) %>%
   select(-denoised_f)
-colnames(qc)[1] <- "sample_id"
+colnames(qc)[1] <- "sampleID"
 
 # PLOTS WITH ABSOLUTE NUMBERS --------------------------------------------------
 ## Barplot
@@ -71,13 +74,13 @@ p_bars <- qc %>%
          chimera_removal = reads_merged - non_chimeric,
          length_filtering = non_chimeric - length_filtered,
          `(remaining)` = length_filtered) %>%
-  select(sample_id, fastq_filtering, denoising, read_merging,
+  select(sampleID, fastq_filtering, denoising, read_merging,
          chimera_removal, length_filtering, `(remaining)`) %>%
-  pivot_longer(cols = -sample_id,
+  pivot_longer(cols = -sampleID,
                names_to = "status",
                values_to = "proportion") %>%
   mutate(status = factor(status, levels = status_levels2)) %>%
-  ggplot(aes(x = proportion, y = sample_id, fill = status)) +
+  ggplot(aes(x = proportion, y = sampleID, fill = status)) +
   geom_col(color = "grey50") +
   scale_x_continuous(expand = c(0, 0), labels = scales::comma) +
   scale_fill_brewer(palette = "Set3") +
@@ -87,9 +90,9 @@ p_bars <- qc %>%
 
 ## Line plot
 p_lines <- qc %>%
-  pivot_longer(cols = -sample_id, names_to = "status", values_to = "count") %>%
+  pivot_longer(cols = -sampleID, names_to = "status", values_to = "count") %>%
   mutate(status = factor(status, levels = status_levels)) %>%
-  ggplot(aes(y = count, group = sample_id, x = status)) +
+  ggplot(aes(y = count, group = sampleID, x = status)) +
   geom_point(size = 1) +
   geom_line(alpha = 0.5) +
   scale_x_discrete(expand = c(0, 0)) +
@@ -117,13 +120,13 @@ p_bars_prop <- qc_prop %>%
          chimera_removal = reads_merged - non_chimeric,
          length_filtering = non_chimeric - length_filtered,
          `(remaining)` = length_filtered) %>%
-  select(sample_id, fastq_filtering, denoising, read_merging, chimera_removal,
+  select(sampleID, fastq_filtering, denoising, read_merging, chimera_removal,
          length_filtering, `(remaining)`) %>%
-  pivot_longer(cols = -sample_id,
+  pivot_longer(cols = -sampleID,
                names_to = "status",
                values_to = "proportion") %>%
   mutate(status = factor(status, levels = status_levels2)) %>%
-  ggplot(aes(x = proportion, y = sample_id, fill = status)) +
+  ggplot(aes(x = proportion, y = sampleID, fill = status)) +
   geom_col(color = "grey50") +
   scale_fill_brewer(palette = "Set3") +
   scale_x_continuous(expand = c(0, 0)) +
@@ -132,11 +135,11 @@ p_bars_prop <- qc_prop %>%
   labs(fill = "Removed by", x = "Proportion of sequences", y = NULL)
 
 p_lines_prop <- qc_prop %>%
-  pivot_longer(cols = -sample_id,
+  pivot_longer(cols = -sampleID,
                names_to = "status",
                values_to = "proportion_retained") %>%
   mutate(status = factor(status, levels = status_levels)) %>%
-  ggplot(aes(y = proportion_retained, group = sample_id, x = status)) +
+  ggplot(aes(y = proportion_retained, group = sampleID, x = status)) +
   geom_point(size = 1) +
   geom_line(alpha = 0.5) +
   scale_x_discrete(expand = c(0, 0)) +
