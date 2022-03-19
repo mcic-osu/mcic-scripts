@@ -24,6 +24,19 @@ ref=$2
 outdir=$3
 readgroup_string=${4-NA}
 
+## Get command-line options
+while getopts 'i:o:d:nh' flag; do
+    case "${flag}" in
+    i) infile="$OPTARG" ;;
+    o) outdir="$OPTARG" ;;
+    d) krakendb_dir="$OPTARG" ;;
+    n) add_names=true ;;
+    h) Help && exit 0 ;;
+    \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
+    :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
+    esac
+done
+
 #fq_R1=data/fastq/AeJap_R1.fastq.gz
 
 ## Process args
@@ -61,7 +74,7 @@ echo -e "## Mapping with bwa mem..."
 bwa mem \
     -t "$n_cores" ${readgroup_arg} \
     "$ref" \
-    "$fq_R1" "$fq_R1" |
+    "$fq_R1" "$fq_R2" |
     samtools view -b -h > "$bam_out"
 
 ## Report
