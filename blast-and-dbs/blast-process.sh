@@ -6,26 +6,21 @@
 #SBATCH --output=slurm-blast-process-%j.out
 
 # SETUP ------------------------------------------------------------------------
-## Software
-source ~/.bashrc
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
-source activate blast-env
-
-## Bash strict mode
-#set -euo pipefail
-
-## Help
+## Help function
 Help() {
-    # Display Help
     echo
-    echo "## $0: Process BLAST output file."
+    echo "## $0: Process a (fmt-6) BLAST output file."
     echo
-    echo "## Syntax: $0 -i <input> -o <output> -t <nr-top-hits> [-h]"
-    echo "## Options:"
-    echo "## -h     Print help."
-    echo "## -i     Input file (Raw BLAST output) (REQUIRED)"
-    echo "## -o     Output file (Processed BLAST output) (REQUIRED)"
-    echo "## -t     Number of top hits (integer; default: 10)"
+    echo "## Syntax: $0 -i <input> -o <output> [ -t <nr-top-hits> ]"
+    echo
+    echo "## Required options:"
+    echo "## -i STRING        Input file (Raw BLAST output)"
+    echo "## -o STRING        Output file (Processed BLAST output)"
+    echo
+    echo "## Other options:"
+    echo "## -t INTEGER       Number of top hits [default: 10]"
+    echo "## -h               Print this help message and exit"
+    echo
     echo "## Example: $0 -q blast.out -o blast_processed.out -t 50"
     echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
     echo
@@ -33,7 +28,7 @@ Help() {
 
 ## Option defaults
 blast_out_raw=""        # Raw BLAST output file (= input for this script)
-blast_out_proc=""  # Processed BLAST output file (= output of this script)
+blast_out_proc=""       # Processed BLAST output file (= output of this script)
 top_x_hits=10           # Take the top x hits per query (default: 10)
 
 ## Parse command-line options
@@ -43,31 +38,41 @@ while getopts ':i:o:t:h' flag; do
     o) blast_out_proc="$OPTARG" ;;
     t) top_x_hits="$OPTARG" ;;
     h) Help && exit 0 ;;
-    \?) echo "## $0: ERROR: Invalid option" >&2 && exit 1 ;;
+    \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
     :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
     esac
 done
 
-## Process args
+## Report
+echo -e "\n## Starting script blast-process.sh..."
+date
+echo
+
+## Load software
+module load python/3.6-conda5.2
+source activate /users/PAS0471/jelmer/miniconda3/envs/blast-env
+
+## Bash strict mode
+#set -euo pipefail
+
+## Process options
 outdir=$(dirname "$blast_out_proc")
 blast_out_sorted="$outdir"/hits_sorted.txt
 blast_out_top="$outdir"/top_"$top_x_hits"_hits.txt
 organism_lookup="$outdir"/organism_lookup.txt
 
+## Create output dir, if needed
 mkdir -p "$outdir"
 
-## Test options
+## Test input
 [[ ! -f $blast_out_raw ]] && echo "## $0: ERROR: Input file $blast_out_raw does not exist" >&2 && exit 1
 [[ $blast_out_proc = "" ]] && echo "## $0: ERROR: No output file (-o) provided" >&2 && exit 1
 
 ## Report
-echo "## Starting script blast-process.sh..."
-date
-echo "## Command-line args:"
-echo "## BLAST raw output file (input):          $blast_out_raw"
-echo "## BLAST processed output file (output):   $blast_out_proc"
-echo "## Take the top-x hits, x is:              $top_x_hits"
-echo -e "-----------------------\n\n"
+echo "## BLAST raw output file (input):           $blast_out_raw"
+echo "## BLAST processed output file (output):    $blast_out_proc"
+echo "## Take the top-x hits, x is:               $top_x_hits"
+echo -e "-----------------------\n"
 
 
 # PROCESS BLAST OUTPUT ---------------------------------------------------------
@@ -120,6 +125,6 @@ join -t $'\t' -1 2 -2 1 "$blast_out_top" "$organism_lookup" > "$blast_out_proc"
 echo -e "\n\n## Listing the output file:"
 ls -lh "$blast_out_proc"
 
-## Report
 echo -e "\n## Done with script blast-process.sh"
 date
+echo
