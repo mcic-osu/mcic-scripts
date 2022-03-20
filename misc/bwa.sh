@@ -60,11 +60,12 @@ echo
 ## Load software
 module load python/3.6-conda5.2
 source activate /fs/project/PAS0471/jelmer/conda/bwa-0.7.17
+SAMTOOLS_ENV=/users/PAS0471/jelmer/miniconda3/envs/samtools-env # Loaded later
 
 ## Bash strict settings
 set -euo pipefail
 
-## Process args
+## Process parameters - input file arg
 if [[ "$single_end" = false ]]; then
     fq_R2=${fq_R1/_R1/_R2}
     fq_arg="$fq_R1 $fq_R2"
@@ -72,8 +73,12 @@ else
     fq_arg="$fq_R1"
 fi
 
+## Process parameters -- output files
 sampleID=$(basename "$fq_R1" | sed -E 's/_R?1[\._].*//')  
 bam_out=$outdir/"$sampleID".bam
+flagstat_out=$outdir/"$sampleID".flagstat
+
+## Process parameters -- readgroup arg
 readgroup_arg=""
 [[ "$readgroup_string" != "" ]] && readgroup_arg="-R $readgroup_string"
 
@@ -100,17 +105,25 @@ echo "## SLURM job ID:              $SLURM_JOB_ID"
 echo
 
 
-# MAP WITH BWA -----------------------------------------------------------------
-echo -e "## Mapping with bwa mem..."
+# MAIN -------------------------------------------------------------------------
+## Map
+echo "## Mapping with bwa mem..."
 bwa mem \
     -t "$n_cores" ${readgroup_arg} \
     "$ref" \
     ${fq_arg} |
     samtools view -b -h > "$bam_out"
 
+## Get mapping stats
+echo -e "\n## Running samtools flagstat..."
+source activate $SAMTOOLS_ENV
+samtools flagstat "$bam_out" > "$flagstat_out"
+
+
+# WRAP UP ----------------------------------------------------------------------
 ## Report
-echo -e "\n## Output BAM file:"
-ls -lh "$bam_out"
+echo -e "\n## Output files:"
+ls -lh "$bam_out" "$flagstat_out"
 echo -e "\n## Done with script bwa.sh"
 date
 echo
