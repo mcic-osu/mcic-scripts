@@ -5,17 +5,10 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --output=slurm-dl-blast-fa-%j.out
 
-## Software
-source ~/.bashrc
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
-source activate blast-env
 
-## Bash strict mode
-set -euo pipefail
-
-## Help
+# SETUP ------------------------------------------------------------------------
+## Help function
 Help() {
-    # Display Help
     echo
     echo "## $0: Download FASTA files from BLAST output."
     echo
@@ -42,10 +35,23 @@ while getopts ':i:o:fh' flag; do
     o) outdir="$OPTARG" ;;
     f) genomes_only="$OPTARG" ;;
     h) Help && exit 0 ;;
-    \?) echo "## $0: ERROR: Invalid option" >&2 && exit 1 ;;
+    \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
     :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
     esac
 done
+
+## Report
+echo -e "\n## Starting script dl-blast-fa.sh..."
+date
+echo
+
+## Software
+module load python/3.6-conda5.2
+source activate /users/PAS0471/jelmer/miniconda3/envs/blast-env
+export NCBI_API_KEY=34618c91021ccd7f17429b650a087b585f08
+
+## Bash strict mode
+set -euo pipefail
 
 ## Test options
 [[ ! -f $infile ]] && echo "## $0: ERROR: Input file $infile does not exist" >&2 && exit 1
@@ -55,13 +61,10 @@ done
 mkdir -p "$outdir"
 
 ## Report
-echo "## Starting script dl-blast-fa.sh..."
-date
-echo "## Command-line args:"
 echo "## Input file (BLAST output):       $infile"
 echo "## Output dir:                      $outdir"
 echo "## Download full genomes only?:     $genomes_only"
-echo -e "-----------------------------\n\n"
+echo -e "------------------------\n"
 
 
 # DOWNLOAD FASTA FILES ---------------------------------------------------------
@@ -91,3 +94,4 @@ ls -lh "$outdir"/*_hits.fa
 
 echo -e "\n## Done with script dl-blast-fasta.sh"
 date
+echo
