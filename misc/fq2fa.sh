@@ -1,13 +1,18 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=60
+#SBATCH --time=30
 #SBATCH --cpus-per-task=4
 #SBATCH --output=slurm-fq2fa-%j.out
 
+## Report
+echo "## Starting script fq2fa.sh"
+date
+echo
+
 ## Software
-source ~/.bashrc
-source activate seqtk-env
+module load python/3.6-conda5.2
+source activate /users/PAS0471/jelmer/miniconda3/envs/seqtk-env
 
 ## Strict settings
 set -euo pipefail
@@ -17,14 +22,13 @@ fq_in=$1
 fa_out=$2
 
 ## Report
-echo "## Starting script trimmomatic.sh"
-date
-echo "## Input FASTQ file: $fq_in"
-echo "## Output FASTA file: $fa_out"
+echo "## Input FASTQ file:       $fq_in"
+echo "## Output FASTA file:      $fa_out"
 
 ## Convert FASTQ to FASTA
 seqtk seq -a "$fq_in" > "$fa_out"
 
 ## Report
-echo "Done with script."
+echo "## Done with script fq2fa.sh"
 date
+echo
