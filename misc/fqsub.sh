@@ -6,6 +6,8 @@
 #SBATCH --job-name=fqsub
 #SBATCH --output=slurm-fqsub-%j.out
 
+
+# SET-UP & PARSE ARGS ----------------------------------------------------------
 ## Help function
 Help()
 {
@@ -26,16 +28,10 @@ Help()
    echo
 }
 
-# SET-UP & PARSE ARGS ----------------------------------------------------------
-## Load software
-module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/miniconda3/envs/seqtk-env
-
-## Bash strict settings
-set -euo pipefail
-
-## Other parameters
-random_seed=$RANDOM
+## Report
+echo -e "\n## Starting script fqsub.sh..."
+date
+echo
 
 ## Option defaults
 n_reads=100000
@@ -62,6 +58,16 @@ done
 [[ ! -f "$R1_in" ]] && echo "ERROR: Input file $R1_in does not exist" >&2 && exit 1
 [[ ! -f "$R2_in" ]] && echo "ERROR: Input file $R2_in does not exist" >&2 && exit 1
 
+## Load software
+module load python/3.6-conda5.2
+source activate /users/PAS0471/jelmer/miniconda3/envs/seqtk-env
+
+## Bash strict settings
+set -euo pipefail
+
+## Other parameters
+random_seed=$RANDOM
+
 ## Number of reads in input FASTQ file
 n_reads_total=$(zcat "$R1_in" | awk '{ s++ } END{ print s/4 }')
 
@@ -73,8 +79,6 @@ outdir=$(dirname "$R1_in")
 mkdir -p "$outdir"
 
 ## Report
-echo -e "\n## Starting script fqsub_dir.sh..."
-date
 echo "## Input R1 file:               $R1_in"
 echo "## Input R2 file:               $R2_in"
 echo "## Output R1 file:              $R1_out"
@@ -112,3 +116,4 @@ ls -lh "$R2_out"
 
 echo -e "\n## Done with script fqsub.sh"
 date
+echo
