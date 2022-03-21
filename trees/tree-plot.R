@@ -5,10 +5,18 @@
 #SBATCH --output=slurm-tree-plot-%j.out
 
 # SET-UP -----------------------------------------------------------------------
+message("\n## Starting script tree-plot.R")
+message(Sys.time())
+message()
+
 ## Load (and install, if necessary) packages
-if (!"pacman" %in% installed.packages()) install.packages("pacman")
+if (!"pacman" %in% installed.packages())
+    install.packages("pacman", repos='http://cran.us.r-project.org')
+if (!"BiocManager" %in% installed.packages())
+    install.packages("BiocManager", repos='http://cran.us.r-project.org')
+if (!"ggtree" %in% installed.packages()) BiocManager::install("ggtree")
 packages <- c("tidyverse", "here", "ape", "ggtree", "argparse")
-pacman::p_load(char = packages, install = TRUE)
+pacman::p_load(char = packages, install = TRUE, repos='http://cran.us.r-project.org')
 
 ## Other scripts
 fun_script <- "mcic-scripts/trees/tree-plot_fun.R"
@@ -40,17 +48,15 @@ if (! args$msa_offset %in% c("auto", "textlen")) {
 }
 
 ## Report
-message("\n## Starting script tree-plot.R")
-message(Sys.time())
-message("## Tree file: ", args$tree)
-message("## Alignment file: ", args$aln)
-message("## Tree figure file: ", args$figure)
+message("## Tree file: ",               args$tree)
+message("## Alignment file: ",          args$aln)
+message("## Tree figure file: ",        args$figure)
 if (!is.null(args$annot)) message("## Annotation file: ", args$annot)
 message()
-message("## Show strain info: ", args$show_strain)
-message("## MSA offset in plot: ", args$msa_offset)
-message("## Try many MSA offsets: ", args$try_msa_offsets)
-message("--------------------------------\n\n")
+message("## Show strain info: ",        args$show_strain)
+message("## MSA offset in plot: ",      args$msa_offset)
+message("## Try many MSA offsets: ",    args$try_msa_offsets)
+message("--------------------------------\n")
 
 ## Test
 stopifnot(file.exists(args$tree))
@@ -101,4 +107,4 @@ message("## Listing output file:")
 system(paste("ls -lh", args$fig))
 message("## Done with script tree-plot.R")
 message(Sys.time())
-message("\n")
+message()
