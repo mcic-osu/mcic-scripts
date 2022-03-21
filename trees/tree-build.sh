@@ -6,58 +6,75 @@
 #SBATCH --mem=20G
 #SBATCH --output=slurm-tree-build-%j.out
 
-## Help
+
+# SETUP ------------------------------------------------------------------------
+## Help function
 Help() {
     echo
     echo "## $0: Align sequences and build a tree."
     echo
-    echo "## Syntax: $0 -i <input-fasta> -o <output-fasta> -t <output-tree> [-p alignment-program] [-h]"
-    echo "## Options:"
-    echo "## -i STR     Input FASTA file (REQUIRED)"
-    echo "## -o STR     Output (aligned) FASTA filename (REQUIRED)"
-    echo "## -t STR     Output tree filename (REQUIRED)"
+    echo "## Syntax: $0 -i <input-fasta> -o <output-fasta> -t <output-tree> [-p alignment-program]"
     echo
-    echo "## -p STR     Alignment program ('mafft', 'muscle', 'tcoffee', or 'none' (default: 'mafft')"
+    echo "## Required options:"
+    echo "## -i STR     Input (unaligned) FASTA file"
+    echo "## -o STR     Output (aligned) FASTA file"
+    echo "## -t STR     Output tree file"
+    echo
+    echo "## Other options:"
+    echo "## -p STR     Alignment program ('mafft', 'muscle', 'tcoffee', or 'none') [default: 'mafft']"
     echo "## -f STR     Additional argument(s) for mafft"
-    echo "## -l         Make a plot of the tree (default: no plot)"
+    echo "## -l         Make a plot of the tree [default: no plot]"
     echo "## -a STR     Annotation df for tree plot"
-    echo
-    echo "## -h         Print help."
+    echo "## -h         Print this help message and exit"
     echo
     echo "## Example: $0 -i in.fa -o out.fa -t out.tree -p muscle"
     echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
     echo
 }
 
-## Software and scripts
-source ~/.bashrc
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
-conda activate fasttree-env
-#? Note: additional Conda environments are loaded below, depending on the alignment program, etc
-
-## Bash strict mode
-set -euo pipefail
+## Report
+echo "## Starting script tree-build.sh..."
+date
 
 ## Option defaults
+fa_in=""
+aln=""
+tree=""
 align_program="mafft"
 annot_in=""
 args_mafft=""
+make_plot=false
 
 ## Parse command-line options
 while getopts ':i:o:t:p:a:f:lh' flag; do
     case "${flag}" in
     i) fa_in="$OPTARG" ;;
-    a) annot_in="$OPTARG" ;;
     o) aln="$OPTARG" ;;
     t) tree="$OPTARG" ;;
+    a) annot_in="$OPTARG" ;;
     p) align_program="$OPTARG" ;;
     f) args_mafft="$OPTARG" ;;
     l) make_plot=true ;;
     h) Help && exit 0 ;;
-    \?) echo "## $0: ERROR: Invalid option" >&2 && exit 1 ;;
+    \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
     :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
     esac
 done
+
+## Check input
+[[ "$fa_in" = "" ]] && echo "## ERROR: Please specify a FASTA input file with -i " >&2 && exit 1
+[[ "$aln" = "" ]] && echo "## ERROR: Please specify a FASTA output file with -o " >&2 && exit 1
+[[ "$tree" = "" ]] && echo "## ERROR: Please specify a tree output file with -t " >&2 && exit 1
+[[ ! -f "$fa_in" ]] && echo "## ERROR: Input FASTA $fa_in does not exist" >&2 && exit 1
+[[ "$annot_in" != "" ]] && [[ ! -f "$annot_in" ]] && echo "## ERROR: Input tree annotation file $annot_in does not exist" >&2 && exit 1
+
+## Software and scripts
+module load python/3.6-conda5.2
+conda activate /users/PAS0471/jelmer/miniconda3/envs/fasttree-env
+#? Note: additional Conda environments are loaded below, depending on the alignment program, etc
+
+## Bash strict mode
+set -euo pipefail
 
 ## Process parameters
 ### Output dirs
@@ -70,8 +87,6 @@ tree_fig=${aln%.*}.png
 n_cores=$SLURM_CPUS_PER_TASK
 
 ## Report
-echo "## Starting script tree-build.sh..."
-date
 echo "## Unaligned FASTA file (input):     $fa_in"
 echo "## Aligned FASTA file (output):      $aln"
 echo "## Tree file (output):               $tree"
@@ -80,10 +95,6 @@ echo "## Alignment program:                $align_program"
 [[ "$annot_in" != "" ]] && echo "## Annotation for tree figure:       $annot_in"
 [[ "$args_mafft" != "" ]] && echo "## Additional args for mafft:        $args_mafft"
 echo -e "--------------------------\n"
-
-## Check input
-[[ ! -f "$fa_in" ]] && echo "## ERROR: Input FASTA $fa_in does not exist" && exit 1
-[[ "$annot_in" != "" ]] && [[ ! -f "$annot_in" ]] && echo "## ERROR: Input tree annotation file $annot_in does not exist" && exit 1
 
 
 # ALIGN ------------------------------------------------------------------------
@@ -129,7 +140,7 @@ if [ "$make_plot" = true ]; then
     echo -e "\n---------------------------"
     echo -e "## Starting tree plotting script..."
 
-    module load R/4.0.2-gnu9.1
+    #module load R/4.1.0-gnu9.1
     TREE_PLOT_SCRIPT=mcic-scripts/trees/tree-plot.R
 
     if [ "$annot_in" != "" ]; then
@@ -139,6 +150,7 @@ if [ "$make_plot" = true ]; then
     fi
 fi
 
+
 # WRAP UP ----------------------------------------------------------------------
 echo -e "\n---------------------------"
 echo -e "\n## Output files:"
@@ -147,7 +159,7 @@ ls -lh "$tree"
 ls -lh "$tree_fig"
 echo -e "\n## Done with script tree.sh"
 date
-
+echo
 
 #? Commands follow https://www.biorxiv.org/content/10.1101/2020.11.24.396820v1.full
 #? GitHub repo: https://github.com/Cyoung02/Phylogenetic-Inference-Benchmarking
