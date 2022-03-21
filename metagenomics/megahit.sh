@@ -8,10 +8,14 @@
 
 
 # SETUP ------------------------------------------------------------------------
+## Report
+echo "## Starting script megahit.sh..."
+date
+echo
+
 ## Software
-source ~/.bashrc
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
-source activate megahit-env
+module load python/3.6-conda5.2
+source activate /users/PAS0471/jelmer/miniconda3/envs/megahit-env
 
 ## Bash strict mode
 set -euo pipefail
@@ -37,18 +41,16 @@ single_contig_dir="$outdir"/single_contig_fa      # Dir with single-contig FASTA
 outdir_oneup=$(dirname "$outdir")
 mkdir -p "$outdir_oneup"
 
+
 ## Report
-echo "## Starting script megahit.sh..."
-date
-echo "## Command-line args:"
 echo "## Input FASTQ file - R1:             $R1_in"
 echo "## Output dir:                        $outdir"
-echo "## Other parameters:"
+echo
 echo "## Input FASTQ file - R2:             $R2_in"
 echo "## Sample ID (used as output prefix): $sample_id"
 echo "## Number of cores:                   $n_cores"
 echo "## Memory in bytes:                   $mem"
-echo -e "---------------------------\n\n"
+echo -e "---------------------------\n"
 
 
 # RUN MEGAHIT ------------------------------------------------------------------
@@ -70,3 +72,4 @@ echo -e "\n## Listing file in output dir:"
 ls -lh "$outdir"
 echo -e "\n## Done with script megahit.sh"
 date
+echo
