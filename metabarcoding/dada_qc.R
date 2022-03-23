@@ -2,10 +2,10 @@
 
 #SBATCH --account=PAS0471
 #SBATCH --time=15
-#SBATCH --output=slurm-dada2-qc-plots-%j.out
+#SBATCH --output=slurm-dada_qc-%j.out
 
 # SET-UP -----------------------------------------------------------------------
-message("## Starting script ASV_qcplots.R")
+message("## Starting script dada_qc.R")
 Sys.time()
 message()
 
@@ -178,6 +178,6 @@ system(paste("ls -lh", plotfile_lines))
 system(paste("ls -lh", plotfile_bars_prop))
 system(paste("ls -lh", plotfile_lines_prop))
 
-message("\n## Done with script ASV_qcplots.R")
+message("\n## Done with script dada_qc.R")
 Sys.time()
 message()
