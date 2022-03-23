@@ -14,14 +14,14 @@ Help() {
   echo "## Syntax: $0 -i <input-FASTA> -o <output-dir> -a <gff-file> ..."
   echo
   echo "## Required options:"
-  echo "## -i STR     Input directory with BAM files"
-  echo "## -o STR     Output file (e.g. 'counts.txt')"
-  echo "## -a STR     Reference annotation (GFF/GTF) file"
+  echo "## -i STRING     Input directory with BAM files"
+  echo "## -o STRING     Output file with count matrix (e.g. 'counts.txt')"
+  echo "## -a STRING     Reference annotation (GFF/GTF) file"
   echo
   echo "## Other options:"
-  echo "## -t STR     Feature type in GFF file to count (default: 'gene')"
-  echo "## -g STR     Name of the feature type in the GFF file (default: 'Name')"
-  echo "## -h         Print this help message"
+  echo "## -t STRING     Feature type in GFF file to count        [default: 'gene']"
+  echo "## -g STR        Name of the feature type in the GFF file [default: 'Name']"
+  echo "## -h            Print this help message"
   echo
   echo "## Example: $0 -i results/bam -o results/featurecounts -a refdata/my_genome.gff"
   echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
@@ -29,19 +29,6 @@ Help() {
 }
 
 # SETUP ---------------------------------------------------------------------
-## Report
-echo
-echo "## Starting script featurecounts.sh"
-date
-echo
-
-## Load software
-module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/.conda/envs/subread-env
-
-## Strict bash settings
-set -euo pipefail
-
 ## Option defaults
 indir=""
 outfile=""
@@ -62,6 +49,18 @@ while getopts ':i:o:a:t:g:h' flag; do
   :) echo -e "\n## $0: ERROR: Option -$OPTARG requires an argument\n\n" >&2 && exit 1 ;;
   esac
 done
+
+## Report
+echo -e "\n## Starting script featurecounts.sh"
+date
+echo
+
+## Load software
+module load python/3.6-conda5.2
+source activate /users/PAS0471/jelmer/.conda/envs/subread-env
+
+## Strict bash settings
+set -euo pipefail
 
 ## Process parameters
 outdir=$(dirname "$outfile")
@@ -117,5 +116,4 @@ ls -lh "$outfile"
 
 echo -e "\n## Done with script featurecounts.sh"
 date
-echo
 echo
