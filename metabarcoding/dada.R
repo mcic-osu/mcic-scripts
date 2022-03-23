@@ -28,7 +28,7 @@ parser$add_argument("-c", "--config",
                     type = "character", default = NULL,
                     help = "Config file")
 parser$add_argument("-t", "--threads",
-                    type = "integer", default = 1,
+                    type = "integer", default = NULL,
                     help = "Number of threads [default %(default)s]")
 args <- parser$parse_args()
 
@@ -138,7 +138,8 @@ message("## Save RDS files:                         ", save_rds)
 message()
 message("## Number of samples to analyze:           ", n_samples)
 cat("## First 2 FASTQ files:", head(fq_raw_f, 2), "\n")
-cat("## First 2 sample IDs:", head(sample_ids, 2), "\n\n")
+cat("## First 2 sample IDs:", head(sample_ids, 2), "\n")
+message()
 
 
 # FASTQ FILE FILTERING  --------------------------------------------------------
