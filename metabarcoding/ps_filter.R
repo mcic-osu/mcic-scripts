@@ -326,12 +326,19 @@ head(sums[order(sums)])
 
 ## Remove samples with low counts
 ps <- subset_samples(ps_target, sample_sums(ps_target) > min_ASV)
+ps <- subset_taxa(ps, taxa_sums(ps) > 0)
 
 ## Report how many samples were removed
 nsamples_rm <- nsamples(ps_target) - nsamples(ps)
 message("## Nr of samples removed after ASV count filtering: ", nsamples_rm)
 message("## IDs of samples removed after ASV count filtering:")
 setdiff(sample_names(ps_target), sample_names(ps))
+
+## Report how many 0-counts ASVs were removed as consequence of sample filtering
+ntaxa_rm <- ntaxa(ps_target) - ntaxa(ps)
+message("## Nr of ASVs removed after ASV count filtering: ", ntaxa_rm)
+message("## IDs of ASVs removed after ASV count filtering:")
+setdiff(taxa_names(ps_target), taxa_names(ps))
 
 ## Save RDS file of phyloseq object
 saveRDS(ps, ps_out)
