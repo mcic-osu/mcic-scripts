@@ -17,14 +17,14 @@ Help() {
   echo "## Syntax: $0 -i <input-FASTA> -o <output-dir> ..."
   echo
   echo "## Required options:"
-  echo "## -i STR     Input reference FASTA file"
-  echo "## -o STR     Output dir for index files"
+  echo "## -i STRING     Input reference FASTA file"
+  echo "## -o STRING     Output dir for index files"
   echo
   echo "## Other options:"
-  echo "## -a STR     Reference annotation (GFF/GTF) file (default: no GFF/GTF, but this is not recommended)"
-  echo "## -s INT     Index size (default: automatically determined from genome size)"
-  echo "## -r INT     Index size (default: '150' (bp))"
-  echo "## -h         Print this help message"
+  echo "## -a STRING      Reference annotation (GFF/GTF) file [default: no GFF/GTF, but this is not recommended]"
+  echo "## -s INTEGER     Index size                          [default: automatically determined from genome size]"
+  echo "## -r INTEGER     Read length                         [default: '150' (bp)]"
+  echo "## -h             Print this help message and exit"
   echo
   echo "## Example: $0 -i refdata/my_genome.fa -o refdata/star_index -a refdata/my_genome.gff"
   echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
@@ -47,7 +47,7 @@ while getopts ':i:a:o:s:r:h' flag; do
   s) index_size="$OPTARG" ;;
   r) read_len="$OPTARG" ;;
   h) Help && exit 0 ;;
-  \?) echo "## $0: ERROR: Invalid option" >&2 && exit 1 ;;
+  \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
   :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
   esac
 done
@@ -62,7 +62,7 @@ source activate /users/PAS0471/jelmer/.conda/envs/star-env
 set -euo pipefail
 
 ## Report
-echo "## Starting script star_index.sh"
+echo -e "\n## Starting script star_index.sh"
 date
 echo
 
@@ -127,3 +127,4 @@ ls -lh "$index_dir"
 
 echo -e "\n## Done with script star_index.sh"
 date
+echo
