@@ -8,6 +8,7 @@
 #SBATCH --job-name=STAR-align
 #SBATCH --output=slurm-STAR-align-%j.out
 
+# PARSE OPTIONS ----------------------------------------------------------------
 ## Help function
 Help() {
   echo
@@ -16,31 +17,24 @@ Help() {
   echo "## Syntax: $0 -i <R1-FASTQ-infile> -o <BAM-outdir> -r <ref-index-dir> ..."
   echo
   echo "## Required options:"
-  echo "##    -i STR    R1 FASTQ input file name (The name of the R2 file will be inferred by the script.)"
-  echo "##    -o STR    BAM output dir"
-  echo "##    -r STR    STAR reference genome index dir"
+  echo "##    -i STRING     R1 FASTQ input file name (The name of the R2 file will be inferred by the script)"
+  echo "##    -o STRING     BAM output dir"
+  echo "##    -r STRING     STAR reference genome index dir"
   echo
   echo "## Other options:"
-  echo "##    -a STR    Reference annotation (GFF/GTF) file (default: no GFF/GTF, but this is not recommended)"
-  echo "##    -c        Count reads per gene (default: don't count)"
-  echo "##    -m INT    Max. number of locations a read can map to, before being considered unmapped (default: 10)"
-  echo "##    -t INT    Min. intron size (default: 21)"
-  echo "##    -T INT    Max. intron size (default: 0 => determined by STAR)"
-  echo "##    -A STR    Additional arguments to pass to STAR"
-  echo "##    -h        Print this help message"
+  echo "##    -a STRING     Reference annotation (GFF/GTF) file          [default: no GFF/GTF, but this is not recommended]"
+  echo "##    -c            Count reads per gene                         [default: don't count]"
+  echo "##    -m INTEGER    Max. nr. of locations a read can map to      [default: 10]"
+  echo "##    -t INTEGER    Min. intron size                             [default: 21]"
+  echo "##    -T INTEGER    Max. intron size                             [default: 0 => auto-determined by STAR]"
+  echo "##    -A STRING     Additional arguments to pass to STAR"
+  echo "##    -h            Print this help message and exit"
   echo
   echo "## Example: $0 -i data/fastq/S01_L001_R1.fastq.gz -o results/star -r refdata/star_index"
   echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
   echo
 }
 
-## Report
-echo "## Starting script star_align.sh"
-date
-echo
-
-
-# PARSE OPTIONS ----------------------------------------------------------------
 ## Option defaults
 R1_in=""
 bam_dir=""
@@ -72,6 +66,11 @@ done
 
 
 # SETUP ---------------------------------------------------------------------
+## Report
+echo "## Starting script star_align.sh"
+date
+echo
+
 ## Load software
 module load python/3.6-conda5.2
 source activate /users/PAS0471/jelmer/.conda/envs/star-env
@@ -178,5 +177,4 @@ fi
 
 echo -e "\n## Done with script star_align.sh"
 date
-echo
 echo
