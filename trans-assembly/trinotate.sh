@@ -7,11 +7,15 @@
 #SBATCH --job-name=trinotate
 #SBATCH --output=slurm-trinotate-%j.out
 
+## Report
+echo -e "\n## Starting script trinotate.sh"
+date
+echo
+
 ## Load software
-source ~/.bashrc
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
-source activate trinotate-env
-conda activate --stack trinity-env # For get_Trinity_gene_to_trans_map.pl
+conda activate /users/PAS0471/jelmer/miniconda3/envs/trinotate-env
+conda activate --stack /users/PAS0471/jelmer/miniconda3/envs/trinity-env # For script get_Trinity_gene_to_trans_map.pl
+#> Note: it may be necessary to forego also loading the Trinity env in the later stages of the pipeline 
 
 ## Bash strict mode
 set -euo pipefail
@@ -28,10 +32,7 @@ GENE_TRANS_MAP=$outdir/GENE_TRANS_MAP
 N_CORES=$SLURM_CPUS_PER_TASK
 
 ## Report
-echo
-echo "## Starting script trinotate.sh"
-date
-echo "## Args:                    $*"
+echo "## All args:                    $*"
 echo
 echo "## Input FASTA file:        $fa_in_org"
 echo "## Input config file:       $config"
@@ -41,12 +42,16 @@ echo "## Gene-to-transcript map:  $GENE_TRANS_MAP"
 echo "## Number of cores:         $N_CORES"
 echo -e "-------------------------------\n"
 
-## Create output dirs if needed
+## Create output dir if needed
 mkdir -p "$outdir"
 
-echo "## Copying input FASTA to outdir..."
+## Copy assembly FASTA file to output dir
 fa_in="$outdir"/$(basename "$fa_in_org")
-cp -v "$fa_in_org" "$outdir"/
+if [ ! -f "$fa_in" ]; then
+    echo "## Copying input FASTA to outdir..."
+    cp -v "$fa_in_org" "$fa_in"
+fi
+
 
 # BUILD TRINOTATE DATABASE -----------------------------------------------------
 if [ ! -f "$outdir"/Trinotate.sqlite ]; then
@@ -95,6 +100,7 @@ ls -lh "$outdir"
 
 echo -e "\n## Done with script trinotate.sh"
 date
+echo
 
 #? Info
 # https://github.com/Trinotate/Trinotate
