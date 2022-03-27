@@ -11,28 +11,25 @@
 ## Help
 Help() {
   echo
-  echo "## $0: Run TrimGalore for a FASTQ file."
+  echo "## $0: Run TrimGalore for one or a pair of FASTQ files"
   echo
-  echo "## Syntax: $0 -i <R1 FASTQ input file> -o <FASTQ output dir> -O <FastQC output dir> -q <min seq qual>  -q <min seq len> [-sh]"
-  echo "## Options:"
-  echo "## -h       Print this help message"
-  echo "## -i STR   R1 FASTQ input file (REQUIRED)"
-  echo "## -o STR   FASTQ output dir (REQUIRED)"
-  echo "## -O STR   FastQC results output dir (REQUIRED)"
-  echo "## -q INT   Quality trimming threshold (default: 20)"
-  echo "## -l INT   Minimum read length (default: 20)"
-  echo "## -s       Input is single-end (default: paired-end)"
+  echo "## Syntax: $0 -i <R1-FASTQ-in> -o <FASTQ-outdir> -O <FastQC-outdir> ..."
+  echo
+  echo "## Required options:"
+  echo "## -i STRING      R1 FASTQ input file (if paired-end, R2 file name will be inferred)"
+  echo "## -o STRING      Trimmed FASTQ output dir"
+  echo "## -O STRING      FastQC results output dir"
+  echo
+  echo "## Other options:"
+  echo "## -q INTEGER     Quality trimming threshold         [default: 20]"
+  echo "## -l INTEGER     Minimum read length                [default: 20]"
+  echo "## -s             Input is single-end                [default: paired-end]"
+  echo "## -h             Print this help message and exit"
+  echo
   echo "## Example: $0 -i data/fastq/S01_L001_R1.fastq.gz -o results/trimgalore -O results/fastqc"
   echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
   echo
 }
-
-## Software
-module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/.conda/envs/trimgalore-env
-
-## Bash strict settings
-set -euo pipefail
 
 ## Option defaults
 qual=0                  # => 0 = no actual quality trimming
@@ -49,22 +46,40 @@ while getopts ':i:o:O:q:l:sh' flag; do
   l) len="$OPTARG" ;;
   s) single_end=true ;;
   h) Help && exit 0 ;;
-  \?) echo "## $0: ERROR: Invalid option" >&2 && exit 1 ;;
+  \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
   :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
   esac
 done
 
-## Process variables and args
+## Report
+echo -e "\n## Starting script trimgalore.sh"
+date
+echo
+
+## Check input
+[[ ! -f "$R1_in" ]] && echo "## ERROR: input R1 FASTQ file $R1_in does not exist" >&2 && exit 1
+
+## Software
+module load python/3.6-conda5.2
+source activate /users/PAS0471/jelmer/.conda/envs/trimgalore-env
+
+## Bash strict settings
+set -euo pipefail
+
+## Get R2 file and create input argument
 if [ "$single_end" != "true" ]; then
     R2_in=${R1_in/_R1_/_R2_}
     R2_id=$(basename "$R2_in" .fastq.gz)
     input_arg="--paired $R1_in $R2_in"
+    [[ ! -f "$R2_in" ]] && echo "## ERROR: input R2 FASTQ file $R2_in does not exist" >&2 && exit 1
 else
     input_arg="$R1_in"
 fi
 
+## Get sample/file ID
 R1_id=$(basename "$R1_in" .fastq.gz)
 
+## Get number of threads
 n_threads="$SLURM_CPUS_PER_TASK"
 
 ## Make output dirs
@@ -72,8 +87,6 @@ mkdir -p "$outdir_trim"
 mkdir -p "$outdir_fastqc"
 
 ## Report
-echo "## Starting script trimgalore.sh"
-date
 echo "## R1 input file:                 $R1_in"
 echo "## Output dir - trimmed FASTQs:   $outdir_trim"
 echo "## Output dir - FastQC:           $outdir_fastqc"
@@ -87,7 +100,8 @@ echo -e "---------------------------\n\n"
 ## Run Trim-Galore
 trim_galore \
     --quality "$qual" --length "$len" \
-    --gzip -j "$n_threads" \
+    --gzip \
+    -j "$n_threads" \
     --output_dir "$outdir_trim" \
     --fastqc --fastqc_args "-t $n_threads --outdir $outdir_fastqc" \
     $input_arg
@@ -107,3 +121,4 @@ ls -lh "$outdir_trim"/"$R1_id".fastq.gz "$outdir_trim"/"$R2_id".fastq.gz
 
 echo -e "\n## Done with script trimgalore.sh"
 date
+echo
