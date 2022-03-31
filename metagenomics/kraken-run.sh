@@ -91,7 +91,7 @@ fi
 ## Make sure input file argument is correct based on file type 
 if [[ "$infile" =~ \.fastq.gz$ ]]; then
     R1_in="$infile"
-    R1_suffix=$(echo "$R1_in" | sed -E 's/.*(_R?[0-9]).*fastq.gz/\1/')
+    R1_suffix=$(echo "$R1_in" | sed -E 's/.*(_R?[1-2])[_\.][0-9]+\.fastq\.gz/\1/')
     R2_suffix=${R1_suffix/1/2}
     R2_in=${R1_in/$R1_suffix/$R2_suffix}
     R1_basename=$(basename "$R1_in" .fastq.gz)
@@ -102,6 +102,8 @@ if [[ "$infile" =~ \.fastq.gz$ ]]; then
         echo "## Input FASTQ file - R1:     $R1_in"
         echo "## Input FASTQ file - R2:     $R2_in"
         infile_arg="--gzip-compressed --paired $R1_in $R2_in"
+        [[ ! -f "$R2_in" ]] && echo "## ERROR: R2 file $R2_in does not exist" >&2 && exit 1
+        [[ "$R1_in" = "$R2_in" ]] && echo "## ERROR: R1 file $R1_in is the same as R2 file $R2_in" >&2 && exit 1
     else
         echo "## Input is:                  single-end FASTQ file"
         infile_arg="--gzip-compressed $R1_in"
