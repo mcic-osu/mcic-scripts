@@ -2,8 +2,8 @@
 
 #SBATCH --account=PAS0471
 #SBATCH --time=300
-#SBATCH --mem=80G
-#SBATCH --cpus-per-task=20
+#SBATCH --mem=150G
+#SBATCH --cpus-per-task=30
 #SBATCH --output=slurm-kraken-run-%j.out
 
 # HELP AND COMMAND-LINE OPTIONS ------------------------------------------------
@@ -15,15 +15,15 @@ Help() {
     echo "## Syntax: $0 -i <input-sequence-file> -o <output-dir> -d <kraken-db-dir> ..."
     echo 
     echo "## Required options:"
-    echo "## -i        Input sequence file (FASTA, single-end FASTQ, or R1 from paired-end FASTQ)"
-    echo "             (If an R1 paired-end FASTQ file is provided, the name of the R2 file will be inferred.)"
-    echo "## -o        Output directory"
-    echo "## -d        Directory with an existing Kraken database"
-    echo "             (Use one of the scripts 'kraken-build-custom-db.sh' or 'kraken-build-std-db.sh' to create a Kraken database)"
+    echo "## -i STRING       Input sequence file (FASTA, single-end FASTQ, or R1 from paired-end FASTQ)"
+    echo "                   (If an R1 paired-end FASTQ file is provided, the name of the R2 file will be inferred.)"
+    echo "## -o STRING       Output directory"
+    echo "## -d STRING       Directory with an existing Kraken database"
+    echo "                   (Use one of the scripts 'kraken-build-custom-db.sh' or 'kraken-build-std-db.sh' to create a Kraken database)"
     echo
     echo "## Other options:"
-    echo "## -n        Add taxonomic names to the Kraken 'main' output file (not compatible with Krona)"
-    echo "## -h        Print this help message and exit"
+    echo "## -n              Add taxonomic names to the Kraken 'main' output file (not compatible with Krona)"
+    echo "## -h              Print this help message and exit"
     echo
     echo "## Example: $0 -i refdata/kraken/my-db -u https://genome.fa -g refdata/kraken/my-db/genomes"
     echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
@@ -71,19 +71,19 @@ source activate /users/PAS0471/jelmer/miniconda3/envs/kraken2-env
 set -euo pipefail
 
 ## Report
-echo "## Input file:              $infile"
-echo "## Output dir:              $outdir"
-echo "## Kraken db dir:           $krakendb_dir"
-echo "## Add tax. names (Krona compatibility): $add_names"
+echo "## Input file:                $infile"
+echo "## Output dir:                $outdir"
+echo "## Kraken db dir:             $krakendb_dir"
+echo "## Add tax. names:            $add_names"
 echo
 
 ## Create output dir
 mkdir -p "$outdir"
 
-## Add tax. names or onot
+## Add tax. names or not -- when adding names, can't use the output for Krona plotting  
+#? report-minimizer-data: see https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#distinct-minimizer-count-information
 if [ "$add_names" = true ]; then
     names_arg="--use-names "
-    #? report-minimizer-data: see https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#distinct-minimizer-count-information
 else
     names_arg=""
 fi
@@ -119,12 +119,12 @@ outfile_report="$outdir"/"$sample_ID"_report.txt
 
 ## Report
 echo
-echo "## Input file arg:                $infile_arg"
-echo "## Sample ID:                     $sample_ID"
+echo "## Input file arg:            $infile_arg"
+echo "## Sample ID:                 $sample_ID"
 echo
-echo "## Output file - main:            $outfile_main"
-echo "## Output file - report:          $outfile_report"
-echo -e "------------------------------\n"
+echo "## Output file - main:        $outfile_main"
+echo "## Output file - report:      $outfile_report"
+echo -e "------------------------\n"
 
 
 # RUN KRAKEN -------------------------------------------------------------------
