@@ -25,7 +25,7 @@ Help() {
     echo "## -n              Add taxonomic names to the Kraken 'main' output file (not compatible with Krona)"
     echo "## -h              Print this help message and exit"
     echo
-    echo "## Example: $0 -i refdata/kraken/my-db -u https://genome.fa -g refdata/kraken/my-db/genomes"
+    echo "## Example: $0 -i refdata/kraken/my-db -o results/kraken -d /fs/project/PAS0471/jelmer/refdata/kraken/PlusPFP"
     echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
     echo
 }
