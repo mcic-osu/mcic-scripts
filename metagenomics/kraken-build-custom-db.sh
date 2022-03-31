@@ -6,6 +6,8 @@
 #SBATCH --cpus-per-task=20
 #SBATCH --output=slurm-kraken-build-custom-%j.out
 
+
+# GET OPTIONS ------------------------------------------------------------------
 ## Help function
 Help() {
     echo
@@ -14,35 +16,22 @@ Help() {
     echo "## Syntax: $0 -d <kraken-db-dir> ..."
     echo 
     echo "## Required options:"
-    echo "## -d STRING    Dir for Kraken db"
+    echo "## -d STRING      Dir for Kraken db"
     echo
     echo "## Other options:"
-    echo "## -i STRING    Taxonomic groups to include (default: 'abvdhc')"
-    echo "                a=archaea, b=bacteria, v=viral, d=plasmid, h=human, c=univec_core, f=fungi, p=plants, z=protozoa"
-    echo "                Use a string like 'ab' for archae + bacteria OR 'all' for all groups"
-    echo "## -g STRING    Custom genome FASTA file to be added to the db"
-    echo "## -G STRING    Dir _with_ (if files are already present) or _for_ (if files are to be downloaded) custom genome FASTA files"
-    echo "## -u STRING    URL for genome FASTA file to be downloaded and added to the db"
-    echo "## -U STRING    File with URLs for genome FASTA files to be downloaded and added to the db"
-    echo "## -h           Print this help message"
+    echo "## -i STRING      Taxonomic groups to include (default: 'abvdhc')"
+    echo "                  a=archaea, b=bacteria, v=viral, d=plasmid, h=human, c=univec_core, f=fungi, p=plants, z=protozoa"
+    echo "                  Use a string like 'ab' for archae + bacteria OR 'all' for all groups"
+    echo "## -g STRING      Custom genome FASTA file to be added to the db"
+    echo "## -G STRING      Dir _with_ (if files are already present) or _for_ (if files are to be downloaded) custom genome FASTA files"
+    echo "## -u STRING      URL for genome FASTA file to be downloaded and added to the db"
+    echo "## -U STRING      File with URLs for genome FASTA files to be downloaded and added to the db"
+    echo "## -h             Print this help message and exit"
     echo
     echo "## Example: $0 -d refdata/kraken/my-db -g refdata/kraken/my-db/genomes -u https://genome.fa"
     echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
     echo
 }
-
-
-# SET-UP -----------------------------------------------------------------------
-## Report
-echo -e "\n## Starting script kraken-build-custom-db.sh..."
-date
-
-## Software
-module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/miniconda3/envs/kraken2-env
-
-## Bash strict mode
-set -euo pipefail
 
 ## Option defaults
 db_dir=""
@@ -78,18 +67,31 @@ while getopts ':d:u:U:g:G:i:h' flag; do
     esac
 done
 
-## Derived parameters
-lib_dir="$db_dir"/library
-
 ## Check input
 [[ "$db_dir" = "" ]] && echo -e "\n## ERROR: must specify a db dir with -d" && exit 1
 [[ "$genome_url" != "" ]] && [[ "$genome_url_file" != "" ]] && \
     echo -e "\n## ERROR: Use either -u (genome URL) or -U (URL file), not both" && exit 1
 
+
+# SET-UP -----------------------------------------------------------------------
+## Report
+echo -e "\n## Starting script kraken-build-custom-db.sh..."
+date
+
+## Software
+module load python/3.6-conda5.2
+source activate /users/PAS0471/jelmer/miniconda3/envs/kraken2-env
+
+## Bash strict mode
+set -euo pipefail
+
 ## If no URLs/FASTA files were specified, but a genome dir was specified, then use all genomes in the genome dir 
 [[ "$genome_url" = "" ]] && [[ "$genome_url_file" = "" ]] && [[ "$genome_fa" = "" ]] && [[ "$genome_dir" != "" ]] && \
     genome_dir_all=true && \
     echo -e "\n## NOTE: Using all genomes in genome dir $genome_dir"
+
+## Derived parameters
+lib_dir="$db_dir"/library
 
 ## Figure out which taxa to use
 if [[ "$include_taxa" = "all" ]]; then
