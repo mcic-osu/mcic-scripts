@@ -107,7 +107,7 @@ if [[ "$infile" =~ \.fastq.gz$ ]]; then
         infile_arg="--gzip-compressed $R1_in"
     fi
 else
-    echo -e "## Input is: FASTA file"
+    echo -e "## Input is:                   FASTA file"
     infile_basename=$(basename "$infile")
     sample_ID=${infile_basename%%.*}
     infile_arg="$infile"
@@ -118,7 +118,6 @@ outfile_main="$outdir"/"$sample_ID"_main.txt
 outfile_report="$outdir"/"$sample_ID"_report.txt
 
 ## Report
-echo
 echo "## Input file arg:            $infile_arg"
 echo "## Sample ID:                 $sample_ID"
 echo
