@@ -8,9 +8,8 @@
 #SBATCH --output=slurm-rcorr-%j.out
 
 ## Load software
-source ~/.bashrc
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
-source activate rcorrector-env
+module load python/3.6-conda5.2
+source activate /users/PAS0471/jelmer/miniconda3/envs/rcorrector-env
 
 ## Bash strict mode
 set -euo pipefail
