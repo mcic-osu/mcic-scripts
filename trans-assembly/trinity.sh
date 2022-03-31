@@ -10,25 +10,27 @@
 #SBATCH --job-name=trinity
 #SBATCH --output=slurm-trinity-%j.out
 
-## Load software
-source ~/.bashrc
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
-source activate trinity-env
-COLLECTL_SCRIPT=~/miniconda3/envs/trinity-env/opt/trinity-2.12.0/trinity-plugins/COLLECTL/examine_resource_usage_profiling.pl
-
-## Bash strict mode
-set -euo pipefail
+## Report
+echo -e "\n## Starting script trinity.sh"
+date
 
 ## Command-line args
 indir="$1"
 outdir="$2"      # NOTE: Output dir needs to include "trinity" in the name according to the Trinity docs
 
-## Chck input
+## Check input
 [[ "$#" != 2 ]] && echo "## ERROR: Please provide 2 arguments - you provided $#" && exit 1
 [[ ! -d "$indir" ]] && echo "## ERROR: Input dir $indir does not exist" && exit 1
 
-## Process args
-### Comma-delimited list of FASTQ files:
+## Load software
+module load python/3.6-conda5.2
+source activate /users/PAS0471/jelmer/miniconda3/envs/trinity-env
+COLLECTL_SCRIPT=/users/PAS0471/jelmer/miniconda3/envs/trinity-env/opt/trinity-2.12.0/trinity-plugins/COLLECTL/examine_resource_usage_profiling.pl
+
+## Bash strict mode
+set -euo pipefail
+
+## Comma-delimited list of FASTQ files:
 R1_list=$(echo "$indir"/*R1*fastq.gz | sed 's/ /,/g')
 R2_list=$(echo "$indir"/*R2*fastq.gz | sed 's/ /,/g')
 
@@ -36,10 +38,7 @@ R2_list=$(echo "$indir"/*R2*fastq.gz | sed 's/ /,/g')
 mem_gb=$((8*(SLURM_MEM_PER_NODE / 1000)/10))G
 
 ## Report
-echo
-echo "## Starting script trinity.sh"
-date
-echo "## Args: $*"
+echo "## All args: $*"
 echo
 echo "## Input dir:         $indir"
 echo "## Output dir:        $outdir"
@@ -71,8 +70,9 @@ mv collectl "$outdir"
 
 # WRAP-UP ----------------------------------------------------------------------
 echo -e "\n-------------------------------"
-echo "## Listing file in the output dir:"
+echo "## Listing files in the output dir:"
 ls -lh "$outdir"
 
 echo -e "\n## Done with script trinity.sh"
 date
+echo
