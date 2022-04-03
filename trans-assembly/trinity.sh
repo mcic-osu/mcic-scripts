@@ -10,23 +10,61 @@
 #SBATCH --job-name=trinity
 #SBATCH --output=slurm-trinity-%j.out
 
+
+# PARSE ARGS -------------------------------------------------------------------
+## Help function
+Help() {
+  echo
+  echo "## $0: Run Trinity to assemble a transcriptome using a directory of FASTQ files."
+  echo
+  echo "## Syntax: $0 -i <input-dir> -o <output-dir> ..."
+  echo
+  echo "## Required options:"
+  echo "## -i STRING     Input directory with FASTQ files"
+  echo "## -o STRING     Output directory"
+  echo "                 NOTE: The output directory needs to include 'trinity' in its name"
+  echo
+  echo "## Other options:"
+  echo "## -h            Print this help message and exit"
+  echo
+  echo "## Example: $0 -i data/fastq/ -o results/trinity"
+  echo "## To submit to the OSC queue, preface with 'sbatch': sbatch $0 ..."
+  echo
+}
+
+## Default parameter values
+indir=""
+outdir=""
+
+## Get parameter values
+while getopts ':i:o:h' flag; do
+    case "${flag}" in
+    i) indir="$OPTARG" ;;
+    o) outdir="$OPTARG" ;;
+    h) Help && exit 0 ;;
+    \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
+    :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
+    esac
+done
+
 ## Report
 echo -e "\n## Starting script trinity.sh"
 date
+echo
 
-## Command-line args
-indir="$1"
-outdir="$2"      # NOTE: Output dir needs to include "trinity" in the name according to the Trinity docs
+## Check parameter values
+[[ ! -d "$indir" ]] && echo "## ERROR: Input dir (-i) $indir does not exist" >&2 && exit 1
 
-## Check input
-[[ "$#" != 2 ]] && echo "## ERROR: Please provide 2 arguments - you provided $#" && exit 1
-[[ ! -d "$indir" ]] && echo "## ERROR: Input dir $indir does not exist" && exit 1
 
+# SOFTWARE ---------------------------------------------------------------------
 ## Load software
 module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/miniconda3/envs/trinity-env
-COLLECTL_SCRIPT=/users/PAS0471/jelmer/miniconda3/envs/trinity-env/opt/trinity-2.12.0/trinity-plugins/COLLECTL/examine_resource_usage_profiling.pl
+CONDA_ENV=/users/PAS0471/jelmer/miniconda3/envs/trinity-env
+COLLECTL_SCRIPT="$CONDA_ENV"/opt/trinity-2.12.0/trinity-plugins/COLLECTL/examine_resource_usage_profiling.pl
+source activate "$CONDA_ENV"
 
+
+# OTHER SETUP ------------------------------------------------------------------ 
 ## Bash strict mode
 set -euo pipefail
 
@@ -38,13 +76,11 @@ R2_list=$(echo "$indir"/*R2*fastq.gz | sed 's/ /,/g')
 mem_gb=$((8*(SLURM_MEM_PER_NODE / 1000)/10))G
 
 ## Report
-echo "## All args: $*"
+echo "## Input dir:                            $indir"
+echo "## Output dir:                           $outdir"
 echo
-echo "## Input dir:         $indir"
-echo "## Output dir:        $outdir"
-echo
-echo "## List of R1 files:  $R1_list"
-echo "## List of R2 files:  $R2_list"
+echo "## List of R1 (forward) FASTQ files:     $R1_list"
+echo "## List of R2 (reverse) FASTQ files:     $R2_list"
 echo -e "-------------------------------\n"
 
 ## Create output dir if needed
@@ -76,3 +112,6 @@ ls -lh "$outdir"
 echo -e "\n## Done with script trinity.sh"
 date
 echo
+sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
+echo
+
