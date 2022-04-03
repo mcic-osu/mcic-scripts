@@ -5,14 +5,20 @@
 #SBATCH --cpus-per-task=2
 #SBATCH --output=slurm-download-refseq-%j.out
 
-## Report
-echo -e "\n## Starting script dl-refseq.sh..."
-date
-echo
+## Bash strict settings
+set -euo pipefail
 
 ## Parameters
 refseq_lib=$1     # Options are the dir names here: https://ftp.ncbi.nlm.nih.gov/refseq/release/
 outdir=$2
+
+## Report
+echo -e "\n## Starting script dl-refseq.sh..."
+date
+echo
+echo "## Refseq library:         $refseq_lib"
+echo "## Output dir:             $outdir"
+echo
 
 ## NCBI key
 export NCBI_API_KEY=34618c91021ccd7f17429b650a087b585f08
