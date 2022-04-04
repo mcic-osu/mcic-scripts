@@ -1,8 +1,8 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=3:00:00
-#SBATCH --cpus-per-task=12
+#SBATCH --time=2:00:00
+#SBATCH --cpus-per-task=16
 #SBATCH --mem=100G
 #SBATCH --ntasks=1
 #SBATCH --job-name=STAR-align
@@ -23,6 +23,7 @@ Help() {
   echo
   echo "## Other options:"
   echo "##    -a STRING     Reference annotation (GFF/GTF) file          [default: no GFF/GTF, but this is not recommended]"
+  echo "##    -s            Don't sort the output BAM file               [default: position-sort the BAM file]"
   echo "##    -c            Count reads per gene                         [default: don't count]"
   echo "##    -m INTEGER    Max. nr. of locations a read can map to      [default: 10]"
   echo "##    -t INTEGER    Min. intron size                             [default: 21]"
@@ -43,11 +44,12 @@ gff=""
 max_map=10
 intron_min=21
 intron_max=0
-do_count=false
+count=false
+sort=true
 more_args=""
 
 ## Parse command-line options
-while getopts ':i:o:r:m:t:T:a:A:ch' flag; do
+while getopts ':i:o:r:m:t:T:a:A:sch' flag; do
   case "${flag}" in
   i) R1_in="$OPTARG" ;;
   a) gff="$OPTARG" ;;
@@ -57,7 +59,8 @@ while getopts ':i:o:r:m:t:T:a:A:ch' flag; do
   t) intron_min="$OPTARG" ;;
   T) intron_max="$OPTARG" ;;
   A) more_args="$OPTARG" ;;
-  c) do_count=true ;;
+  c) count=true ;;
+  s) sort=false ;;
   h) Help && exit 0 ;;
   \?) echo "## $0: ERROR: Invalid option" >&2 && exit 1 ;;
   :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
@@ -89,7 +92,7 @@ starlog_dir="$bam_dir"/star_logs                    # STAR output other than bam
 
 ## If a GFF file is provided, build the appropriate argument for STAR
 if [ "$gff" != "" ]; then
-    if [ "$do_count" = true ]; then
+    if [ "$count" = true ]; then
         # add `--quantMode GeneCounts` so as to do gene counting 
         gff_arg="--sjdbGTFfile $gff $GFF_FORMAT --quantMode GeneCounts"
     else
@@ -99,12 +102,19 @@ else
     gff_arg=""
 fi
 
+## Sorted output or not
+if [ "$sort" = true ]; then
+    output_arg="--outSAMtype BAM SortedByCoordinate --outBAMsortingBinsN 100"
+else
+    output_arg="--outSAMtype BAM Unsorted"
+fi
+
 ## Check inputs
 [[ ! -f "$R1_in" ]] && echo "## ERROR: Input file R1_in (-i) $R1_in does not exist" >&2 && exit 1
 [[ ! -f "$R2_in" ]] && echo "## ERROR: Input file R2_in $R2_in does not exist" >&2 && exit 1
 [[ ! -d "$index_dir" ]] && echo "## ERROR: Input ref genome dir (-r) $index_dir does not exist" >&2 && exit 1
 [[ "$gff" != "" ]] && [[ ! -f "$gff" ]] && echo "## ERROR: Input annotation file (-a) $gff does not exist" >&2 && exit 1
-[[ "$gff" = "" ]] && [[ "$do_count" = true ]] && echo "## ERROR: Can't do gene counting (-c) without an annotation file (-a)" >&2 && exit 1
+[[ "$gff" = "" ]] && [[ "$count" = true ]] && echo "## ERROR: Can't do gene counting (-c) without an annotation file (-a)" >&2 && exit 1
 
 ## Report
 echo "## Input R1 FASTQ file:                          $R1_in"
@@ -112,10 +122,12 @@ echo "## Input STAR genome index dir:                  $index_dir"
 [[ "$gff" != "" ]] && echo "## Input GFF file:                               $gff"
 echo "## Output BAM dir:                               $bam_dir"
 echo
-echo "## Also perform read counting:                   $do_count"
+echo "## Also perform read counting:                   $count"
 echo "## Max nr of alignments for a read:              $max_map"  # If this nr is exceeded, read is considered unmapped
 echo "## Min intron size:                              $intron_min"
 echo "## Max intron size (0 => STAR default):          $intron_max"
+echo "## Sort the BAM file:                            $sort"
+echo "## Output arg for STAR:                          $output_arg"
 [[ "$more_args" != "" ]] && echo "## Additional args to pass to STAR:              $more_args"
 echo
 echo "## Sample ID (as inferred by the script):        $sample_id"
@@ -137,9 +149,7 @@ STAR --runThreadN "$SLURM_CPUS_ON_NODE" \
    --outFilterMultimapNmax $max_map \
    --alignIntronMin $intron_min --alignIntronMax $intron_max \
    --outFileNamePrefix "$bam_dir/$sample_id"_ \
-   --outSAMtype BAM SortedByCoordinate \
-   --outBAMsortingBinsN 100 \
-   --outReadsUnmapped Fastx $gff_arg $more_args
+   --outReadsUnmapped Fastx $output_arg $gff_arg $more_args
 
 
 # ORGANIZE STAR OUTPUT ---------------------------------------------------------
@@ -170,7 +180,7 @@ ls -lh "$unmapped_dir/$sample_id"*fastq.gz
 echo -e "\n## Listing output BAM file:"
 ls -lh "$bam_dir/$sample_id"_*bam
 
-if [ "$do_count" = true ]; then
+if [ "$count" = true ]; then
     echo -e "\n## Listing output gene count file:"
     ls -lh "$bam_dir"/"$sample_id"*ReadsPerGene.out.tab
 fi
