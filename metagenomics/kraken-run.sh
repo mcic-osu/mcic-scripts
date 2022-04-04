@@ -49,6 +49,11 @@ while getopts 'i:o:d:nh' flag; do
     esac
 done
 
+## Report
+echo "## Starting script kraken-run..."
+date
+echo
+
 ## Process options
 [[ "$infile" = "" ]] && echo "ERROR: must specify input file with -i" >&2 && exit 1
 [[ ! -f "$infile" ]] && echo "ERROR: input file $infile does note exist" >&2 && exit 1
@@ -58,11 +63,6 @@ done
 
 
 # SETUP ------------------------------------------------------------------------
-## Report
-echo "## Starting script kraken-run..."
-date
-echo
-
 ## Load software
 module load python/3.6-conda5.2
 source activate /users/PAS0471/jelmer/miniconda3/envs/kraken2-env
@@ -130,7 +130,6 @@ echo -e "------------------------\n"
 
 # RUN KRAKEN -------------------------------------------------------------------
 echo "## Starting Kraken2 run..."
-
 kraken2 ${names_arg}--threads "$SLURM_CPUS_ON_NODE" \
     --report-minimizer-data \
     --db "$krakendb_dir" \
@@ -143,4 +142,6 @@ echo -e "\n## Listing output files:"
 ls -lh "$outfile_main" "$outfile_report"
 echo -e "\n## Done with script kraken-run.sh"
 date
+echo
+sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
 echo
