@@ -62,7 +62,7 @@ while getopts ':d:u:U:g:G:i:h' flag; do
     U) genome_url_file="$OPTARG" ;;
     i) include_taxa="$OPTARG" ;;
     h) Help && exit 0 ;;
-    \?) echo "## ERROR: Invalid option" >&2 && exit 1 ;;
+    \?) echo "## ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
     :) echo "## ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
     esac
 done
@@ -279,3 +279,6 @@ echo -e "\n## Listing file in DB dir:"
 ls -lh "$db_dir"
 echo -e "\n## Done with script kraken-build-custom-db.sh"
 date
+echo
+sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
+echo
