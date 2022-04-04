@@ -12,6 +12,9 @@ set -euo pipefail
 refseq_lib=$1     # Options are the dir names here: https://ftp.ncbi.nlm.nih.gov/refseq/release/
 outdir=$2
 
+## Final output file with all sequences
+outfile="$outdir"/refseq_"$refseq_lib".fa
+
 ## Report
 echo -e "\n## Starting script dl-refseq.sh..."
 date
@@ -28,14 +31,17 @@ export NCBI_API_KEY=34618c91021ccd7f17429b650a087b585f08
 ## Make outdir
 mkdir -p "$outdir"
 
-## Download
+## Download nucleotide FASTA sequences
 wget \
     ftp://ftp.ncbi.nlm.nih.gov/refseq/release/"$refseq_lib"/*genomic.fna.gz \
     -P "$outdir"
 
+## Concatenate sequences
+zcat "$outdir"/*genomic.fna.gz > "$outfile"
+
 ## Report
-echo -e "\n## Listing files in output dir:"
-ls -lh "$outdir"
+echo -e "\n## Listing concatenated output file:"
+ls -lh "$outfile"
 echo -e "\n## Done with script dl-refseq.sh..."
 date
 echo
