@@ -69,15 +69,19 @@ source activate /fs/project/PAS0471/jelmer/conda/qualimap-env
 ## Bash strict mode
 set -euo pipefail
 
+## Assign output dir that includes sample ID
+sampleID=$(basename "$bam" .bam)
+outdir_full="$outdir"/"$sampleID"
+
 ## Report
 echo "## Input BAM file:                     $bam"
 echo "## Input annotation (GFF/GTF) file:    $annot"
-echo "## Output directory:                   $outdir"
+echo "## Output directory:                   $outdir_full"
 echo "## Library type:                       $libtype"
 echo
 
 ## Create output dir if needed
-mkdir -p "$outdir"
+mkdir -p "$outdir_full"
 
 
 # RUN QUALIMAP -----------------------------------------------------------------
@@ -86,7 +90,7 @@ unset DISPLAY
 qualimap rnaseq \
     -bam "$bam" \
     -gtf "$annot" \
-    -outdir "$outdir" \
+    -outdir "$outdir_full" \
     -p "$libtype" \
     --java-mem-size=16G
 
