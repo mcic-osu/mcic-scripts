@@ -12,12 +12,12 @@
 ## Help function
 Help() {
   echo
-  echo "## $0: Convert a GFF file to a BED file using 'bedops'."
+  echo "## $0: Convert a GFF or GTF file to a BED file using 'bedops'."
   echo
-  echo "## Syntax: $0 -i <input GFF> -o <output BED>..."
+  echo "## Syntax: $0 -i <input GFF/GTF> -o <output BED>..."
   echo
   echo "## Required options:"
-  echo "## -i STRING        Input GFF file"
+  echo "## -i STRING        Input GFF/GTF file"
   echo "## -o STRING        Output BED file"
   echo
   echo "## Other options:"
@@ -29,13 +29,13 @@ Help() {
 }
 
 ## Default parameter values
-gff=""
+infile=""
 bed=""
 
 ## Get command-line parameter values
 while getopts ':i:o:h' flag; do
     case "${flag}" in
-    i) gff="$OPTARG" ;;
+    i) infile="$OPTARG" ;;
     o) bed="$OPTARG" ;;
     h) Help && exit 0 ;;
     \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
@@ -51,7 +51,7 @@ date
 echo
 
 ## Test parameter values
-[[ ! -f "$gff" ]] && echo "## ERROR: Input GFF file (-i) $gff does not exist" >&2 && exit 1
+[[ ! -f "$infile" ]] && echo "## ERROR: Input GFF/GTF file (-i) $infile does not exist" >&2 && exit 1
 [[ $bed = "" ]] && echo "## ERROR: Please provide an output bed file with -o" >&2 && exit 1
 
 ## Load software
@@ -62,7 +62,7 @@ source activate /fs/project/PAS0471/jelmer/conda/bedops-2.4.39
 set -euo pipefail
 
 ## Report
-echo "## Input GFF file:                     $gff"
+echo "## Input GFF file:                     $infile"
 echo "## Output bed file:                    $bed"
 echo
 
@@ -72,7 +72,15 @@ mkdir -p "$outdir"
 
 
 # CONVERT GFF TO bed -----------------------------------------------------------
-gff2bed < "$gff" > "$bed"
+if [[ $infile = *.gtf ]]; then
+    echo "## Converting from GTF to BED..."
+    gtf2bed < "$infile" > "$bed"
+elif [[ $infile = *.gtf ]]; then
+    echo "## Converting from GFF to BED"
+    gff2bed < "$infile" > "$bed"
+else
+    echo "## ERROR: Not converting, make sure input file has extension '.gtf' or '.gff'"
+fi
 
 
 # WRAP UP ----------------------------------------------------------------------
