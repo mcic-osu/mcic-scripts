@@ -101,7 +101,7 @@ qualimap rnaseq \
 # WRAP UP ----------------------------------------------------------------------
 echo -e "\n--------------------------"
 echo "## Listing file in the output dir:"
-ls -lh "$outdir"
+ls -lh "$outdir_full"
 echo -e "\n## Done with script qualimap.sh"
 date
 echo
