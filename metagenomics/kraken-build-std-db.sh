@@ -4,7 +4,7 @@
 #SBATCH --time=24:00:00
 #SBATCH --mem=80G
 #SBATCH --cpus-per-task=20
-#SBATCH --output=slurm-kraken-build-standard-%j.out
+#SBATCH --output=slurm-kraken-build-std-db-%j.out
 
 ## Help function
 Help() {
@@ -14,10 +14,10 @@ Help() {
     echo "## Syntax: $0 -d <kraken-db-dir> ..."
     echo 
     echo "## Required options:"
-    echo "## -d     Dir for Kraken db"
+    echo "## -d     Directory for the Kraken db"
     echo
     echo "## Other options"
-    echo "## -h     Print this help message"
+    echo "## -h     Print this help message and exit"
     echo
     echo "## Example: $0 -d refdata/kraken/my-db"
     echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
@@ -45,7 +45,7 @@ while getopts ':d:h' flag; do
     case "${flag}" in
     d) db_dir="$OPTARG" ;;
     h) Help && exit 0 ;;
-    \?) echo "## ERROR: Invalid option" >&2 && exit 1 ;;
+    \?) echo "## ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
     :) echo "## ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
     esac
 done
@@ -54,7 +54,7 @@ done
 [[ "$db_dir" = "" ]] && echo -e "\n## ERROR: must specify a db dir with -d" && exit 1
 
 ## Make DB directory
-mkdir -p "$db_dir" #/taxonomy "$db_dir"/library
+mkdir -p "$db_dir"
 
 ## Report
 echo
@@ -64,7 +64,6 @@ echo -e "------------------\n"
 
 # BUILD THE KRAKEN2 DATABASE ---------------------------------------------------
 echo "## Building the Kraken database..."
-#"$KRAK_BIN" --standard \
 kraken2-build --standard \
     --db "$db_dir" \
     --threads "$SLURM_CPUS_ON_NODE"
@@ -73,5 +72,5 @@ kraken2-build --standard \
 # WRAP UP ----------------------------------------------------------------------
 echo -e "\n## Listing file in DB dir:"
 ls -lh "$db_dir"
-echo -e "\n## Done with script kraken-build-custom-db.sh"
+echo -e "\n## Done with script kraken-build-std-db.sh"
 date
