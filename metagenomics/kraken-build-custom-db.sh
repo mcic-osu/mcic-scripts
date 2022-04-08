@@ -2,7 +2,7 @@
 
 #SBATCH --account=PAS0471
 #SBATCH --time=24:00:00
-#SBATCH --mem=80G
+#SBATCH --mem=100G
 #SBATCH --cpus-per-task=20
 #SBATCH --output=slurm-kraken-build-custom-%j.out
 
@@ -245,10 +245,12 @@ if [ "$genome_fa" != "" ]; then
 elif [ "$genome_dir_all" = true ]; then
     
     ## If all genomes in a dir should be added
-    for genome_fa in "$genome_dir"/*; do
+    shopt -s nullglob
+    for genome_fa in "$genome_dir"/*.{fa,fasta,fna}; do
         echo -e "\n## Adding custom genome $genome_fa to Kraken library..."
         kraken2-build --add-to-library "$genome_fa" --db "$db_dir"
     done
+    shopt -u nullglob
 
 elif [ "$genome_url_file" != "" ]; then
     
