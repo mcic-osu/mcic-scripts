@@ -22,7 +22,12 @@ Help() {
     echo "                   (Use one of the scripts 'kraken-build-custom-db.sh' or 'kraken-build-std-db.sh' to create a Kraken database)"
     echo
     echo "## Other options:"
-    echo "## -n              Add taxonomic names to the Kraken 'main' output file (not compatible with Krona)"
+    echo "## -c PROPORTION   Confidence required for assignment: number between 0 and 1          [default: 0]"
+    echo "## -q INTEGER      Base quality Phred score required for use of a base in assignment   [default: 25]"
+    echo "## -w              Write classified sequences to file                                  [default: don't write]"
+    echo "## -W              Write unclassified sequences to file                                [default: don't write]"
+    echo "## -n              Add taxonomic names to the Kraken 'main' output file                [default: don't add]"
+    echo "                   Note: this option is not compatible with Krona plotting)"
     echo "## -h              Print this help message and exit"
     echo
     echo "## Example: $0 -i data/A1_R1_001.fastq.gz -o results/kraken -d /fs/project/PAS0471/jelmer/refdata/kraken/PlusPFP"
@@ -35,14 +40,22 @@ infile=""
 outdir=""
 krakendb_dir=""
 add_names=false
+min_conf=0.5
+min_q=25
+write_class=""
+write_unclass=""
 
 ## Get command-line options
-while getopts 'i:o:d:nh' flag; do
+while getopts 'i:o:d:c:q:nwWh' flag; do
     case "${flag}" in
     i) infile="$OPTARG" ;;
     o) outdir="$OPTARG" ;;
     d) krakendb_dir="$OPTARG" ;;
+    c) min_conf="$OPTARG" ;;
+    q) min_q="$OPTARG" ;;
     n) add_names=true ;;
+    w) write_class=true ;;
+    W) write_unclass=true ;;
     h) Help && exit 0 ;;
     \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
     :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
@@ -50,7 +63,7 @@ while getopts 'i:o:d:nh' flag; do
 done
 
 ## Report
-echo "## Starting script kraken-run..."
+echo "## Starting script kraken-run.sh..."
 date
 echo
 
@@ -74,14 +87,16 @@ set -euo pipefail
 echo "## Input file:                $infile"
 echo "## Output dir:                $outdir"
 echo "## Kraken db dir:             $krakendb_dir"
+echo
 echo "## Add tax. names:            $add_names"
+echo "## Min. base qual:            $min_q"
+echo "## Min. confidence:           $min_conf"
 echo
 
 ## Create output dir
 mkdir -p "$outdir"
 
 ## Add tax. names or not -- when adding names, can't use the output for Krona plotting  
-#? report-minimizer-data: see https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#distinct-minimizer-count-information
 if [ "$add_names" = true ]; then
     names_arg="--use-names "
 else
@@ -90,6 +105,7 @@ fi
 
 ## Make sure input file argument is correct based on file type 
 if [[ "$infile" =~ \.fastq.gz$ ]]; then
+
     R1_in="$infile"
     R1_suffix=$(echo "$R1_in" | sed -E 's/.*(_R?[1-2])[_\.][0-9]+\.fastq\.gz/\1/')
     R2_suffix=${R1_suffix/1/2}
@@ -104,36 +120,68 @@ if [[ "$infile" =~ \.fastq.gz$ ]]; then
         infile_arg="--gzip-compressed --paired $R1_in $R2_in"
         [[ ! -f "$R2_in" ]] && echo "## ERROR: R2 file $R2_in does not exist" >&2 && exit 1
         [[ "$R1_in" = "$R2_in" ]] && echo "## ERROR: R1 file $R1_in is the same as R2 file $R2_in" >&2 && exit 1
+
+        if [[ "$write_class" = true ]]; then
+            class_out_arg="--classified-out $outdir/classified/$sample_ID#.fastq "
+        fi
+        if [[ "$write_unclass" = true ]]; then
+            unclass_out_arg="--unclassified-out $outdir/unclassified/$sample_ID#.fastq "
+        fi
+
     else
         echo "## Input is:                  single-end FASTQ file"
+        
+        sample_ID=$(basename "$R1_in" .fastq.gz)
+        
         infile_arg="--gzip-compressed $R1_in"
+
+        if [[ "$write_class" = true ]]; then
+            class_out_arg="--classified-out $outdir/classified/$sample_ID.fastq "
+        fi
+        if [[ "$write_unclass" = true ]]; then
+            unclass_out_arg="--unclassified-out $outdir/unclassified/$sample_ID.fastq "
+        fi
+
     fi
+
 else
     echo -e "## Input is:                   FASTA file"
+    
     infile_basename=$(basename "$infile")
     sample_ID=${infile_basename%%.*}
+    
     infile_arg="$infile"
+
+    if [[ "$write_class" = true ]]; then
+        class_out_arg="--classified-out $outdir/classified/$sample_ID.fa "
+    fi
+    if [[ "$write_unclass" = true ]]; then
+        unclass_out_arg="--unclassified-out $outdir/unclassified/$sample_ID.fa "
+    fi
 fi
 
-## Define output files
+## Define output text files
 outfile_main="$outdir"/"$sample_ID"_main.txt
 outfile_report="$outdir"/"$sample_ID"_report.txt
 
 ## Report
 echo "## Input file arg:            $infile_arg"
 echo "## Sample ID:                 $sample_ID"
-echo
 echo "## Output file - main:        $outfile_main"
 echo "## Output file - report:      $outfile_report"
+[[ "$write_class" = true ]] && echo "## Writing classified sequences:         $class_out_arg"
+[[ "$write_unclass" = true ]] && echo "## Writing unclassified sequences:     $unclass_out_arg"
 echo -e "------------------------\n"
 
 
 # RUN KRAKEN -------------------------------------------------------------------
 echo "## Starting Kraken2 run..."
 kraken2 ${names_arg}--threads "$SLURM_CPUS_ON_NODE" \
+    --minimum-base-quality "$min_q" \
+    --confidence "$min_conf" \
     --report-minimizer-data \
-    --db "$krakendb_dir" \
-    --report "$outfile_report" \
+    ${unclass_out_arg}--db "$krakendb_dir" \
+    ${class_out_arg}--report "$outfile_report" \
     ${infile_arg}>"$outfile_main"
 
 
@@ -145,3 +193,9 @@ date
 echo
 sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
 echo
+
+
+# DOC --------------------------------------------------------------------------
+#? report-minimizer-data: see https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#distinct-minimizer-count-information
+#? --unclassified-out
+#? --classified-out
