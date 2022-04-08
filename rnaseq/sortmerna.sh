@@ -25,6 +25,12 @@ Help() {
     echo "## Example: $0 -i data/A1_R1_001.fastq.gz -o results/sortmerna"
     echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
     echo
+    echo "## Output:"
+    echo "##   - Aligned sequences will be placed in <output-dir>/mapped"
+    echo "##   - Non-aligned sequences will be placed in <output-dir>/unmapped"
+    echo "## Output sequence files will keep sample identifiers,"
+    echo "##   so the script can be run for multiple samples using the same <output-dir> (-o)"
+    echo
 }
 
 ## Option defaults
@@ -66,13 +72,13 @@ outdir_full="$outdir"/"$sampleID"
 
 repo_dir="$outdir"/sortmerna_repo
 
-out_aligned="$outdir"/aligned_tmp/"$sampleID"
-out_nonaligned="$outdir"/nonaligned_tmp/"$sampleID"
+out_mapped="$outdir"/mapped_tmp/"$sampleID"
+out_unmapped="$outdir"/unmapped_tmp/"$sampleID"
 
-R1_aligned="$outdir"/aligned/"$sampleID"_R1_001.fastq.gz
-R2_aligned="$outdir"/aligned/"$sampleID"_R2_001.fastq.gz
-R1_nonaligned="$outdir"/nonaligned/"$sampleID"_R1_001.fastq.gz
-R2_nonaligned="$outdir"/nonaligned/"$sampleID"_R2_001.fastq.gz
+R1_mapped="$outdir"/mapped/"$sampleID"_R1_001.fastq.gz
+R2_mapped="$outdir"/mapped/"$sampleID"_R2_001.fastq.gz
+R1_unmapped="$outdir"/unmapped/"$sampleID"_R1_001.fastq.gz
+R2_unmapped="$outdir"/unmapped/"$sampleID"_R2_001.fastq.gz
 
 ## Reference FASTA files (to be downloaded)
 ref_18s="$repo_dir"/data/rRNA_databases/silva-euk-18s-id95.fasta
@@ -92,7 +98,7 @@ echo -e "---------------------------\n"
 [[ ! -f "$R2" ]] && echo "## ERROR: R2 FASTQ file $R2 not found" >&2 && exit 1
 
 ## Make output dir if needed
-mkdir -p "$outdir"/aligned_tmp "$outdir"/nonaligned_tmp "$outdir"/aligned "$outdir"/nonaligned
+mkdir -p "$outdir"/mapped_tmp "$outdir"/unmapped_tmp "$outdir"/mapped "$outdir"/unmapped
 
 
 # GET DATABASE FILES -----------------------------------------------------------
@@ -116,8 +122,8 @@ sortmerna \
     --reads "$R1" \
     --reads "$R2" \
     --fastx \
-    --aligned "$out_aligned" \
-    --other "$out_nonaligned" \
+    --aligned "$out_mapped" \
+    --other "$out_unmapped" \
     --workdir "$outdir_full" \
     --threads "$SLURM_CPUS_PER_TASK"
 
@@ -130,23 +136,23 @@ set -u
 
 echo -e "\n## Converting R1 back to paired files..."
 reformat.sh \
-    in="$out_aligned".fq.gz \
-    out1="$R1_aligned" \
-    out2="$R2_aligned"
+    in="$out_mapped".fq.gz \
+    out1="$R1_mapped" \
+    out2="$R2_mapped"
 
 echo -e "\n## Converting R2 back to paired files..."
 reformat.sh \
-    in="$out_nonaligned".fq.gz \
-    out1="$R1_nonaligned" \
-    out2="$R2_nonaligned"
+    in="$out_unmapped".fq.gz \
+    out1="$R1_unmapped" \
+    out2="$R2_unmapped"
 
-[[ -f "$R1_aligned" ]] && rm "$out_aligned".fq.gz
-[[ -f "$R1_nonaligned" ]] && rm "$out_nonaligned".fq.gz
+[[ -f "$R1_mapped" ]] && rm "$out_mapped".fq.gz
+[[ -f "$R1_unmapped" ]] && rm "$out_unmapped".fq.gz
 
 
 # WRAP UP ----------------------------------------------------------------------
 echo -e "\n## Listing output files:"
-ls -lh "$R1_aligned" "$R2_aligned" "$R1_nonaligned" "$R2_nonaligned"
+ls -lh "$R1_mapped" "$R2_mapped" "$R1_unmapped" "$R2_unmapped"
 echo -e "\n## Done with script sortmerna.sh"
 date
 echo
