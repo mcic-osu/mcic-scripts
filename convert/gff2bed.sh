@@ -75,11 +75,11 @@ mkdir -p "$outdir"
 if [[ $infile = *.gtf ]]; then
     echo "## Converting from GTF to BED..."
     gtf2bed < "$infile" > "$bed"
-elif [[ $infile = *.gtf ]]; then
+elif [[ $infile = *.gff || $infile = *.gff3 ]]; then
     echo "## Converting from GFF to BED"
     gff2bed < "$infile" > "$bed"
 else
-    echo "## ERROR: Not converting, make sure input file has extension '.gtf' or '.gff'"
+    echo "## ERROR: Not converting input file $infile, make sure it has extension '.gtf', '.gff', or '.gff3'"
 fi
 
 
