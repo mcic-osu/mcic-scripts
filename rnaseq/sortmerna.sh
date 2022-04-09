@@ -20,6 +20,8 @@ Help() {
     echo "## -o STRING       Output directory"
     echo
     echo "## Other options:"
+    echo "## -r              Directory with SortMeRNA repo (for reference FASTA files)  [default: download repo]"
+    echo "## -d              Don't 'de-interleave' output FASTQ file                    [default: de-interleave]"
     echo "## -h              Print this help message and exit"
     echo
     echo "## Example: $0 -i data/A1_R1_001.fastq.gz -o results/sortmerna"
@@ -36,12 +38,16 @@ Help() {
 ## Option defaults
 R1=""
 outdir=""
+repo_dir=""
+deinterleave=true
 
 ## Get command-line options
-while getopts ':i:o:h' flag; do
+while getopts ':i:o:r:dh' flag; do
     case "${flag}" in
     i) R1="$OPTARG" ;;
     o) outdir="$OPTARG" ;;
+    d) deinterleave=false ;;
+    r) repo_dir="$OPTARG" ;;
     h) Help && exit 0 ;;
     \?) echo "## ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
     :) echo "## ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
@@ -70,8 +76,6 @@ R2=${R1/_R1_/_R2_}
 sampleID=$(basename "$R1" | sed 's/_R1.*//')
 outdir_full="$outdir"/"$sampleID"
 
-repo_dir="$outdir"/sortmerna_repo
-
 out_mapped="$outdir"/mapped_tmp/"$sampleID"
 out_unmapped="$outdir"/unmapped_tmp/"$sampleID"
 
@@ -81,6 +85,7 @@ R1_unmapped="$outdir"/unmapped/"$sampleID"_R1_001.fastq.gz
 R2_unmapped="$outdir"/unmapped/"$sampleID"_R2_001.fastq.gz
 
 ## Reference FASTA files (to be downloaded)
+[[ $repo_dir = "" ]] && repo_dir="$outdir"/"$sampleID"/sortmerna_repo
 ref_18s="$repo_dir"/data/rRNA_databases/silva-euk-18s-id95.fasta
 ref_28s="$repo_dir"/data/rRNA_databases/silva-euk-28s-id98.fasta
 
@@ -90,7 +95,8 @@ echo "## R2 FASTQ file:              $R2"
 echo "## Output dir:                 $outdir_full"
 echo "## SortMeRNA repo dir:         $repo_dir"
 echo "## 18S reference file:         $ref_18s"
-echo "## 28S reference file:         $ref_28s"         
+echo "## 28S reference file:         $ref_28s"
+echo "## Deinterleave FASTQ files:   $deinterleave"  
 echo -e "---------------------------\n"
 
 ## Check input
@@ -103,7 +109,7 @@ mkdir -p "$outdir"/mapped_tmp "$outdir"/unmapped_tmp "$outdir"/mapped "$outdir"/
 
 # GET DATABASE FILES -----------------------------------------------------------
 ## Clone sortmerna repo to get db FASTA files
-if [ ! -d "$repo_dir" ]; then
+if [[ ! -f "$ref_18s" && ! -f "$ref_28s" ]]; then
     mkdir -p "$repo_dir"
     echo "## Cloning sortmerna repo..."
     git clone https://github.com/biocore/sortmerna "$repo_dir"
@@ -125,34 +131,38 @@ sortmerna \
     --aligned "$out_mapped" \
     --other "$out_unmapped" \
     --workdir "$outdir_full" \
+    --paired_in \
     --threads "$SLURM_CPUS_PER_TASK"
 
+#?--paired_in Flags the paired-end reads as Aligned, when either of them is Aligned.
 
 # CONVERTING INTERLEAVED FASTQ BACK TO SEPARATED -------------------------------
-set +u
-conda deactivate
-source activate "$BBTOOLS_ENV"
-set -u
+if [[ "$deinterleave" = true ]]; then
+    set +u
+    conda deactivate
+    source activate "$BBTOOLS_ENV"
+    set -u
 
-echo -e "\n## Converting R1 back to paired files..."
-reformat.sh \
-    in="$out_mapped".fq.gz \
-    out1="$R1_mapped" \
-    out2="$R2_mapped"
+    echo -e "\n## Deinterleaving R1..."
+    reformat.sh \
+        in="$out_mapped".fq.gz \
+        out1="$R1_mapped" \
+        out2="$R2_mapped"
 
-echo -e "\n## Converting R2 back to paired files..."
-reformat.sh \
-    in="$out_unmapped".fq.gz \
-    out1="$R1_unmapped" \
-    out2="$R2_unmapped"
+    echo -e "\n## Deinterleaving R2..."
+    reformat.sh \
+        in="$out_unmapped".fq.gz \
+        out1="$R1_unmapped" \
+        out2="$R2_unmapped"
 
-[[ -f "$R1_mapped" ]] && rm "$out_mapped".fq.gz
-[[ -f "$R1_unmapped" ]] && rm "$out_unmapped".fq.gz
-
+    #[[ -f "$R1_mapped" ]] && rm "$out_mapped".fq.gz
+    #[[ -f "$R1_unmapped" ]] && rm "$out_unmapped".fq.gz
+fi
 
 # WRAP UP ----------------------------------------------------------------------
 echo -e "\n## Listing output files:"
-ls -lh "$R1_mapped" "$R2_mapped" "$R1_unmapped" "$R2_unmapped"
+[[ "$deinterleave" = true ]] && ls -lh "$R1_mapped" "$R2_mapped" "$R1_unmapped" "$R2_unmapped"
+[[ "$deinterleave" = false ]] && ls -lh "$out_mapped".fq.gz "$out_unmapped".fq.gz
 echo -e "\n## Done with script sortmerna.sh"
 date
 echo
