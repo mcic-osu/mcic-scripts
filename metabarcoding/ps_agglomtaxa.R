@@ -10,7 +10,7 @@ Sys.time()
 message()
 
 ## Process command-line arguments
-if(!"argparse" %in% installed.packages()) install.packages("argparse")
+if (!require(argparse)) install.packages("argparse", repos = "https://cran.rstudio.com/")
 library(argparse)
 
 parser <- ArgumentParser()
@@ -25,7 +25,7 @@ ps_in <- args$ps
 outdir <- args$outdir
 
 ## Load packages
-if (!"pacman" %in% installed.packages()) install.packages("pacman")
+if (!require(pacman)) install.packages("pacman", repos = "https://cran.rstudio.com/")
 packages <- c("BiocManager", "tidyverse", "phyloseq", "decontam",
               "microbiome", "biomformat")
 pacman::p_load(char = packages)

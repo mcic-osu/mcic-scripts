@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
 #SBATCH --account=PAS0471
-#SBATCH --time=48:00:00
+#SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --output=slurm-tree-%j.out
 
@@ -13,7 +13,7 @@ Sys.time()
 message()
 
 ## Parse command-line arguments
-if(!"argparse" %in% installed.packages()) install.packages("argparse")
+if (!require(argparse)) install.packages("argparse", repos = "https://cran.rstudio.com/")
 library(argparse)
 
 parser <- ArgumentParser()
@@ -32,7 +32,7 @@ tree_rds <- args$tree
 n_cores <- as.integer(system("echo $SLURM_CPUS_PER_TASK", intern = TRUE))
 
 ## Load packages
-if (!"pacman" %in% installed.packages()) install.packages("pacman")
+if (!require(pacman)) install.packages("pacman", repos = "https://cran.rstudio.com/")
 packages <- c("BiocManager", "dada2", "DECIPHER", "phangorn")
 pacman::p_load(char = packages)
 

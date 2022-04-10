@@ -11,7 +11,7 @@ Sys.time()
 message()
 
 ## Parse command-line arguments
-if(!"argparse" %in% installed.packages()) install.packages("argparse")
+if (!require(argparse)) install.packages("argparse", repos = "https://cran.rstudio.com/")
 library(argparse)
 
 parser <- ArgumentParser()
@@ -36,7 +36,7 @@ ref_url <- args$ref_url
 n_cores <- args$cores
 
 ## Load other packages
-if(!"pacman" %in% installed.packages()) install.packages("pacman")
+if (!require(pacman)) install.packages("pacman", repos = "https://cran.rstudio.com/")
 packages <- c("BiocManager", "dada2", "DECIPHER", "tidyverse")
 pacman::p_load(char = packages)
 

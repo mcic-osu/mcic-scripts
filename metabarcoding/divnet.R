@@ -12,7 +12,7 @@ Sys.time()
 message()
 
 ## Parse command-line arguments
-if(!"argparse" %in% installed.packages()) install.packages("argparse")
+if (!require(argparse)) install.packages("argparse", repos = "https://cran.rstudio.com/")
 library(argparse)
 
 parser <- ArgumentParser()
@@ -40,10 +40,10 @@ tuning <- args$tuning
 n_boot <- args$n_boot
 
 ## Load packages
-if (!"pacman" %in% installed.packages()) install.packages("pacman")
-if (!"remotes" %in% installed.packages()) install.packages("remotes")
-if (!"breakaway" %in% installed.packages()) remotes::install_github("adw96/breakaway")
-if (!"DivNet" %in% installed.packages()) remotes::install_github("adw96/DivNet")
+if (!require(pacman)) install.packages("pacman", repos = "https://cran.rstudio.com/")
+if (!require(remotes)) install.packages("remotes", repos = "https://cran.rstudio.com/")
+if (!require(breakaway)) remotes::install_github("adw96/breakaway")
+if (!require(DivNet)) remotes::install_github("adw96/DivNet")
 packages <- c("tidyverse", "phyloseq", "breakaway", "DivNet")
 pacman::p_load(char = packages)
 
