@@ -1,8 +1,8 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=300
-#SBATCH --mem=150G
+#SBATCH --time=60
+#SBATCH --mem=100G
 #SBATCH --cpus-per-task=30
 #SBATCH --output=slurm-kraken-run-%j.out
 
