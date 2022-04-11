@@ -14,7 +14,7 @@ Sys.time()
 message()
 
 ## Parse command-line arguments
-if(!"argparse" %in% installed.packages()) install.packages("argparse")
+if (!require(argparse)) install.packages("argparse", repos = "https://cran.rstudio.com/")
 library(argparse)
 
 parser <- ArgumentParser()
@@ -38,7 +38,7 @@ config_file <- args$config
 n_threads <- args$threads
 
 ## Load packages
-if (!"pacman" %in% installed.packages()) install.packages("pacman")
+if (!require(pacman)) install.packages("pacman", repos = "https://cran.rstudio.com/")
 packages <- c("BiocManager", "tidyverse", "dada2")
 pacman::p_load(char = packages)
 
@@ -384,6 +384,7 @@ head(nseq_summary)
 
 
 # CREATE QC SUMMARY TABLE: NR OF UNIQUE ASVs -----------------------------------
+## TODO - ADD LENGTH-FILTERED
 nasv_summary <- data.frame(step = c("initial", "non_chimeric"),
                            n_asv = c(ncol(seqtab_all), ncol(seqtab_nochim)))
 if (!(asv_size_min == 0 & asv_size_max == Inf)) {
