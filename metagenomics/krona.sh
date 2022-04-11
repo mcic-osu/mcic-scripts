@@ -6,8 +6,8 @@
 #SBATCH --output=slurm-krona-%j.out
 
 ## Software
-source ~/.bashrc
-source activate krona-env
+module load python/3.6-conda5.2
+source activate /users/PAS0471/jelmer/miniconda3/envs/krona-env
 
 ## Bash strict settings
 set -euo pipefail
