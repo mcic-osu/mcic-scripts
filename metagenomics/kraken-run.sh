@@ -23,12 +23,14 @@ Help() {
     echo
     echo "## Other options:"
     echo "## -c PROPORTION   Confidence required for assignment: number between 0 and 1          [default: 0]"
+    echo "## -h              Print this help message and exit"
+    echo "## -m              Don't load the full database into RAM memory                        [default: load into memory]"
+    echo "                   (Can be useful for very large databases)"
+    echo "## -n              Add taxonomic names to the Kraken 'main' output file                [default: don't add]"
+    echo "                   Note: this option is not compatible with Krona plotting)"
     echo "## -q INTEGER      Base quality Phred score required for use of a base in assignment   [default: 25]"
     echo "## -w              Write classified sequences to file                                  [default: don't write]"
     echo "## -W              Write unclassified sequences to file                                [default: don't write]"
-    echo "## -n              Add taxonomic names to the Kraken 'main' output file                [default: don't add]"
-    echo "                   Note: this option is not compatible with Krona plotting)"
-    echo "## -h              Print this help message and exit"
     echo
     echo "## Example: $0 -i data/A1_R1_001.fastq.gz -o results/kraken -d /fs/project/PAS0471/jelmer/refdata/kraken/PlusPFP"
     echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
@@ -44,9 +46,12 @@ min_conf=0.5
 min_q=25
 write_class=""
 write_unclass=""
+class_out_arg=""
+unclass_out_arg=""
+use_ram=true
 
 ## Get command-line options
-while getopts 'i:o:d:c:q:nwWh' flag; do
+while getopts 'i:o:d:c:q:mnwWh' flag; do
     case "${flag}" in
     i) infile="$OPTARG" ;;
     o) outdir="$OPTARG" ;;
@@ -56,6 +61,7 @@ while getopts 'i:o:d:c:q:nwWh' flag; do
     n) add_names=true ;;
     w) write_class=true ;;
     W) write_unclass=true ;;
+    m) use_ram=false ;;
     h) Help && exit 0 ;;
     \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
     :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
@@ -74,6 +80,8 @@ echo
 [[ ! -d "$krakendb_dir" ]] && echo "ERROR: input file $infile does note exist" >&2 && exit 1
 [[ "$outdir" = "" ]] && echo "ERROR: must specify output dir with -o" >&2 && exit 1
 
+[[ "$write_class" = true ]] && mkdir -p "$outdir"/classified
+[[ "$write_unclass" = true ]] && mkdir -p "$outdir"/unclassified
 
 # SETUP ------------------------------------------------------------------------
 ## Load software
@@ -84,17 +92,25 @@ source activate /users/PAS0471/jelmer/miniconda3/envs/kraken2-env
 set -euo pipefail
 
 ## Report
-echo "## Input file:                $infile"
-echo "## Output dir:                $outdir"
-echo "## Kraken db dir:             $krakendb_dir"
+echo "## Input file:                  $infile"
+echo "## Output dir:                  $outdir"
+echo "## Kraken db dir:               $krakendb_dir"
 echo
-echo "## Add tax. names:            $add_names"
-echo "## Min. base qual:            $min_q"
-echo "## Min. confidence:           $min_conf"
+echo "## Add tax. names:              $add_names"
+echo "## Min. base qual:              $min_q"
+echo "## Min. confidence:             $min_conf"
+echo "## Use RAM memory to load database:    $use_ram"
 echo
 
 ## Create output dir
 mkdir -p "$outdir"
+
+## Use RAM or not
+if [[ "$use_ram" = false ]]; then
+    mem_map_arg="--memory-mapping"
+else
+    mem_map_arg=""
+fi
 
 ## Add tax. names or not -- when adding names, can't use the output for Krona plotting  
 if [ "$add_names" = true ]; then
@@ -177,25 +193,24 @@ echo -e "------------------------\n"
 # RUN KRAKEN -------------------------------------------------------------------
 echo "## Starting Kraken2 run..."
 kraken2 ${names_arg}--threads "$SLURM_CPUS_ON_NODE" \
-    --minimum-base-quality "$min_q" \
+    ${mem_map_arg}--minimum-base-quality "$min_q" \
     --confidence "$min_conf" \
     --report-minimizer-data \
     ${unclass_out_arg}--db "$krakendb_dir" \
     ${class_out_arg}--report "$outfile_report" \
     ${infile_arg}>"$outfile_main"
 
+#? report-minimizer-data: see https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#distinct-minimizer-count-information
+
 
 # WRAP UP ----------------------------------------------------------------------
 echo -e "\n## Listing output files:"
 ls -lh "$outfile_main" "$outfile_report"
+[[ "$write_class" = true ]] && ls -lh "$outdir"/classified/"$sample_ID"*
+[[ "$write_unclass" = true ]] && ls -lh "$outdir"/unclassified/"$sample_ID"*
+
 echo -e "\n## Done with script kraken-run.sh"
 date
 echo
 sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
 echo
-
-
-# DOC --------------------------------------------------------------------------
-#? report-minimizer-data: see https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#distinct-minimizer-count-information
-#? --unclassified-out
-#? --classified-out
