@@ -40,7 +40,7 @@ outdir="results/trimmomatic"
 adapter_file="NA"
 
 trim_param="LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36"
-# Same as https://rpubs.com/ednachiang/MetaG_Pipeline
+# Same as example on https://github.com/usadellab/Trimmomatic and https://rpubs.com/ednachiang/MetaG_Pipeline
 # Alternatively, example of a much stricter mode: "AVGQUAL:28 LEADING:20 TRAILING:20 MINLEN:36"
 
 ## Parse options
@@ -83,7 +83,8 @@ R2_discard=$discard_dir/"$R2_basename"_U2.fastq.gz # Output file for discarded R
 if [[ $adapter_file = "NA" ]]; then
     adapter_arg=""
 else
-    adapter_arg=" ILLUMINACLIP:$adapter_file:2:30:10"
+    adapter_arg=" ILLUMINACLIP:$adapter_file:2:30:10:2:True"
+    # As in the example here https://github.com/usadellab/Trimmomatic
 fi
 
 ## Trimming parameters arg
@@ -123,7 +124,6 @@ mkdir -p "$stats_dir"     # Create dir for stdout file if it doesn't exist
 echo -e "## Starting Trimmomatic run..."
 trimmomatic PE \
     -threads "$n_cores" \
-    -phred33 \
     "$R1_in" "$R2_in" \
     "$R1_out" "$R1_discard" \
     "$R2_out" "$R2_discard"${adapter_arg}${trim_param_arg} \
