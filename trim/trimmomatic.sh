@@ -90,7 +90,7 @@ set -euo pipefail
 n_cores="$SLURM_CPUS_ON_NODE"
 
 ## Process parameters
-R1_suffix=$(echo "$R1_in" | sed -E 's/.*(_R?[0-9]).*fa?s?t?q.gz/\1/')
+R1_suffix=$(echo "$R1_in" | sed -E 's/.*(_R?1).*fa?s?t?q.gz/\1/')
 R2_suffix=${R1_suffix/1/2}
 R2_in=${R1_in/$R1_suffix/$R2_suffix}
 
