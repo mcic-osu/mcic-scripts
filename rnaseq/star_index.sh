@@ -12,20 +12,21 @@
 ## Help function
 Help() {
   echo
-  echo "## $0: Index a reference genome FASTA file with STAR."
+  echo "$0: Index a reference genome FASTA file with STAR."
   echo
-  echo "## Syntax: $0 -i <input-FASTA> -o <output-dir> ..."
+  echo "Syntax: $0 -i <input-FASTA> -o <output-dir> ..."
   echo
-  echo "## Required options:"
-  echo "## -i STRING     Input reference FASTA file"
-  echo "## -o STRING     Output dir for index files"
+  echo "Required options:"
+  echo "   -i STRING      Input reference FASTA file"
+  echo "   -o STRING      Output directory for index files (will be created if needed)"
   echo
-  echo "## Other options:"
-  echo "## -a STRING      Reference annotation (GFF/GTF) file [default: no GFF/GTF, but this is not recommended]"
-  echo "## -s INTEGER     Index size                          [default: automatically determined from genome size]"
-  echo "## -r INTEGER     Read length                         [default: '150' (bp)]"
-  echo "## -v INTEGER     Overhang                            [default: read length minus 1]"
-  echo "## -h             Print this help message and exit"
+  echo "Other options:"
+  echo "   -a STRING      Reference annotation (GFF/GTF) file [default: no GFF/GTF, but this is not recommended]"
+  echo "   -s INTEGER     Index size                          [default: automatically determined from genome size]"
+  echo "   -r INTEGER     Read length                         [default: '150' (bp)]"
+  echo "   -v INTEGER     Overhang                            [default: read length minus 1]"
+  echo "                  (Note: overhang only applies if GFF/GTF file is provided!)"
+  echo "   -h             Print this help message and exit"
   echo
   echo "## Example: $0 -i refdata/my_genome.fa -o refdata/star_index -a refdata/my_genome.gff"
   echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
@@ -86,13 +87,14 @@ fi
 
 ## If a GFF file is provided, build the appropriate argument for STAR
 if [ "$gff" != "" ]; then
-    gff_arg="--sjdbGTFfile $gff --sjdbGTFtagExonParentTranscript Parent"
+
+    ## Overhang length should be read length minus 1 - only if GFF is included
+    [[ $overhang = "" ]] && overhang=$(( read_len - 1 ))
+    
+    gff_arg="--sjdbGTFfile $gff --sjdbGTFtagExonParentTranscript Parent --sjdbOverhang $overhang"
 else
     gff_arg=""
 fi
-
-## Overhang length should be read length minus 1
-[[ $overhang = "" ]] && overhang=$(( read_len - 1 ))
 
 ## Make output dir if needed
 mkdir -p "$index_dir"
@@ -120,7 +122,6 @@ STAR --runMode genomeGenerate \
      --genomeDir "$index_dir" \
      --genomeFastaFiles "$ref_fa" \
      --genomeSAindexNbases "$index_size" \
-     --sjdbOverhang "$overhang" \
      --runThreadN "$SLURM_CPUS_ON_NODE" ${gff_arg}
 
 
