@@ -16,13 +16,15 @@ Help() {
     echo 
     echo "Required options:"
     echo "  -i STRING          Input R1 (forward) FASTQ file (the name of the R2 file will be inferred)"
+    echo "  -y STRING          YAML file with input files"
+    echo "        NOTE: _Either_ -i or -y has to be be specified"
     echo "  -o STRING          Output directory"
     echo
     echo "Other options:"
     echo "  -s STRING          Other arguments to pass to SPAdes"
     echo "  -m STRING          SPAdes run mode                             [default: default SPAdes]"
     echo "                     Possible values: 'isolate', 'meta', 'metaplasmid, 'metaviral', 'plasmid', 'rna', 'rnaviral'"
-    echo "  -k STRING          Comma-separated list of kmer sizes          [default: '31,51,71,91,111']"
+    echo "  -k STRING          Comma-separated list of kmer sizes          [default: SPAdes default]"
     echo "  -c                 Run in 'careful' mode (small genomes only)  [default: don't run in careful mode]"
     echo "  -C                 Continue an interrupted run                 [default: start anew]"
     echo "  -h                 Print this help message and exit"
@@ -41,19 +43,21 @@ Help() {
 
 ## Option defaults
 R1=""
+infile_yaml=""
 outdir=""
 mode=""
 mode_arg=""
-kmers="31,51,71,91,111"
+kmers=""
 careful=false
 careful_arg=""
 continue=false
 more_args=""
 
 ## Get command-line options
-while getopts 'i:o:m:k:a:Cch' flag; do
+while getopts 'i:y:o:m:k:a:Cch' flag; do
     case "${flag}" in
     i) R1="$OPTARG" ;;
+    y) infile_yaml="$OPTARG" ;;
     o) outdir="$OPTARG" ;;
     k) kmers="$OPTARG" ;;
     m) mode="$OPTARG" ;;
@@ -66,9 +70,10 @@ while getopts 'i:o:m:k:a:Cch' flag; do
     esac
 done
 
-[[ "$R1" = "" ]] && echo "## ERROR: Please specify an R1 input file with -i" >&2 && exit 1
+[[ "$R1" = "" ]] && [[ "$infile_yaml" = "" ]] && echo "## ERROR: Please specify either an R1 input file with -i, or an input YAML file with -y" >&2 && exit 1
 [[ "$outdir" = "" ]] && echo "## ERROR: Please specify an output dir with -o" >&2 && exit 1
-[[ ! -f "$R1" ]] && echo "## ERROR: input file R1 $R1 does note exist" >&2 && exit 1
+[[ "$R1" != "" ]] && [[ ! -f "$R1" ]] && echo "## ERROR: input file R1 $R1 does note exist" >&2 && exit 1
+[[ "$infile_yaml" != "" ]] && [[ ! -f "$infile_yaml" ]] && echo "## ERROR: input YAML file R1 $infile_yaml does note exist" >&2 && exit 1
 
 
 # OTHER SETUP ------------------------------------------------------------------
@@ -88,31 +93,52 @@ set -euo pipefail
 n_cores="$SLURM_CPUS_ON_NODE"                            # Retrieve number of cores
 mem=$(( (($SLURM_MEM_PER_NODE / 1000)) - 1))             # Convert memory in MB to GB (and subtract 1)
 
-## Infer R2 filename
-R1_suffix=$(echo "$R1" | sed -E 's/.*(_R?[1-2])[_\.][0-9]+\.fastq\.gz/\1/')
-R2_suffix=${R1_suffix/1/2}
-R2=${R1/$R1_suffix/$R2_suffix}
-[[ "$R1" = "$R2" ]] && echo "## ERROR: input file R1 and R2 are the same: $R1" >&2 && exit 1
-[[ ! -f "$R2" ]] && echo "## ERROR: input file R1 $R2 does note exist" >&2 && exit 1
-
 ## Build some arguments to pass to SPAdes
 [[ "$mode" != "" ]] && mode_arg="--$mode"
 [[ "$careful" = true ]] && careful_arg="--careful"
 
+## Input file arg
+if [[ "$R1" != "" ]]; then
+
+    ## Infer R2 filename
+    R1_suffix=$(echo "$R1" | sed -E 's/.*(_R?[1-2])[_\.][0-9]+\.fastq\.gz/\1/')
+    R2_suffix=${R1_suffix/1/2}
+    R2=${R1/$R1_suffix/$R2_suffix}
+    [[ "$R1" = "$R2" ]] && echo "## ERROR: input file R1 and R2 are the same: $R1" >&2 && exit 1
+    [[ ! -f "$R2" ]] && echo "## ERROR: input file R1 $R2 does note exist" >&2 && exit 1
+
+    infile_arg="--pe1-1 $R1 --pe1-2 $R2"
+else
+    infile_arg="--dataset $infile_yaml"
+fi
+
+## Kmer arg
+if [[ "$kmers" != "" ]]; then
+    kmer_arg="-k $kmers"
+else
+    kmer_arg=""
+fi
+
 ## Report
 echo "## Command-line args:"
-echo "## Input FASTQ file - R1:            $R1"
+[[ "$R1" != "" ]] && echo "## Input FASTQ file - R1:            $R1"
 echo "## Output dir:                       $outdir"
-echo "## kmer sizes:                       $kmers"
+[[ "$kmers" != "" ]] && echo "## kmer sizes:                       $kmers"
 echo "## Using 'careful' setting:          $careful"
-echo "## Contining previous run:           $continue"
+echo "## Continuing a previous run:        $continue"
 [[ "$mode" != "" ]] && echo "## Running mode:                     $mode"
 [[ "$more_args" != "" ]] && echo "## Other SPAdes arguments:           $more_args"
 echo
 echo "## Other variables and settings:"
-echo "## Input FASTQ file - R2:            $R2"
+[[ "$R1" != "" ]] && echo "## Input FASTQ file - R2:            $R2"
+echo "## Input file argument:              $infile_arg"
 echo "## Number of cores:                  $n_cores"
 echo "## Memory in GB:                     $mem"
+if [[ $infile_yaml != "" ]]; then
+    echo -e "\n Printing contents of input YAML file:\n"
+    cat "$infile_yaml"
+    echo
+fi
 echo -e "-----------------------\n\n"
 
 ## Create output dir
@@ -122,14 +148,11 @@ mkdir -p "$outdir"
 # RUN SPADES -------------------------------------------------------------------
 if [ "$continue" = false ]; then
     echo "## Now running SPAdes..."
-    spades.py \
-        --pe1-1 "$R1" \
-        --pe1-2 "$R2" \
+    spades.py $infile_arg \
         -o "$outdir" \
         -t "$n_cores" \
         -m "$mem" \
-        -k "$kmers" \
-        ${mode_arg} ${careful_arg} ${more_args}
+        ${kmer_arg} ${mode_arg} ${careful_arg} ${more_args}
 else
     echo "## Now resuming SPAdes run..."
     spades.py -o "$outdir" --continue
