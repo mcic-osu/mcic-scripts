@@ -17,18 +17,21 @@ if (!require(argparse)) install.packages("argparse", repos = "https://cran.rstud
 library(argparse)
 
 parser <- ArgumentParser()
-parser$add_argument("-i", "--seqtab",
+parser$add_argument("-i", "--infile",
                     type = "character", required = TRUE,
-                    help = "Input file (sequence table RDS) (REQUIRED)")
+                    help = "Input file (sequence table RDS or FASTA file) (REQUIRED)")
 parser$add_argument("-o", "--tree",
                     type = "character", required = TRUE,
                     help = "Output file (tree RDS file) (REQUIRED)")
 args <- parser$parse_args()
 
-seqtab_rds <- args$seqtab
+infile <- args$infile
 tree_rds <- args$tree
 
-## Other variables
+## Infer input format (FASTA or not)
+if (grepl(".fas?t?a?$", infile)) fasta_format <- TRUE else fasta_format <- FALSE
+
+## Get nr of cores
 n_cores <- as.integer(system("echo $SLURM_CPUS_PER_TASK", intern = TRUE))
 
 ## Load packages
@@ -37,7 +40,9 @@ packages <- c("BiocManager", "dada2", "DECIPHER", "phangorn")
 pacman::p_load(char = packages)
 
 ## Report
-message("## Input file (sequence table RDS):    ", seqtab_rds)
+message()
+message("## Input file:                         ", infile)
+message("## Input file is in FASTA format:      ", fasta_format)
 message("## Output file (tree RDS file):        ", tree_rds)
 message()
 message("## Number of cores:                    ", n_cores)
@@ -48,9 +53,15 @@ outdir <- dirname(tree_rds)
 if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
 
 ## Load the input data
-seqtab <- readRDS(seqtab_rds)
-seqs <- getSequences(seqtab)
-names(seqs) <- seqs
+if (fasta_format == FALSE) {
+  ## Assume input file is a sequence table from dada
+  seqtab <- readRDS(infile)
+  seqs <- getSequences(seqtab)
+  names(seqs) <- seqs
+} else {
+  ## Assume input file is a FASTA file
+  seqs <- readDNAStringSet(infile)
+}
 
 
 # BUILD THE TREE ---------------------------------------------------------------
