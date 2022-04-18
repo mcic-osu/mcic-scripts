@@ -73,7 +73,8 @@ echo
 [[ "$R1_in"  = "$R1_out" ]] && echo "## ERROR: R1 input and output filenames are the same: $R1_in" && exit 1
 
 ## Software
-conda activate /fs/project/PAS0471/jelmer/conda/krakentools-1.2
+module load python/3.6-conda5.2
+source activate /fs/project/PAS0471/jelmer/conda/krakentools-1.2
 
 ## Bash strict settings
 set -euo pipefail
