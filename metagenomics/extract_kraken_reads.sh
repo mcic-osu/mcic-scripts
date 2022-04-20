@@ -73,7 +73,8 @@ echo
 [[ "$R1_in"  = "$R1_out" ]] && echo "## ERROR: R1 input and output filenames are the same: $R1_in" && exit 1
 
 ## Software
-conda activate /fs/project/PAS0471/jelmer/conda/krakentools-1.2
+module load python/3.6-conda5.2
+source activate /fs/project/PAS0471/jelmer/conda/krakentools-1.2
 
 ## Bash strict settings
 set -euo pipefail
@@ -82,8 +83,8 @@ set -euo pipefail
 R2_in=${R1_in/_R1/_R2}
 
 ## Define output files
-R1_out="$outdir"/$(basename "$R1_in")
-R2_out="$outdir"/$(basename "$R2_in")
+R1_out="$outdir"/$(basename "$R1_in" .gz)
+R2_out="$outdir"/$(basename "$R2_in" .gz)
 
 ## Check input
 [[ ! -f $R2_in ]] && echo "## ERROR: Input file R2_in ($R2_in) does not exist" && exit 1
@@ -108,12 +109,16 @@ extract_kraken_reads.py \
     -t $taxids \
     -k "$kraken_main" \
     -s "$R1_in" -s2 "$R2_in" \
-    -o "$R1_out" -o2 "$R2_out"
+    -o "$R1_out" -o2 "$R2_out" \
+    --fastq-output
+
+## Gzip output files
+gzip -f "$R1_out" "$R2_out"
 
 
 # WRAP UP ----------------------------------------------------------------------
 echo -e "\n## Listing output files:"
-ls -lh "$R1_out" "$R2_out"
+ls -lh "$R1_out".gz "$R2_out".gz
 echo -e "\n## Done with script extract_kraken_reads.sh"
 date
 echo
