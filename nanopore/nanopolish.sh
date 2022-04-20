@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=36:00:00
+#SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=32
 #SBATCH --output=slurm-nanopolish-%j.out
 
@@ -19,11 +19,11 @@ outdir=$3
 
 ## Software
 module load python/3.6-conda5.2
-NANOPOLISH_ENV=/fs/project/PAS0471/conda/nanopolish-0.13.2
-MINIMAP_ENV=/fs/project/PAS0471/jelmer/minimap2-2.24
+NANOPOLISH_ENV=/fs/project/PAS0471/jelmer/conda/nanopolish-0.13.2
+MINIMAP_ENV=/fs/project/PAS0471/jelmer/conda/minimap2-2.24
 
 ## Bash strict settings
-set -euo pipefail
+#set -euo pipefail # Script stops after nanopolish variants --consensus, not clear why
 
 ## Derived parameters
 fileID=$(basename "$genome_in" | sed -E 's/.fas?t?a?//')
