@@ -22,7 +22,7 @@ Help() {
     echo "                   (Use one of the scripts 'kraken-build-custom-db.sh' or 'kraken-build-std-db.sh' to create a Kraken database)"
     echo
     echo "## Other options:"
-    echo "## -c PROPORTION   Confidence required for assignment: number between 0 and 1          [default: 0]"
+    echo "## -c PROPORTION   Confidence required for assignment: number between 0 and 1          [default: 0.5]"
     echo "## -h              Print this help message and exit"
     echo "## -m              Don't load the full database into RAM memory                        [default: load into memory]"
     echo "                   (Can be useful for very large databases)"
@@ -77,7 +77,7 @@ echo
 [[ "$infile" = "" ]] && echo "ERROR: must specify input file with -i" >&2 && exit 1
 [[ ! -f "$infile" ]] && echo "ERROR: input file $infile does note exist" >&2 && exit 1
 [[ "$krakendb_dir" = "" ]] && echo "ERROR: must specify Kraken DB dir with -d" >&2 && exit 1
-[[ ! -d "$krakendb_dir" ]] && echo "ERROR: input file $infile does note exist" >&2 && exit 1
+[[ ! -d "$krakendb_dir" ]] && echo "ERROR: Kraken DB dir $krakendb_dir does note exist" >&2 && exit 1
 [[ "$outdir" = "" ]] && echo "ERROR: must specify output dir with -o" >&2 && exit 1
 
 [[ "$write_class" = true ]] && mkdir -p "$outdir"/classified
