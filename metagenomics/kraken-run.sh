@@ -123,7 +123,7 @@ fi
 if [[ "$infile" =~ \.fastq.gz$ ]]; then
 
     R1_in="$infile"
-    R1_suffix=$(echo "$R1_in" | sed -E 's/.*(_R?[1-2])[_\.][0-9]+\.fastq\.gz/\1/')
+    R1_suffix=$(basename "$R1_in" | sed -E 's/.*(_R?[12]).*\.fa?s?t?q\.gz/\1/')
     R2_suffix=${R1_suffix/1/2}
     R2_in=${R1_in/$R1_suffix/$R2_suffix}
     R1_basename=$(basename "$R1_in" .fastq.gz)
@@ -202,6 +202,23 @@ kraken2 ${names_arg}--threads "$SLURM_CPUS_ON_NODE" \
 
 #? report-minimizer-data: see https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#distinct-minimizer-count-information
 
+
+# RENAME AND ZIP FASTQ FILES -------------------------
+if [[ "$write_class" = true ]]; then
+    mv "$outdir"/classified/"$sample_ID"_1.fastq "$outdir"/classified/"$sample_ID"_R1.fastq
+    gzip "$outdir"/classified/"$sample_ID"_R1.fastq
+
+    mv "$outdir"/classified/"$sample_ID"_2.fastq "$outdir"/classified/"$sample_ID"_R2.fastq
+    gzip "$outdir"/classified/"$sample_ID"_R2.fastq
+fi
+
+if [[ "$write_unclass" = true ]]; then
+    mv "$outdir"/unclassified/"$sample_ID"_1.fastq "$outdir"/unclassified/"$sample_ID"_R1.fastq
+    gzip "$outdir"/unclassified/"$sample_ID"_R1.fastq
+
+    mv "$outdir"/unclassified/"$sample_ID"_2.fastq "$outdir"/unclassified/"$sample_ID"_R2.fastq
+    gzip "$outdir"/unclassified/"$sample_ID"_R2.fastq
+fi
 
 # WRAP UP ----------------------------------------------------------------------
 echo -e "\n## Listing output files:"

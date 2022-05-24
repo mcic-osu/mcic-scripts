@@ -21,7 +21,7 @@ Help() {
     echo "  -o STRING          Output directory"
     echo
     echo "Other options:"
-    echo "  -s STRING          Other arguments to pass to SPAdes"
+    echo "  -a STRING          Other arguments to pass to SPAdes"
     echo "  -m STRING          SPAdes run mode                             [default: default SPAdes]"
     echo "                     Possible values: 'isolate', 'meta', 'metaplasmid, 'metaviral', 'plasmid', 'rna', 'rnaviral'"
     echo "  -k STRING          Comma-separated list of kmer sizes          [default: SPAdes default]"
