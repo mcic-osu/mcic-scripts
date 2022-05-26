@@ -11,9 +11,9 @@
 ## Help function
 Help() {
     echo
-    echo "$0: Construct a tree from a FASTA alignment"
+    echo "$0: Construct a tree from a FASTA alignment using IQ-tree"
     echo
-    echo "Syntax: $0 -i <input-FASTA> -o <output dir> ..."
+    echo "Syntax: $0 -i <input-FASTA> -p <output-prefix> ..."
     echo
     echo "Required options:"
     echo "  -i FILE       Input FASTA file -- should contain multiple, aligned sequences"
@@ -21,7 +21,7 @@ Help() {
     echo
     echo "Other options:"
     echo "  -a STRING     Other arguments to pass to IQ-tree"
-    echo "  -b NUM        Number of bootstraps                  [default: no bootstrapping]"
+    echo "  -b NUM        Number of ultrafast bootstraps                  [default: no bootstrapping]"
     echo "  -h            Print this help message and exit"
     echo
     echo "Example command:"
@@ -58,18 +58,13 @@ while getopts ':i:p:b:a:h' flag; do
     esac
 done
 
-
-# OTHER SETUP ------------------------------------------------------------------
-## Report
-echo "## Starting script iqtree.sh"
-date
-echo
-
 ## Check input
 [[ "$fa_in"  = "" ]] && echo "## ERROR: Please provide input FASTA file with -i flag" && exit 1
 [[ "$prefix"  = "" ]] && echo "## ERROR: Please provide output prefix with -p flag" && exit 1
 [[ ! -f $fa_in ]] && echo "## ERROR: Input FASTA file ($fa_in) does not exist" && exit 1
 
+
+# OTHER SETUP ------------------------------------------------------------------
 ## Load software
 module load python/3.6-conda5.2
 source activate /fs/project/PAS0471/jelmer/conda/iqtree-2.2.0
@@ -87,10 +82,12 @@ else
 fi
 
 ## Report
+echo "## Starting script iqtree.sh"
+date
 echo "## Input FASTA:                  $fa_in"
-echo "## Output prefix:                   $prefix"
-[[ "$nboot" != "" ]] && echo "## Number of bootstraps:                   $nboot"
-[[ "$more_args" != "" ]] && echo "## Other arguments to pass to IQ-tree:                   $more_args"
+echo "## Output prefix:                $prefix"
+[[ "$nboot" != "" ]] && echo "## Number of bootstraps:         $nboot"
+[[ "$more_args" != "" ]] && echo "## Other arguments to pass to IQ-tree:      $more_args"
 echo -e "-----------------------------\n"
 
 ## Create output dir
@@ -104,11 +101,14 @@ iqtree \
     --prefix "$prefix" \
     -redo \
     -m MFP \
-    -nt AUTO -ntmax "$n_cores" $boot_arg $more_args
+    -nt AUTO \
+    -ntmax "$n_cores" \
+    $boot_arg $more_args
 
 #? -m MFP  => Model selection with ModelFinder (is the IQ-tree default, too)
 #? -redo   => Will overwrite old results
 #? --mem 4G  - memory
+
 
 # WRAP UP ----------------------------------------------------------------------
 echo -e "\n## Listing output files:"
