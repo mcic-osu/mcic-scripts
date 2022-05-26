@@ -43,7 +43,7 @@ outdir=""
 more_args=""
 
 ## Parse command-line options
-while getopts ':i:o:p:s:ah' flag; do
+while getopts ':i:o:p:s:a:h' flag; do
   case "${flag}" in
     i) genome_fa="$OPTARG" ;;
     o) outdir="$OPTARG" ;;
