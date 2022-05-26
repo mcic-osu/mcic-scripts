@@ -152,6 +152,13 @@ STAR --runThreadN "$SLURM_CPUS_ON_NODE" \
    --outReadsUnmapped Fastx $output_arg $gff_arg $more_args
 
 
+# SORT WITH SAMTOOLS SORT ------------------------------------------------------
+# if [ "$sort" = true ]; then
+#     source activate /users/PAS0471/jelmer/miniconda3/envs/samtools-env
+#     samtools sort "$bam_unsorted" > "$bam_sorted"
+# fi
+
+
 # ORGANIZE STAR OUTPUT ---------------------------------------------------------
 ## Move files with unmapped reads
 echo -e "\n## Moving, renaming and zipping unmapped FASTQ files...."
