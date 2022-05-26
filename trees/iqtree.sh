@@ -3,7 +3,7 @@
 #SBATCH --account=PAS0471
 #SBATCH --time=3:00:00
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
+#SBATCH --mem=50G
 #SBATCH --output=slurm-iqtree-%j.out
 
 
@@ -74,6 +74,7 @@ set -euo pipefail
 
 ## Other parameters
 n_cores="$SLURM_CPUS_ON_NODE"
+mem_gb=$((9*(SLURM_MEM_PER_NODE / 1000)/10))G   # 90% of available memory in GB
 
 if [[ "$nboot" != "" ]]; then
     boot_arg="-B $nboot"
@@ -87,7 +88,9 @@ date
 echo "## Input FASTA:                  $fa_in"
 echo "## Output prefix:                $prefix"
 [[ "$nboot" != "" ]] && echo "## Number of bootstraps:         $nboot"
-[[ "$more_args" != "" ]] && echo "## Other arguments to pass to IQ-tree:      $more_args"
+[[ "$more_args" != "" ]] && echo "## Other arguments to pass to IQ-tree: $more_args"
+echo "## Number of cores:              $n_cores"
+echo "## Memory:                       $mem_gb"
 echo -e "-----------------------------\n"
 
 ## Create output dir
@@ -103,6 +106,7 @@ iqtree \
     -m MFP \
     -nt AUTO \
     -ntmax "$n_cores" \
+    -mem "$mem_gb" \
     $boot_arg $more_args
 
 #? -m MFP  => Model selection with ModelFinder (is the IQ-tree default, too)
