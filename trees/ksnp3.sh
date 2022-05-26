@@ -29,6 +29,10 @@ Help() {
   echo "                  If you don't provide a k-mer size, the script will automatically"
   echo "                     determine one using the kSNP3 utility program Kchooser"
   echo "-a STRING         Other argument(s) to pass to kSNP3"
+  echo "                  Note that by default, the script will run kSNP3 with the following optional arguments:"
+  echo "                     -vcf      To also output a VCF file"
+  echo "                     -ML       To also create an ML tree"
+  echo "                     -core     To also output files for 'core SNPs' only"
   echo "-h                Print this help message and exit"
   echo
   echo "Example: $0 -i infile_list.txt -o results/ksnp3"
@@ -60,7 +64,7 @@ done
 
 ## If needed, make paths absolute because we have to move into the outdir
 [[ ! $outdir =~ ^/ ]] && outdir="$PWD"/"$outdir"
-[[ ! $infile =~ ^/ ]] && outdir="$PWD"/"$infile"
+[[ ! $infile =~ ^/ ]] && infile="$PWD"/"$infile"
 
 ## Check input
 [[ "$infile" = "" ]] && echo "## ERROR: Please specify an input dir with -i" >&2 && exit 1
@@ -84,6 +88,7 @@ echo "## Input file:                           $infile"
 echo "## Output dir:                           $outdir"
 echo "## Kmer size:                            $kmer_size"
 [[ $more_args != "" ]] && echo "## Other arguments to pass to kNSP3:    $more_args"
+echo
 echo "## Showing contents of input file with file names:"
 cat "$infile"
 echo -e "--------------------\n"
@@ -132,11 +137,15 @@ kSNP3 \
     -in "$infile" \
     -outdir "$outdir" \
     -k "$kmer_size" \
-    -vcf -ML \
-    -CPU "$SLURM_CPUS_PER_TASK"
+    -vcf \
+    -ML \
+    -core \
+    -CPU "$SLURM_CPUS_PER_TASK" \
+    $more_args
 
 #? -ML     Also output an ML tree
 #? -vcf    Also output a VCF file
+#? -core   Also output a separate set of files for core SNPs (i.e., those shared across all genomes)
 
 
 # WRAP-UP ----------------------------------------------------------------------
