@@ -104,7 +104,7 @@ echo "## Starting Detonate run..."
 echo -e "\n## Running rsem-eval-calculate-score..."
 rsem-eval-calculate-score \
     --paired-end \
-    "$R2_LIST" "$R2_LIST" \
+    "$R1_LIST" "$R2_LIST" \
     "$fa_in" \
     "$PREFIX" \
     "$readlen" \
