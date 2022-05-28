@@ -90,15 +90,13 @@ echo -e "--------------------\n"
 # RUN SOAPDENOVO ---------------------------------------------------------------
 echo -e "\n## Now running Trans-ABySS..."
 transabyss \
-    --pe "$indir"/* \
+    --pe "$indir"/*fastq.gz \
     --SS \
     --kmer "$kmer_size" \
     --length "$minlen" \
     --threads "$SLURM_CPUS_PER_TASK" \
     --outdir "$outdir" \
     --name "$assembly_ID" $more_args
-
-#--se trimmed_unpaired*/* \
 
 
 # WRAP-UP ----------------------------------------------------------------------
