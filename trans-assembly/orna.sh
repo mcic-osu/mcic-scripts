@@ -11,22 +11,23 @@
 ## Help function
 Help() {
   echo
-  echo "$0: Normalize RNAseq reads prior to assembly with ORNA"
+  echo "$0: Run ORNA to normalize paired-end RNAseq reads prior to assembly"
   echo
   echo "Syntax: $0 -i <input-dir> -o <output-dir> ..."
   echo
   echo "Required options:"
-  echo "-i STRING        Input directory with FASTQ files"
-  echo "-o STRING        Output directory"
+  echo "    -i STRING           Input R1 FASTQ file (R2 filename will be inferred)"
+  echo "    -o STRING           Output directory"
   echo
   echo "Other options:"
-  echo "-h               Print this help message and exit"
+  echo "    -h                  Print this help message and exit"
   echo
-  echo "Example: $0 -i data/fastq/ -o results/orna"
-  echo "To submit to the OSC queue, preface with 'sbatch': sbatch $0 ..."
+  echo "Example:                $0 -i data/fastq/ -o results/orna"
+  echo "To submit this script to the OSC queue, preface with 'sbatch': sbatch $0 ..."
   echo
-  echo "ORNA docs:       https://github.com/SchulzLab/ORNA"
-  echo "ORNA paper:      https://www.nature.com/articles/s41598-019-41502-9"
+  echo "ORNA docs:  https://github.com/SchulzLab/ORNA"
+  echo "ORNA paper: https://www.nature.com/articles/s41598-019-41502-9"
+  echo
 }
 
 ## Default parameter values
@@ -50,16 +51,16 @@ date
 echo
 
 ## Check parameter values
+[[ "$R1_in" = "" ]] && echo "## ERROR: Please specify an input file with -i" >&2 && exit 1
+[[ "$outdir" = "" ]] && echo "## ERROR: Please specify an output directory with -o" >&2 && exit 1
 [[ ! -f "$R1_in" ]] && echo "## ERROR: Input file R1 (-i) $R1_in does not exist" >&2 && exit 1
 
 
-# SOFTWARE ---------------------------------------------------------------------
+# OTHER SETUP ------------------------------------------------------------------ 
 ## Load software
 module load python/3.6-conda5.2
 source activate /fs/project/PAS0471/jelmer/conda/orna-2.0
 
-
-# OTHER SETUP ------------------------------------------------------------------ 
 ## Bash strict mode
 set -euo pipefail
 
@@ -67,41 +68,47 @@ set -euo pipefail
 R1_suffix=$(echo "$R1_in" | sed -E 's/.*(_R?1).*fa?s?t?q.gz/\1/')
 R2_suffix=${R1_suffix/1/2}
 R2_in=${R1_in/$R1_suffix/$R2_suffix}
+[[ "$R1_in" = "$R2_in" ]] && echo "## ERROR: Input file R1 is the same as R2" >&2 && exit 1
 
 ## Determine output prefix
-R1_basename=$(basename "$R1_in" .fastq.gz)
+R1_basename=$(basename "$R1_in" | sed -E 's/.fa?s?t?q.gz//')
 sampleID=${R1_basename/"$R1_suffix"/}
-prefix="$outdir"/"$sampleID"
+
+## If needed, make paths absolute because we have to move into the outdir
+[[ ! $R1_in =~ ^/ ]] && R1_in="$PWD"/"$R1_in"
+[[ ! $R2_in =~ ^/ ]] && R2_in="$PWD"/"$R2_in"
 
 ## Report
 echo "## R1 input file:              $R1_in"
 echo "## R2 input file:              $R2_in"
-echo "## Output prefix:              $prefix"
+echo "## Sample ID:                  $sampleID"
 echo -e "-------------------------------\n"
 
 ## Create output dir if needed
 mkdir -p "$outdir"
 
 
-# RUN KHMER ---------------------------------------------------------------
+# RUN ORNA ---------------------------------------------------------------------
+cd "$outdir" || exit
+
 echo "## Starting normalization ..."
 ORNA \
-    -pair1 "$R1_in" -pair2 "$R2_in" \
-    -output "$prefix" \
+    -pair1 "$R1_in" \
+    -pair2 "$R2_in" \
+    -output "$sampleID" \
     -type fastq \
     -nb-cores "$SLURM_CPUS_PER_TASK"
 
-## Move output files
-R2_basename=$(basename "$R2_in" .fastq.gz)
-mv ./*"$R2_basename"*h5 "$outdir"
-gzip -c "$prefix"_1.fq > "$prefix"_R1.fastq.gz
-gzip -c "$prefix"_2.fq > "$prefix"_R2.fastq.gz
+## Rename and gzip output files
+echo "## Compressing output FASTQ files..."
+gzip -cv "$sampleID"_1.fq > "$sampleID"_R1.fastq.gz && rm "$sampleID"_1.fq
+gzip -cv "$sampleID"_2.fq > "$sampleID"_R2.fastq.gz && rm "$sampleID"_2.fq
 
 
 # WRAP-UP ----------------------------------------------------------------------
 echo -e "\n-------------------------------"
 echo "## Listing files in the output dir:"
-ls -lh "$outdir"
+ls -lh
 
 echo -e "\n## Done with script orna.sh"
 date
