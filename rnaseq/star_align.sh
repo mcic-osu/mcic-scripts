@@ -179,6 +179,8 @@ for oldpath in "$bam_dir/$sampleID"_*Unmapped.out.mate*; do
     newname=$(echo "$oldname" | sed -E s'/_Unmapped.out.mate([12])/_R\1.fastq.gz/')
     newpath="$unmapped_dir"/"$newname"
 
+    echo "## Transferring $oldpath to $newpath"
+
     #> The unmapped FASTQ files output by STAR have a weird format with "0:N" for R1 reads (instead of "1:N")
     #> and "1:N" (instead of "2:N") for R2 reads, which Trinity doesn't accept. The code below will fix that:
     [[ "$newpath" = *R1.fastq.gz ]] && sed -E 's/(^@.*) 0:N: (.*)/\1 1:N: \2/' "$oldpath" | gzip -f > "$newpath"
