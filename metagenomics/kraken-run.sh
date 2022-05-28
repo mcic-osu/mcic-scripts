@@ -10,30 +10,33 @@
 ## Help function
 Help() {
     echo
-    echo "## $0: Run Kraken2 to assign taxonomy to sequences in a FASTA/FASTQ file"
+    echo "## $0: Run Kraken2 to assign taxonomy to sequences in a FASTA/FASTQ/pair of FASTQ file(s)"
     echo
-    echo "## Syntax: $0 -i <input-sequence-file> -o <output-dir> -d <kraken-db-dir> ..."
+    echo "## Syntax: $0 -i <input-file> -o <output-dir> -d <kraken-db-dir> ..."
     echo 
     echo "## Required options:"
-    echo "## -i STRING       Input sequence file (FASTA, single-end FASTQ, or R1 from paired-end FASTQ)"
-    echo "                   (If an R1 paired-end FASTQ file is provided, the name of the R2 file will be inferred.)"
-    echo "## -o STRING       Output directory"
-    echo "## -d STRING       Directory with an existing Kraken database"
-    echo "                   (Use one of the scripts 'kraken-build-custom-db.sh' or 'kraken-build-std-db.sh' to create a Kraken database)"
+    echo "  -i STRING           Input sequence file (FASTA, single-end FASTQ, or R1 from paired-end FASTQ)"
+    echo "                          (If an R1 paired-end FASTQ file is provided, the name of the R2 file will be inferred.)"
+    echo "  -o STRING           Output directory"
+    echo "  -d STRING           Directory with an existing Kraken database"
+    echo "                          (Use one of the scripts 'kraken-build-custom-db.sh' or 'kraken-build-std-db.sh' to create a Kraken database)"
     echo
     echo "## Other options:"
-    echo "## -c PROPORTION   Confidence required for assignment: number between 0 and 1          [default: 0.5]"
-    echo "## -h              Print this help message and exit"
-    echo "## -m              Don't load the full database into RAM memory                        [default: load into memory]"
-    echo "                   (Can be useful for very large databases)"
-    echo "## -n              Add taxonomic names to the Kraken 'main' output file                [default: don't add]"
-    echo "                   Note: this option is not compatible with Krona plotting)"
-    echo "## -q INTEGER      Base quality Phred score required for use of a base in assignment   [default: 25]"
-    echo "## -w              Write classified sequences to file                                  [default: don't write]"
-    echo "## -W              Write unclassified sequences to file                                [default: don't write]"
+    echo "  -c NUM             Confidence required for assignment: number between 0 and 1          [default: 0.5]"
+    echo "  -h                 Print this help message and exit"
+    echo "  -m                 Don't load the full database into RAM memory                        [default: load into memory]"
+    echo "                          (Can be useful for very large databases)"
+    echo "  -n                 Add taxonomic names to the Kraken 'main' output file                [default: don't add]"
+    echo "                          Note: this option is not compatible with Krona plotting)"
+    echo "  -q INTEGER         Base quality Phred score required for use of a base in assignment   [default: 0]"
+    echo "                          NOTE: If setting a score other than 0, any output sequence files (-w and -W options)"
+    echo "                          will contain 'x's for masked bases."
     echo
-    echo "## Example: $0 -i data/A1_R1_001.fastq.gz -o results/kraken -d /fs/project/PAS0471/jelmer/refdata/kraken/PlusPFP"
-    echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
+    echo "  -w                 Write classified sequences to file                                  [default: don't write]"
+    echo "  -W                 Write unclassified sequences to file                                [default: don't write]"
+    echo
+    echo "Example:          $0 -i data/A1_R1.fastq.gz -o results/kraken -d /fs/project/PAS0471/jelmer/refdata/kraken/PlusPFP"
+    echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
     echo
 }
 
@@ -43,7 +46,7 @@ outdir=""
 krakendb_dir=""
 add_names=false
 min_conf=0.5
-min_q=25
+min_q=0
 write_class=""
 write_unclass=""
 class_out_arg=""
