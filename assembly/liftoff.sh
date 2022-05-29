@@ -101,13 +101,14 @@ liftoff \
     -g "$ref_gff" \
     -u "$outdir"/unmapped_features.txt \
     -dir "$TMPDIR" \
-    "$target_fa" "$ref_fa" > "$target_gff"
+    -o "$target_gff" $more_args \
+    "$target_fa" "$ref_fa"
 
 
 # WRAP-UP ----------------------------------------------------------------------
 echo -e "\n-------------------------------"
 echo "## Listing files in the output dir:"
-ls -lh "$outdir"
+ls -lh "$outdir"/*
 echo -e "\n## Done with script liftoff.sh"
 date
 echo
