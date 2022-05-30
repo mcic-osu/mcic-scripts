@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=12:00:00
+#SBATCH --time=3:00:00
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=50G
 #SBATCH --job-name=evigene
