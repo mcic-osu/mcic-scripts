@@ -96,12 +96,13 @@ Trinity --seqType fq \
         --output "$outdir" \
         --max_memory "$mem_gb" \
         --CPU "$SLURM_CPUS_ON_NODE" \
-        --monitoring \
         --verbose
 
+#--monitoring \
+
 ## Check resource usage - https://github.com/trinityrnaseq/trinityrnaseq/wiki/Trinity-Runtime-Profiling
-mv collectl "$outdir"
-"$COLLECTL_SCRIPT" "$outdir"/collectl
+#mv collectl "$outdir"
+#"$COLLECTL_SCRIPT" "$outdir"/collectl
 
 
 # WRAP-UP ----------------------------------------------------------------------
@@ -114,4 +115,3 @@ date
 echo
 sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
 echo
-
