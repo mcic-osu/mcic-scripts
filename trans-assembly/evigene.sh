@@ -30,6 +30,7 @@ Help() {
   echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
   echo
   echo "EviGene documentation: http://arthropods.eugenes.org/EvidentialGene/evigene/"
+  echo "EviGene output:        http://arthropods.eugenes.org/EvidentialGene/evigene/docs/EvigeneR/evigene4_outputs_brief.txt"
   echo "EviGene update note:   http://arthropods.eugenes.org/EvidentialGene/about/EvidentialGene_update2020march.html"
   echo "EviGene paper:         https://www.biorxiv.org/content/10.1101/829184v1"
   echo "Evigene repo:          https://sourceforge.net/projects/evidentialgene"
@@ -81,7 +82,7 @@ echo
 echo "## Input FASTA file:                     $infile"
 echo "## Output dir:                           $outdir"
 echo "## Minimum CDS size:                     $min_cds"
-echo "## Other arguments to pass to evigene:   $more_args"
+[[ "$more_args" != "" ]] && echo "## Other arguments to pass to evigene:   $more_args"
 echo -e "--------------------\n"
 
 ## Copy input file to outdir
@@ -93,7 +94,7 @@ cp -v "$infile" "$outdir"
 # RUN EVIGENE ------------------------------------------------------------------
 cd "$outdir" || exit
 
-echo "## Now running Evigene..."
+echo -e "\n## Now running Evigene..."
 $CONDA_ENV_DIR/bin/prot/tr2aacds.pl \
     -debug \
     -MINCDS "$min_cds" \
