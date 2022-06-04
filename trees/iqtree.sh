@@ -2,8 +2,8 @@
 
 #SBATCH --account=PAS0471
 #SBATCH --time=3:00:00
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=50G
+#SBATCH --cpus-per-task=12
+#SBATCH --mem=64G
 #SBATCH --output=slurm-iqtree-%j.out
 
 
@@ -22,6 +22,8 @@ Help() {
     echo "Other options:"
     echo "  -a STRING     Other arguments to pass to IQ-tree"
     echo "  -b NUM        Number of ultrafast bootstraps                  [default: no bootstrapping]"
+    echo "  -c            Don't use IQ-tree's 'AUTO' core mode            [default: use the AUTO core mode]"
+    echo "                   Instead, pass the same nr of cores as specified for the sbatch job"
     echo "  -h            Print this help message and exit"
     echo
     echo "Example command:"
@@ -44,12 +46,14 @@ fa_in=""
 prefix=""
 more_args=""
 nboot=""
+core_mode="auto"
 
 ## Parse options
-while getopts ':i:p:b:a:h' flag; do
+while getopts ':i:p:b:a:ch' flag; do
     case "${flag}" in
         i) fa_in="$OPTARG" ;;
         p) prefix="$OPTARG" ;;
+        c) core_mode="max" ;;
         a) more_args="$OPTARG" ;;
         b) nboot="$OPTARG" ;;
         h) Help && exit 0 ;;
@@ -73,8 +77,14 @@ source activate /fs/project/PAS0471/jelmer/conda/iqtree-2.2.0
 set -euo pipefail
 
 ## Other parameters
-n_cores="$SLURM_CPUS_ON_NODE"
-mem_gb=$((9*(SLURM_MEM_PER_NODE / 1000)/10))G   # 90% of available memory in GB
+n_cores_max="$SLURM_CPUS_ON_NODE"
+mem_gb=$((8*(SLURM_MEM_PER_NODE / 1000)/10))G   # 90% of available memory in GB
+
+if [[ "$core_mode" = "max" ]]; then
+    n_cores="$SLURM_CPUS_ON_NODE"
+else
+    n_cores="AUTO"
+fi
 
 if [[ "$nboot" != "" ]]; then
     boot_arg="-B $nboot"
@@ -89,7 +99,7 @@ echo "## Input FASTA:                  $fa_in"
 echo "## Output prefix:                $prefix"
 [[ "$nboot" != "" ]] && echo "## Number of bootstraps:         $nboot"
 [[ "$more_args" != "" ]] && echo "## Other arguments to pass to IQ-tree: $more_args"
-echo "## Number of cores:              $n_cores"
+echo "## (Max) number of cores:        $n_cores_max"
 echo "## Memory:                       $mem_gb"
 echo -e "-----------------------------\n"
 
@@ -104,8 +114,8 @@ iqtree \
     --prefix "$prefix" \
     -redo \
     -m MFP \
-    -nt AUTO \
-    -ntmax "$n_cores" \
+    -nt "$n_cores" \
+    -ntmax "$n_cores_max" \
     -mem "$mem_gb" \
     $boot_arg $more_args
 
