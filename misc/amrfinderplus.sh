@@ -1,9 +1,8 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=4:00:00
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=12
+#SBATCH --time=1:00:00
+#SBATCH --cpus-per-task=8
 #SBATCH --job-name=amrfinderplus
 #SBATCH --output=slurm-amrfinderplus-%j.out
 
@@ -11,51 +10,54 @@
 ## Help function
 Help() {
   echo
-  echo "$0: Run amrfinderplus."
+  echo "$0: Run AMRFinderPlus to identify antimicrobial resistance genes and SNPs in a microbial genome assembly"
   echo
-  echo "Syntax: $0 -i <input-file> -o <output-dir> ..."
+  echo "Syntax: $0 -n <input-fna> -a <input-faa> -g <input-gff> -o <output-dir> ..."
   echo
   echo "Required options:"
-  echo "-i STRING         Input file which should contain one row per genome and two columns:"
-  echo "                     - The first column has the path to a genome FASTA"
-  echo "                     - The second column has an ID for that genome"
-  echo "                  E.g., a file for two genomes could look like this:"
-  echo "                  results/spades/sampleA/contigs.fasta sampleA"
-  echo "                  results/spades/sampleB/contigs.fasta sampleB"
-  echo "-o STRING         Output dir"
+  echo "    -n STRING         Nucleotide FASTA input file (genome assembly)"
+  echo "    -a STRING         Amino acid (protein) FASTA input file (proteome)"
+  echo "    -g STRING         GFF input file (annotation)"
+  echo "    -o STRING         Output dir"
   echo
   echo "Other options:"
-  echo "-k INTEGER        K-mer size (odd integer)          [default: automatically determined]"
-  echo "                  If you don't provide a k-mer size, the script will automatically"
-  echo "                     determine one using the kSNP3 utility program Kchooser"
-  echo "-a STRING         Other argument(s) to pass to kSNP3"
-  echo "                  Note that by default, the script will run kSNP3 with the following optional arguments:"
-  echo "                     -vcf      To also output a VCF file"
-  echo "                     -ML       To also create an ML tree"
-  echo "                     -core     To also output files for 'core SNPs' only"
-  echo "-h                Print this help message and exit"
+  echo "    -s                Organism                      [default: none]"
+  echo "                          For a list of options, run 'amrfinder -l'"
+  echo "                          See https://github.com/ncbi/amr/wiki/Running-AMRFinderPlus#--organism-option"
+  echo "    -x                Don't change GFF file"
+  echo "                          The default is to change 'ID=' entries to 'Name='."
+  echo "                          This is necessary at least if the GFF was produced by Prokka"
+  echo "                          See https://github.com/ncbi/amr/issues/26"
+  echo "    -a STRING         Other argument(s) to pass to AMRFinderPlus"
+  echo "    -h                Print this help message and exit"
   echo
-  echo "Example: $0 -i infile_list.txt -o results/ksnp3"
+  echo "Example:    $0 -n results/spades/smpA.fasta -a results/prokka/smpA.faa -g results/prokka/smpA.gff  -o results/ksnp3"
   echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
   echo
-  echo "kSNP3 documentation (PDF download): https://sourceforge.net/projects/ksnp/files/kSNP3.1.2%20User%20Guide%20.pdf/download"
-  echo "kSNP3 paper: https://academic.oup.com/bioinformatics/article/31/17/2877/183216"
+  echo "AMRFinderPlus documentation: https://github.com/ncbi/amr/wiki"
+  echo "AMRFinderPlus paper: https://www.nature.com/articles/s41598-021-91456-0"
   echo
 }
 
 ## Option defaults
-infile=""
+assembly_fna=""
+assembly_faa=""
+gff=""
 outdir=""
-organism="Salmonella"
+organism=""
+change_gff="true"
 more_args=""
 
 ## Parse command-line options
-while getopts ':i:o:O:a:h' flag; do
+while getopts ':n:p:g:o:s:a:hx' flag; do
   case "${flag}" in
-    i) infile="$OPTARG" ;;
+    n) assembly_fna="$OPTARG" ;;
+    p) assembly_faa="$OPTARG" ;;
+    g) gff="$OPTARG" ;;
     o) outdir="$OPTARG" ;;
-    O) organism="$OPTARG" ;;
+    s) organism="$OPTARG" ;;
     a) more_args="$OPTARG" ;;
+    x) change_gff="false" ;;
     h) Help && exit 0 ;;
     \?) echo -e "\n## $0: ERROR: Invalid option -$OPTARG\n\n" >&2 && exit 1 ;;
     :) echo -e "\n## $0: ERROR: Option -$OPTARG requires an argument\n\n" >&2 && exit 1 ;;
@@ -63,9 +65,14 @@ while getopts ':i:o:O:a:h' flag; do
 done
 
 ## Check input
-[[ "$infile" = "" ]] && echo "## ERROR: Please specify an input dir with -i" >&2 && exit 1
+[[ "$assembly_fna" = "" ]] && echo "## ERROR: Please specify a nucleotide FASTA input file with -n" >&2 && exit 1
+[[ "$assembly_faa" = "" ]] && echo "## ERROR: Please specify a protein FASTA input file with -p" >&2 && exit 1
+[[ "$gff" = "" ]] && echo "## ERROR: Please specify a GFF input file with -g" >&2 && exit 1
 [[ "$outdir" = "" ]] && echo "## ERROR: Please specify an output dir with -o" >&2 && exit 1
-[[ ! -f "$infile" ]] && echo "## ERROR: Input file (-i) $infile does not exist" >&2 && exit 1
+
+[[ ! -f "$assembly_fna" ]] && echo "## ERROR: Input file (-n) $assembly_fna does not exist" >&2 && exit 1
+[[ ! -f "$assembly_faa" ]] && echo "## ERROR: Input file (-p) $assembly_faa does not exist" >&2 && exit 1
+[[ ! -f "$gff" ]] && echo "## ERROR: Input file (-g) $gff does not exist" >&2 && exit 1
 
 
 # SETUP ------------------------------------------------------------------------
@@ -77,19 +84,35 @@ source activate /fs/project/PAS0471/jelmer/conda/amrfinderplus-3.10.30
 set -euo pipefail
 
 ## Define output files etc
-sampleID=$(basename "$infile" .fasta)
+sampleID=$(basename "$assembly_fna" .fasta)
 outfile="$outdir"/"$sampleID".txt
 mutation_report="$outdir"/"$sampleID"_mutation-report.txt
+
+## Build organism argument
+if [[ $organism != "" ]]; then
+    organism_arg="--organism $organism"
+else
+    organism_arg=""
+fi
 
 ## Report
 echo "## Starting script amrfinderplus.sh"
 date
 echo
-echo "## Input file:                           $infile"
+echo "## Input nucleotide FASTA file:          $assembly_fna"
+echo "## Input protein FASTA file:             $assembly_faa"
+echo "## Input GFF file:                       $gff"
 echo "## Output dir:                           $outdir"
-echo "## Organism:                             $organism"
+[[ $organism != "" ]] && echo "## Organism:                             $organism"
 [[ $more_args != "" ]] && echo "## Other arguments to pass to AmrFinderPlus:    $more_args"
 echo -e "--------------------\n"
+
+## Change GFF to be compliant with Amrfinderplus
+if [[ "$change_gff" = true ]]; then
+    echo "## Now editing the GFF file..."    
+    sed -E 's/Name=[^;]+;//' "$gff" | sed 's/ID=/Name=/' > "$outdir"/"$sampleID".gff
+    gff="$outdir"/"$sampleID".gff
+fi
 
 ## Make output dir
 mkdir -p "$outdir"
@@ -98,21 +121,19 @@ mkdir -p "$outdir"
 # RUN AmrfinderPlus --------------------------------------------------------------------
 echo -e "\n## Now running AmrfinderPlus...."
 amrfinder \
-    --nucleotide "$infile" \
-    --organism "$organism" \
+    --nucleotide "$assembly_fna" \
+    --protein "$assembly_faa" \
+    --gff "$gff" \
     --threads "$SLURM_CPUS_PER_TASK" \
     -o "$outfile" \
     --mutation_all "$mutation_report" \
-    --name "$sampleID" $more_args
-
-# --protein <protein_fasta>
-# --gff <gff_file>
+    --name "$sampleID" $organism_arg $more_args
 
 
 # WRAP-UP ----------------------------------------------------------------------
 echo -e "\n-------------------------------"
 echo "## Listing files in the output dir:"
-ls -lh "$outdir"
+ls -lh "$outdir"/"$sampleID"*
 echo -e "\n## Done with script amrfinderplus.sh"
 date
 echo
