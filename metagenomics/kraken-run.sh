@@ -209,18 +209,18 @@ kraken2 ${names_arg}--threads "$SLURM_CPUS_ON_NODE" \
 # RENAME AND ZIP FASTQ FILES -------------------------
 if [[ "$write_class" = true ]]; then
     mv "$outdir"/classified/"$sample_ID"_1.fastq "$outdir"/classified/"$sample_ID"_R1.fastq
-    gzip "$outdir"/classified/"$sample_ID"_R1.fastq
+    gzip -f "$outdir"/classified/"$sample_ID"_R1.fastq
 
     mv "$outdir"/classified/"$sample_ID"_2.fastq "$outdir"/classified/"$sample_ID"_R2.fastq
-    gzip "$outdir"/classified/"$sample_ID"_R2.fastq
+    gzip -f "$outdir"/classified/"$sample_ID"_R2.fastq
 fi
 
 if [[ "$write_unclass" = true ]]; then
     mv "$outdir"/unclassified/"$sample_ID"_1.fastq "$outdir"/unclassified/"$sample_ID"_R1.fastq
-    gzip "$outdir"/unclassified/"$sample_ID"_R1.fastq
+    gzip -f "$outdir"/unclassified/"$sample_ID"_R1.fastq
 
     mv "$outdir"/unclassified/"$sample_ID"_2.fastq "$outdir"/unclassified/"$sample_ID"_R2.fastq
-    gzip "$outdir"/unclassified/"$sample_ID"_R2.fastq
+    gzip -f "$outdir"/unclassified/"$sample_ID"_R2.fastq
 fi
 
 # WRAP UP ----------------------------------------------------------------------
