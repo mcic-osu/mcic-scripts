@@ -107,15 +107,15 @@ echo "## Output dir:                           $outdir"
 [[ $more_args != "" ]] && echo "## Other arguments to pass to AmrFinderPlus:    $more_args"
 echo -e "--------------------\n"
 
+## Make output dir
+mkdir -p "$outdir"
+
 ## Change GFF to be compliant with Amrfinderplus
 if [[ "$change_gff" = true ]]; then
     echo "## Now editing the GFF file..."    
     sed -E 's/Name=[^;]+;//' "$gff" | sed 's/ID=/Name=/' > "$outdir"/"$sampleID".gff
     gff="$outdir"/"$sampleID".gff
 fi
-
-## Make output dir
-mkdir -p "$outdir"
 
 
 # RUN AmrfinderPlus --------------------------------------------------------------------
