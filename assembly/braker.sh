@@ -56,19 +56,12 @@ while getopts ':i:o:p:s:a:h' flag; do
   esac
 done
 
-## Report
-echo "## Starting script braker.sh"
-date
-echo
 
+# SETUP ------------------------------------------------------------------------
 ## Check input
 [[ ! -f "$genome_fa" ]] && echo "## ERROR: Input file (-i) $genome_fa does not exist" >&2 && exit 1
 [[ ! -f "$protein_fa" ]] && echo "## ERROR: Protein file (-d) $protein_fa does not exist" >&2 && exit 1
 
-## Make output dir
-mkdir -p "$outdir"
-
-# LOAD SOFTWARE ----------------------------------------------------------------
 ## Braker2 conda env which contains everything except GeneMark-EX and ProtHint 
 module load python/3.6-conda5.2
 source activate /fs/project/PAS0471/jelmer/conda/braker2-env
@@ -83,8 +76,6 @@ cp "$GENEMARK_BASEDIR"/gm_key_64 ~/.gm_key
 export PROTHINT_PATH=/fs/project/PAS0471/jelmer/software/ProtHint/bin
 export PYTHON3_PATH=/fs/project/PAS0471/jelmer/conda/braker2-env/bin
 
-
-# OTHER SETUP ------------------------------------------------------------------
 ## Bash strict mode
 set -euo pipefail
 
@@ -92,7 +83,13 @@ set -euo pipefail
 [[ ! $genome_fa =~ ^/ ]] && genome_fa="$PWD"/"$genome_fa"
 [[ ! $protein_fa =~ ^/ ]] && protein_fa="$PWD"/"$protein_fa"
 
+## Make output dir
+mkdir -p "$outdir"
+
 ## Report
+echo
+echo "## Starting script braker.sh"
+date
 echo
 echo "## Genome FASTA file:                    $genome_fa"
 echo "## Protein FASTA:                        $protein_fa"
