@@ -20,6 +20,7 @@ Help() {
   echo "    -i STRING         Transcriptome assembly FASTA file"
   echo "                      NOTE: Concatenate multiple assemblies FASTAs into a single one prior to running this script."
   echo "    -o STRING         Output dir"
+  echo "                      NOTE: Any files present in this dir will be removed prior to running EviGene!"
   echo
   echo "Other options:"
   echo "    -m INTEGER        Minimum CDS size            [default: 350]"
@@ -71,9 +72,6 @@ source activate $CONDA_ENV_DIR
 ## Bash strict mode
 set -euo pipefail
 
-## Make output dir
-mkdir -p "$outdir"
-
 ## Report
 echo
 echo "## Starting script evigene.sh"
@@ -85,9 +83,15 @@ echo "## Minimum CDS size:                     $min_cds"
 [[ "$more_args" != "" ]] && echo "## Other arguments to pass to evigene:   $more_args"
 echo -e "--------------------\n"
 
+## Remove output dir if it already exists (EviGene behaves weirdly when there are files present!)
+[[ "$outdir" != "" && -d "$outdir" ]] && rm -r "${outdir:?}"
+
+## Make output dir
+mkdir -p "$outdir"
+
 ## Copy input file to outdir
 echo "## Copying input FASTA to output dir..."
-infile_base=$(basename $infile)
+infile_base=$(basename "$infile")
 cp -v "$infile" "$outdir"
 
 
