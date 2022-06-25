@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=24:00:00
+#SBATCH --time=12:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=15
 #SBATCH --mem=100G
@@ -15,20 +15,20 @@ Help() {
   echo
   echo "$0: Run Braker2 to annotate a genome."
   echo
-  echo "Syntax: $0 -i <genome-FASTA> -o <output-dir> -d <OrthoDB-FASTA> ..."
+  echo "Syntax: $0 -i <genome-FASTA> -o <output-dir> -s <species> -p <protein-FASTA> ..."
   echo
   echo "Required options:"
-  echo "-i STRING         Genome (nucleotide) FASTA file"
-  echo "-o STRING         Output dir"
-  echo "-s STRING         Species name (without space, e.g. homo_sapiens)"
-  echo "-p STRING         OrthoDB (protein) FASTA file"
-  echo "                  For info on how to create this file: https://github.com/gatech-genemark/ProtHint#protein-database-preparation"
+  echo "    -i STRING         Genome (nucleotide) FASTA file"
+  echo "    -o STRING         Output dir"
+  echo "    -s STRING         Species name (without space, e.g. 'homo_sapiens')"
+  echo "    -p STRING         Reference protein FASTA file"
+  echo "                      For info on how to create this file: https://github.com/gatech-genemark/ProtHint#protein-database-preparation"
   echo
   echo "Other options:"
-  echo "-a STRING         Other argument(s) to pass to Braker2"
-  echo "-h                Print this help message"
+  echo "    -a STRING         Other argument(s) to pass to Braker2"
+  echo "    -h                Print this help message and exit"
   echo
-  echo "Example: $0 -i my_genome.fa -o results/braker -d odb_prots.fa"
+  echo "Example:              $0 -i my_genome.fa -o results/braker -d odb_prots.fa"
   echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
   echo
   echo "Braker2 documentation: https://github.com/Gaius-Augustus/BRAKER"
@@ -56,17 +56,10 @@ while getopts ':i:o:p:s:ah' flag; do
   esac
 done
 
-## Report
-echo "## Starting script braker.sh"
-date
-echo
-
 ## Check input
 [[ ! -f "$genome_fa" ]] && echo "## ERROR: Input file (-i) $genome_fa does not exist" >&2 && exit 1
 [[ ! -f "$protein_fa" ]] && echo "## ERROR: Protein file (-d) $protein_fa does not exist" >&2 && exit 1
 
-## Make output dir
-mkdir -p "$outdir"
 
 # LOAD SOFTWARE ----------------------------------------------------------------
 ## Braker2 conda env which contains everything except GeneMark-EX and ProtHint 
@@ -93,13 +86,18 @@ set -euo pipefail
 [[ ! $protein_fa =~ ^/ ]] && protein_fa="$PWD"/"$protein_fa"
 
 ## Report
+echo "## Starting script braker.sh"
+date
 echo
 echo "## Genome FASTA file:                    $genome_fa"
 echo "## Protein FASTA:                        $protein_fa"
 echo "## Species name:                         $species"
 echo "## Output dir:                           $outdir"
-echo "## Other arguments to pass to Braker:    $more_args"
+[[ $more_args != "" ]] && echo "## Other arguments to pass to Braker:    $more_args"
 echo -e "--------------------\n"
+
+## Make output dir
+mkdir -p "$outdir"
 
 
 # RUN BRAKER2 -----------------------------------------------------------------
@@ -110,22 +108,19 @@ cd "$outdir" || exit 1
 braker.pl \
     --genome="$genome_fa" \
     --prot_seq="$protein_fa" \
-    --softmasking \
     --species="$species" \
+    --useexisting \
+    --softmasking \
+    --AUGUSTUS_ab_initio \
+    --gff3 \
     $more_args \
     --cores="$SLURM_CPUS_PER_TASK"
 
-# --AUGUSTUS_ab_initio                output ab initio predictions by AUGUSTUS
-#                                     in addition to predictions with hints by
-#                                     AUGUSTUS
-# --gff3 - Output in GFF3 format (default is gtf format)
-#--softmasking                       Softmasking option for soft masked genome
-#                                    files. (Disabled by default.)
 
 # WRAP-UP ----------------------------------------------------------------------
 echo -e "\n-------------------------------"
 echo "## Listing files in the output dir:"
-ls -lh "$outdir"
+ls -lh
 echo -e "\n## Done with script braker.sh"
 date
 echo
