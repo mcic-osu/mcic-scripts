@@ -24,7 +24,7 @@ Help() {
     echo "  -a STRING          Other arguments to pass to SPAdes"
     echo "  -m STRING          SPAdes run mode                             [default: default SPAdes]"
     echo "                     Possible values: 'isolate', 'meta', 'metaplasmid, 'metaviral', 'plasmid', 'rna', 'rnaviral'"
-    echo "  -k STRING          Comma-separated list of kmer sizes          [default: SPAdes default]"
+    echo "  -k STRING          Comma-separated list of kmer sizes          [default: SPAdes default of auto-selecting kmer sizes]"
     echo "  -c                 Run in 'careful' mode (small genomes only)  [default: don't run in careful mode]"
     echo "  -C                 Continue an interrupted run                 [default: start anew]"
     echo "  -h                 Print this help message and exit"
@@ -47,7 +47,7 @@ infile_yaml=""
 outdir=""
 mode=""
 mode_arg=""
-kmers=""
+kmers="auto"
 careful=false
 careful_arg=""
 continue=false
@@ -77,11 +77,6 @@ done
 
 
 # OTHER SETUP ------------------------------------------------------------------
-## Report
-echo "## Starting script spades.sh..."
-date
-echo
-
 ## Software
 module load python/3.6-conda5.2
 source activate /users/PAS0471/jelmer/miniconda3/envs/spades-env
@@ -113,13 +108,16 @@ else
 fi
 
 ## Kmer arg
-if [[ "$kmers" != "" ]]; then
+if [[ "$kmers" != "" && "$kmers" != "auto" ]]; then
     kmer_arg="-k $kmers"
 else
     kmer_arg=""
 fi
 
 ## Report
+echo "## Starting script spades.sh..."
+date
+echo
 echo "## Command-line args:"
 [[ "$R1" != "" ]] && echo "## Input FASTQ file - R1:            $R1"
 echo "## Output dir:                       $outdir"

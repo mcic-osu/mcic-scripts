@@ -2,8 +2,8 @@
 
 #SBATCH --account=PAS0471
 #SBATCH --time=3:00:00
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
+#SBATCH --cpus-per-task=12
+#SBATCH --mem=64G
 #SBATCH --output=slurm-iqtree-%j.out
 
 
@@ -11,9 +11,9 @@
 ## Help function
 Help() {
     echo
-    echo "$0: Construct a tree from a FASTA alignment"
+    echo "$0: Construct a tree from a FASTA alignment using IQ-tree"
     echo
-    echo "Syntax: $0 -i <input-FASTA> -o <output dir> ..."
+    echo "Syntax: $0 -i <input-FASTA> -p <output-prefix> ..."
     echo
     echo "Required options:"
     echo "  -i FILE       Input FASTA file -- should contain multiple, aligned sequences"
@@ -21,7 +21,9 @@ Help() {
     echo
     echo "Other options:"
     echo "  -a STRING     Other arguments to pass to IQ-tree"
-    echo "  -b NUM        Number of bootstraps                  [default: no bootstrapping]"
+    echo "  -b NUM        Number of ultrafast bootstraps                  [default: no bootstrapping]"
+    echo "  -c            Don't use IQ-tree's 'AUTO' core mode            [default: use the AUTO core mode]"
+    echo "                   Instead, pass the same nr of cores as specified for the sbatch job"
     echo "  -h            Print this help message and exit"
     echo
     echo "Example command:"
@@ -44,12 +46,14 @@ fa_in=""
 prefix=""
 more_args=""
 nboot=""
+core_mode="auto"
 
 ## Parse options
-while getopts ':i:p:b:a:h' flag; do
+while getopts ':i:p:b:a:ch' flag; do
     case "${flag}" in
         i) fa_in="$OPTARG" ;;
         p) prefix="$OPTARG" ;;
+        c) core_mode="max" ;;
         a) more_args="$OPTARG" ;;
         b) nboot="$OPTARG" ;;
         h) Help && exit 0 ;;
@@ -58,18 +62,13 @@ while getopts ':i:p:b:a:h' flag; do
     esac
 done
 
-
-# OTHER SETUP ------------------------------------------------------------------
-## Report
-echo "## Starting script iqtree.sh"
-date
-echo
-
 ## Check input
 [[ "$fa_in"  = "" ]] && echo "## ERROR: Please provide input FASTA file with -i flag" && exit 1
 [[ "$prefix"  = "" ]] && echo "## ERROR: Please provide output prefix with -p flag" && exit 1
 [[ ! -f $fa_in ]] && echo "## ERROR: Input FASTA file ($fa_in) does not exist" && exit 1
 
+
+# OTHER SETUP ------------------------------------------------------------------
 ## Load software
 module load python/3.6-conda5.2
 source activate /fs/project/PAS0471/jelmer/conda/iqtree-2.2.0
@@ -78,7 +77,14 @@ source activate /fs/project/PAS0471/jelmer/conda/iqtree-2.2.0
 set -euo pipefail
 
 ## Other parameters
-n_cores="$SLURM_CPUS_ON_NODE"
+n_cores_max="$SLURM_CPUS_ON_NODE"
+mem_gb=$((8*(SLURM_MEM_PER_NODE / 1000)/10))G   # 90% of available memory in GB
+
+if [[ "$core_mode" = "max" ]]; then
+    n_cores="$SLURM_CPUS_ON_NODE"
+else
+    n_cores="AUTO"
+fi
 
 if [[ "$nboot" != "" ]]; then
     boot_arg="-B $nboot"
@@ -87,10 +93,14 @@ else
 fi
 
 ## Report
+echo "## Starting script iqtree.sh"
+date
 echo "## Input FASTA:                  $fa_in"
-echo "## Output prefix:                   $prefix"
-[[ "$nboot" != "" ]] && echo "## Number of bootstraps:                   $nboot"
-[[ "$more_args" != "" ]] && echo "## Other arguments to pass to IQ-tree:                   $more_args"
+echo "## Output prefix:                $prefix"
+[[ "$nboot" != "" ]] && echo "## Number of bootstraps:         $nboot"
+[[ "$more_args" != "" ]] && echo "## Other arguments to pass to IQ-tree: $more_args"
+echo "## (Max) number of cores:        $n_cores_max"
+echo "## Memory:                       $mem_gb"
 echo -e "-----------------------------\n"
 
 ## Create output dir
@@ -104,11 +114,15 @@ iqtree \
     --prefix "$prefix" \
     -redo \
     -m MFP \
-    -nt AUTO -ntmax "$n_cores" $boot_arg $more_args
+    -nt "$n_cores" \
+    -ntmax "$n_cores_max" \
+    -mem "$mem_gb" \
+    $boot_arg $more_args
 
 #? -m MFP  => Model selection with ModelFinder (is the IQ-tree default, too)
 #? -redo   => Will overwrite old results
 #? --mem 4G  - memory
+
 
 # WRAP UP ----------------------------------------------------------------------
 echo -e "\n## Listing output files:"
