@@ -54,9 +54,9 @@ while getopts ':i:o:d:m:h' flag; do
 done
 
 ## Check input
-[[ "$fa_in" = "" ]] && echo "## Please specify an input FASTA file with -i" >&2 && exit 1
-[[ "$outdir" = "" ]] && echo "## Please specify an output dir file with -o" >&2 && exit 1
-[[ "$busco_db" = "" ]] && echo "## Please specify a Busco database name with -d" >&2 && exit 1
+[[ "$fa_in" = "" ]] && echo "## ERROR: Please specify an input FASTA file with -i" >&2 && exit 1
+[[ "$outdir" = "" ]] && echo "## ERROR: Please specify an output dir file with -o" >&2 && exit 1
+[[ "$busco_db" = "" ]] && echo "## ERROR: Please specify a Busco database name with -d" >&2 && exit 1
 [[ ! -f "$fa_in" ]] && echo "## ERROR: Input file $fa_in does not exist" >&2 && exit 1
 
 
