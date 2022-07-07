@@ -90,9 +90,6 @@ mkdir -p "$outdir"
 echo "## Starting script braker.sh"
 date
 echo
-echo "## Starting script braker.sh"
-date
-echo
 echo "## Genome FASTA file:                    $genome_fa"
 echo "## Protein FASTA:                        $protein_fa"
 echo "## Species name:                         $species"

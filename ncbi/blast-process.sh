@@ -5,24 +5,24 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --output=slurm-blast-process-%j.out
 
-# SETUP ------------------------------------------------------------------------
+# PARSE OPTIONS ----------------------------------------------------------------
 ## Help function
 Help() {
     echo
-    echo "## $0: Process a (fmt-6) BLAST output file."
+    echo "$0: Process a (fmt-6) BLAST output file."
     echo
-    echo "## Syntax: $0 -i <input> -o <output> [ -t <nr-top-hits> ]"
+    echo "Syntax: $0 -i <input> -o <output> ..."
     echo
-    echo "## Required options:"
-    echo "## -i STRING        Input file (Raw BLAST output)"
-    echo "## -o STRING        Output file (Processed BLAST output)"
+    echo "Required options:"
+    echo "    -i FILE          Input file (Raw BLAST output)"
+    echo "    -o FILE          Output file (Processed BLAST output)"
     echo
-    echo "## Other options:"
-    echo "## -t INTEGER       Number of top hits [default: 10]"
-    echo "## -h               Print this help message and exit"
+    echo "Other options:"
+    echo "    -t INTEGER       Number of top hits to process [default: 10]"
+    echo "    -h               Print this help message and exit"
     echo
-    echo "## Example: $0 -q blast.out -o blast_processed.out -t 50"
-    echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
+    echo "Example:             $0 -q blast.out -o blast_processed.out -t 50"
+    echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
     echo
 }
 
@@ -43,11 +43,8 @@ while getopts ':i:o:t:h' flag; do
     esac
 done
 
-## Report
-echo -e "\n## Starting script blast-process.sh..."
-date
-echo
 
+# SETUP ------------------------------------------------------------------------
 ## Load software
 module load python/3.6-conda5.2
 source activate /users/PAS0471/jelmer/miniconda3/envs/blast-env
@@ -62,14 +59,18 @@ blast_out_sorted="$outdir"/hits_sorted.txt
 blast_out_top="$outdir"/top_"$top_x_hits"_hits.txt
 organism_lookup="$outdir"/organism_lookup.txt
 
-## Create output dir, if needed
-mkdir -p "$outdir"
-
 ## Test input
 [[ ! -f $blast_out_raw ]] && echo "## $0: ERROR: Input file $blast_out_raw does not exist" >&2 && exit 1
 [[ $blast_out_proc = "" ]] && echo "## $0: ERROR: No output file (-o) provided" >&2 && exit 1
 
+## Create output dir, if needed
+mkdir -p "$outdir"
+
 ## Report
+echo
+echo "## Starting script blast-process.sh..."
+date
+echo
 echo "## BLAST raw output file (input):           $blast_out_raw"
 echo "## BLAST processed output file (output):    $blast_out_proc"
 echo "## Take the top-x hits, x is:               $top_x_hits"
@@ -123,9 +124,12 @@ join -t $'\t' -1 2 -2 1 "$blast_out_top" "$organism_lookup" > "$blast_out_proc"
 
 
 # WRAP UP ----------------------------------------------------------------------
-echo -e "\n\n## Listing the output file:"
+echo -e "\n----------------------"
+echo "## Listing the output file:"
 ls -lh "$blast_out_proc"
-
-echo -e "\n## Done with script blast-process.sh"
+echo
+echo -e "## Done with script blast-process.sh"
 date
+echo
+sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
 echo
