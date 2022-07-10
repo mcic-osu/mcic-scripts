@@ -12,18 +12,17 @@ Help() {
   echo
   echo "$0: Run an ANI (Average Nucleotide Identity) analysis using sourmash."
   echo
-  echo "Syntax: $0 -i <input-dir> -o <output-dir> ..."
+  echo "Syntax: $0 -i <input-dir> -o <output-dir>..."
   echo
   echo "Required options:"
-  echo "    -i FILE           Input FASTA file"
-  echo "    -d FILE           Path to a sourmash database"
+  echo "    -i DIR            Input dir with FASTA files"
   echo "    -o DIR            Output dir"
   echo
   echo "Other options:"
   echo "    -k INTEGER        Kmer size (should be an odd integer)     [default: 31]"
   echo "    -h                Print this help message and exit"
   echo
-  echo "Example:              $0 -i data/refgenomes -o results/sourmash/db -d mydb -k 29"
+  echo "Example:              $0 -i data/refgenomes -o results/sourmash -k 29"
   echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
   echo
   echo "Sourmash documentation: https://sourmash.readthedocs.io"
@@ -32,16 +31,14 @@ Help() {
 }
 
 ## Option defaults
-fa_in=""
-db=""
+indir=""
 outdir=""
 kval=31
 
 ## Parse command-line options
-while getopts ':i:o:d:k:h' flag; do
+while getopts ':i:o:k:h' flag; do
   case "${flag}" in
-    i) fa_in="$OPTARG" ;;
-    d) db="$OPTARG" ;;
+    i) indir="$OPTARG" ;;
     o) outdir="$OPTARG" ;;
     k) kval="$OPTARG" ;;
     h) Help && exit 0 ;;
@@ -63,42 +60,60 @@ set -euo pipefail
 mkdir -p "$outdir"/signatures "$outdir"/sig_renamed "$outdir"/output
 
 ## Process args
-sig_in=$(basename "$fa_in").sig
-smpID=$(basename "$fa_in" | sed -E 's/\.fn?as?t?a?//')
+csv_out="$outdir"/output/refs_init_ani.csv     # ANI matrix in CSV format
+cmp_out="$outdir"/output/refs_init_ani.cmp     # ANI matrix in Python format for sourmash plotting
+fa_files=( $(find "$indir" -iname '*fasta' -or -iname '*fa' -or -iname '*fna' -or -iname '*fna.gz') )
 
 ## Report
 echo "## Starting script sourmash_ani.sh"
 date
 echo
-echo "## Input FASTA file:             $fa_in"
-echo "## Database:                     $db"
+echo "## Dir with input FASTA files:   $indir"
 echo "## Output dir:                   $outdir"
 echo "## Kmer value:                   $kval"
-echo "## Sample ID:                    $smpID"
+echo
+echo "## FASTA files:"
+echo "${fa_files[@]}"
 echo -e "--------------------\n"
 
 
 # RUN SOURMASH -----------------------------------------------------------------
 ## Create a signature for each FASTA file
-if [[ ! -f "$sig_in" ]]; then
-    echo -e "\n## Create sourmash signature for query file..."
-    sourmash sketch dna -p k="$kval" "$fa_in"
-else
-    echo -e "\n## Sourmash signature for query file already exists"
-fi
+echo "## Creating sourmash signatures..."
+sourmash sketch dna \
+    -p k="$kval" \
+    --outdir "$outdir"/signatures \
+    "${fa_files[@]}"
 
 ## Rename signatures so they have short names
+echo -e "--------------------\n"
+echo "## Renaming sourmash signatures..."
 for sig in "$outdir"/signatures/*sig; do
-    newname=$(basename "$sig" .fasta.sig)
-    sourmash signature rename "$sig" "$newname" -o "$outdir"/sig_renamed/"$(basename "$sig")"
+    newname=$(basename "$sig" .fasta.sig | sed 's/^Spades//')
+    newfile="$outdir"/sig_renamed/"$(basename "$sig")"
+
+    sourmash signature rename \
+        "$sig" \
+        "$newname" \
+        -o "$newfile"
 done
 
 ## Compute ANI values
-sourmash compare -k31 --ani --from-file <(ls "$outdir"/sig_renamed/*) \
-    --csv "$outdir"/output/refs_init_ani.csv -o "$outdir"/output/refs_init_ani.cmp
+echo -e "--------------------\n"
+echo "## Computing ANI values..."
+sourmash compare \
+    -k"$kval" \
+    --ani \
+    --from-file <(ls "$outdir"/sig_renamed/*) \
+    --csv "$csv_out" \
+    -o "$cmp_out"
 
 ## Make ANI plots
-sourmash plot --labels --output-dir "$outdir"/output "$outdir"/output/refs_init_ani.cmp
+echo -e "\n## Creating plots..."
+sourmash plot \
+    --labels \
+    --output-dir "$outdir"/output \
+    "$cmp_out"
 
 
 # WRAP-UP ----------------------------------------------------------------------
