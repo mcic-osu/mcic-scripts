@@ -80,7 +80,6 @@ echo -e "--------------------\n"
 
 # RUN LIFTOFF ------------------------------------------------------------------
 echo "## Now running SignalP..."
-
 signalp6 \
     --fastafile "$infile" \
     --output_dir "$outdir" \
@@ -88,6 +87,10 @@ signalp6 \
     --mode fast \
     --format txt \
     --write_procs "$SLURM_CPUS_PER_TASK" $more_args
+
+echo -e "\n## Moving individual gene plots to separate directory 'gene_plots'..."
+mkdir -p "$outdir"/gene_plots
+mv "$outdir"/*_plot.txt "$outdir"/gene_plots
 
 
 # WRAP-UP ----------------------------------------------------------------------
