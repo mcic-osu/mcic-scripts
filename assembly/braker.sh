@@ -97,9 +97,6 @@ echo "## Output dir:                           $outdir"
 [[ $more_args != "" ]] && echo "## Other arguments to pass to Braker:    $more_args"
 echo -e "--------------------\n"
 
-## Make output dir
-mkdir -p "$outdir"
-
 
 # RUN BRAKER2 -----------------------------------------------------------------
 echo "## Now running Braker2..."
