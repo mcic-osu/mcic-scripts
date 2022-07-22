@@ -34,6 +34,9 @@ fi
 ## Run Krona
 ktImportTaxonomy -q 2 -t 3 "$infile" -o "$outfile"
 
+# q: column with query ID
+# t: column with taxonomy ID
+
 ## Report
 echo "## Done with script krona.sh"
 date
