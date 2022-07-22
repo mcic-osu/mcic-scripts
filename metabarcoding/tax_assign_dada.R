@@ -1,6 +1,7 @@
 #!/usr/bin/env Rscript
 
 #SBATCH --account=PAS0471
+#SBATCH --cpus-per-task=8
 #SBATCH --output=slurm-tax-assign-dada-%j.out
 
 
@@ -30,7 +31,7 @@ parser$add_argument("-s", "--species_url",
                     default = "https://zenodo.org/record/4587955/files/silva_species_assignment_v138.1.fa.gz",
                     help = "Taxonomic reference URL [default %(default)s]")
 parser$add_argument("-c", "--cores",
-                    type = "integer", default = 1,
+                    type = "integer", default = 8,
                     help = "Number of cores (threads) to use [default %(default)s]")
 args <- parser$parse_args()
 
@@ -43,10 +44,10 @@ species_url <- args$species_url
 ## Load packages
 if (!require(pacman)) install.packages("pacman", repos = "https://cran.rstudio.com/")
 packages <- c("BiocManager", "dada2", "DECIPHER", "tidyverse", "argparse")
-pacman::p_load(char = packages)
+pacman::p_load(char = packages, repos = "https://cran.rstudio.com/")
 
 ## Constants
-TAX_LEVELS <- c("domain", "phylum", "class", "order", "family", "genus", "species")
+TAX_LEVELS <- c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
 
 ## Create output dir if needed
 outdir <- dirname(taxa_rds)
@@ -71,15 +72,14 @@ message()
 
 # FUNCTIONS --------------------------------------------------------------------
 ## Function to get the proportion of ASVs assigned to taxa
-qc_tax <- function(taxa, TAX_LEVELS) {
-    prop <- apply(taxa, 2,
-                  function(x) round(length(which(!is.na(x))) / nrow(taxa), 4))
-    
-    prop <- data.frame(prop) %>%
-        rownames_to_column("tax_level") %>%
-        mutate(tax_level = factor(tax_level, levels = TAX_LEVELS))
-
-    return(prop)
+qc_tax <- function(taxa,
+                   tax_levels = c("Kingdom", "Phylum", "Class", "Order", "Family",
+                                  "Genus", "Species")) {
+  n <- apply(taxa, 2, function(x) length(which(!is.na(x))))
+  prop <- round(n / nrow(taxa), 4)
+  data.frame(n, prop) %>%
+    rownames_to_column("tax_level") %>%
+    mutate(tax_level = factor(tax_level, levels = tax_levels))
 }
 
 
