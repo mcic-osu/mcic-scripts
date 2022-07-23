@@ -24,7 +24,7 @@ Help() {
     echo "  -a STRING          Other arguments to pass to SPAdes"
     echo "  -m STRING          SPAdes run mode                             [default: default SPAdes]"
     echo "                     Possible values: 'isolate', 'meta', 'metaplasmid, 'metaviral', 'plasmid', 'rna', 'rnaviral'"
-    echo "  -k STRING          Comma-separated list of kmer sizes          [default: SPAdes default of auto-selecting kmer sizes]"
+    echo "  -k STRING          Comma-separated list of kmer sizes          [default: 'auto' => SPAdes default of auto-selecting kmer sizes]"
     echo "  -c                 Run in 'careful' mode (small genomes only)  [default: don't run in careful mode]"
     echo "  -C                 Continue an interrupted run                 [default: start anew]"
     echo "  -h                 Print this help message and exit"
