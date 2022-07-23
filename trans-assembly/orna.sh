@@ -16,8 +16,8 @@ Help() {
   echo "Syntax: $0 -i <input-dir> -o <output-dir> ..."
   echo
   echo "Required options:"
-  echo "    -i STRING           Input R1 FASTQ file (R2 filename will be inferred)"
-  echo "    -o STRING           Output directory"
+  echo "    -i FILE             Input R1 FASTQ file (R2 filename will be inferred)"
+  echo "    -o DIR              Output directory"
   echo
   echo "Other options:"
   echo "    -h                  Print this help message and exit"
@@ -45,18 +45,13 @@ while getopts ':i:o:h' flag; do
     esac
 done
 
-## Report
-echo -e "\n## Starting script orna.sh"
-date
-echo
 
+# SETUP ------------------------------------------------------------------------
 ## Check parameter values
 [[ "$R1_in" = "" ]] && echo "## ERROR: Please specify an input file with -i" >&2 && exit 1
 [[ "$outdir" = "" ]] && echo "## ERROR: Please specify an output directory with -o" >&2 && exit 1
 [[ ! -f "$R1_in" ]] && echo "## ERROR: Input file R1 (-i) $R1_in does not exist" >&2 && exit 1
 
-
-# OTHER SETUP ------------------------------------------------------------------ 
 ## Load software
 module load python/3.6-conda5.2
 source activate /fs/project/PAS0471/jelmer/conda/orna-2.0
@@ -79,6 +74,10 @@ sampleID=${R1_basename/"$R1_suffix"/}
 [[ ! $R2_in =~ ^/ ]] && R2_in="$PWD"/"$R2_in"
 
 ## Report
+echo
+echo "## Starting script orna.sh"
+date
+echo
 echo "## R1 input file:              $R1_in"
 echo "## R2 input file:              $R2_in"
 echo "## Sample ID:                  $sampleID"
@@ -103,13 +102,13 @@ ORNA \
 echo "## Compressing output FASTQ files..."
 gzip -cv "$sampleID"_1.fq > "$sampleID"_R1.fastq.gz && rm "$sampleID"_1.fq
 gzip -cv "$sampleID"_2.fq > "$sampleID"_R2.fastq.gz && rm "$sampleID"_2.fq
+rm "$sampleID"*h5
 
 
 # WRAP-UP ----------------------------------------------------------------------
 echo -e "\n-------------------------------"
 echo "## Listing files in the output dir:"
-ls -lh
-
+ls -lh "$sampleID"*
 echo -e "\n## Done with script orna.sh"
 date
 echo
