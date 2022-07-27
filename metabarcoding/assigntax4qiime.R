@@ -85,6 +85,7 @@ if (locus == "16S") {
 ## Read input files
 seqs <- read_qza(seq_artifact)$data
 seqs_df <- data.frame(qiimeID = names(seqs), seq = as.character(seqs))
+message("\n## Number of ASVs:        ", nrow(seqs_df))
 
 ## Assign taxonomy
 message("\n## Now assigning taxonomy...")
@@ -107,11 +108,20 @@ if (locus == "ITS") {
 }
 
 ## Process for Qiime2 import - https://forum.qiime2.org/t/importing-taxonomy-tables-from-dada2/3609/10
-tax_cols <- c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
 tax <- as.data.frame(taxa) %>%
-  unite(col = "taxonomy", all_of(tax_cols), sep = ";") %>%
-  merge(seqs_df, by.x = "row.names", by.y = "seq") %>%
+  merge(seqs_df, by.x = "row.names", by.y = "seq")
+
+## Add missing IDs (removed during taxonomy assignment, e.g. because they were too short)
+missing_IDs <- setdiff(rownames(seqs_df), tax$qiimeID) 
+tax <- tax %>%
+  add_row(qiimeID = missing_IDs) %>% 
+  unite(col = "taxonomy", all_of(TAX_LEVELS), sep = ";") %>%
   select(qiimeID, taxonomy)
+
+## Check that all Qiime IDs are present!
+message("\n## Number of ASVs in final taxonomy df:    ", nrow(tax))
+stopifnot(nrow(tax) == nrow(seqs_df))
+stopifnot(all(tax$qiimeID %in% rownames(seqs_df)))
 
 ## Write to text file that can be imported by Qiime
 write.table(tax, tax_txt,
