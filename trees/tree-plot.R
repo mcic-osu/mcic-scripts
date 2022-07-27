@@ -45,6 +45,16 @@ if (! args$msa_offset %in% c("auto", "textlen")) {
     args$msa_offset <- as.numeric(args$msa_offset)
 }
 
+## Test
+# args <- list()
+# args$tree <- "results/boyer/COG3516.tre"
+# args$annot <- "results/boyer/COG3516_seqinfo_boyer.tsv"
+# args$plot_msa <- FALSE
+# args$figure <- "results/boyer/COG3516_2.png"
+# args$label_col1 <- "species"
+# args$label_col2 <- "txid"
+# args$blast <- FALSE
+
 ## Test input
 stopifnot(file.exists(args$tree))
 if (args$plot_msa == TRUE) stopifnot(file.exists(args$aln))
@@ -99,7 +109,6 @@ if (!is.null(args$annot)) {
         annot <- prep_annot_blast(args$annot, tree$tip.label, show_strain)
     } else {
         annot <- read_tsv(args$annot, show_col_types = FALSE)
-        #annot <- prep_annot(args$annot, tree$tip.label)
     }
 } else {
     annot <- NULL
