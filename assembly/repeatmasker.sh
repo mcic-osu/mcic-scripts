@@ -13,11 +13,12 @@ Help() {
   echo
   echo "$0: Run RepeatMasker to repeat-mask a genome."
   echo
-  echo "Syntax: $0 -i <genome-FASTA> -o <output-dir> -s <species> ..."
+  echo "Syntax: $0 -i <genome-FASTA> -l <genome-lib-FASTA> -o <output-dir> -s <species> ..."
   echo
   echo "Required options:"
-  echo "    -i STRING         Genome (nucleotide) FASTA file"
-  echo "    -o STRING         Output dir"
+  echo "    -i FILE           Genome (nucleotide) FASTA file"
+  echo "    -l FILE           Genome repeat library FASTA file produced by RepeatModeler"
+  echo "    -o DIR            Output dir"
   echo "    -s STRING         Species or taxonomic group name"
   echo "                      To check which species/groups are available, run, e.g:"
   echo "                      /fs/project/PAS0471/jelmer/conda/repeatmasker-4.1.2.p1/share/RepeatMasker/famdb.py names 'oomycetes'"
@@ -35,14 +36,16 @@ Help() {
 
 ## Option defaults
 genome_fa=""
+genome_lib=""
 species=""
 outdir=""
 more_args=""
 
 ## Parse command-line options
-while getopts ':i:o:s:a:h' flag; do
+while getopts ':l:i:o:s:a:h' flag; do
   case "${flag}" in
     i) genome_fa="$OPTARG" ;;
+    l) genome_lib="$OPTARG" ;;
     o) outdir="$OPTARG" ;;
     s) species="$OPTARG" ;;
     a) more_args="$OPTARG" ;;
@@ -77,6 +80,7 @@ echo "## Starting script repeatmasker.sh"
 date
 echo
 echo "## Input file (genome FASTA):                  $genome_fa"
+echo "## Genome database from RepeatModeler:         $genome_lib"
 echo "## Output dir:                                 $outdir"
 [[ $species_arg != "" ]] && echo "## Species name:                               $species"
 [[ $more_args != "" ]] && echo "## Other arguments to pass to RepeatMasker:    $more_args"
@@ -88,6 +92,7 @@ mkdir -p "$outdir"
 # RUN REPEATMASKER -------------------------------------------------------------
 echo "## Now runnning RepeatMasker..."
 RepeatMasker \
+    -lib "$genome_lib" \
     -dir "$outdir" \
     $species_arg $more_args "$genome_fa"
 
