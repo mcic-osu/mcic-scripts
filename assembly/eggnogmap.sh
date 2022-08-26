@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=24:00:00
+#SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=15
 #SBATCH --mem=60G
 #SBATCH --job-name=eggnogmap
@@ -93,9 +93,13 @@ emapper.py \
     --output_dir "$outdir" \
     --output "$out_prefix" \
     -m diamond \
+    --go_evidence all \
     --cpu "$SLURM_CPUS_PER_TASK" \
     --temp_dir "$temp_dir" \
     --override $more_args
+
+#? Non-default options
+# --go_evidence all => default is to use only non-electronic terms (`non-electronic`), see https://github.com/eggnogdb/eggnog-mapper/wiki/eggNOG-mapper-v2.1.5-to-v2.1.8
 
 ## Other options
 # --pfam_realign denovo \ #! Needs some HMMer server setup
