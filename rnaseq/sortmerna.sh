@@ -171,7 +171,7 @@ rm -rv "$outdir"/mapped_tmp "$outdir"/unmapped_tmp
 # QUANTIFY MAPPING SUCCESS -----------------------------------------------------
 n_mapped=$(zcat "$R1_mapped" | awk '{ s++ } END{ print s/4 }')
 n_unmapped=$(zcat "$R1_unmapped" | awk '{ s++ } END{ print s/4 }')
-pct=$(python3 -c "print(round($n_mapped / $n_unmapped * 100, 2))")
+pct=$(python3 -c "print(round($n_mapped / ($n_unmapped + $n_mapped) * 100, 2))")
 echo -e "\nNumber of reads mapped/unmapped, and % mapped:\t$sampleID\t$n_mapped\t$n_unmapped\t$pct"
 
 # WRAP UP ----------------------------------------------------------------------
