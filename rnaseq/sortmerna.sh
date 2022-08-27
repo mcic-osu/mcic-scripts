@@ -136,6 +136,10 @@ sortmerna \
 
 #?--paired_in Flags the paired-end reads as Aligned, when either of them is Aligned.
 
+## Move to log files to main dir
+mv "$outdir"/mapped_tmp/"$sampleID"*log "$outdir"
+
+
 # CONVERTING INTERLEAVED FASTQ BACK TO SEPARATED -------------------------------
 if [[ "$deinterleave" = true ]]; then
     set +u
@@ -154,15 +158,25 @@ if [[ "$deinterleave" = true ]]; then
         in="$out_unmapped".fq.gz \
         out1="$R1_unmapped" \
         out2="$R2_unmapped"
-
-    #[[ -f "$R1_mapped" ]] && rm "$out_mapped".fq.gz
-    #[[ -f "$R1_unmapped" ]] && rm "$out_unmapped".fq.gz
+    
+    echo
+else
+    mv -v "$out_mapped".fq.gz "$outdir"/mapped
+    mv -v "$out_unmapped".fq.gz "$outdir"/unmapped
 fi
+
+## Remove temporary files
+rm -rv "$outdir"/mapped_tmp "$outdir"/unmapped_tmp
+
+# QUANTIFY MAPPING SUCCESS -----------------------------------------------------
+n_mapped=$(zcat "$R1_mapped" | awk '{ s++ } END{ print s/4 }')
+n_unmapped=$(zcat "$R1_unmapped" | awk '{ s++ } END{ print s/4 }')
+pct=$(python3 -c "print(round($n_mapped / $n_unmapped * 100, 2))")
+echo -e "\nNumber of reads mapped/unmapped, and % mapped:\t$sampleID\t$n_mapped\t$n_unmapped\t$pct"
 
 # WRAP UP ----------------------------------------------------------------------
 echo -e "\n## Listing output files:"
 [[ "$deinterleave" = true ]] && ls -lh "$R1_mapped" "$R2_mapped" "$R1_unmapped" "$R2_unmapped"
-[[ "$deinterleave" = false ]] && ls -lh "$out_mapped".fq.gz "$out_unmapped".fq.gz
 echo -e "\n## Done with script sortmerna.sh"
 date
 echo
