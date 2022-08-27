@@ -76,8 +76,11 @@ R2=${R1/_R1_/_R2_}
 sampleID=$(basename "$R1" | sed 's/_R1.*//')
 outdir_full="$outdir"/"$sampleID"
 
-out_mapped="$outdir"/mapped_tmp/"$sampleID"
-out_unmapped="$outdir"/unmapped_tmp/"$sampleID"
+mapped_tmpdir="$outdir"/mapped_tmp/"$sampleID"
+unmapped_tmpdir="$outdir"/unmapped_tmp/"$sampleID"
+
+mapped_prefix="$mapped_tmpdir"/"$sampleID"
+unmapped_prefix="$unmapped_tmpdir"/"$sampleID"
 
 R1_mapped="$outdir"/mapped/"$sampleID"_R1_001.fastq.gz
 R2_mapped="$outdir"/mapped/"$sampleID"_R2_001.fastq.gz
@@ -104,7 +107,7 @@ echo -e "---------------------------\n"
 [[ ! -f "$R2" ]] && echo "## ERROR: R2 FASTQ file $R2 not found" >&2 && exit 1
 
 ## Make output dir if needed
-mkdir -p "$outdir"/mapped_tmp "$outdir"/unmapped_tmp "$outdir"/mapped "$outdir"/unmapped
+mkdir -p "$mapped_tmpdir" "$unmapped_tmpdir" "$outdir"/mapped "$outdir"/unmapped
 
 
 # GET DATABASE FILES -----------------------------------------------------------
@@ -128,8 +131,8 @@ sortmerna \
     --reads "$R1" \
     --reads "$R2" \
     --fastx \
-    --aligned "$out_mapped" \
-    --other "$out_unmapped" \
+    --aligned "$mapped_prefix" \
+    --other "$unmapped_prefix" \
     --workdir "$outdir_full" \
     --paired_in \
     --threads "$SLURM_CPUS_PER_TASK"
@@ -137,7 +140,7 @@ sortmerna \
 #?--paired_in Flags the paired-end reads as Aligned, when either of them is Aligned.
 
 ## Move to log files to main dir
-mv "$outdir"/mapped_tmp/"$sampleID"*log "$outdir"
+mv "$mapped_tmpdir"/*log "$outdir"
 
 
 # CONVERTING INTERLEAVED FASTQ BACK TO SEPARATED -------------------------------
@@ -149,24 +152,25 @@ if [[ "$deinterleave" = true ]]; then
 
     echo -e "\n## Deinterleaving R1..."
     reformat.sh \
-        in="$out_mapped".fq.gz \
+        in="$mapped_prefix".fq.gz \
         out1="$R1_mapped" \
         out2="$R2_mapped"
 
     echo -e "\n## Deinterleaving R2..."
     reformat.sh \
-        in="$out_unmapped".fq.gz \
+        in="$unmapped_prefix".fq.gz \
         out1="$R1_unmapped" \
         out2="$R2_unmapped"
     
     echo
 else
-    mv -v "$out_mapped".fq.gz "$outdir"/mapped
-    mv -v "$out_unmapped".fq.gz "$outdir"/unmapped
+    mv -v "$mapped_prefix".fq.gz "$outdir"/mapped
+    mv -v "$unmapped_prefix".fq.gz "$outdir"/unmapped
 fi
 
 ## Remove temporary files
-rm -rv "$outdir"/mapped_tmp "$outdir"/unmapped_tmp
+rm -rv "$mapped_tmpdir" "$unmapped_tmpdir"
+
 
 # QUANTIFY MAPPING SUCCESS -----------------------------------------------------
 n_mapped=$(zcat "$R1_mapped" | awk '{ s++ } END{ print s/4 }')
