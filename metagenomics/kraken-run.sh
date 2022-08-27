@@ -10,30 +10,30 @@
 ## Help function
 Help() {
     echo
-    echo "## $0: Run Kraken2 to assign taxonomy to sequences in a FASTA/FASTQ/pair of FASTQ file(s)"
+    echo "$0: Run Kraken2 to assign taxonomy to sequences in a FASTA/FASTQ/pair of FASTQ file(s)"
     echo
-    echo "## Syntax: $0 -i <input-file> -o <output-dir> -d <kraken-db-dir> ..."
+    echo "Syntax: $0 -i <input-file> -o <output-dir> -d <kraken-db-dir> ..."
     echo 
-    echo "## Required options:"
+    echo "Required options:"
     echo "  -i STRING           Input sequence file (FASTA, single-end FASTQ, or R1 from paired-end FASTQ)"
     echo "                          (If an R1 paired-end FASTQ file is provided, the name of the R2 file will be inferred.)"
     echo "  -o STRING           Output directory"
     echo "  -d STRING           Directory with an existing Kraken database"
     echo "                          (Use one of the scripts 'kraken-build-custom-db.sh' or 'kraken-build-std-db.sh' to create a Kraken database)"
     echo
-    echo "## Other options:"
-    echo "  -c NUM             Confidence required for assignment: number between 0 and 1          [default: 0.5]"
+    echo "Other options:"
+    echo "  -c NUM             Confidence required for assignment: number between 0 and 1            [default: 0.5]"
     echo "  -h                 Print this help message and exit"
-    echo "  -m                 Don't load the full database into RAM memory                        [default: load into memory]"
+    echo "  -m                 Don't load the full database into RAM memory                          [default: load into memory]"
     echo "                          (Can be useful for very large databases)"
-    echo "  -n                 Add taxonomic names to the Kraken 'main' output file                [default: don't add]"
+    echo "  -n                 Add taxonomic names to the Kraken 'main' output file                  [default: don't add]"
     echo "                          Note: this option is not compatible with Krona plotting)"
-    echo "  -q INTEGER         Base quality Phred score required for use of a base in assignment   [default: 0]"
+    echo "  -q INTEGER         Base quality Phred score required for use of a base in assignment     [default: 0]"
     echo "                          NOTE: If setting a score other than 0, any output sequence files (-w and -W options)"
     echo "                          will contain 'x's for masked bases."
     echo
-    echo "  -w                 Write classified sequences to file                                  [default: don't write]"
-    echo "  -W                 Write unclassified sequences to file                                [default: don't write]"
+    echo "  -w                 Write classified sequences to file (in '<outdir>/classified' dir)     [default: don't write]"
+    echo "  -W                 Write unclassified sequences to file (in '<outdir>/unclassified' dir) [default: don't write]"
     echo
     echo "Example:          $0 -i data/A1_R1.fastq.gz -o results/kraken -d /fs/project/PAS0471/jelmer/refdata/kraken/PlusPFP"
     echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
@@ -71,10 +71,14 @@ while getopts 'i:o:d:c:q:mnwWh' flag; do
     esac
 done
 
-## Report
-echo "## Starting script kraken-run.sh..."
-date
-echo
+
+# SETUP ------------------------------------------------------------------------
+## Load software
+module load python/3.6-conda5.2
+source activate /users/PAS0471/jelmer/miniconda3/envs/kraken2-env
+
+## Bash strict settings
+set -euo pipefail
 
 ## Process options
 [[ "$infile" = "" ]] && echo "ERROR: must specify input file with -i" >&2 && exit 1
@@ -86,15 +90,10 @@ echo
 [[ "$write_class" = true ]] && mkdir -p "$outdir"/classified
 [[ "$write_unclass" = true ]] && mkdir -p "$outdir"/unclassified
 
-# SETUP ------------------------------------------------------------------------
-## Load software
-module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/miniconda3/envs/kraken2-env
-
-## Bash strict settings
-set -euo pipefail
-
 ## Report
+echo "## Starting script kraken-run.sh..."
+date
+echo
 echo "## Input file:                  $infile"
 echo "## Output dir:                  $outdir"
 echo "## Kraken db dir:               $krakendb_dir"
