@@ -4,6 +4,7 @@
 #SBATCH --time=60
 #SBATCH --mem=100G
 #SBATCH --cpus-per-task=30
+#SBATCH --job-name=kraken
 #SBATCH --output=slurm-kraken-run-%j.out
 
 # HELP AND COMMAND-LINE OPTIONS ------------------------------------------------
@@ -15,10 +16,10 @@ Help() {
     echo "Syntax: $0 -i <input-file> -o <output-dir> -d <kraken-db-dir> ..."
     echo 
     echo "Required options:"
-    echo "  -i STRING           Input sequence file (FASTA, single-end FASTQ, or R1 from paired-end FASTQ)"
+    echo "  -i FILE            Input sequence file (FASTA, single-end FASTQ, or R1 from paired-end FASTQ)"
     echo "                          (If an R1 paired-end FASTQ file is provided, the name of the R2 file will be inferred.)"
-    echo "  -o STRING           Output directory"
-    echo "  -d STRING           Directory with an existing Kraken database"
+    echo "  -o DIR             Output directory"
+    echo "  -d DIR             Directory with an existing Kraken database"
     echo "                          (Use one of the scripts 'kraken-build-custom-db.sh' or 'kraken-build-std-db.sh' to create a Kraken database)"
     echo
     echo "Other options:"
@@ -81,11 +82,13 @@ source activate /users/PAS0471/jelmer/miniconda3/envs/kraken2-env
 set -euo pipefail
 
 ## Process options
-[[ "$infile" = "" ]] && echo "ERROR: must specify input file with -i" >&2 && exit 1
-[[ ! -f "$infile" ]] && echo "ERROR: input file $infile does note exist" >&2 && exit 1
-[[ "$krakendb_dir" = "" ]] && echo "ERROR: must specify Kraken DB dir with -d" >&2 && exit 1
+[[ "$infile" = "" ]] && echo "ERROR: Must specify input file with -i" >&2 && exit 1
+[[ ! -f "$infile" ]] && echo "ERROR: Input file $infile does note exist" >&2 && exit 1
+[[ "$krakendb_dir" = "" ]] && echo "ERROR: <ust specify Kraken DB dir with -d" >&2 && exit 1
 [[ ! -d "$krakendb_dir" ]] && echo "ERROR: Kraken DB dir $krakendb_dir does note exist" >&2 && exit 1
-[[ "$outdir" = "" ]] && echo "ERROR: must specify output dir with -o" >&2 && exit 1
+[[ "$outdir" = "" ]] && echo "ERROR: Must specify output dir with -o" >&2 && exit 1
+[[ "$min_conf" = "" ]] && echo "ERROR: Min confidence is not set" >&2 && exit 1
+[[ "$min_q" = "" ]] && echo "ERROR: Min quality is not set" >&2 && exit 1
 
 [[ "$write_class" = true ]] && mkdir -p "$outdir"/classified
 [[ "$write_unclass" = true ]] && mkdir -p "$outdir"/unclassified
@@ -94,14 +97,14 @@ set -euo pipefail
 echo "## Starting script kraken-run.sh..."
 date
 echo
-echo "## Input file:                  $infile"
-echo "## Output dir:                  $outdir"
-echo "## Kraken db dir:               $krakendb_dir"
+echo "## Input file:                     $infile"
+echo "## Output dir:                     $outdir"
+echo "## Kraken db dir:                  $krakendb_dir"
 echo
-echo "## Add tax. names:              $add_names"
-echo "## Min. base qual:              $min_q"
-echo "## Min. confidence:             $min_conf"
-echo "## Use RAM memory to load database:    $use_ram"
+echo "## Add tax. names:                 $add_names"
+echo "## Min. base qual:                 $min_q"
+echo "## Min. confidence:                $min_conf"
+echo "## Use RAM to load database:       $use_ram"
 echo
 
 ## Create output dir
@@ -132,9 +135,9 @@ if [[ "$infile" =~ \.fastq.gz$ ]]; then
     sample_ID=${R1_basename/"$R1_suffix"/}
 
     if [[ -f $R2_in ]]; then
-        echo "## Input is:                  paired FASTQ files"
-        echo "## Input FASTQ file - R1:     $R1_in"
-        echo "## Input FASTQ file - R2:     $R2_in"
+        echo "## Input type is:                  paired FASTQ files"
+        echo "## Input FASTQ file - R1:          $R1_in"
+        echo "## Input FASTQ file - R2:          $R2_in"
         infile_arg="--gzip-compressed --paired $R1_in $R2_in"
         [[ ! -f "$R2_in" ]] && echo "## ERROR: R2 file $R2_in does not exist" >&2 && exit 1
         [[ "$R1_in" = "$R2_in" ]] && echo "## ERROR: R1 file $R1_in is the same as R2 file $R2_in" >&2 && exit 1
@@ -147,7 +150,7 @@ if [[ "$infile" =~ \.fastq.gz$ ]]; then
         fi
 
     else
-        echo "## Input is:                  single-end FASTQ file"
+        echo "## Input is:                       single-end FASTQ file"
         
         sample_ID=$(basename "$R1_in" .fastq.gz)
         
@@ -163,7 +166,7 @@ if [[ "$infile" =~ \.fastq.gz$ ]]; then
     fi
 
 else
-    echo -e "## Input is:                   FASTA file"
+    echo -e "## Input is:                    FASTA file"
     
     infile_basename=$(basename "$infile")
     sample_ID=${infile_basename%%.*}
@@ -183,12 +186,12 @@ outfile_main="$outdir"/"$sample_ID"_main.txt
 outfile_report="$outdir"/"$sample_ID"_report.txt
 
 ## Report
-echo "## Input file arg:            $infile_arg"
-echo "## Sample ID:                 $sample_ID"
-echo "## Output file - main:        $outfile_main"
-echo "## Output file - report:      $outfile_report"
-[[ "$write_class" = true ]] && echo "## Writing classified sequences:         $class_out_arg"
-[[ "$write_unclass" = true ]] && echo "## Writing unclassified sequences:     $unclass_out_arg"
+echo "## Input file arg:                 $infile_arg"
+echo "## Sample ID:                      $sample_ID"
+echo "## Output file - main:             $outfile_main"
+echo "## Output file - report:           $outfile_report"
+[[ "$write_class" = true ]] && echo "## Writing classified sequences:   $class_out_arg"
+[[ "$write_unclass" = true ]] && echo "## Writing unclassified sequences: $unclass_out_arg"
 echo -e "------------------------\n"
 
 
@@ -223,12 +226,13 @@ if [[ "$write_unclass" = true ]]; then
 fi
 
 # WRAP UP ----------------------------------------------------------------------
-echo -e "\n## Listing output files:"
+echo
+echo "## Listing output files:"
 ls -lh "$outfile_main" "$outfile_report"
 [[ "$write_class" = true ]] && ls -lh "$outdir"/classified/"$sample_ID"*
 [[ "$write_unclass" = true ]] && ls -lh "$outdir"/unclassified/"$sample_ID"*
-
-echo -e "\n## Done with script kraken-run.sh"
+echo
+echo "## Done with script kraken-run.sh"
 date
 echo
 sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
