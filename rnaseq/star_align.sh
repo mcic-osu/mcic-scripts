@@ -147,21 +147,19 @@ echo "## R2 FASTQ file (as inferred by the script):    $R2_in"
 echo -e "------------------------\n"
 
 ## Create output dirs if needed
-mkdir -p "$bam_dir"
-mkdir -p "$starlog_dir"
-mkdir -p "$unmapped_dir"
+mkdir -p "$bam_dir" "$starlog_dir" "$unmapped_dir"
 
 
 # ALIGN ------------------------------------------------------------------------
 echo "## Aligning reads with STAR...."
 STAR --runThreadN "$SLURM_CPUS_ON_NODE" \
-   --genomeDir "$index_dir" \
-   --readFilesIn "$R1_in" "$R2_in" \
-   --readFilesCommand zcat \
-   --outFilterMultimapNmax $max_map \
-   --alignIntronMin $intron_min --alignIntronMax $intron_max \
-   --outFileNamePrefix "$bam_dir/$sampleID"_ \
-   --outReadsUnmapped Fastx $output_arg $gff_arg $more_args
+     --genomeDir "$index_dir" \
+     --readFilesIn "$R1_in" "$R2_in" \
+     --readFilesCommand zcat \
+     --outFilterMultimapNmax $max_map \
+     --alignIntronMin $intron_min --alignIntronMax $intron_max \
+     --outFileNamePrefix "$bam_dir/$sampleID"_ \
+     --outReadsUnmapped Fastx $output_arg $gff_arg $more_args
 
 
 # SORT WITH SAMTOOLS SORT ------------------------------------------------------
@@ -208,4 +206,6 @@ fi
 
 echo -e "\n## Done with script star_align.sh"
 date
+echo
+sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
 echo
