@@ -8,38 +8,34 @@
 ## Help function
 Help() {
     echo
-    echo "## $0: Run BLAST locally or remotely."
+    echo "$0: Run BLAST locally or remotely for a FASTA file."
     echo
-    echo "## Syntax: $0 -i <input-fasta> -o <output-file> [ -d <blast-DB> ] ..."
+    echo "Syntax: $0 -i <input-fasta> -o <output-file> ..."
     echo
-    echo "## Required options ('STR' means that the option requires a string as an argument):"
-    echo "## -i STR    Input file ('query', a FASTA file) [NOTE: NEEDS TO BE AN ABSOLUTE PATH]"
-    echo "## -o STR    Output file [NOTE: NEEDS TO BE AN ABSOLUTE PATH]"
+    echo "Required options:"
+    echo "   -i FILE      Input file ('query', a FASTA file)"
+    echo "   -o FILE      Output file"
     echo
-    echo "## Other options:"
-    echo "## -d STR    Blast DB [default: 'nr']"
-    echo "             If remote, e.g. 'nt' or 'nr'."
-    echo "             If local, make sure to specify the ABSOLUTE PATH to the dir AND THE DB name"
-    echo "             e.g. '/fs/project/PAS0471/blast/nr-db/nr'"
-    echo "## -l        Run BLAST locally [default: run BLAST remotely]"
-    echo "## -h        Print this help message and exit"
+    echo "Other options:"
+    echo "   -d STRING    Blast DB                              [default: 'nt']"
+    echo "                If remote, e.g. 'nt' or 'nr'."
+    echo "                If local, make sure to specify the the dir AND the DB name"
+    echo "                e.g. '/fs/project/PAS0471/blast/nr-db/nr'"
+    echo "   -h           Print this help message and exit"
+    echo "   -l           Run BLAST locally                     [default: run BLAST remotely]"
     echo
-    echo "## Example: $0 -i /fs/project/PAS0471/data/my.fa -o /fs/project/PAS0471/results/blast/blast.out -d /fs/project/PAS0471/blast/nt-db/nt"
-    echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
+    echo "Example:        $0 -i data/my.fa -o results/blast/blast.out -d /fs/project/PAS0471/blast/nt-db/nt -l"
+    echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
     echo
 }
 
-# SETUP ------------------------------------------------------------------------
-## Report
-echo -e "\n## Starting script blast-run.sh..."
-date
-echo
 
+# PARSE OPTIONS ----------------------------------------------------------------
 ## Option defaults
-query_fa=""      # BLAST input file name (FASTA)
-blast_out=""     # BLAST output file name
-blast_db="nr"    # Blast database
-remote="true"    # Whether or not to run BLAST remotely
+query_fa=""
+blast_out=""
+blast_db="nt"
+remote="true"
 
 ## Parse command-line options
 while getopts ':i:o:d:lh' flag; do
@@ -54,6 +50,8 @@ while getopts ':i:o:d:lh' flag; do
     esac
 done
 
+
+# SETUP ------------------------------------------------------------------------
 ## Load software
 module load python/3.6-conda5.2
 source activate /users/PAS0471/jelmer/miniconda3/envs/blast-env
@@ -66,7 +64,13 @@ set -euo pipefail
 outdir=$(dirname "$blast_out")
 mkdir -p "$outdir"
 
+## Number of cores
 n_cores=$SLURM_CPUS_PER_TASK
+
+## Make paths absolute
+[[ ! "$query_fa" =~ ^/ ]] && query_fa="$PWD"/"$query_fa"
+[[ ! "$blast_out" =~ ^/ ]] && blast_out="$PWD"/"$blast_out"
+[[ "$remote" = false && ! "$blast_db" =~ ^/ ]] && blast_db="$PWD"/"$blast_db" 
 
 ## Test input
 [[ $query_fa = "" ]] && echo "## $0: ERROR: No input file (-i) provided" >&2 && exit 1
@@ -74,11 +78,15 @@ n_cores=$SLURM_CPUS_PER_TASK
 [[ ! -f $query_fa ]] && echo "## $0: ERROR: Input file $query_fa does not exist" >&2 && exit 1
 
 ## Report
+echo
+echo "## Starting script blast.sh..."
+date
+echo
 echo "## Input FASTA file:            $query_fa"
 echo "## BLAST output file:           $blast_out"
 echo "## BLAST database:              $blast_db"
 echo "## Run blast remotely?          $remote"
-echo "## Number of cores:             $n_cores"
+[[ "$remote" = false ]] && echo "## Number of cores:             $n_cores"
 echo -e "--------------------\n"
 
 
@@ -117,9 +125,13 @@ fi
 
 
 # WRAP UP ----------------------------------------------------------------------
-echo -e "\n\n## Listing the output file:"
+echo -e "------------------------\n"
+echo "## Listing the output file:"
 ls -lh "$blast_out"
-
-echo -e "\n## Done with script blast-run.sh"
+echo
+echo "## Done with script blast.sh"
 date
+echo
+echo
+sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
 echo

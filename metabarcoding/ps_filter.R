@@ -3,6 +3,8 @@
 #SBATCH --account=PAS0471
 #SBATCH --output=slurm-ps_filter-%j.out
 
+#TODO - Remove negative controls
+
 # SETUP ------------------------------------------------------------------------
 ## Report
 message("\n## Starting script ps_filter.R")

@@ -1,8 +1,8 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=2:00:00
-#SBATCH --cpus-per-task=16
+#SBATCH --time=15:00:00
+#SBATCH --gpus-per-node=1
 #SBATCH --output=slurm-guppy_basecall-%j.out
 
 # HELP AND COMMAND-LINE OPTIONS ------------------------------------------------
@@ -123,6 +123,11 @@ $GUPPY_BIN \
     --num_barcode_threads "$N_CORES" \
     --num_callers 1 ${barcode_arg} ${more_args}
 
+#--gpu_runners_per_device
+#--device "cuda:0"
+
+## https://github.com/colindaven/guppy_on_slurm/blob/master/runbatch_gpu_guppy.sh
+# gpu_params='--device "cuda:0" --num_callers 4 --gpu_runners_per_device 4 --chunks_per_runner 512 --chunk_size 3000'
 
 # WRAP UP ----------------------------------------------------------------------
 echo -e "\n## Listing files in output dir:"

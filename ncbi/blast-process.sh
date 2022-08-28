@@ -5,31 +5,31 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --output=slurm-blast-process-%j.out
 
-# SETUP ------------------------------------------------------------------------
+# PARSE OPTIONS ----------------------------------------------------------------
 ## Help function
 Help() {
     echo
-    echo "## $0: Process a (fmt-6) BLAST output file."
+    echo "$0: Process a (fmt-6) BLAST output file."
     echo
-    echo "## Syntax: $0 -i <input> -o <output> [ -t <nr-top-hits> ]"
+    echo "Syntax: $0 -i <input> -o <output> ..."
     echo
-    echo "## Required options:"
-    echo "## -i STRING        Input file (Raw BLAST output)"
-    echo "## -o STRING        Output file (Processed BLAST output)"
+    echo "Required options:"
+    echo "    -i FILE          Input file (Raw BLAST output)"
+    echo "    -o FILE          Output file (Processed BLAST output)"
     echo
-    echo "## Other options:"
-    echo "## -t INTEGER       Number of top hits [default: 10]"
-    echo "## -h               Print this help message and exit"
+    echo "Other options:"
+    echo "    -t INTEGER       Number of top hits to process         [default: 5]"
+    echo "    -h               Print this help message and exit"
     echo
-    echo "## Example: $0 -q blast.out -o blast_processed.out -t 50"
-    echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
+    echo "Example:             $0 -q blast.out -o blast_processed.out -t 50"
+    echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
     echo
 }
 
 ## Option defaults
 blast_out_raw=""        # Raw BLAST output file (= input for this script)
 blast_out_proc=""       # Processed BLAST output file (= output of this script)
-top_x_hits=10           # Take the top x hits per query (default: 10)
+top_x_hits=5            # Take the top x hits per query (default: 10)
 
 ## Parse command-line options
 while getopts ':i:o:t:h' flag; do
@@ -43,11 +43,8 @@ while getopts ':i:o:t:h' flag; do
     esac
 done
 
-## Report
-echo -e "\n## Starting script blast-process.sh..."
-date
-echo
 
+# SETUP ------------------------------------------------------------------------
 ## Load software
 module load python/3.6-conda5.2
 source activate /users/PAS0471/jelmer/miniconda3/envs/blast-env
@@ -58,18 +55,23 @@ export NCBI_API_KEY=34618c91021ccd7f17429b650a087b585f08
 
 ## Process options
 outdir=$(dirname "$blast_out_proc")
-blast_out_sorted="$outdir"/hits_sorted.txt
-blast_out_top="$outdir"/top_"$top_x_hits"_hits.txt
-organism_lookup="$outdir"/organism_lookup.txt
-
-## Create output dir, if needed
-mkdir -p "$outdir"
+fileID=$(basename "$blast_out_raw" .out)
+blast_out_sorted="$outdir"/"$fileID"_hits_sorted.txt
+blast_out_top="$outdir"/"$fileID"_top_"$top_x_hits"_hits.txt
+organism_lookup="$outdir"/"$fileID"_organism_lookup.txt
 
 ## Test input
 [[ ! -f $blast_out_raw ]] && echo "## $0: ERROR: Input file $blast_out_raw does not exist" >&2 && exit 1
 [[ $blast_out_proc = "" ]] && echo "## $0: ERROR: No output file (-o) provided" >&2 && exit 1
 
+## Create output dir, if needed
+mkdir -p "$outdir"
+
 ## Report
+echo
+echo "## Starting script blast-process.sh..."
+date
+echo
 echo "## BLAST raw output file (input):           $blast_out_raw"
 echo "## BLAST processed output file (output):    $blast_out_proc"
 echo "## Take the top-x hits, x is:               $top_x_hits"
@@ -79,11 +81,13 @@ echo -e "-----------------------\n"
 # PROCESS BLAST OUTPUT ---------------------------------------------------------
 echo "## Step 1: Sorting BLAST output by goodness of the match"
 export LC_ALL=C
-sort -k1,1 -k11,11g -k12,12gr -k3,3gr "$blast_out_raw" > "$blast_out_sorted"    # (Sort by: query name (1), then e-value (11), then bitscore (12), then % identical (3))
+# (Sort by: query name (1), then e-value (11), then bitscore (12), then % identical (3))
+sort -k1,1 -k11,11g -k12,12gr -k3,3gr "$blast_out_raw" > "$blast_out_sorted"
 
 echo -e "\n## Step 2: Get the top-x hits for each query"
 for query in $(cut -f1 "$blast_out_sorted" | sort -u); do
-  grep -w -m "$top_x_hits" "$query" "$blast_out_sorted"                         # -w: whole word matching / -m n: stop after n matches 
+    # -w: whole word matching / -m n: stop after n matches 
+    grep -w -m "$top_x_hits" "$query" "$blast_out_sorted"
 done > "$blast_out_top"
 
 echo -e "\n## Step 3: Create a lookup table with accession numbers, organism taxonomy, sequence length and full sequence name"
@@ -100,32 +104,41 @@ while read -r line; do
                 efetch -format native -mode xml |
                 grep "ScientificName" | head -n1 |
                 sed -E 's@</?ScientificName>@@g' | sed -e 's/^[ \t]*//')
+
+    echo -e "${accession}\t${taxon}"
+    echo -e "${accession}\t${taxon}" >&2
+    sleep 5s
     
     ### Get the sequence length
-    seq_len=$(echo "$esearch_result" |
-                efetch -format native -mode xml |
-                grep "Seq-inst_length" | head -n1 |
-                sed -E 's@</?Seq-inst_length>@@g' | sed -e 's/^[ \t]*//')
+    #seq_len=$(echo "$esearch_result" |
+    #            efetch -format native -mode xml |
+    #            grep "Seq-inst_length" | head -n1 |
+    #            sed -E 's@</?Seq-inst_length>@@g' | sed -e 's/^[ \t]*//')
 
     ### Get the full name of the sequence / NCBI entry
-    seq_title=$(echo "$esearch_result" |
-                    efetch -format native -mode xml |
-                    grep "Seqdesc_title" | head -n1 |
-                    sed -E 's@</?Seqdesc_title>@@g' | sed -e 's/^[ \t]*//')
+    #seq_title=$(echo "$esearch_result" |
+    #                efetch -format native -mode xml |
+    #                grep "Seqdesc_title" | head -n1 |
+    #                sed -E 's@</?Seqdesc_title>@@g' | sed -e 's/^[ \t]*//')
 
-    echo -e "${accession}\t${taxon}\t${seq_len}\t${seq_title}"
-    echo -e "${accession}\t${taxon}\t${seq_len}\t${seq_title}" >&2
+    #echo -e "${accession}\t${taxon}\t${seq_len}\t${seq_title}"
+    #echo -e "${accession}\t${taxon}\t${seq_len}\t${seq_title}" >&2
 
 done < "$blast_out_top" > "$organism_lookup"
 
 echo -e "\n## Step 4: Merge the BLAST output table with the taxonomy lookup table"
 join -t $'\t' -1 2 -2 1 "$blast_out_top" "$organism_lookup" > "$blast_out_proc"
 
+## Remove temporary files
+rm "$blast_out_sorted" "$blast_out_top" "$organism_lookup"
 
 # WRAP UP ----------------------------------------------------------------------
-echo -e "\n\n## Listing the output file:"
+echo -e "\n----------------------"
+echo "## Listing the output file:"
 ls -lh "$blast_out_proc"
-
-echo -e "\n## Done with script blast-process.sh"
+echo
+echo -e "## Done with script blast-process.sh"
 date
+echo
+sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
 echo

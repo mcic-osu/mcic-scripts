@@ -2,33 +2,31 @@
 
 #SBATCH --account=PAS0471
 #SBATCH --time=6:00:00
-#SBATCH --out=slurm-concat-fastq-%j.out
+#SBATCH --job-name=fqconcat
+#SBATCH --out=slurm-fqconcat-%j.out
 
-
-# SETUP ------------------------------------------------------------------------
-## Bash strict settings
-set -euo pipefail
-
+# PARSE OPTIONS ----------------------------------------------------------------
 ## Help function
 Help() {
   echo
-  echo "## $0: Concatenate FASTQ files from the same sample but different lanes."
+  echo "$0: Concatenate FASTQ files from the same sample but different lanes."
   echo
-  echo "## Syntax: $0 -i <input-dir> -o <output-dir> [-p <dir-glob-pattern>] [-r <remove-pattern>] [-n <n-files> ] [-h]"
+  echo "Syntax: $0 -i <input-dir> -o <output-dir>"
   echo
-  echo "## Required options:"
-  echo "## -i STRING      Input directory containing FASTQ files, possibly in separate underlying dirs"
-  echo "## -o STRING      Output directory for concatenated FASTQ files; all will be placed directly in this dir"
+  echo "Required options:"
+  echo "    -i DIR         Input dir containing FASTQ files, possibly in separate underlying dirs"
+  echo "    -o DIR         Output dir for concatenated FASTQ files; all will be placed directly in this dir"
   echo
-  echo "## Other options:"
-  echo "## -p STRING      Globbing pattern for underlying dirs (default: '*' i.e. any dir)"
-  echo "## -r STRING      Literal string or regex pattern to remove from file names (default: none)"
-  echo "## -n INTEGER     Number of files expected per sample per read direction (default: 2)"
-  echo "## -h             Print this help message"
+  echo "Other options:"
+  echo "    -n INTEGER     Number of files expected per sample per read direction       [default: 2]"
+  echo "    -p STRING      Globbing pattern for underlying dirs                         [default: '*' i.e. any dir]"
+  echo "    -r STRING      Literal string or regex pattern to remove from file names    [default: none]"
+  echo "    -h             Print this help message"
   echo
-  echo "## Example command:"
-  echo "## $0 -i data/fastq/original -o data/fastq/concat -n 2"
-  echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
+  echo "Example command:"
+  echo "    $0 -i data/fastq/original -o data/fastq/concat -n 2"
+  echo
+  echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
   echo
 }
 
@@ -53,6 +51,11 @@ while getopts ':i:o:p:r:n:h' flag; do
   esac
 done
 
+
+# SETUP ------------------------------------------------------------------------
+## Bash strict settings
+set -euo pipefail
+
 ## Input checks
 [[ $indir = "" ]] && echo "## ERROR: Please specify input dir with -i" && exit 1
 [[ "$outdir" = "" ]] && echo "## ERROR: Please specify output dir with -o" && exit 1
@@ -66,20 +69,20 @@ mkdir -p "$outdir"
 echo "## Starting script fqconcat.sh"
 date
 echo
-echo "## Input dir:                  $indir"
-echo "## Output dir:                 $outdir"
-echo
-echo "## Dir globbing pattern:       $dir_pattern"
-echo "## Pattern/string to remove from file names: $remove_pattern"
-echo "## Nr files expected for each sample and read direction: $nfiles"
+echo "## Input dir:                                              $indir"
+echo "## Output dir:                                             $outdir"
+[[ "$dir_pattern" != "" ]] && echo "## Dir globbing pattern:                                   $dir_pattern"
+[[ "$remove_pattern" != "" ]] && echo "## Pattern/string to remove from file names:               $remove_pattern"
+echo "## Nr files expected for each sample and read direction:   $nfiles"
 echo -e "-------------------\n"
 
 
 # CONCAT FASTQ FILES -----------------------------------------------------------
 ## Find per-sample directories
-dirs=( $(find $indir -mindepth 1 -type d -name "$dir_pattern") )
-echo "## Nr directories (samples):   ${#dirs[@]}"
-echo -e "-------------------\n"
+dirs=( $(find $indir -mindepth 1 -type d -name "*$dir_pattern*") )
+echo "## Nr directories (samples) found:                         ${#dirs[@]}"
+[[ ${#dirs[@]} -eq 0 ]] && echo "ERROR: No matching dirs found!" && exit 1
+echo
 
 ## Loop over per-sample directories
 for fdir in "${dirs[@]}"; do
@@ -97,9 +100,8 @@ for fdir in "${dirs[@]}"; do
         [[ "$n_R2" != "$nfiles" ]] && echo "## ERROR: Did not find $nfiles R2 input files" && exit 1
 
         ## Each dir should contain FASTQ files for a single sample.
-        ## First, extract the sample ID (e.g. "S9") from the 1st FASTQ file name.
-        ## Then, zero-pad single-digit numbers (e.g. "S9" -> "S09") to ensure proper ordering.
-        sample_id=$(basename "$(find "$fdir" -maxdepth 1 -name "*fastq.gz" | head -n 1)" .fastq.gz | sed -E -e 's/_L0[0-9][0-9]_.*//')
+        ## Extract the sample ID (e.g. "S9") from the 1st FASTQ file name.
+        sample_id=$(basename "$(find "$fdir" -maxdepth 1 -name "*fastq.gz" | head -n 1)" .fastq.gz | sed -E 's/_L0[0-9][0-9]_.*//')
         sample_id="${sample_id/$remove_pattern/}"
         echo "## Sample ID: $sample_id"
 
@@ -133,6 +135,9 @@ echo "## Making concatenated files read-only..."
 chmod a-w "$outdir"/*fastq.gz
 
 ## Report
-echo -e "\n## Done with script fqconct.sh."
+echo
+echo "## Done with script fqconcat.sh"
 date
+echo
+sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
 echo

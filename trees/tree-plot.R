@@ -1,22 +1,14 @@
 #!/usr/bin/env Rscript
 
 #SBATCH --account=PAS0471
-#SBATCH --time=5
+#SBATCH --time=10
 #SBATCH --output=slurm-tree-plot-%j.out
 
 # SET-UP -----------------------------------------------------------------------
-message("\n## Starting script tree-plot.R")
-message(Sys.time())
-message()
-
 ## Load (and install, if necessary) packages
-if (!"pacman" %in% installed.packages())
-    install.packages("pacman", repos='http://cran.us.r-project.org')
-if (!"BiocManager" %in% installed.packages())
-    install.packages("BiocManager", repos='http://cran.us.r-project.org')
-if (!"ggtree" %in% installed.packages()) BiocManager::install("ggtree")
+if (!"pacman" %in% installed.packages()) install.packages("pacman")
 packages <- c("tidyverse", "here", "ape", "ggtree", "argparse")
-pacman::p_load(char = packages, install = TRUE, repos='http://cran.us.r-project.org')
+pacman::p_load(char = packages, install = TRUE)
 
 ## Other scripts
 fun_script <- "mcic-scripts/trees/tree-plot_fun.R"
@@ -25,42 +17,47 @@ fun_script <- "mcic-scripts/trees/tree-plot_fun.R"
 parser <- ArgumentParser() # create parser object
 parser$add_argument("-t", "--tree",
                     help = "Input tree file (REQUIRED)")
-parser$add_argument("-a", "--aln",
-                    help = "Input alignment file (REQUIRED)")
 parser$add_argument("-o", "--figure",
                     help = "Output figure (REQUIRED)")
+parser$add_argument("-a", "--aln",
+                    help = "Input alignment file (required if --show_msa=TRUE)")
 parser$add_argument("-n", "--annot", default = NULL,
                     help = "Input annotation file")
-parser$add_argument("-c", "--annot_col", type = "integer", default = 2,
-                    help = "Annotation file column to show as tip label")
+parser$add_argument("-l", "--label_col1", type = "character", default = NULL,
+                    help = "Name of 1st annotation file column to show as tip label")
+parser$add_argument("-L", "--label_col2", type = "character", default = NULL,
+                    help = "Name of 2nd annotation file column to show as tip label")
+parser$add_argument("--label_col3", type = "character", default = NULL,
+                    help = "Name of 3rd annotation file column to show as tip label")
+parser$add_argument("-c", "--color_col", type = "character", default = NULL,
+                    help = "Name of annotation file column to color tip labels by")
 parser$add_argument("--blast", action = "store_true", default = FALSE,
                     help = "Annotation file is BLAST output")
-parser$add_argument("--show_strain", type = "logical", default = FALSE,
-                    help = "Show strain")
+parser$add_argument("--plot_msa", type = "logical", default = FALSE,
+                    help = "Show MSA")
 parser$add_argument("--msa_offset", default = "auto",
                     help = "Offset for MSA")
-parser$add_argument("--try_msa_offsets", type = "logical", default = FALSE,
-                    help = "Try many different MSA offsets")
+parser$add_argument("--show_strain", type = "logical", default = FALSE,
+                    help = "Show strain")
 args <- parser$parse_args()
 
 if (! args$msa_offset %in% c("auto", "textlen")) {
     args$msa_offset <- as.numeric(args$msa_offset)
 }
 
-## Report
-message("## Tree file: ",               args$tree)
-message("## Alignment file: ",          args$aln)
-message("## Tree figure file: ",        args$figure)
-if (!is.null(args$annot)) message("## Annotation file: ", args$annot)
-message()
-message("## Show strain info: ",        args$show_strain)
-message("## MSA offset in plot: ",      args$msa_offset)
-message("## Try many MSA offsets: ",    args$try_msa_offsets)
-message("--------------------------------\n")
-
 ## Test
+# args <- list()
+# args$tree <- "results/boyer/COG3516.tre"
+# args$annot <- "results/boyer/COG3516_seqinfo_boyer.tsv"
+# args$plot_msa <- FALSE
+# args$figure <- "results/boyer/COG3516_2.png"
+# args$label_col1 <- "species"
+# args$label_col2 <- "txid"
+# args$blast <- FALSE
+
+## Test input
 stopifnot(file.exists(args$tree))
-stopifnot(file.exists(args$aln))
+if (args$plot_msa == TRUE) stopifnot(file.exists(args$aln))
 if (!is.null(args$annot)) stopifnot(file.exists(args$annot))
 
 ## Source script with functions
@@ -72,6 +69,35 @@ alt_msa_dir <- file.path(fig_dir, "alt_msa")
 if (!dir.exists(fig_dir)) dir.create(fig_dir, recursive = TRUE)
 if (!dir.exists(alt_msa_dir)) dir.create(alt_msa_dir, recursive = TRUE)
 
+if (!is.null(args$label_col1)) {
+    if (is.null(args$label_col3)) {
+        if (is.null(args$label_col2)) {
+            label_cols <- args$label_col1
+        } else {
+            label_cols <- c(args$label_col1, args$label_col2)
+        }
+    } else {
+        label_cols <- c(args$label_col1, args$label_col2, args$label_col3)
+    }
+} else {
+    label_cols <- NULL
+}
+
+## Report
+message("\n## Starting script tree-plot.R")
+message(Sys.time())
+message()
+message("## Input tree file:            ", args$tree)
+if (!is.null(args$annot)) message("## Annotation file:            ", args$annot)
+message("## Plot MSA besides the tree:  ", args$plot_msa)
+if (args$plot_msa == TRUE) message("## Alignment file:              ", args$aln)
+message("## Output figure:              ", args$figure)
+message("## Label columns:              ", label_cols)
+if (args$show_strain == TRUE) message("## Show strain info:            ", args$show_strain)
+if (args$plot_msa == TRUE) message("## MSA offset in plot:          ", args$msa_offset)
+message("----------------------\n")
+
+
 
 # CREATE TREE ------------------------------------------------------------------
 ## Read the tree file
@@ -82,29 +108,29 @@ if (!is.null(args$annot)) {
     if (args$blast == TRUE) {
         annot <- prep_annot_blast(args$annot, tree$tip.label, show_strain)
     } else {
-        annot <- prep_annot(args$annot, tree$tip.label)
+        annot <- read_tsv(args$annot, show_col_types = FALSE)
     }
 } else {
     annot <- NULL
 }
 
 ## Plot the tree
-plot_tree(tree, annot, args$aln, args$fig, args$msa_offset)
+plot_tree(tree = tree,
+          alignment = args$aln,
+          fig_file = args$fig,
+          annot = annot,
+          label_cols = label_cols,
+          color_col = args$color_col,
+          plot_msa = args$plot_msa,
+          msa_offset = args$msa_offset)
 
-## Plot the tree w/ several different settings for the MSA offset
-if (args$try_msa_offsets == TRUE) {
-    for (offset in seq(0.05, 0.6, by = 0.05)) {
-        fig <- here(alt_msa_dir,
-                    sub(".png", paste0("_msa", offset, ".png"), basename(args$fig)))
-        plot_tree(tree, annot, args$aln, fig, msa_offset)
-    }
-}
 
 # WRAP UP ----------------------------------------------------------------------
 if (file.exists("Rplots.pdf")) unlink("Rplots.pdf")
 
 message("## Listing output file:")
 system(paste("ls -lh", args$fig))
+message()
 message("## Done with script tree-plot.R")
 message(Sys.time())
 message()

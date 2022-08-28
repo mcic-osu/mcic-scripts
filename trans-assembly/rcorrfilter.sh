@@ -94,9 +94,12 @@ python2 "$FILTER_SCRIPT" -s "$sample_id" -1 "$R1" -2 "$R2"
 # WRAP-UP ----------------------------------------------------------------------
 ## Move output files
 echo -e "\n## Moving and gzipping output files..."
-mv unfixrm*"$sample_id"*R1*cor.fq "$R1_out"
+echo unfixrm*"$sample_id"*R1*cor.fq
+mv -v unfixrm_"$sample_id"*R1*cor.fq "$R1_out"
 gzip -f "$R1_out"
-mv unfixrm*"$sample_id"*R2*cor.fq "$R2_out"
+
+echo unfixrm*"$sample_id"*R2*cor.fq
+mv -v unfixrm_"$sample_id"*R2*cor.fq "$R2_out"
 gzip -f "$R2_out"
 
 mv rmunfixable_"$sample_id".log "$outdir"

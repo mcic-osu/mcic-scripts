@@ -15,32 +15,35 @@
 ## Help function
 Help() {
   echo
-  echo "## $0: Run Trinity to assemble a transcriptome using a directory of FASTQ files."
+  echo "$0: Run Trinity to assemble a genome-guided transcriptome using a BAM file."
   echo
-  echo "## Syntax: $0 -i <input-dir> -o <output-dir> ..."
+  echo "Syntax: $0 -i <input-BAM> -o <output-dir> ..."
   echo
-  echo "## Required options:"
-  echo "## -i STRING     Input directory with FASTQ files"
-  echo "## -o STRING     Output directory"
-  echo "                 NOTE: The output directory needs to include 'trinity' in its name"
+  echo "Required options:"
+  echo "   -i STRING       Input BAM file"
+  echo "   -o STRING       Output directory"
+  echo "                   NOTE: The output directory needs to include 'trinity' in its name"
   echo
-  echo "## Other options:"
-  echo "## -h            Print this help message and exit"
+  echo "Other options:"
+  echo "   -I INTEGER      Max. intron size                     [default: 10000]"
+  echo "   -h              Print this help message and exit"
   echo
-  echo "## Example: $0 -i data/fastq/ -o results/trinity"
-  echo "## To submit to the OSC queue, preface with 'sbatch': sbatch $0 ..."
+  echo "Example: $0 -i results/star/my.bam -o results/trinity"
+  echo "To submit to the OSC queue, preface with 'sbatch': sbatch $0 ..."
   echo
 }
 
 ## Default parameter values
-indir=""
+bam=""
 outdir=""
+max_intron_size=10000
 
 ## Get parameter values
-while getopts ':i:o:h' flag; do
+while getopts ':i:I:o:h' flag; do
     case "${flag}" in
-    i) indir="$OPTARG" ;;
+    i) bam="$OPTARG" ;;
     o) outdir="$OPTARG" ;;
+    I) max_intron_size="$OPTARG" ;;
     h) Help && exit 0 ;;
     \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
     :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
@@ -48,12 +51,12 @@ while getopts ':i:o:h' flag; do
 done
 
 ## Report
-echo -e "\n## Starting script trinity.sh"
+echo -e "\n## Starting script trinity_guided.sh"
 date
 echo
 
 ## Check parameter values
-[[ ! -d "$indir" ]] && echo "## ERROR: Input dir (-i) $indir does not exist" >&2 && exit 1
+[[ ! -f "$bam" ]] && echo "## ERROR: Input BAM file (-i) $bam does not exist" >&2 && exit 1
 
 
 # SOFTWARE ---------------------------------------------------------------------
@@ -68,19 +71,12 @@ source activate "$CONDA_ENV"
 ## Bash strict mode
 set -euo pipefail
 
-## Comma-delimited list of FASTQ files:
-R1_list=$(echo "$indir"/*R1*fastq.gz | sed 's/ /,/g')
-R2_list=$(echo "$indir"/*R2*fastq.gz | sed 's/ /,/g')
-
 ## Other parameters
 mem_gb=$((8*(SLURM_MEM_PER_NODE / 1000)/10))G
 
 ## Report
-echo "## Input dir:                            $indir"
+echo "## Input BAM file:                       $bam"
 echo "## Output dir:                           $outdir"
-echo
-echo "## List of R1 (forward) FASTQ files:     $R1_list"
-echo "## List of R2 (reverse) FASTQ files:     $R2_list"
 echo -e "-------------------------------\n"
 
 ## Create output dir if needed
@@ -89,20 +85,17 @@ mkdir -p "$outdir"
 
 # RUN TRINITY ---------------------------------------------------------------
 echo "## Starting Trinity run..."
-Trinity --seqType fq \
-        --left "$R1_list" \
-        --right "$R2_list" \
-        --SS_lib_type RF \
+Trinity --genome_guided_bam "$bam" \
+        --genome_guided_max_intron "$max_intron_size" \
         --output "$outdir" \
         --max_memory "$mem_gb" \
         --CPU "$SLURM_CPUS_ON_NODE" \
+        --monitoring \
         --verbose
 
-#--monitoring \
-
 ## Check resource usage - https://github.com/trinityrnaseq/trinityrnaseq/wiki/Trinity-Runtime-Profiling
-#mv collectl "$outdir"
-#"$COLLECTL_SCRIPT" "$outdir"/collectl
+mv collectl "$outdir"
+"$COLLECTL_SCRIPT" "$outdir"/collectl
 
 
 # WRAP-UP ----------------------------------------------------------------------
@@ -110,8 +103,9 @@ echo -e "\n-------------------------------"
 echo "## Listing files in the output dir:"
 ls -lh "$outdir"
 
-echo -e "\n## Done with script trinity.sh"
+echo -e "\n## Done with script trinity_guided.sh"
 date
 echo
 sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
 echo
+

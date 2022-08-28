@@ -77,6 +77,7 @@ if (! is.null(config_file)) {
 
 ## Settings dependent on config
 chimera_method <- ifelse(pool == FALSE, "consensus", "pooled")
+abund_fold <- ifelse(pool == FALSE, 2, 8) # See https://github.com/benjjneb/dada2/issues/1042
 
 ## Define and create output dirs
 filter_dir <- file.path(outdir, "fastq_filtered")     # For filtered FASTQ files
@@ -268,6 +269,7 @@ if (start_at_step <= 7) {
 
     seqtab_nochim <- removeBimeraDenovo(seqtab_all,
                                         method = chimera_method,
+                                        minFoldParentOverAbundance = abund_fold,
                                         multithread = FALSE)
     # Multithreading often fails for this step
 

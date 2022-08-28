@@ -69,11 +69,6 @@ done
 
 
 # SETUP ---------------------------------------------------------------------
-## Report
-echo "## Starting script star_align.sh"
-date
-echo
-
 ## Load software
 module load python/3.6-conda5.2
 source activate /users/PAS0471/jelmer/.conda/envs/star-env
@@ -81,12 +76,24 @@ source activate /users/PAS0471/jelmer/.conda/envs/star-env
 ## Bash strict mode
 set -euo pipefail
 
+## Check inputs I
+[[ "$R1_in" = "" ]] && echo "## ERROR: Please specify an R1 input file with -i" >&2 && exit 1
+[[ "$bam_dir" = "" ]] && echo "## ERROR: Please specify an output dir with -o" >&2 && exit 1
+[[ "$index_dir" = "" ]] && echo "## ERROR: Please specify a dir with a STAR reference genome index with -r" >&2 && exit 1
+
 ## Hardcoded parameters
 GFF_FORMAT="--sjdbGTFtagExonParentTranscript Parent --sjdbGTFtagExonParentGene Parent"
 
-## Process parameters
-R2_in=${R1_in/_R1_/_R2_}                            # R2 FASTQ file
-sample_id=$(basename "$R1_in" | sed 's/_R1_.*//')   # Sample ID - for output files
+## Determine name of R2 file
+R1_suffix=$(echo "$R1_in" | sed -E 's/.*(_R?1).*fa?s?t?q.gz/\1/')
+R2_suffix=${R1_suffix/1/2}
+R2_in=${R1_in/$R1_suffix/$R2_suffix}
+
+## Determine output prefix
+R1_basename=$(basename "$R1_in" | sed -E 's/.fa?s?t?q.gz//')
+sampleID=${R1_basename/"$R1_suffix"/}
+
+## Other output dirs
 unmapped_dir="$bam_dir"/unmapped                    # STAR output other than bam files
 starlog_dir="$bam_dir"/star_logs                    # STAR output other than bam files
 
@@ -109,14 +116,19 @@ else
     output_arg="--outSAMtype BAM Unsorted"
 fi
 
-## Check inputs
+## Check inputs II
 [[ ! -f "$R1_in" ]] && echo "## ERROR: Input file R1_in (-i) $R1_in does not exist" >&2 && exit 1
 [[ ! -f "$R2_in" ]] && echo "## ERROR: Input file R2_in $R2_in does not exist" >&2 && exit 1
+[[ "$R1_in" = "$R2_in" ]] && echo "## ERROR: Input file R1 is the same as R2" >&2 && exit 1
 [[ ! -d "$index_dir" ]] && echo "## ERROR: Input ref genome dir (-r) $index_dir does not exist" >&2 && exit 1
 [[ "$gff" != "" ]] && [[ ! -f "$gff" ]] && echo "## ERROR: Input annotation file (-a) $gff does not exist" >&2 && exit 1
 [[ "$gff" = "" ]] && [[ "$count" = true ]] && echo "## ERROR: Can't do gene counting (-c) without an annotation file (-a)" >&2 && exit 1
 
 ## Report
+echo
+echo "## Starting script star_align.sh"
+date
+echo
 echo "## Input R1 FASTQ file:                          $R1_in"
 echo "## Input STAR genome index dir:                  $index_dir"
 [[ "$gff" != "" ]] && echo "## Input GFF file:                               $gff"
@@ -130,7 +142,7 @@ echo "## Sort the BAM file:                            $sort"
 echo "## Output arg for STAR:                          $output_arg"
 [[ "$more_args" != "" ]] && echo "## Additional args to pass to STAR:              $more_args"
 echo
-echo "## Sample ID (as inferred by the script):        $sample_id"
+echo "## Sample ID (as inferred by the script):        $sampleID"
 echo "## R2 FASTQ file (as inferred by the script):    $R2_in"
 echo -e "------------------------\n"
 
@@ -148,17 +160,26 @@ STAR --runThreadN "$SLURM_CPUS_ON_NODE" \
    --readFilesCommand zcat \
    --outFilterMultimapNmax $max_map \
    --alignIntronMin $intron_min --alignIntronMax $intron_max \
-   --outFileNamePrefix "$bam_dir/$sample_id"_ \
+   --outFileNamePrefix "$bam_dir/$sampleID"_ \
    --outReadsUnmapped Fastx $output_arg $gff_arg $more_args
+
+
+# SORT WITH SAMTOOLS SORT ------------------------------------------------------
+# if [ "$sort" = true ]; then
+#     source activate /users/PAS0471/jelmer/miniconda3/envs/samtools-env
+#     samtools sort "$bam_unsorted" > "$bam_sorted"
+# fi
 
 
 # ORGANIZE STAR OUTPUT ---------------------------------------------------------
 ## Move files with unmapped reads
 echo -e "\n## Moving, renaming and zipping unmapped FASTQ files...."
-for oldpath in "$bam_dir/$sample_id"_*Unmapped.out.mate*; do
+for oldpath in "$bam_dir/$sampleID"_*Unmapped.out.mate*; do
     oldname=$(basename "$oldpath")
     newname=$(echo "$oldname" | sed -E s'/_Unmapped.out.mate([12])/_R\1.fastq.gz/')
     newpath="$unmapped_dir"/"$newname"
+
+    echo "## Transferring $oldpath to $newpath"
 
     #> The unmapped FASTQ files output by STAR have a weird format with "0:N" for R1 reads (instead of "1:N")
     #> and "1:N" (instead of "2:N") for R2 reads, which Trinity doesn't accept. The code below will fix that:
@@ -168,21 +189,21 @@ done
 
 ## Move STAR log files
 echo -e "\n## Moving STAR log files...."
-mv -v "$bam_dir"/"$sample_id"*out "$starlog_dir"
+mv -v "$bam_dir"/"$sampleID"*out "$starlog_dir"
 
 
 # WRAP-UP ----------------------------------------------------------------------
 echo -e "\n-------------------------------"
 
 echo "## Listing unmapped FASTQ files:"
-ls -lh "$unmapped_dir/$sample_id"*fastq.gz
+ls -lh "$unmapped_dir/$sampleID"*fastq.gz
 
 echo -e "\n## Listing output BAM file:"
-ls -lh "$bam_dir/$sample_id"_*bam
+ls -lh "$bam_dir/$sampleID"_*bam
 
 if [ "$count" = true ]; then
     echo -e "\n## Listing output gene count file:"
-    ls -lh "$bam_dir"/"$sample_id"*ReadsPerGene.out.tab
+    ls -lh "$bam_dir"/"$sampleID"*ReadsPerGene.out.tab
 fi
 
 echo -e "\n## Done with script star_align.sh"

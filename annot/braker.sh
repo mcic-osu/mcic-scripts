@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=24:00:00
+#SBATCH --time=12:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=15
 #SBATCH --mem=100G
@@ -15,19 +15,20 @@ Help() {
   echo
   echo "$0: Run Braker2 to annotate a genome."
   echo
-  echo "Syntax: $0 -i <genome-FASTA> -o <output-dir> -d <OrthoDB-FASTA> ..."
+  echo "Syntax: $0 -i <genome-FASTA> -o <output-dir> -s <species> -p <protein-FASTA> ..."
   echo
   echo "Required options:"
-  echo "-i STRING         Genome (nucleotide) FASTA file"
-  echo "-o STRING         Output dir"
-  echo "-d STRING         OrthoDB (protein) FASTA file"
-  echo "                  For info on how to create this file: https://github.com/gatech-genemark/ProtHint#protein-database-preparation"
+  echo "    -i STRING         Genome (nucleotide) FASTA file"
+  echo "    -o STRING         Output dir"
+  echo "    -s STRING         Species name (without space, e.g. 'homo_sapiens')"
+  echo "    -p STRING         Reference protein FASTA file"
+  echo "                      For info on how to create this file: https://github.com/gatech-genemark/ProtHint#protein-database-preparation"
   echo
   echo "Other options:"
-  echo "-a STRING         Other argument(s) to pass to Braker2"
-  echo "-h                Print this help message"
+  echo "    -a STRING         Other argument(s) to pass to Braker2"
+  echo "    -h                Print this help message and exit"
   echo
-  echo "Example: $0 -i my_genome.fa -o results/braker -d odb_prots.fa"
+  echo "Example:              $0 -i my_genome.fa -o results/braker -d odb_prots.fa"
   echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
   echo
   echo "Braker2 documentation: https://github.com/Gaius-Augustus/BRAKER"
@@ -37,16 +38,17 @@ Help() {
 
 ## Option defaults
 genome_fa=""
-orthodb_protein_fa=""
+protein_fa=""
 outdir=""
 more_args=""
 
 ## Parse command-line options
-while getopts ':i:o:d:ah' flag; do
+while getopts ':i:o:p:s:a:h' flag; do
   case "${flag}" in
     i) genome_fa="$OPTARG" ;;
     o) outdir="$OPTARG" ;;
-    d) orthodb_protein_fa="$OPTARG" ;;
+    p) protein_fa="$OPTARG" ;;
+    s) species="$OPTARG" ;;
     a) more_args="$OPTARG" ;;
     h) Help && exit 0 ;;
     \?) echo -e "\n## $0: ERROR: Invalid option -$OPTARG\n\n" >&2 && exit 1 ;;
@@ -54,19 +56,15 @@ while getopts ':i:o:d:ah' flag; do
   esac
 done
 
-## Report
-echo "## Starting script braker.sh"
-date
-echo
 
+# SETUP ------------------------------------------------------------------------
 ## Check input
 [[ ! -f "$genome_fa" ]] && echo "## ERROR: Input file (-i) $genome_fa does not exist" >&2 && exit 1
-[[ ! -f "$orthodb_protein_fa" ]] && echo "## ERROR: OrthoDB protein file (-d) $orthodb_protein_fa does not exist" >&2 && exit 1
+[[ ! -f "$protein_fa" ]] && echo "## ERROR: Protein file (-d) $protein_fa does not exist" >&2 && exit 1
 
-
-# LOAD SOFTWARE ----------------------------------------------------------------
 ## Braker2 conda env which contains everything except GeneMark-EX and ProtHint 
-conda activate /fs/project/PAS0471/jelmer/conda/braker2-env
+module load python/3.6-conda5.2
+source activate /fs/project/PAS0471/jelmer/conda/braker2-env
 
 ## GeneMark-EX
 # See https://github.com/Gaius-Augustus/BRAKER#genemark-ex
@@ -75,24 +73,29 @@ export GENEMARK_PATH="$GENEMARK_BASEDIR"/gmes_linux_64_4
 cp "$GENEMARK_BASEDIR"/gm_key_64 ~/.gm_key
 
 # See https://github.com/Gaius-Augustus/BRAKER#prothint
-export PROTHINT_PATH=/fs/project/PAS0471/jelmer/software/ProtHint
+export PROTHINT_PATH=/fs/project/PAS0471/jelmer/software/ProtHint/bin
+export PYTHON3_PATH=/fs/project/PAS0471/jelmer/conda/braker2-env/bin
 
-
-# OTHER SETUP ------------------------------------------------------------------
 ## Bash strict mode
 set -euo pipefail
 
+## If needed, make dirs absolute because we have to move into the outdir
+[[ ! $genome_fa =~ ^/ ]] && genome_fa="$PWD"/"$genome_fa"
+[[ ! $protein_fa =~ ^/ ]] && protein_fa="$PWD"/"$protein_fa"
+
+## Make output dir
+mkdir -p "$outdir"
+
 ## Report
+echo "## Starting script braker.sh"
+date
 echo
 echo "## Genome FASTA file:                    $genome_fa"
-echo "## OrthoDB protein FASTA:                $orthodb_protein_fa"
+echo "## Protein FASTA:                        $protein_fa"
+echo "## Species name:                         $species"
 echo "## Output dir:                           $outdir"
-echo "## Other arguments to pass to Braker:    $more_args"
+[[ $more_args != "" ]] && echo "## Other arguments to pass to Braker:    $more_args"
 echo -e "--------------------\n"
-
-## If needed, make dirs absolute because we have to move into the outdir
-[[ $genome_fa =~ ^/ ]] && genome_fa="$PWD"/"$genome_fa"
-[[ $orthodb_protein_fa =~ ^/ ]] && orthodb_protein_fa="$PWD"/"$orthodb_protein_fa"
 
 
 # RUN BRAKER2 -----------------------------------------------------------------
@@ -102,8 +105,12 @@ cd "$outdir" || exit 1
 
 braker.pl \
     --genome="$genome_fa" \
-    --prot_seq="$orthodb_protein_fa" \
+    --prot_seq="$protein_fa" \
+    --species="$species" \
+    --useexisting \
     --softmasking \
+    --AUGUSTUS_ab_initio \
+    --gff3 \
     $more_args \
     --cores="$SLURM_CPUS_PER_TASK"
 
@@ -111,7 +118,7 @@ braker.pl \
 # WRAP-UP ----------------------------------------------------------------------
 echo -e "\n-------------------------------"
 echo "## Listing files in the output dir:"
-ls -lh "$outdir"
+ls -lh
 echo -e "\n## Done with script braker.sh"
 date
 echo
