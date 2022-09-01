@@ -20,9 +20,9 @@ Help() {
   echo "    -o FILE       Output file with count matrix (e.g. 'counts.txt')"
   echo
   echo "Other options:"
-  echo "    -g STRING     Feature type to count                        [default: 'gene']"
+  echo "    -t STRING     Feature type to count                        [default: 'gene']"
   echo "                  (This should correspond to a value in the 3rd column in the GFF/GTF file)"
-  echo "    -t STRING     Identifier of the feature type               [default: 'Name']"
+  echo "    -g STRING     Identifier of the feature type               [default: 'Name']"
   echo "                  (This should correspond to the key for the desired feature type (e.g. gene) in the last column in the GFF/GTF file)"
   echo "    -h            Print this help message and exit"
   echo
@@ -56,6 +56,7 @@ done
 ## Load software
 module load python/3.6-conda5.2
 source activate /users/PAS0471/jelmer/.conda/envs/subread-env
+MULTIQC_ENV=/fs/project/PAS0471/jelmer/conda/multiqc-1.12
 
 ## Strict bash settings
 set -euo pipefail
@@ -85,7 +86,8 @@ echo -e "-------------------\n"
 mkdir -p "$outdir"
 
 
-# RUN FEATURECOUNTS ------------------------------------------------------------
+# MAIN -------------------------------------------------------------------------
+## Run featurecounts
 featureCounts \
     -s 2 \
     -p \
@@ -109,6 +111,10 @@ featureCounts \
 #? -O    => Assign reads that overlap multiple features
 #? -M    => Include multi-mapping reads
 #? --minOverlap => Min nr of overlapping bases required for read assignnment (default: 1)
+
+## Run MultiQC
+conda activate "$MULTIQC_ENV"
+multiqc --force --interactive "$outdir" -o "$outdir"
 
 
 # WRAP UP ----------------------------------------------------------------------
