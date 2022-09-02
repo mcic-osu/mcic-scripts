@@ -20,7 +20,7 @@ Help() {
   echo "    -o FILE       Output file with count matrix (e.g. 'counts.txt')"
   echo
   echo "Other options:"
-  echo "    -t STRING     Feature type to count                        [default: 'gene']"
+  echo "    -t STRING     Feature type to count                        [default: 'exon']"
   echo "                  (This should correspond to a value in the 3rd column in the GFF/GTF file)"
   echo "    -g STRING     Identifier of the feature type               [default: 'Name']"
   echo "                  (This should correspond to the key for the desired feature type (e.g. gene) in the last column in the GFF/GTF file)"
@@ -35,8 +35,8 @@ Help() {
 indir=""
 outfile=""
 gff=""
-t_opt=gene
-g_opt=Name
+t_opt=exon          # Same default as featureCounts itself
+g_opt=Name          # featureCounts default is 'gene_id'
 
 ## Parse command-line options
 while getopts ':i:o:a:t:g:h' flag; do

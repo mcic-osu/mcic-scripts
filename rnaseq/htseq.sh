@@ -35,7 +35,7 @@ Help() {
 indir=""
 outfile=""
 gff=""
-feature_type=exon
+feature_type=exon      # Same default as HTseq
 id_attr=Name
 
 ## Parse command-line options
