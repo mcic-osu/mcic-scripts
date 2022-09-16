@@ -16,29 +16,44 @@ Help() {
   echo
   echo "Required options:"
   echo "    -i DIR      Input directory with FASTQ files"
-  echo "    -f FILE     Input host FASTA file (NOTE: extension should be .fa or .fasta)"
-  echo "    -F FILE     Input pathogen FASTA file (NOTE: extension should be .fa or .fasta)"
+  echo "    -f FILE     Input host FASTA file (extension should be '.fa' or '.fasta')"
+  echo "    -F FILE     Input pathogen FASTA file (extension should be '.fa' or '.fasta')"
   echo "    -g FILE     Input host GFF file"
+  echo "                NOTE: This file likely needs to be edited prior to running this script, see below"
   echo "    -G FILE     Input pathogen GFF file"
+  echo "                NOTE: This file likely needs to be edited prior to running this script, see below"
+  echo "    -c FILE     Input config file with workflow settings and SLURM execution details"
+  echo "                NOTE: Use the config file 'workflow/conf/nf_dual.config' in this same mcic-scripts dir"
   echo "    -o DIR      Output directory for workflow results"
-  echo "    -c FILE     Config file with settings and SLURM execution details"
-  echo "                NOTE: Reference FASTA and GFF files should be specified in this config file"
   echo
   echo "Other options:"
-  echo "    -a STRING   Host GFF gene attribute/identifier     [default: 'gene_id]'"
-  echo "    -A STRING   Pathogen GFF gene attribute/identifier [default: 'gene_id']"
-  echo "    -p STRING   Profile                                [default: 'singularity']"
-  echo "    -s DIR      Singularity container dir              [default: '/fs/project/PAS0471/containers']"
-  echo "    -w DIR      Scratch (work) dir for the workflow    [default: '/fs/scratch/PAS0471/$USER/nf_dualrnaseq']"
-  echo "    -r          Resume incomplete run                  [default: don't resume, i.e. start anew]"
-  echo "    -x STRING   Sample ID glob to select only some samples"
+  echo "    -a STRING   Host GFF gene attribute/identifier          [default: 'gene_id]'"
+  echo "    -A STRING   Pathogen GFF gene attribute/identifier      [default: 'gene_id']"
+  echo "    -p STRING   Profile                                     [default: 'singularity']"
+  echo "    -s DIR      Singularity container dir                   [default: '/fs/project/PAS0471/containers']"
+  echo "    -w DIR      Scratch (work) dir for the workflow         [default: '/fs/scratch/PAS0471/$USER/nf_dualrnaseq']"
+  echo "    -r          Resume incomplete run                       [default: don't resume, i.e. start anew]"
+  echo "    -x STRING   Sample ID glob to select only some samples to be used in the workflow"
   echo "    -h          Print this help message and exit"
   echo
   echo "Example command:"
-  echo "    $0 -o results/nf_dual -p profile"
-  echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
+  echo "    sbatch $0 -d data/fastq -f data/ref/host.fa -F data/ref/pathogen.fa \ "
+  echo "              -g data/ref/host.gff -G data/ref/pathogen.gff -c workflow/nf_dual.config \ "
+  echo "              -o results/nf_dual"
   echo
+  echo "GFF file notes:"
+  echo "    The nf-core workflow has specific requirements for GFF files, and seems to fail with most"
+  echo "    unedited GFF files. Edit the GFF file to make sure:"
+  echo "        - It has a 'gene_id' attribute in the last column, with the gene ID"
+  echo "        - There are (dummy) 'gene_name' and 'gene_type' attributes in the last column"
+  echo
+  echo "Feature type notes:"
+  echo "    The script will use 'exon' as the focal feature type (3rd column in GFF)"
 }
+
+## Constants
+FEATURE_TYPE_HOST="exon"
+FEATURE_TYPE_PATHOGEN="exon"
 
 ## Option defaults
 container_dir=/fs/project/PAS0471/containers
@@ -174,9 +189,9 @@ nextflow run \
     --input "$fq_dir/$sample_glob*_R{1,2}*fastq.gz" \
     --fasta_host "$fasta_host" \
     --fasta_pathogen "$fasta_pathogen" \
-    --gene_feature_gff_to_quantify_host "exon" \
+    --gene_feature_gff_to_quantify_host "$FEATURE_TYPE_HOST" \
     --host_gff_attribute "$attribute_host" \
-    --gene_feature_gff_to_quantify_pathogen "exon" \
+    --gene_feature_gff_to_quantify_pathogen "$FEATURE_TYPE_PATHOGEN" \
     --pathogen_gff_attribute "$attribute_pathogen" \
     --outdir "$outdir" \
     --genomes_ignore
