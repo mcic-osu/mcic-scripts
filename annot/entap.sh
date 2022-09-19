@@ -67,6 +67,7 @@ done
 
 
 # CONSTANTS --------------------------------------------------------------------
+## Diamond databases, these can also be built again by running entap_config.sh
 REFSEQ_DB=/fs/project/PAS0471/jelmer/refdata/entap/bin/refseq_complete.dmnd
 UNIPROT_DB=/fs/project/PAS0471/jelmer/refdata/entap/bin/uniprot_sprot.dmnd
 
@@ -93,6 +94,9 @@ fi
 [[ ! $config_file =~ ^/ ]] && config_file="$PWD"/"$config_file"
 [[ ! $assembly =~ ^/ ]] && assembly="$PWD"/"$assembly"
 [[ ! $outdir =~ ^/ ]] && outdir="$PWD"/"$outdir"
+
+## Create output directory
+mkdir -p "$outdir"
 
 ## Report
 echo
