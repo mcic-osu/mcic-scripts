@@ -7,7 +7,6 @@
 #SBATCH --job-name=deeptmhmm
 #SBATCH --output=slurm-deeptmhmm-%j.out
 
-
 # PARSE ARGUMENTS --------------------------------------------------------------
 ## Help function
 Help() {
@@ -27,7 +26,6 @@ Help() {
   echo "Example:               $0 -i ref/aa.fa -o results/tmhmm"
   echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
   echo
-  echo "DeepTMHMM documentation: ..."
   echo "DeepTMHMM paper: https://www.biorxiv.org/content/10.1101/2022.04.08.487609v1"
   echo "DeepTMHMM online server: https://dtu.biolib.com/DeepTMHMM"
   echo
@@ -74,15 +72,14 @@ date
 echo
 echo "## Input AA FASTA:                        $infile"
 echo "## Output dir:                            $outdir"
-[[ "$more_args" != "" ]] && echo "## Other arguments to pass to SignalP:    $more_args"
+[[ "$more_args" != "" ]] && echo "## Other arguments to pass to DeepTMHMM:    $more_args"
 echo -e "--------------------\n"
 
 
-# RUN LIFTOFF ------------------------------------------------------------------
+# MAIN -------------------------------------------------------------------------
 echo "## Now running DeepTMHMM..."
-biolib run DTU/DeepTMHMM --help
-
-biolib run DTU/DeepTMHMM --fasta "$infile"
+biolib run DTU/DeepTMHMM \
+    --fasta "$infile" $more_args
 
 
 # WRAP-UP ----------------------------------------------------------------------
