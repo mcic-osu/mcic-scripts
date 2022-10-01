@@ -4,36 +4,37 @@
 #SBATCH --time=60
 #SBATCH --mem=100G
 #SBATCH --cpus-per-task=30
+#SBATCH --job-name=kraken
 #SBATCH --output=slurm-kraken-run-%j.out
 
 # HELP AND COMMAND-LINE OPTIONS ------------------------------------------------
 ## Help function
 Help() {
     echo
-    echo "## $0: Run Kraken2 to assign taxonomy to sequences in a FASTA/FASTQ/pair of FASTQ file(s)"
+    echo "$0: Run Kraken2 to assign taxonomy to sequences in a FASTA/FASTQ/pair of FASTQ file(s)"
     echo
-    echo "## Syntax: $0 -i <input-file> -o <output-dir> -d <kraken-db-dir> ..."
+    echo "Syntax: $0 -i <input-file> -o <output-dir> -d <kraken-db-dir> ..."
     echo 
-    echo "## Required options:"
-    echo "  -i STRING           Input sequence file (FASTA, single-end FASTQ, or R1 from paired-end FASTQ)"
+    echo "Required options:"
+    echo "  -i FILE            Input sequence file (FASTA, single-end FASTQ, or R1 from paired-end FASTQ)"
     echo "                          (If an R1 paired-end FASTQ file is provided, the name of the R2 file will be inferred.)"
-    echo "  -o STRING           Output directory"
-    echo "  -d STRING           Directory with an existing Kraken database"
+    echo "  -o DIR             Output directory"
+    echo "  -d DIR             Directory with an existing Kraken database"
     echo "                          (Use one of the scripts 'kraken-build-custom-db.sh' or 'kraken-build-std-db.sh' to create a Kraken database)"
     echo
-    echo "## Other options:"
-    echo "  -c NUM             Confidence required for assignment: number between 0 and 1          [default: 0.5]"
+    echo "Other options:"
+    echo "  -c NUM             Confidence required for assignment: number between 0 and 1            [default: 0.5]"
     echo "  -h                 Print this help message and exit"
-    echo "  -m                 Don't load the full database into RAM memory                        [default: load into memory]"
+    echo "  -m                 Don't load the full database into RAM memory                          [default: load into memory]"
     echo "                          (Can be useful for very large databases)"
-    echo "  -n                 Add taxonomic names to the Kraken 'main' output file                [default: don't add]"
+    echo "  -n                 Add taxonomic names to the Kraken 'main' output file                  [default: don't add]"
     echo "                          Note: this option is not compatible with Krona plotting)"
-    echo "  -q INTEGER         Base quality Phred score required for use of a base in assignment   [default: 0]"
+    echo "  -q INTEGER         Base quality Phred score required for use of a base in assignment     [default: 0]"
     echo "                          NOTE: If setting a score other than 0, any output sequence files (-w and -W options)"
     echo "                          will contain 'x's for masked bases."
     echo
-    echo "  -w                 Write classified sequences to file                                  [default: don't write]"
-    echo "  -W                 Write unclassified sequences to file                                [default: don't write]"
+    echo "  -w                 Write classified sequences to file (in '<outdir>/classified' dir)     [default: don't write]"
+    echo "  -W                 Write unclassified sequences to file (in '<outdir>/unclassified' dir) [default: don't write]"
     echo
     echo "Example:          $0 -i data/A1_R1.fastq.gz -o results/kraken -d /fs/project/PAS0471/jelmer/refdata/kraken/PlusPFP"
     echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
@@ -71,20 +72,6 @@ while getopts 'i:o:d:c:q:mnwWh' flag; do
     esac
 done
 
-## Report
-echo "## Starting script kraken-run.sh..."
-date
-echo
-
-## Process options
-[[ "$infile" = "" ]] && echo "ERROR: must specify input file with -i" >&2 && exit 1
-[[ ! -f "$infile" ]] && echo "ERROR: input file $infile does note exist" >&2 && exit 1
-[[ "$krakendb_dir" = "" ]] && echo "ERROR: must specify Kraken DB dir with -d" >&2 && exit 1
-[[ ! -d "$krakendb_dir" ]] && echo "ERROR: Kraken DB dir $krakendb_dir does note exist" >&2 && exit 1
-[[ "$outdir" = "" ]] && echo "ERROR: must specify output dir with -o" >&2 && exit 1
-
-[[ "$write_class" = true ]] && mkdir -p "$outdir"/classified
-[[ "$write_unclass" = true ]] && mkdir -p "$outdir"/unclassified
 
 # SETUP ------------------------------------------------------------------------
 ## Load software
@@ -94,15 +81,30 @@ source activate /users/PAS0471/jelmer/miniconda3/envs/kraken2-env
 ## Bash strict settings
 set -euo pipefail
 
+## Process options
+[[ "$infile" = "" ]] && echo "ERROR: Must specify input file with -i" >&2 && exit 1
+[[ ! -f "$infile" ]] && echo "ERROR: Input file $infile does note exist" >&2 && exit 1
+[[ "$krakendb_dir" = "" ]] && echo "ERROR: <ust specify Kraken DB dir with -d" >&2 && exit 1
+[[ ! -d "$krakendb_dir" ]] && echo "ERROR: Kraken DB dir $krakendb_dir does note exist" >&2 && exit 1
+[[ "$outdir" = "" ]] && echo "ERROR: Must specify output dir with -o" >&2 && exit 1
+[[ "$min_conf" = "" ]] && echo "ERROR: Min confidence is not set" >&2 && exit 1
+[[ "$min_q" = "" ]] && echo "ERROR: Min quality is not set" >&2 && exit 1
+
+[[ "$write_class" = true ]] && mkdir -p "$outdir"/classified
+[[ "$write_unclass" = true ]] && mkdir -p "$outdir"/unclassified
+
 ## Report
-echo "## Input file:                  $infile"
-echo "## Output dir:                  $outdir"
-echo "## Kraken db dir:               $krakendb_dir"
+echo "## Starting script kraken-run.sh..."
+date
 echo
-echo "## Add tax. names:              $add_names"
-echo "## Min. base qual:              $min_q"
-echo "## Min. confidence:             $min_conf"
-echo "## Use RAM memory to load database:    $use_ram"
+echo "## Input file:                     $infile"
+echo "## Output dir:                     $outdir"
+echo "## Kraken db dir:                  $krakendb_dir"
+echo
+echo "## Add tax. names:                 $add_names"
+echo "## Min. base qual:                 $min_q"
+echo "## Min. confidence:                $min_conf"
+echo "## Use RAM to load database:       $use_ram"
 echo
 
 ## Create output dir
@@ -133,9 +135,9 @@ if [[ "$infile" =~ \.fastq.gz$ ]]; then
     sample_ID=${R1_basename/"$R1_suffix"/}
 
     if [[ -f $R2_in ]]; then
-        echo "## Input is:                  paired FASTQ files"
-        echo "## Input FASTQ file - R1:     $R1_in"
-        echo "## Input FASTQ file - R2:     $R2_in"
+        echo "## Input type is:                  paired FASTQ files"
+        echo "## Input FASTQ file - R1:          $R1_in"
+        echo "## Input FASTQ file - R2:          $R2_in"
         infile_arg="--gzip-compressed --paired $R1_in $R2_in"
         [[ ! -f "$R2_in" ]] && echo "## ERROR: R2 file $R2_in does not exist" >&2 && exit 1
         [[ "$R1_in" = "$R2_in" ]] && echo "## ERROR: R1 file $R1_in is the same as R2 file $R2_in" >&2 && exit 1
@@ -148,7 +150,7 @@ if [[ "$infile" =~ \.fastq.gz$ ]]; then
         fi
 
     else
-        echo "## Input is:                  single-end FASTQ file"
+        echo "## Input is:                       single-end FASTQ file"
         
         sample_ID=$(basename "$R1_in" .fastq.gz)
         
@@ -164,7 +166,7 @@ if [[ "$infile" =~ \.fastq.gz$ ]]; then
     fi
 
 else
-    echo -e "## Input is:                   FASTA file"
+    echo -e "## Input is:                    FASTA file"
     
     infile_basename=$(basename "$infile")
     sample_ID=${infile_basename%%.*}
@@ -184,12 +186,12 @@ outfile_main="$outdir"/"$sample_ID"_main.txt
 outfile_report="$outdir"/"$sample_ID"_report.txt
 
 ## Report
-echo "## Input file arg:            $infile_arg"
-echo "## Sample ID:                 $sample_ID"
-echo "## Output file - main:        $outfile_main"
-echo "## Output file - report:      $outfile_report"
-[[ "$write_class" = true ]] && echo "## Writing classified sequences:         $class_out_arg"
-[[ "$write_unclass" = true ]] && echo "## Writing unclassified sequences:     $unclass_out_arg"
+echo "## Input file arg:                 $infile_arg"
+echo "## Sample ID:                      $sample_ID"
+echo "## Output file - main:             $outfile_main"
+echo "## Output file - report:           $outfile_report"
+[[ "$write_class" = true ]] && echo "## Writing classified sequences:   $class_out_arg"
+[[ "$write_unclass" = true ]] && echo "## Writing unclassified sequences: $unclass_out_arg"
 echo -e "------------------------\n"
 
 
@@ -224,12 +226,13 @@ if [[ "$write_unclass" = true ]]; then
 fi
 
 # WRAP UP ----------------------------------------------------------------------
-echo -e "\n## Listing output files:"
+echo
+echo "## Listing output files:"
 ls -lh "$outfile_main" "$outfile_report"
 [[ "$write_class" = true ]] && ls -lh "$outdir"/classified/"$sample_ID"*
 [[ "$write_unclass" = true ]] && ls -lh "$outdir"/unclassified/"$sample_ID"*
-
-echo -e "\n## Done with script kraken-run.sh"
+echo
+echo "## Done with script kraken-run.sh"
 date
 echo
 sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS

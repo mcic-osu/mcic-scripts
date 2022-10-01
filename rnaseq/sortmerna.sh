@@ -155,7 +155,7 @@ if [[ "$deinterleave" = true ]]; then
 
     echo -e "\n## Deinterleaving R2..."
     reformat.sh \
-        in="$out_unmapped".fq.gz \
+        in="$out_mapped".fq.gz \
         out1="$R1_unmapped" \
         out2="$R2_unmapped"
     

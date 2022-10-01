@@ -2,15 +2,15 @@
 
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=4
-#SBATCH --job-name=featurecounts
-#SBATCH --out=slurm-featurecounts-%j.out
+#SBATCH --ntasks-per-node=8
+#SBATCH --job-name=htseq
+#SBATCH --out=slurm-htseq-%j.out
 
 # PARSE OPTIONS ----------------------------------------------------------------
 ## Help function
 Help() {
   echo
-  echo "$0: Create a matrix with per-gene read counts for a directory of BAM files."
+  echo "$0: Create a matrix with per-gene read counts for a directory of BAM files using HtSeq."
   echo
   echo "Syntax: $0 -i <input-FASTA> -o <output-dir> -a <gff-file> ..."
   echo
@@ -26,7 +26,7 @@ Help() {
   echo "                  (This should correspond to the key for the desired feature type (e.g. gene) in the last column in the GFF/GTF file)"
   echo "    -h            Print this help message and exit"
   echo
-  echo "Example: $        0 -i results/bam -o results/featurecounts -a refdata/my_genome.gff"
+  echo "Example: $        0 -i results/bam -o results/htseq -a refdata/my_genome.gff"
   echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
   echo
 }
@@ -35,8 +35,8 @@ Help() {
 indir=""
 outfile=""
 gff=""
-t_opt=exon          # Same default as featureCounts itself
-g_opt=Name          # featureCounts default is 'gene_id'
+feature_type=exon      # Same default as HTseq
+id_attr=Name
 
 ## Parse command-line options
 while getopts ':i:o:a:t:g:h' flag; do
@@ -44,8 +44,8 @@ while getopts ':i:o:a:t:g:h' flag; do
   i) indir="$OPTARG" ;;
   o) outfile="$OPTARG" ;;
   a) gff="$OPTARG" ;;
-  g) g_opt="$OPTARG" ;;
-  t) t_opt="$OPTARG" ;;
+  t) feature_type="$OPTARG" ;;
+  g) id_attr="$OPTARG" ;;
   h) Help && exit 0 ;;
   \?) echo -e "\n## $0: ERROR: Invalid option -$OPTARG\n\n" >&2 && exit 1 ;;
   :) echo -e "\n## $0: ERROR: Option -$OPTARG requires an argument\n\n" >&2 && exit 1 ;;
@@ -54,8 +54,9 @@ done
 
 # SETUP ---------------------------------------------------------------------
 ## Load software
-module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/.conda/envs/subread-env
+module load miniconda3
+source activate /fs/project/PAS0471/jelmer/conda/htseq-2.0.2
+conda activate --stack /users/PAS0471/jelmer/miniconda3/envs/samtools-env
 MULTIQC_ENV=/fs/project/PAS0471/jelmer/conda/multiqc-1.12
 
 ## Strict bash settings
@@ -70,14 +71,14 @@ outdir=$(dirname "$outfile")
 
 ## Report
 echo
-echo "## Starting script featurecounts.sh"
+echo "## Starting script htseq.sh"
 date
 echo
 echo "## BAM input dir (-i):              $indir"
 echo "## Output file (-o):                $outfile"
 echo "## Annotation (GTF/GFF) file (-a):  $gff"
-echo "## Feature type (-t):               $t_opt"
-echo "## Aggregation ID (-g):             $g_opt"
+echo "## ID type:                         $feature_type"
+echo "## ID attribute (aggregation ID):   $id_attr"
 echo
 echo "## Number of BAM files:             $(find "$indir"/*bam | wc -l)"
 echo -e "-------------------\n"
@@ -87,30 +88,24 @@ mkdir -p "$outdir"
 
 
 # MAIN -------------------------------------------------------------------------
-## Run featurecounts
-featureCounts \
-    -s 2 \
-    -p \
-    -B \
-    -C \
-    -F GTF \
-    -t "$t_opt" \
-    -g "$g_opt" \
-    -a "$gff" \
-    -o "$outfile" \
-    -T "$SLURM_CPUS_ON_NODE" \
-    "$indir"/*bam
+## Index BAM files if needed
+for bam in "$indir"/*bam; do
+    [[ ! -f "$bam".bai ]] && echo "Indexing $bam..." && samtools index "$bam"
+done
 
-## Options used:
-#? -s 2  => Reverse-stranded library like TruSeq
-#? -p    => Count fragments, not reads (paired-end)
-#? -B    => Require both members of a read pair to be aligned
-#? -C    => Don't count pairs with discordant mates
-
-## Other possible options:
-#? -O    => Assign reads that overlap multiple features
-#? -M    => Include multi-mapping reads
-#? --minOverlap => Min nr of overlapping bases required for read assignnment (default: 1)
+## Run HTseq
+htseq-count \
+    --nprocesses "$SLURM_NTASKS" \
+    --type "$feature_type" \
+    --idattr "$id_attr" \
+    --stranded reverse \
+    --minaqual 10 \
+    --format bam \
+    --order pos \
+    --max-reads-in-buffer=30000000 \
+    "$indir"/*bam \
+    "$gff" \
+    > "$outfile"
 
 ## Run MultiQC
 conda activate "$MULTIQC_ENV"
@@ -122,7 +117,7 @@ echo -e "\n------------------------"
 echo "## Listing output file:"
 ls -lh "$outfile"
 echo
-echo "## Done with script featurecounts.sh"
+echo "## Done with script htseq.sh"
 date
 echo
 sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
