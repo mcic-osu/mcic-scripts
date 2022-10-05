@@ -72,15 +72,12 @@ set -euo pipefail
 ## Infer the name of the R2 file
 R2=${R1/_R1_/_R2_}
 
-## Infer the sampleID and define the fill output dir
+## Infer the sampleID and define the full output dir
 sampleID=$(basename "$R1" | sed 's/_R1.*//')
 outdir_full="$outdir"/"$sampleID"
 
-mapped_tmpdir="$outdir"/mapped_tmp/"$sampleID"
-unmapped_tmpdir="$outdir"/unmapped_tmp/"$sampleID"
-
-mapped_prefix="$mapped_tmpdir"/"$sampleID"
-unmapped_prefix="$unmapped_tmpdir"/"$sampleID"
+out_mapped="$outdir_full"/mapped_tmp/"$sampleID"
+out_unmapped="$outdir_full"/unmapped_tmp/"$sampleID"
 
 R1_mapped="$outdir"/mapped/"$sampleID"_R1_001.fastq.gz
 R2_mapped="$outdir"/mapped/"$sampleID"_R2_001.fastq.gz
@@ -106,16 +103,19 @@ echo -e "---------------------------\n"
 [[ ! -f "$R1" ]] && echo "## ERROR: R1 FASTQ file $R1 not found" >&2 && exit 1
 [[ ! -f "$R2" ]] && echo "## ERROR: R2 FASTQ file $R2 not found" >&2 && exit 1
 
-## Make output dir if needed
-mkdir -p "$mapped_tmpdir" "$unmapped_tmpdir" "$outdir"/mapped "$outdir"/unmapped
+## Make output dirs if needed
+mkdir -p "$outdir"/mapped "$outdir"/unmapped "$outdir_full"/mapped_tmp "$outdir_full"/unmapped_tmp
 
 
 # GET DATABASE FILES -----------------------------------------------------------
 ## Clone sortmerna repo to get db FASTA files
 if [[ ! -f "$ref_18s" && ! -f "$ref_28s" ]]; then
+    n_seconds=$(( RANDOM % 50 + 1 ))
+    sleep "$n_seconds"s # Sleep for a while so git doesn't error when running this multiple times in parallel
+    
     mkdir -p "$repo_dir"
     echo "## Cloning sortmerna repo..."
-    git clone https://github.com/biocore/sortmerna "$repo_dir"
+    [[ ! -f "$ref_18s" && ! -f "$ref_28s" ]] && git clone https://github.com/biocore/sortmerna "$repo_dir"
 fi
 
 ## Check that db files are there
@@ -131,16 +131,13 @@ sortmerna \
     --reads "$R1" \
     --reads "$R2" \
     --fastx \
-    --aligned "$mapped_prefix" \
-    --other "$unmapped_prefix" \
+    --aligned "$out_mapped" \
+    --other "$out_unmapped" \
     --workdir "$outdir_full" \
     --paired_in \
     --threads "$SLURM_CPUS_PER_TASK"
 
 #?--paired_in Flags the paired-end reads as Aligned, when either of them is Aligned.
-
-## Move to log files to main dir
-mv "$mapped_tmpdir"/*log "$outdir"
 
 
 # CONVERTING INTERLEAVED FASTQ BACK TO SEPARATED -------------------------------
@@ -152,24 +149,29 @@ if [[ "$deinterleave" = true ]]; then
 
     echo -e "\n## Deinterleaving R1..."
     reformat.sh \
-        in="$mapped_prefix".fq.gz \
+        in="$out_mapped".fq.gz \
         out1="$R1_mapped" \
         out2="$R2_mapped"
 
     echo -e "\n## Deinterleaving R2..."
     reformat.sh \
-        in="$unmapped_prefix".fq.gz \
+        in="$out_mapped".fq.gz \
         out1="$R1_unmapped" \
         out2="$R2_unmapped"
     
     echo
 else
-    mv -v "$mapped_prefix".fq.gz "$outdir"/mapped
-    mv -v "$unmapped_prefix".fq.gz "$outdir"/unmapped
+    mv -v "$out_mapped".fq.gz "$outdir"/mapped
+    mv -v "$out_unmapped".fq.gz "$outdir"/unmapped
 fi
 
+
+# HOUSEKEEPING -----------------------------------------------------------------
+## Move log files to main dir
+mv "$outdir_full"/mapped_tmp/"$sampleID"*log "$outdir"
+
 ## Remove temporary files
-rm -rv "$mapped_tmpdir" "$unmapped_tmpdir"
+rm -rv "$outdir_full"/mapped_tmp "$outdir_full"/unmapped_tmp
 
 
 # QUANTIFY MAPPING SUCCESS -----------------------------------------------------

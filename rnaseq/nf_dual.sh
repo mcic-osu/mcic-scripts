@@ -119,7 +119,6 @@ set -ueo pipefail
 ## Check input
 [[ "$fq_dir" = "" ]] && echo "## ERROR: Please specify an input FASTQ dir with -i" && exit 1
 [[ "$outdir" = "" ]] && echo "## ERROR: Please specify an output dir with -o" && exit 1
-[[ "$scratch_dir" = "" ]] && echo "## ERROR: Please specify a scratch (work) dir with -w" && exit 1
 [[ "$config_org" = "" ]] && echo "## ERROR: Please specify a config file with -c" && exit 1
 [[ "$fasta_host" = "" ]] && echo "## ERROR: Please specify a host FASTA file with -f" && exit 1
 [[ "$fasta_pathogen" = "" ]] && echo "## ERROR: Please specify a pathogen FASTA file with -F" && exit 1
@@ -183,8 +182,8 @@ echo -e "\n-------------------------------"
 echo "## Starting the nextflow run..."
 nextflow run \
     nf-core/dualrnaseq $resume_arg \
-    -c "$config_final" \
-    -w "$scratch_dir" \
+    -config "$config_final" \
+    -work-dir "$scratch_dir" \
     -profile "$profile" \
     --input "$fq_dir/$sample_glob*_R{1,2}*fastq.gz" \
     --fasta_host "$fasta_host" \

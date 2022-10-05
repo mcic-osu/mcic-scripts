@@ -8,12 +8,10 @@
 #SBATCH --job-name=cdhit
 #SBATCH --output=slurm-cdhit-%j.out
 
-
 # SETUP ------------------------------------------------------------------------
 ## Load software
-source ~/.bashrc
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
-source activate cd-hit-env
+module load python/3.6-conda5.2
+source activate /users/PAS0471/jelmer/miniconda3/envs/cd-hit-env
 
 ## Bash strict mode
 set -euo pipefail
@@ -30,6 +28,9 @@ fa_out="$2"
 n_cores=$SLURM_CPUS_PER_TASK
 mem_mb=$((8*(SLURM_MEM_PER_NODE)/10))
 
+## Create output dir if needed
+mkdir -p "$(dirname "$fa_out")"
+
 ## Report
 echo "## Starting script cd-hit.sh"
 date
@@ -40,15 +41,12 @@ echo "## Number of cores:   $n_cores"
 echo "## Memory in MB:      $mem_mb"
 echo -e "-------------------------------\n"
 
-## Create output dirs if needed
-outdir=$(dirname "$fa_out")
-mkdir -p "$outdir"
 
-
-# RUN CD-HIT -------------------------------------------------------------------
+# MAIN -------------------------------------------------------------------------
 echo "## Now running CD-HIT-EST..."
-
-cd-hit-est -i "$fa_in" -o "$fa_out" \
+cd-hit-est \
+    -i "$fa_in" \
+    -o "$fa_out" \
     -c 0.95 \
     -n 8 \
     -p 1 \
@@ -67,6 +65,8 @@ cd-hit-est -i "$fa_in" -o "$fa_out" \
 echo -e "\n-------------------------------"
 echo "## Listing the output file:"
 ls -lh "$fa_out"
-
 echo -e "\n## Done with script cd-hit.sh"
 date
+echo
+sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
+echo

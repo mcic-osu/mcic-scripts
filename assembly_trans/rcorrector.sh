@@ -11,23 +11,23 @@
 # PARSE ARGS -------------------------------------------------------------------
 ## Help function
 Help() {
-  echo
-  echo "## $0: Run rcorrector for a directory of FASTQ files."
-  echo
-  echo "## Syntax: $0 -i <input-dir> -o <output-dir> ..."
-  echo
-  echo "## Required options:"
-  echo "## -i STRING     Input directory with FASTQ files"
-  echo "## -o STRING     Output directory for corrected FASTQ FILES"
-  echo
-  echo "## Other options:"
-  echo "## -s INTEGER    Start at specified step           [default: '0']"
-  echo "                 Should be 0 unless restarting an interrupted/failed run"
-  echo "## -h            Print this help message and exit"
-  echo
-  echo "## Example: $0 -i data/fastq/ -o results/rcorrector"
-  echo "## To submit to the OSC queue, preface with 'sbatch': sbatch $0 ..."
-  echo
+    echo
+    echo "$0: Run rcorrector for a directory of FASTQ files."
+    echo
+    echo "Syntax: $0 -i <input-dir> -o <output-dir> ..."
+    echo
+    echo "Required options:"
+    echo "    -i STRING     Input directory with FASTQ files"
+    echo "    -o STRING     Output directory for corrected FASTQ FILES"
+    echo
+    echo "Other options:"
+    echo "    -s INTEGER    Start at specified step           [default: '0']"
+    echo "                  Should be 0 unless restarting an interrupted/failed run"
+    echo "    -h             Print this help message and exit"
+    echo
+    echo "Example: $0 -i data/fastq/ -o results/rcorrector"
+    echo "To submit to the OSC queue, preface with 'sbatch': sbatch $0 ..."
+    echo
 }
 
 ## Default parameter values
@@ -38,22 +38,14 @@ start_at_step=0
 ## Get command-line parameter values
 while getopts ':i:o:s:h' flag; do
     case "${flag}" in
-    i) indir="$OPTARG" ;;
-    o) outdir="$OPTARG" ;;
-    s) start_at_step="$OPTARG" ;;
-    h) Help && exit 0 ;;
-    \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
-    :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
+        i) indir="$OPTARG" ;;
+        o) outdir="$OPTARG" ;;
+        s) start_at_step="$OPTARG" ;;
+        h) Help && exit 0 ;;
+        \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
+        :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
     esac
 done
-
-## Report
-echo -e "\n## Starting script rcorrector.sh"
-date
-echo
-
-## Test parameter values
-[[ ! -d "$indir" ]] && echo "## ERROR: Input dir (-i) $indir does not exist" >&2 && exit 1
 
 
 # SOFTWARE ---------------------------------------------------------------------
@@ -66,11 +58,16 @@ source activate /users/PAS0471/jelmer/miniconda3/envs/rcorrector-env
 ## Bash strict mode
 set -euo pipefail
 
+## Test parameter values
+[[ ! -d "$indir" ]] && echo "## ERROR: Input dir (-i) $indir does not exist" >&2 && exit 1
+
 ## Process parameters
 R1_list=$(echo "$indir"/*R1*fastq.gz | sed 's/ /,/g')
 R2_list=$(echo "$indir"/*R2*fastq.gz | sed 's/ /,/g')
 
 ## Report
+echo -e "\n## Starting script rcorrector.sh"
+date
 echo "## Input dir:           $indir"
 echo "## Output dir:          $outdir"
 echo

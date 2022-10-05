@@ -10,25 +10,25 @@
 # SETUP ------------------------------------------------------------------------
 ## Help
 Help() {
-  echo
-  echo "## $0: Run TrimGalore for one or a pair of FASTQ files"
-  echo
-  echo "## Syntax: $0 -i <R1-FASTQ-in> -o <FASTQ-outdir> -O <FastQC-outdir> ..."
-  echo
-  echo "## Required options:"
-  echo "## -i STRING      R1 FASTQ input file (if paired-end, R2 file name will be inferred)"
-  echo "## -o STRING      Trimmed FASTQ output dir"
-  echo "## -O STRING      FastQC results output dir"
-  echo
-  echo "## Other options:"
-  echo "## -q INTEGER     Quality trimming threshold         [default: 20]"
-  echo "## -l INTEGER     Minimum read length                [default: 20]"
-  echo "## -s             Input is single-end                [default: paired-end]"
-  echo "## -h             Print this help message and exit"
-  echo
-  echo "## Example: $0 -i data/fastq/S01_L001_R1.fastq.gz -o results/trimgalore -O results/fastqc"
-  echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
-  echo
+    echo
+    echo "## $0: Run TrimGalore for one or a pair of FASTQ files"
+    echo
+    echo "## Syntax: $0 -i <R1-FASTQ-in> -o <FASTQ-outdir> -O <FastQC-outdir> ..."
+    echo
+    echo "## Required options:"
+    echo "## -i STRING      R1 FASTQ input file (if paired-end, R2 file name will be inferred)"
+    echo "## -o STRING      Trimmed FASTQ output dir"
+    echo "## -O STRING      FastQC results output dir"
+    echo
+    echo "## Other options:"
+    echo "## -q INTEGER     Quality trimming threshold         [default: 20]"
+    echo "## -l INTEGER     Minimum read length                [default: 20]"
+    echo "## -s             Input is single-end                [default: paired-end]"
+    echo "## -h             Print this help message and exit"
+    echo
+    echo "## Example: $0 -i data/fastq/S01_L001_R1.fastq.gz -o results/trimgalore -O results/fastqc"
+    echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
+    echo
 }
 
 ## Option defaults
@@ -38,17 +38,17 @@ single_end=false        # => paired-end by default
 
 # Get command-line options:
 while getopts ':i:o:O:q:l:sh' flag; do
-  case "${flag}" in
-  i) R1_in="$OPTARG" ;;
-  o) outdir_trim="$OPTARG" ;;
-  O) outdir_fastqc="$OPTARG" ;;
-  q) qual="$OPTARG" ;;
-  l) len="$OPTARG" ;;
-  s) single_end=true ;;
-  h) Help && exit 0 ;;
-  \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
-  :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
-  esac
+    case "${flag}" in
+        i) R1_in="$OPTARG" ;;
+        o) outdir_trim="$OPTARG" ;;
+        O) outdir_fastqc="$OPTARG" ;;
+        q) qual="$OPTARG" ;;
+        l) len="$OPTARG" ;;
+        s) single_end=true ;;
+        h) Help && exit 0 ;;
+        \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
+        :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
+    esac
 done
 
 ## Report
