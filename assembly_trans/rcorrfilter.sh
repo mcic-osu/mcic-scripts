@@ -11,21 +11,21 @@
 # PARSE ARGS -------------------------------------------------------------------
 ## Help function
 Help() {
-  echo
-  echo "## $0: Filter an rcorrector-processed pair of FASTQ files."
-  echo
-  echo "## Syntax: $0 -i <input-FASTA> -o <output-dir> -a <gff-file> ..."
-  echo
-  echo "## Required options:"
-  echo "## -i STRING     R1 input FASTQ file as output by rcorrector.sh (name of R2 file will be inferred)"
-  echo "## -o STRING     Output directory for corrected FASTQ FILES"
-  echo
-  echo "## Other options:"
-  echo "## -h            Print this help message and exit"
-  echo
-  echo "## Example: $0 -i results/rcorr/A1_R1.fastq.gz -o results/readfilt"
-  echo "## To submit to the OSC queue, preface with 'sbatch': sbatch $0 ..."
-  echo
+    echo
+    echo "$0: Filter an rcorrector-processed pair of FASTQ files."
+    echo
+    echo "Syntax: $0 -i <input-FASTQ> -o <output-dir>..."
+    echo
+    echo "Required options:"
+    echo "    -i FILE     R1 input FASTQ file as output by rcorrector.sh (name of R2 file will be inferred)"
+    echo "    -o DIR      Output directory for corrected FASTQ files"
+    echo
+    echo "Other options:"
+    echo "    -h            Print this help message and exit"
+    echo
+    echo "Example: $0 -i results/rcorr/A1_R1.fastq.gz -o results/readfilt"
+    echo "To submit to the OSC queue, preface with 'sbatch': sbatch $0 ..."
+    echo
 }
 
 ## Default parameters
@@ -35,21 +35,13 @@ outdir=""
 ## Get parameter values
 while getopts ':i:o:h' flag; do
     case "${flag}" in
-    i) R1="$OPTARG" ;;
-    o) outdir="$OPTARG" ;;
-    h) Help && exit 0 ;;
-    \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
-    :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
+        i) R1="$OPTARG" ;;
+        o) outdir="$OPTARG" ;;
+        h) Help && exit 0 ;;
+        \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
+        :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
     esac
 done
-
-## Report
-echo -e "\n## Starting script rcorrfilter.sh"
-date
-echo
-
-## Test parameter values
-[[ ! -f "$R1" ]] && echo "## ERROR: Input file (-i) $R1 does not exist" >&2 && exit 1
 
 
 # SOFTWARE ---------------------------------------------------------------------
@@ -66,6 +58,9 @@ source activate "$CONDA_ENV"
 ## Bash strict mode
 set -euo pipefail
 
+## Test parameter values
+[[ ! -f "$R1" ]] && echo "## ERROR: Input file (-i) $R1 does not exist" >&2 && exit 1
+
 ## Process parameter values
 R2=${R1/_R1/_R2}
 sample_id=$(echo "$(basename $R1)" | sed 's/_R1.*//')
@@ -74,6 +69,9 @@ R1_out="$outdir"/$(basename "$R1" .cor.fq.gz).fastq
 R2_out="$outdir"/$(basename "$R2" .cor.fq.gz).fastq
 
 ## Report
+echo -e "\n## Starting script rcorrfilter.sh"
+date
+echo
 echo "## R1 input file:               $R1"
 echo "## R2 input file:               $R2"
 echo "## Output dir:                  $outdir"
