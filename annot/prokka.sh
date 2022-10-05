@@ -113,9 +113,8 @@ prokka \
 
 ## Remove DNA sequences from GFF file
 echo -e "\n## Now removing DNA sequences from GFF file..."
-mv "$outdir"/"$sampleID".gff "$outdir"/"$sampleID"_tmp.gff
-sed '/^##FASTA/Q' "$outdir"/"$sampleID"_tmp.gff > "$outdir"/"$sampleID".gff
-rm "$outdir"/"$sampleID"_tmp.gff
+mv "$outdir"/"$sampleID".gff "$outdir"/"$sampleID"_withseqs.gff
+sed '/^##FASTA/Q' "$outdir"/"$sampleID"_withseqs.gff > "$outdir"/"$sampleID".gff
 
 
 # WRAP-UP ----------------------------------------------------------------------
