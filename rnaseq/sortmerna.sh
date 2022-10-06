@@ -103,7 +103,9 @@ echo "## Deinterleave FASTQ files:   $deinterleave"
 echo -e "---------------------------\n"
 
 ## Make output dirs if needed
-mkdir -p "$outdir"/mapped "$outdir"/unmapped "$outdir_full"/mapped_raw "$outdir_full"/unmapped_raw
+mkdir -p "$outdir"/mapped "$outdir"/unmapped \
+    "$outdir_full"/mapped_raw "$outdir_full"/unmapped_raw \
+    "$outdir"/logs
 
 
 # GET DATABASE FILES -----------------------------------------------------------
@@ -162,7 +164,7 @@ fi
 
 # HOUSEKEEPING -----------------------------------------------------------------
 ## Move log files to main dir
-mv "$outdir_full"/mapped_raw/"$sampleID"*log "$outdir"
+mv "$outdir_full"/mapped_raw/"$sampleID"*log "$outdir"/logs/
 
 ## Remove temporary files
 rm -rv "$outdir_full"/mapped_raw "$outdir_full"/unmapped_raw
