@@ -21,7 +21,7 @@ Help() {
     echo "    -o DIR      Output directory for corrected FASTQ files"
     echo
     echo "Other options:"
-    echo "    -h            Print this help message and exit"
+    echo "    -h          Print this help message and exit"
     echo
     echo "Example: $0 -i results/rcorr/A1_R1.fastq.gz -o results/readfilt"
     echo "To submit to the OSC queue, preface with 'sbatch': sbatch $0 ..."
@@ -65,6 +65,8 @@ sample_id=$(echo "$(basename $R1)" | sed 's/_R1.*//')
 R1_out="$outdir"/$(basename "$R1" .cor.fq.gz).fastq
 R2_out="$outdir"/$(basename "$R2" .cor.fq.gz).fastq
 
+outdir_logs="$outdir"/logs
+
 ## Test parameter values
 [[ ! -f "$R1" ]] && echo "## ERROR: Input file (-i) $R1 does not exist" >&2 && exit 1
 [[ ! -f "$R2" ]] && echo "## ERROR: Input file (-i) $R2 does not exist" >&2 && exit 1
@@ -82,7 +84,7 @@ echo "## Sample ID:                   $sample_id"
 echo -e "---------------------------\n"
 
 ## Create output dir if needed
-mkdir -p "$outdir"
+mkdir -p "$outdir" "$outdir_logs"
 
 
 # RUN PYTHON SCRIPT ------------------------------------------------------------
@@ -101,7 +103,7 @@ echo unfixrm*"$sample_id"*R2*cor.fq
 mv -v unfixrm_"$sample_id"*R2*cor.fq "$R2_out"
 gzip -f "$R2_out"
 
-mv rmunfixable_"$sample_id".log "$outdir"
+mv rmunfixable_"$sample_id".log "$outdir_logs"
 
 ## Report
 echo -e "\n-------------------------------"
