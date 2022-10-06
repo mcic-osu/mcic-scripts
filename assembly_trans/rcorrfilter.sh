@@ -58,15 +58,16 @@ source activate "$CONDA_ENV"
 ## Bash strict mode
 set -euo pipefail
 
-## Test parameter values
-[[ ! -f "$R1" ]] && echo "## ERROR: Input file (-i) $R1 does not exist" >&2 && exit 1
-
 ## Process parameter values
 R2=${R1/_R1/_R2}
 sample_id=$(echo "$(basename $R1)" | sed 's/_R1.*//')
 
 R1_out="$outdir"/$(basename "$R1" .cor.fq.gz).fastq
 R2_out="$outdir"/$(basename "$R2" .cor.fq.gz).fastq
+
+## Test parameter values
+[[ ! -f "$R1" ]] && echo "## ERROR: Input file (-i) $R1 does not exist" >&2 && exit 1
+[[ ! -f "$R2" ]] && echo "## ERROR: Input file (-i) $R2 does not exist" >&2 && exit 1
 
 ## Report
 echo -e "\n## Starting script rcorrfilter.sh"
