@@ -13,7 +13,7 @@ Help() {
     echo
     echo "$0: Run TrimGalore for one or a pair of FASTQ files"
     echo
-    echo "Syntax: $0 -i <FASTQ-in> -o <FASTQ-outdir> -O <FastQC-outdir> ..."
+    echo "Syntax: $0 -i <FASTQ-in> -o <FASTQ-outdir> ..."
     echo
     echo "Required options:"
     echo "    -i FILE        (R1) FASTQ input file (if paired-end, R2 file name will be inferred)"
@@ -73,10 +73,13 @@ outdir_logs="$outdir"/logs
 
 ## Get R2 file and create input argument
 if [ "$single_end" != "true" ]; then
-    R2_in=${R1_in/_R1_/_R2_}
+    R1_suffix=$(echo "$R1_in" | sed -E 's/.*(_R?1).*fa?s?t?q.gz/\1/')
+    R2_suffix=${R1_suffix/1/2}
+    R2_in=${R1_in/$R1_suffix/$R2_suffix}
     R2_id=$(basename "$R2_in" .fastq.gz)
     input_arg="--paired $R1_in $R2_in"
     [[ ! -f "$R2_in" ]] && echo "## ERROR: Input R2 FASTQ file $R2_in does not exist" >&2 && exit 1
+    [[ "$R1_in" = "$R2_in" ]] && echo "## ERROR: Input R1 and R2 FASTQ files are the same file" >&2 && exit 1
 else
     input_arg="$R1_in"
 fi
@@ -128,4 +131,6 @@ echo -e "\n## Listing FASTQ output files:"
 ls -lh "$outdir_trim"/"$R1_id".fastq.gz "$outdir_trim"/"$R2_id".fastq.gz
 echo -e "\n## Done with script trimgalore.sh"
 date
+echo
+sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
 echo

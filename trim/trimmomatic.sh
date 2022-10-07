@@ -56,29 +56,19 @@ adapter_param="2:30:10:2:True"
 ## Parse options
 while getopts ':i:o:a:A:p:h' flag; do
     case "${flag}" in
-    i) R1_in="$OPTARG" ;;
-    o) outdir="$OPTARG" ;;
-    a) adapter_file="$OPTARG" ;;
-    A) adapter_param="$OPTARG" ;;
-    p) trim_param="$OPTARG" ;;
-    h) Help && exit 0 ;;
-    \?) echo "## ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
-    :) echo "## ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
+        i) R1_in="$OPTARG" ;;
+        o) outdir="$OPTARG" ;;
+        a) adapter_file="$OPTARG" ;;
+        A) adapter_param="$OPTARG" ;;
+        p) trim_param="$OPTARG" ;;
+        h) Help && exit 0 ;;
+        \?) echo "## ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
+        :) echo "## ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
     esac
 done
 
 
 # OTHER SETUP ------------------------------------------------------------------
-## Report
-echo "## Starting script trimmomatic.sh"
-date
-echo
-
-## Check input
-[[ "$R1_in"  = "" ]] && echo "## ERROR: Please provide R1 input FASTQ file with -i flag" && exit 1
-[[ "$outdir"  = "" ]] && echo "## ERROR: Please provide output dir with -o flag" && exit 1
-[[ ! -f $R1_in ]] && echo "## ERROR: Input file R1_in ($R1_in) does not exist" && exit 1
-
 ## Load software
 module load python/3.6-conda5.2
 source activate /users/PAS0471/jelmer/miniconda3/envs/trimmomatic-env
@@ -89,18 +79,24 @@ set -euo pipefail
 ## Other parameters
 n_cores="$SLURM_CPUS_ON_NODE"
 
+## Check input
+[[ "$R1_in"  = "" ]] && echo "## ERROR: Please provide R1 input FASTQ file with -i flag" && exit 1
+[[ "$outdir"  = "" ]] && echo "## ERROR: Please provide output dir with -o flag" && exit 1
+[[ ! -f $R1_in ]] && echo "## ERROR: Input file R1_in ($R1_in) does not exist" && exit 1
+
 ## Process parameters
 R1_suffix=$(echo "$R1_in" | sed -E 's/.*(_R?1).*fa?s?t?q.gz/\1/')
 R2_suffix=${R1_suffix/1/2}
 R2_in=${R1_in/$R1_suffix/$R2_suffix}
-
-[[ ! -f $R2_in ]] && echo "## ERROR: Input file R2_in ($R2_in) does not exist" && exit 1
-
 R1_basename=$(basename "$R1_in" .fastq.gz)
 R2_basename=$(basename "$R2_in" .fastq.gz)
-
 sample_ID=${R1_basename/"$R1_suffix"/}
 
+## Check R2
+[[ ! -f $R2_in ]] && echo "## ERROR: Input file R2_in ($R2_in) does not exist" && exit 1
+[[ "$R1_in" = "$R2_in" ]] && echo "## ERROR: Input R1 and R2 FASTQ files are the same file" >&2 && exit 1
+
+## Define output files
 stats_dir="$outdir/log"
 discard_dir="$outdir"/discard                          # Dir for discarded sequences
 trimstats_file="$stats_dir"/"$sample_ID".trimstats.txt # File with Trimmomatic stdout
@@ -123,6 +119,9 @@ fi
 trim_arg=" $trim_param"
 
 ## Report
+echo "## Starting script trimmomatic.sh"
+date
+echo
 echo "## Input R1:                     $R1_in"
 echo "## Output dir:                   $outdir"
 echo "## Trimming argument:            $trim_arg"
@@ -139,12 +138,13 @@ ls -lh "$R1_in"
 ls -lh "$R2_in"
 echo -e "-----------------------------\n"
 
+
+# MAIN -------------------------------------------------------------------------
 ## Create output dirs
 mkdir -p "$discard_dir"   # Create dir for discarded sequences if it doesn't exist
 mkdir -p "$stats_dir"     # Create dir for stdout file if it doesn't exist
 
-
-# RUN TRIMMOMATIC --------------------------------------------------------------
+## Run Trimmomatic
 echo -e "## Starting Trimmomatic run..."
 trimmomatic PE \
     -threads "$n_cores" \
@@ -165,4 +165,6 @@ ls -lh "$R2_out"
 
 echo -e "\n## Done with script trimmomatic.sh"
 date
+echo
+sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
 echo
