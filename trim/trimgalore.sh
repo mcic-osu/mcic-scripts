@@ -17,8 +17,7 @@ Help() {
     echo
     echo "Required options:"
     echo "    -i FILE        (R1) FASTQ input file (if paired-end, R2 file name will be inferred)"
-    echo "    -o DIR         Trimmed FASTQ output dir"
-    echo "    -O DIR         FastQC results output dir"
+    echo "    -o DIR         Output dir"
     echo
     echo "Other options:"
     echo "    -q INTEGER     Quality trimming threshold         [default: 20]"
@@ -37,11 +36,10 @@ len=20                  # => 20 is also the TrimGalore default
 single_end=false        # => paired-end by default
 
 # Get command-line options:
-while getopts ':i:o:O:q:l:sh' flag; do
+while getopts ':i:o:q:l:sh' flag; do
     case "${flag}" in
         i) R1_in="$OPTARG" ;;
-        o) outdir_trim="$OPTARG" ;;
-        O) outdir_fastqc="$OPTARG" ;;
+        o) outdir="$OPTARG" ;;
         q) qual="$OPTARG" ;;
         l) len="$OPTARG" ;;
         s) single_end=true ;;
@@ -61,8 +59,7 @@ source activate /users/PAS0471/jelmer/.conda/envs/trimgalore-env
 set -euo pipefail
 
 ## Check input
-[[ "$outdir_trim" = "" ]] && echo "## ERROR: Please specify an outdir for trimmed FASTQs with -o" >&2 && exit 1
-[[ "$outdir_fastqc" = "" ]] && echo "## ERROR: Please specify an outdir for FastQC with -O" >&2 && exit 1
+[[ "$outdir" = "" ]] && echo "## ERROR: Please specify an outdir with -o" >&2 && exit 1
 [[ "$R1_in" = "" ]] && echo "## ERROR: Please specify an input R1 FASTQ file with -i" >&2 && exit 1
 [[ ! -f "$R1_in" ]] && echo "## ERROR: Input R1 FASTQ file $R1_in does not exist" >&2 && exit 1
 
@@ -70,7 +67,9 @@ set -euo pipefail
 n_threads="$SLURM_CPUS_PER_TASK"
 
 ## Output dir for TrimGalore logs
-logdir="$outdir_trim"/logs
+outdir_trim="$outdir"/trimmed
+outdir_fastqc="$outdir"/fastqc
+outdir_logs="$outdir"/logs
 
 ## Get R2 file and create input argument
 if [ "$single_end" != "true" ]; then
@@ -86,7 +85,7 @@ fi
 R1_id=$(basename "$R1_in" .fastq.gz)
 
 ## Make output dirs
-mkdir -p "$outdir_trim" "$logdir" "$outdir_fastqc"
+mkdir -p "$outdir_trim" "$outdir_fastqc" "$outdir_logs"
 
 ## Report
 echo -e "\n## Starting script trimgalore.sh"
@@ -113,7 +112,7 @@ trim_galore \
     $input_arg
 
 ## Move log files
-mv "$outdir_trim"/*_trimmming_report.txt "$logdir"
+mv "$outdir_trim"/*_trimming_report.txt "$outdir_logs"
 
 ## Move FASTQ files
 if [ "$single_end" != "true" ]; then
@@ -125,7 +124,7 @@ fi
 
 
 # WRAP UP ----------------------------------------------------------------------
-echo -e "\n## Listing output files:"
+echo -e "\n## Listing FASTQ output files:"
 ls -lh "$outdir_trim"/"$R1_id".fastq.gz "$outdir_trim"/"$R2_id".fastq.gz
 echo -e "\n## Done with script trimgalore.sh"
 date
