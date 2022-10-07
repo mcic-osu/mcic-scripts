@@ -16,51 +16,55 @@ if (!require(argparse)) install.packages("argparse", repos = "https://cran.rstud
 library(argparse)
 
 parser <- ArgumentParser()
-parser$add_argument("-i", "--seqtab",
+parser$add_argument("-i", "--seq_file",
                     type = "character", required = TRUE,
-                    help = "Input file (sequence table RDS) (REQUIRED)")
-parser$add_argument("-o", "--taxa",
+                    help = "Input file (sequence table RDS or Qiime2 QZA) (REQUIRED)")
+parser$add_argument("-o", "--taxa_out",
                     type = "character", required = TRUE,
                     help = "Output file (taxa RDS file) (REQUIRED)")
-parser$add_argument("-r", "--ref_url",
+parser$add_argument("-r", "--ref_file",
                     type = "character",
-                    default = "https://zenodo.org/record/4587955/files/silva_nr99_v138.1_train_set.fa.gz",
-                    help = "Taxonomic reference URL [default %(default)s]")
-parser$add_argument("-s", "--species_url",
+                    default = NULL,
+                    help = "Taxonomic reference file [default %(default)s]")
+parser$add_argument("-s", "--species_file",
                     type = "character",
-                    default = "https://zenodo.org/record/4587955/files/silva_species_assignment_v138.1.fa.gz",
-                    help = "Taxonomic reference URL [default %(default)s]")
+                    default = NULL,
+                    help = "Taxonomic reference file [default %(default)s]")
+parser$add_argument("-S", "--add_species",
+                    type = "logical",
+                    default = TRUE,
+                    help = "Don't separately add species-level taxonomy")
 parser$add_argument("-c", "--cores",
                     type = "integer", default = 8,
                     help = "Number of cores (threads) to use [default %(default)s]")
 args <- parser$parse_args()
 
-seqtab_rds <- args$seqtab
-taxa_rds <- args$taxa
+seq_file <- args$seq_file
+taxa_rds <- args$taxa_out
 n_cores <- args$cores
-ref_url <- args$ref_url
-species_url <- args$species_url
+ref_file <- args$ref_file
+species_file <- args$species_file
+add_species <- args$add_species
 
 ## Load packages
 if (!require(pacman)) install.packages("pacman", repos = "https://cran.rstudio.com/")
-packages <- c("BiocManager", "dada2", "DECIPHER", "tidyverse", "argparse")
+packages <- c("BiocManager", "dada2", "DECIPHER", "tidyverse")
 pacman::p_load(char = packages, repos = "https://cran.rstudio.com/")
 
 ## Constants
-TAX_LEVELS <- c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
+TAX_LEVELS <- c("Kingdom", "Phylum", "Class", "Order",
+                "Family", "Genus", "Species")
 
 ## Create output dir if needed
 outdir <- dirname(taxa_rds)
 if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
 
 ## Define output files
-tax_file <- file.path(outdir, basename(ref_url))
-species_file <- file.path(outdir, basename(species_url))
 qc_file <- file.path(outdir, "tax_prop_assigned_dada.txt")
 plot_file <- file.path(outdir, "tax_prop_assigned_dada.png")
 
 ## Report
-message("## Sequence table RDS file (input):               ", seqtab_rds)
+message("## Input file with sequences:                     ", seq_file)
 message("## Taxa RDS file (output):                        ", taxa_rds)
 message("## Proportion-assigned QC file (output):          ", qc_file)
 message("## Number of cores:                               ", n_cores)
@@ -72,36 +76,49 @@ message()
 
 # FUNCTIONS --------------------------------------------------------------------
 ## Function to get the proportion of ASVs assigned to taxa
-qc_tax <- function(taxa,
-                   tax_levels = c("Kingdom", "Phylum", "Class", "Order", "Family",
-                                  "Genus", "Species")) {
-  n <- apply(taxa, 2, function(x) length(which(!is.na(x))))
-  prop <- round(n / nrow(taxa), 4)
-  data.frame(n, prop) %>%
-    rownames_to_column("tax_level") %>%
-    mutate(tax_level = factor(tax_level, levels = tax_levels))
+qc_tax <- function(taxa, tax_levels = NULL) {
+    
+    n <- apply(taxa_df, 2, function(x) length(which(!is.na(x))))
+    prop <- round(n / nrow(taxa_df), 4)
+    
+    if (is.null(tax_levels)) tax_levels <- names(prop)
+    colnames(taxa) <- tax_levels
+    
+    data.frame(n, prop) %>%
+        rownames_to_column("tax_level") %>%
+        mutate(tax_level = factor(tax_level, levels = tax_levels))
 }
 
 
-# PREPARE INPUT DATA -----------------------------------------------------------
-## Create a DNAStringSet from the ASVs
-seqtab <- readRDS(seqtab_rds)
-dna <- DNAStringSet(getSequences(seqtab))
+# PREPARE REFERENCE SEQUENCES --------------------------------------------------
+if (is.null(ref_file)) {
+    ref_url <- "https://zenodo.org/record/4587955/files/silva_nr99_v138.1_train_set.fa.gz"
+    ref_file <- file.path(outdir, basename(ref_url))
+    if (!file.exists(ref_file)) download.file(url = ref_url, destfile = ref_file)
+}
+if (is.null(species_file)) {
+    species_url <- "https://zenodo.org/record/4587955/files/silva_species_assignment_v138.1.fa.gz"
+    species_file <- file.path(outdir, basename(species_url))
+    if (!file.exists(species_file)) download.file(url = species_url, destfile = species_file)
+}
+
+# PREPARE INPUT SEQUENCES ------------------------------------------------------
+if (grepl("\\.rds", seq_file, ignore.case = TRUE)) {
+    seqs <- readRDS(seq_file)
+    #dna <- DNAStringSet(getSequences(seqtab))
+} else if (grepl("\\.qzv", seq_file, ignore.case = TRUE)) {
+    seqs <- read_qza(seq_artif)$data
+}
 
 
 # DADA2 TAX. ASSIGNMENT --------------------------------------------------------
-## Get and load DADA training set
-## (Check for an up-to-date version at <https://benjjneb.github.io/dada2/training.html>)
-if (!file.exists(tax_file)) download.file(url = ref_url, destfile = tax_file)
-if (!file.exists(species_file)) download.file(url = species_url, destfile = species_file)
-
-## Assign taxonomy
 message("\n## Assigning taxonomy...")
 taxa <- assignTaxonomy(seqtab, tax_file, multithread = n_cores)
 
-message("\n## Adding species-level assignments...")
-taxa <- addSpecies(taxa, species_file)
-colnames(taxa) <- TAX_LEVELS
+if (add_species == TRUE) {
+    message("\n## Adding species-level assignments...")
+    taxa <- addSpecies(taxa, species_file)
+}
 
 ## Save RDS file
 saveRDS(taxa, taxa_rds)
@@ -109,7 +126,7 @@ saveRDS(taxa, taxa_rds)
 
 # QC TAX. ASSIGNMENTS ----------------------------------------------------------
 ## Create df with proportion assigned
-prop_assigned <- qc_tax(taxa, TAX_LEVELS = TAX_LEVELS)
+prop_assigned <- qc_tax(taxa, tax_levels = TAX_LEVELS)
 write_tsv(prop_assigned, qc_file)
 
 message("\n## Prop. ASVs assigned to taxonomy:")
@@ -119,7 +136,7 @@ print(prop_assigned)
 p <- ggplot(prop_assigned) +
     geom_col(aes(x = tax_level, y = prop, fill = tax_level),
              color = "grey20") +
-    scale_fill_brewer(palette = "Greens") +
+    scale_fill_brewer(palette = "Greens", direction = -1) +
     scale_y_continuous(limits = c(0, 1), expand = c(0, 0)) +
     labs(y = "Proportion of ASVs assigned", x = NULL) +
     guides(fill = "none") +
