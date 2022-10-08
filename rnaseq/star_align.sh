@@ -11,33 +11,33 @@
 # PARSE OPTIONS ----------------------------------------------------------------
 ## Help function
 Help() {
-  echo
-  echo "$0: Align sequences from a FASTQ file to a reference genome with STAR."
-  echo
-  echo "Syntax: $0 -i <R1-FASTQ-infile> -o <BAM-outdir> -r <ref-index-dir> ..."
-  echo
-  echo "Required options:"
-  echo "   -i FILE      Input gzipped R1 FASTQ file name (The name of the R2 file will be inferred by the script)"
-  echo "   -r DIR       Input STAR reference genome index dir (First create index with 'mcic-scripts/rnaseq/star_index.sh')"
-  echo "   -o DIR       BAM output dir"
-  echo
-  echo "Other options:"
-  echo "   -a FILE       Reference annotation (GFF/GFF3/GTF) file     [default: no annotation file, but this is not recommended]"
-  echo "   -u            Output unmapped reads back as FASTQ file     [default: don't output]"
-  echo "   -x            FASTQ files are single-end, not paired-end   [default: FASTQ files are paired-end]"
-  echo "   -s            Don't sort the output BAM file               [default: position-sort the BAM file]"
-  echo "   -S            Use samtools to sort the output BAM file     [default: Use STAR to sort the BAM file]"
-  echo "   -c            Count reads per gene                         [default: don't perform counting]"
-  echo "                 NOTE: When using the -c option, you should use a GTF and not a GFF/GFF3"
-  echo "   -m INTEGER    Max. nr. of locations a read can map to      [default: 10]"
-  echo "   -t INTEGER    Min. intron size                             [default: 21]"
-  echo "   -T INTEGER    Max. intron size                             [default: 0 => auto-determined by STAR]"
-  echo "   -A STRING     Additional arguments to pass to STAR"
-  echo "   -h            Print this help message and exit"
-  echo
-  echo "Example: $0 -i data/fastq/S01_L001_R1.fastq.gz -o results/star -r refdata/star_index"
-  echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
-  echo
+    echo
+    echo "$0: Align sequences from a FASTQ file to a reference genome with STAR."
+    echo
+    echo "Syntax: $0 -i <R1-FASTQ> -o <outdir> -r <ref-index-dir> ..."
+    echo
+    echo "Required options:"
+    echo "   -i FILE      Input gzipped R1 FASTQ file path (The name of the R2 file will be inferred by the script)"
+    echo "   -r DIR       Input STAR reference genome index dir (First create index with 'mcic-scripts/rnaseq/star_index.sh')"
+    echo "   -o DIR       BAM output dir"
+    echo
+    echo "Other options:"
+    echo "   -a FILE       Reference annotation (GFF/GFF3/GTF) file     [default: no annotation file, but this is not recommended]"
+    echo "   -u            Output unmapped reads back as FASTQ file     [default: don't output]"
+    echo "   -x            FASTQ files are single-end, not paired-end   [default: FASTQ files are paired-end]"
+    echo "   -s            Don't sort the output BAM file               [default: position-sort the BAM file]"
+    echo "   -S            Use samtools to sort the output BAM file     [default: Use STAR to sort the BAM file]"
+    echo "   -c            Count reads per gene                         [default: don't perform counting]"
+    echo "                 NOTE: When using the -c option, you should use a GTF and not a GFF/GFF3"
+    echo "   -m INTEGER    Max. nr. of locations a read can map to      [default: 10]"
+    echo "   -t INTEGER    Min. intron size                             [default: 21]"
+    echo "   -T INTEGER    Max. intron size                             [default: 0 => auto-determined by STAR]"
+    echo "   -A STRING     Additional arguments to pass to STAR"
+    echo "   -h            Print this help message and exit"
+    echo
+    echo "Example: $0 -i data/fastq/S01_L001_R1.fastq.gz -o results/star -r refdata/star_index"
+    echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
+    echo
 }
 
 ## Option defaults
@@ -57,32 +57,31 @@ more_args=""
 
 ## Parse command-line options
 while getopts ':i:o:r:m:t:T:a:A:xuSsch' flag; do
-  case "${flag}" in
-  i) R1_in="$OPTARG" ;;
-  a) gff="$OPTARG" ;;
-  o) bam_dir="$OPTARG" ;;
-  r) index_dir="$OPTARG" ;;
-  m) max_map="$OPTARG" ;;
-  t) intron_min="$OPTARG" ;;
-  T) intron_max="$OPTARG" ;;
-  A) more_args="$OPTARG" ;;
-  c) count=true ;;
-  s) sort=false ;;
-  S) samtools_sort=true ;;
-  u) output_unmapped=true ;;
-  x) paired_end=false ;;
-  h) Help && exit 0 ;;
-  \?) echo "## $0: ERROR: Invalid option" >&2 && exit 1 ;;
-  :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
-  esac
+    case "${flag}" in
+        i) R1_in="$OPTARG" ;;
+        a) gff="$OPTARG" ;;
+        o) bam_dir="$OPTARG" ;;
+        r) index_dir="$OPTARG" ;;
+        m) max_map="$OPTARG" ;;
+        t) intron_min="$OPTARG" ;;
+        T) intron_max="$OPTARG" ;;
+        A) more_args="$OPTARG" ;;
+        c) count=true ;;
+        s) sort=false ;;
+        S) samtools_sort=true ;;
+        u) output_unmapped=true ;;
+        x) paired_end=false ;;
+        h) Help && exit 0 ;;
+        \?) echo "## $0: ERROR: Invalid option" >&2 && exit 1 ;;
+        :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
+    esac
 done
 
 
 # SETUP ---------------------------------------------------------------------
 ## Load software
 module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/.conda/envs/star-env
-SAMTOOLS_ENV=/users/PAS0471/jelmer/miniconda3/envs/samtools-env
+source activate /users/PAS0471/jelmer/.conda/envs/star-env      # NOTE: This env includes samtools
 
 ## Bash strict mode
 set -euo pipefail
@@ -122,23 +121,23 @@ if [ "$gff" != "" ]; then
 
     if [[ "$gff" =~ .*\.gff3? ]]; then
         annot_format=gff
-        GFF_FORMAT="--sjdbGTFtagExonParentTranscript Parent"
-    elif [[ "$gff" =~ .*\.gff3? ]]; then
+        annot_tags="--sjdbGTFtagExonParentTranscript Parent"
+    elif [[ "$gff" =~ .*\.gtf ]]; then
         annot_format=gtf
-        GFF_FORMAT="--sjdbGTFtagExonParentTranscript transcript_id --sjdbGTFtagExonParentGene gene_id"
+        annot_tags="--sjdbGTFtagExonParentTranscript transcript_id --sjdbGTFtagExonParentGene gene_id"
     else
         echo "## ERROR: Unknown annotation file format" && exit 1
     fi
 
     if [ "$count" = true ]; then
         if [ "$annot_format" = "gff" ]; then
-            # Better to use GTF for cournting https://groups.google.com/g/rna-star/c/M0q8M5FscA4
+            # Better to use GTF for counting https://groups.google.com/g/rna-star/c/M0q8M5FscA4
             echo "## ERROR: Please convert your GFF to a GTF, use the script 'mcic-scripts/convert/gff2gtf.sh'"
         fi
         # add `--quantMode GeneCounts` so as to do gene counting 
-        annot_arg="--sjdbGTFfile $gff $GFF_FORMAT --quantMode GeneCounts"
+        annot_arg="--sjdbGTFfile $gff $annot_tags --quantMode GeneCounts"
     else
-        annot_arg="--sjdbGTFfile $gff $GFF_FORMAT"
+        annot_arg="--sjdbGTFfile $gff $annot_tags"
     fi
 else
     annot_arg=""
@@ -192,13 +191,13 @@ mkdir -p "$bam_dir" "$starlog_dir"
 # ALIGN ------------------------------------------------------------------------
 echo "## Aligning reads with STAR...."
 STAR --runThreadN "$SLURM_CPUS_ON_NODE" \
-     --genomeDir "$index_dir" \
-     --readFilesIn "$R1_in" "$R2_in" \
-     --readFilesCommand zcat \
-     --outFilterMultimapNmax $max_map \
-     --alignIntronMin $intron_min --alignIntronMax $intron_max \
-     --outFileNamePrefix "$outfile_prefix" \
-     $unmapped_arg $output_arg $annot_arg $more_args
+    --genomeDir "$index_dir" \
+    --readFilesIn "$R1_in" "$R2_in" \
+    --readFilesCommand zcat \
+    --outFilterMultimapNmax $max_map \
+    --alignIntronMin $intron_min --alignIntronMax $intron_max \
+    --outFileNamePrefix "$outfile_prefix" \
+    $unmapped_arg $output_arg $annot_arg $more_args
 
 
 # SORT WITH SAMTOOLS SORT ------------------------------------------------------
@@ -212,7 +211,6 @@ if [[ "$sort" = true && "$samtools_sort" = "true" ]]; then
     bam_unsorted="$outfile_prefix"Aligned.out.bam
     bam_sorted="$outfile_prefix"Aligned.sortedByCoord.out.bam
     
-    source activate "$SAMTOOLS_ENV"
     samtools sort "$bam_unsorted" > "$bam_sorted"
 fi
 
