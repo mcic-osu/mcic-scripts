@@ -71,39 +71,54 @@ outdir_trim="$outdir"/trimmed
 outdir_fastqc="$outdir"/fastqc
 outdir_logs="$outdir"/logs
 
-## Get R2 file and create input argument
+## Get sample/file ID
+extension=$(echo "$R1_in" | sed -E 's/.*(\.fa?s?t?q\.gz$)/\1/')
+
+## Get R2 file, create input argument, define output files
 if [ "$single_end" != "true" ]; then
-    R1_suffix=$(echo "$R1_in" | sed -E 's/.*(_R?1).*fa?s?t?q.gz/\1/')
+    # Paired-end sequences
+    R1_suffix=$(echo "$R1_in" | sed -E "s/.*(_R?1)_?[[:digit:]]*$extension/\1/")
     R2_suffix=${R1_suffix/1/2}
     R2_in=${R1_in/$R1_suffix/$R2_suffix}
-    R2_id=$(basename "$R2_in" .fastq.gz)
     input_arg="--paired $R1_in $R2_in"
     [[ ! -f "$R2_in" ]] && echo "## ERROR: Input R2 FASTQ file $R2_in does not exist" >&2 && exit 1
     [[ "$R1_in" = "$R2_in" ]] && echo "## ERROR: Input R1 and R2 FASTQ files are the same file" >&2 && exit 1
+
+    sample_id=$(basename "$R1_in" | sed -E "s/${R1_suffix}_?[[:digit:]]*${extension}//")
+    R1_out="$outdir_trim"/"$sample_id"_R1.fastq.gz
+    R2_out="$outdir_trim"/"$sample_id"_R2.fastq.gz
 else
+    # Single-end sequences
     input_arg="$R1_in"
+    R1_suffix=""
+
+    sample_id=$(basename "$R1_in" | sed "s/${R1_suffix}${extension}//")
+    R1_out="$outdir_trim"/"$sample_id".fastq.gz
 fi
-
-## Get sample/file ID
-R1_id=$(basename "$R1_in" .fastq.gz)
-
-## Make output dirs
-mkdir -p "$outdir_trim" "$outdir_fastqc" "$outdir_logs"
 
 ## Report
 echo -e "\n## Starting script trimgalore.sh"
 date
 echo
-echo "## R1 input file:                 $R1_in"
-echo "## Output dir - trimmed FASTQs:   $outdir_trim"
-echo "## Output dir - FastQC:           $outdir_fastqc"
-echo "## Sequence quality threshold:    $qual"
-echo "## Minimum sequence length:       $len"
-[[ "$single_end" != "true" ]] && echo "## R2 input file:                 $R2_in"
-echo -e "---------------------------\n\n"
+echo "## R1 input file:                     $R1_in"
+echo "## Base output dir:                   $outdir"
+echo
+[[ "$single_end" != "true" ]] && echo "## R2 input file:                     $R2_in"
+echo "## Sequence quality threshold:        $qual"
+echo "## Minimum sequence length:           $len"
+echo "## Sequences are single-end:          $single_end"
+echo "## Sample ID:                         $sample_id"
+echo
+echo "## Output dir - FastQC:               $outdir_fastqc"
+echo "## R1 output file:                    $R1_out"
+[[ "$single_end" != "true" ]] && echo "## R2 output file:                    $R2_out"
+echo -e "---------------------------\n"
 
 
-# RUN TRIMGALORE AND PROCESS OUTPUT --------------------------------------------
+# MAIN -------------------------------------------------------------------------
+## Make output dirs
+mkdir -p "$outdir_trim" "$outdir_fastqc" "$outdir_logs"
+
 ## Run Trim-Galore
 trim_galore \
     --quality "$qual" \
@@ -114,22 +129,24 @@ trim_galore \
     --fastqc --fastqc_args "-t $n_threads --outdir $outdir_fastqc" \
     $input_arg
 
-## Move log files
-mv "$outdir_trim"/*_trimming_report.txt "$outdir_logs"
+## Move output files
+echo -e "\n## Moving output files..."
+mv -v "$outdir_trim"/"$sample_id"*_trimming_report.txt "$outdir_logs"
 
-## Move FASTQ files
 if [ "$single_end" != "true" ]; then
-    mv "$outdir_trim"/"$R1_id"_val_1.fq.gz "$outdir_trim"/"$R1_id".fastq.gz
-    mv "$outdir_trim"/"$R2_id"_val_2.fq.gz "$outdir_trim"/"$R2_id".fastq.gz
+    mv -v "$outdir_trim"/"$sample_id"*_val_1.fq.gz "$R1_out"
+    mv -v "$outdir_trim"/"$sample_id"*_val_2.fq.gz "$R2_out"
 else
-    mv "$outdir_trim"/"$R1_id"_trimmed.fq.gz "$outdir_trim"/"$R1_id".fastq.gz
+    mv -v "$outdir_trim"/"$sample_id"*_trimmed.fq.gz "$R1_out"
 fi
 
 
 # WRAP UP ----------------------------------------------------------------------
 echo -e "\n## Listing FASTQ output files:"
-ls -lh "$outdir_trim"/"$R1_id".fastq.gz "$outdir_trim"/"$R2_id".fastq.gz
-echo -e "\n## Done with script trimgalore.sh"
+ls -lh "$R1_out"
+[[ "$single_end" != "true" ]] && ls -lh "$R2_out"
+echo
+echo -e "## Done with script trimgalore.sh"
 date
 echo
 sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
