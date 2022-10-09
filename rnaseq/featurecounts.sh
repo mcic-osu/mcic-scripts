@@ -24,6 +24,7 @@ Help() {
     echo "                  (This should correspond to a value in the 3rd column in the GFF/GTF file)"
     echo "    -g STRING     Identifier of the feature type               [default: 'Name' for GFF, 'gene_id' for GTF]"
     echo "                  (This should correspond to the key for the desired feature type (e.g. gene) in the last column in the GFF/GTF file)"
+    echo "    -s STRING     Strandedness, either 'forward', 'reverse', or 'unstranded'     [default: 'reverse']"
     echo "    -h            Print this help message and exit"
     echo
     echo "Example: $        0 -i results/bam -o results/featurecounts -a refdata/my_genome.gff"
@@ -39,12 +40,13 @@ g_opt=""            # featureCounts default is 'gene_id'
 t_opt=exon          # Same default as featureCounts itself
 
 ## Parse command-line options
-while getopts ':i:o:a:t:g:h' flag; do
+while getopts ':i:o:s:a:t:g:h' flag; do
     case "${flag}" in
         i) indir="$OPTARG" ;;
         o) outfile="$OPTARG" ;;
         a) annot_file="$OPTARG" ;;
         g) g_opt="$OPTARG" ;;
+        s) strandedness="$OPTARG" ;;
         t) t_opt="$OPTARG" ;;
         h) Help && exit 0 ;;
         \?) echo -e "\n## $0: ERROR: Invalid option -$OPTARG\n\n" >&2 && exit 1 ;;
@@ -67,6 +69,17 @@ set -euo pipefail
 
 ## Get outdir parameters
 outdir=$(dirname "$outfile")
+
+## Strandedness
+if [[ $strandedness = "reverse" ]]; then
+    strand_arg="-s 2"
+elif [[ $strandedness = "forward" ]]; then
+    strand_arg="-s 1"
+elif [[ $strandedness = "unstranded" ]]; then
+    strand_arg=""
+else
+    echo "## ERROR: strandedness (-s argument) is $strandedness but should be one of 'forward', 'reverse', or 'unstranded'" >&2 && exit 1
+fi
 
 ## Report
 echo
@@ -101,8 +114,7 @@ echo -e "-------------------\n"
 mkdir -p "$outdir"
 
 ## Run featurecounts
-featureCounts \
-    -s 2 \
+featureCounts $strand_arg \
     -p \
     -B \
     -C \
