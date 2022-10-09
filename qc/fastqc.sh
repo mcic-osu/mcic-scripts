@@ -63,13 +63,13 @@ source activate /fs/project/PAS0471/jelmer/conda/fastqc-0.11.9
 
 ## Input checks
 [[ "$outdir" = "" ]] && echo "## ERROR: Please specify output dir with -o"  >&2 && exit 1
-[[ ! ${#infiles[@]} > 0 ]] && echo "## ERROR: Please specify one or more input files" >&2 && exit 1
+[[ ! ${#infiles[@]} -gt 0 ]] && echo "## ERROR: Please specify one or more input files" >&2 && exit 1
 for infile in ${infiles[*]}; do
     [[ ! -f "$infile" ]] && echo "## ERROR: Input file does not exist" >&2 && exit 1
 done
 
 ## Create the output directory if it doesn't already exist
-mkdir -p "$outdir"
+mkdir -p "$outdir"/logs
 
 ## Report
 echo "## Starting script fastqc.sh..."
@@ -85,7 +85,7 @@ fastqc --outdir="$outdir" ${infiles[*]}
 
 
 # WRAP UP ----------------------------------------------------------------------
-sample_id=$(basename "$infile" | sed 's/.fastq.*//')
+sample_id=$(basename "$infile" | sed -E 's/.f?a?s?t?q.*//')
 echo -e "\n## Listing output files:"
 ls -lh "$outdir"/"$sample_id"*fastqc*
 echo -e "\n## Done with script fastqc.sh"
