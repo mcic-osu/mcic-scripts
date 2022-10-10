@@ -12,39 +12,57 @@
 ## Help function
 Help() {
     echo
+    echo "=================================================================================================="
     echo "$0: Run the Nextflow-core RNAseq pipeline from https://nf-co.re/rnaseq"
+    echo "=================================================================================================="
     echo
-    echo "Required options:"
+    echo "REQUIRED OPTIONS:"
+    echo "------------------"
     echo "    -i DIR      Sample sheet containing paths to FASTQ files and sample info"
-    echo "    -o DIR      Output directory for workflow results (will be created if needed)"
+    echo "                (See https://nf-co.re/rnaseq/3.9/usage#samplesheet-input)"
+    echo "    -f FILE     Reference genome FASTA file"
+    echo "    -a FILE     Reference genome annotation file (GTF/GFF - GTF preferred)"
+    echo "    -o DIR      Output directory (will be created if needed)"
     echo
-    echo "Other options:"
-    echo "    -p STRING   Profile to use from one of the config files             [default: 'singularity']"
-    echo "    -c FILE     (Additional) config file                                [default: none]"
-    echo "                    - Any settings in this file will override the settings in the workflow's 'nextflow.config' file"
-    echo "    -r          Don't attempt to resume workflow run, but start over    [default: resume]"
-    echo "    -d DIR      Dir with the assembly workflow repository               [default: 'workflows/nf-core-rnaseq']"
-    echo "                    - The repository can be downloaded using 'nf-core download rnaseq -r 3.9 -x singularity -c none --outdir nf-core-rnaseq'"
-    echo "    -s DIR      Singularity container dir                               [default: '/fs/project/PAS0471/containers']"
-    echo "                    - This is where any containers used in the workflow will be downloaded to"
-    echo "    -w DIR      Scratch (work) dir for the workflow                     [default: '/fs/scratch/PAS0471/$USER/nfc_rnaseq']"
-    echo "                    - This is where the workflow results will be stored before final results are copied to the specified output dir"
-    echo "                    - This should preferable be a dir in OSC's scratch dir rather than in the main project dir"
+    echo "OTHER OPTIONS:"
+    echo "------------------"
+    echo "    -p STRING   Profile to use from one of the config files               [default: 'singularity']"
+    echo "    -c FILE     Additional config file                                    [default: none]"
+    echo "                    - Any settings in this file will override the"
+    echo "                      settings in the workflow's 'nextflow.config' file"
+    echo "                    - The mcic-scripts OSC config file will always be"
+    echo "                      included (https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config)"
+    echo "    -r          Don't attempt to resume workflow run, but start over      [default: resume workflow]"
+    echo "    -d DIR      Dir with the assembly workflow repository                 [default: 'workflows/nf-core-rnaseq']"
+    echo "                    - If this dir isn't present,"
+    echo "                      the workflow will be automatically downloaded."
+    echo "    -s DIR      Singularity container dir                                 [default: '/fs/project/PAS0471/containers']"
+    echo "    -w DIR      Scratch (work) dir for the workflow                       [default: '/fs/scratch/PAS0471/\$USER/nfc_rnaseq']"
+    echo "                    - This is where the workflow results will be stored"
+    echo "                      before final results are copied to the output dir."
+    echo "                    - This dir should preferably be in OSC's scratch"
+    echo "                      space, rather than in the main project dir."
     echo "    -a STRING   Additional arguments to pass to 'nextflow run'"
+    echo "    -x          Turn on debugging mode: print information, but don't run"
     echo "    -h          Print this help message and exit"
     echo
-    echo "Example command:"
-    echo "    sbatch $0 -i data/meta/samplesheet.csv -f data/ref/my.fa -a data/ref/my.gtf -o results/assembly"
+    echo "EXAMPLE COMMAND:"
+    echo "------------------"
+    echo "    sbatch $0 -i data/meta/samplesheet.csv -f data/ref/my.fa -a data/ref/my.gtf -o results/nfc_rnaseq"
+    echo
+    echo "DOCUMENTATION:"
+    echo "------------------"
+    echo " - https://nf-co.re/rnaseq"
 }
 
 ## Option defaults
-workflow_dir=workflows/nf-core-rnaseq/workflow
+workflow_dir=workflows/nf-core-rnaseq
 container_dir=/fs/project/PAS0471/containers
 scratch_dir=/fs/scratch/PAS0471/$USER/nfc_rnaseq
 profile=singularity
 resume=true
+debug=false
 
-debug=false #TODO add option
 samplesheet=""
 ref_annot=""
 ref_fasta=""
@@ -82,12 +100,14 @@ source activate /fs/project/PAS0471/jelmer/conda/nextflow
 ## Get the OSC config file
 SCRIPTPATH="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 OSC_CONFIG_FILE="$SCRIPTPATH"/../nextflow/osc.config
+
 if [[ ! -f "$OSC_CONFIG_FILE" ]]; then
     echo "## Cloning mcic-scripts repo..."
     [[ ! -d "mcic-scripts" ]] && git clone https://github.com/mcic-osu/mcic-scripts.git
     OSC_CONFIG_FILE=mcic-scripts/nextflow/osc.config
 fi
 [[ ! -f "$OSC_CONFIG_FILE" ]] && echo "## No OSC config file" >&2 && exit 1
+
 config_arg="-c $OSC_CONFIG_FILE"
 
 ## Singularity container dir - any downloaded containers will be stored here;
@@ -112,19 +132,17 @@ set -ueo pipefail
 [[ ! -f "$ref_fasta" ]] && echo "## ERROR: Reference FASTA file $ref_fasta does not exist" && exit 1
 [[ ! -f "$ref_annot" ]] && echo "## ERROR: Reference annotation file $ref_annot does not exist" && exit 1
 
-## Setup Nextflow arguments
-#if [[ "$config_file" != "" ]]; then
-#    config_arg="-c $config_file"
-#else
-#    config_arg=""
-#fi
+## Setup Nextflow arguments: add config file
+[[ "$config_file" != "" ]] && config_arg="$config_arg -c $config_file"
 
+## Setup Nextflow arguments: resume option
 if [[ "$resume" = true ]]; then
     resume_arg="-resume"
 else
     resume_arg=""
 fi
 
+## Setup Nextflow arguments: annottation filetype
 if [[ "$ref_annot" =~ .*\.gff3? ]]; then
     annot_arg="--gff $ref_annot"
 elif [[ "$ref_annot" =~ .*\.gtf ]]; then
@@ -134,10 +152,10 @@ else
 fi
 
 ## Report
-echo
-echo "## Starting script nfc_rnaseq.sh"
+echo -e "\n=========================================================================="
+echo "## STARTING SCRIP NCF_RNASEQ.SH"
 date
-echo
+echo -e "==========================================================================\n"
 echo "## Sample sheet:                      $samplesheet"
 echo "## Reference genome FASTA file:       $ref_fasta"
 echo "## Reference genome annotation file:  $ref_annot"
@@ -162,13 +180,16 @@ mkdir -p "$scratch_dir" "$container_dir" "$outdir" "$trace_dir"
 ## Download workflow, if needed
 if [[ ! -d "$workflow_dir" ]]; then
     mkdir -p "$(dirname "$workflow_dir")"
-    #git clone "$WORKFLOW_URL" "$workflow_dir"
-    nf-core download rnaseq -r 3.9 -x singularity -c none --outdir "$workflow_dir"
+    nf-core download rnaseq \
+        --revision 3.9 \
+        --compress none \
+        --container singularity \
+        --outdir "$workflow_dir"
 fi
 
 ## Define the workflow command
 run_workflow() {
-    nextflow run "$workflow_dir" \
+    nextflow run "$workflow_dir"/workflow \
         --input "$samplesheet" \
         --outdir "$outdir" \
         --fasta "$ref_fasta" \
@@ -177,6 +198,7 @@ run_workflow() {
         --aligner star_salmon \
         --remove_ribo_rna \
         --save_non_ribo_reads \
+        --save_merged_fastq \
         -work-dir "$scratch_dir" \
         -with-report "$trace_dir"/report.html \
         -with-trace "$trace_dir"/trace.txt \
