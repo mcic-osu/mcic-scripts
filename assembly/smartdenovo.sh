@@ -28,6 +28,7 @@ Help() {
     echo
     echo "OTHER OPTIONS:"
     echo "------------------"
+    echo "    -l INTEGER        Minimum read length, shorter reads will be removed     [default: 5000]"
     echo "    -a STRING         Other argument(s) to pass to SmartDenovo"
     echo "    -h                Print this help message and exit"
     echo
@@ -42,15 +43,17 @@ Help() {
 }
 
 ## Option defaults
+min_readlen=5000
 infiles=""
 output_prefix=""
 more_args=""
 
 ## Parse command-line options
-while getopts 'i:o:a:h' flag; do
+while getopts 'i:o:l:a:h' flag; do
     case "${flag}" in
         i) infiles="$OPTARG" ;;
         o) output_prefix="$OPTARG" ;;
+        l) min_readlen="$OPTARG" ;;
         a) more_args="$OPTARG" ;;
         h) Help && exit 0 ;;
         \?) echo -e "\n## $0: ERROR: Invalid option -$OPTARG\n\n" >&2 && exit 1 ;;
@@ -76,8 +79,9 @@ echo -e "\n=====================================================================
 echo "## STARTING SCRIPT SMARTDENOVO.SH"
 date
 echo -e "==========================================================================\n"
-echo "## Input files:       $infiles"
-echo "## Output prefix:     $output_prefix"
+echo "## Input files:           $infiles"
+echo "## Output prefix:         $output_prefix"
+echo "## Min. read length:      $min_readlen"
 [[ $more_args != "" ]] && echo "## Other arguments to pass to Smartdenovo:    $more_args"
 echo
 echo "## Listing input files:"
@@ -98,12 +102,13 @@ smartdenovo.pl \
     -p "$output_prefix" \
     -t "$SLURM_CPUS_PER_TASK" \
     -c 1 \
+    -J "$min_readlen" \
     $infiles \
     > "$output_prefix".mak
 
 #? "After assembly, the raw unitigs are reported in file prefix.lay.utg and consensus unitigs in prefix.cns"
 #? -c 1 => make consensus
-#! -J min read length -- default = 5,000
+#? -J min read length -- default = 5,000
 
 ## Run SmartDenovo by running the Makefile
 make -f "$output_prefix".mak
