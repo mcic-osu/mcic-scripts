@@ -6,9 +6,16 @@
 
 # SET-UP -----------------------------------------------------------------------
 ## Load (and install, if necessary) packages
-if (!"pacman" %in% installed.packages()) install.packages("pacman")
-packages <- c("tidyverse", "here", "ape", "ggtree", "argparse")
-pacman::p_load(char = packages, install = TRUE)
+#chooseCRANmirror(ind = 1)
+if (!"pacman" %in% installed.packages()) {
+    install.packages("pacman",
+                    repos = "https://cloud.r-project.org/",
+                    lib = Sys.getenv("R_LIBS_USER"))
+}
+packages <- c("tidyverse", "here", "ape", "BiocManager", "ggtree", "argparse")
+pacman::p_load(char = packages, install = TRUE,
+                repos = "https://cloud.r-project.org/",
+                lib = Sys.getenv("R_LIBS_USER"))
 
 ## Other scripts
 fun_script <- "mcic-scripts/trees/tree-plot_fun.R"
@@ -44,16 +51,6 @@ args <- parser$parse_args()
 if (! args$msa_offset %in% c("auto", "textlen")) {
     args$msa_offset <- as.numeric(args$msa_offset)
 }
-
-## Test
-# args <- list()
-# args$tree <- "results/boyer/COG3516.tre"
-# args$annot <- "results/boyer/COG3516_seqinfo_boyer.tsv"
-# args$plot_msa <- FALSE
-# args$figure <- "results/boyer/COG3516_2.png"
-# args$label_col1 <- "species"
-# args$label_col2 <- "txid"
-# args$blast <- FALSE
 
 ## Test input
 stopifnot(file.exists(args$tree))
