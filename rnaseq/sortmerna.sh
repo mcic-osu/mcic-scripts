@@ -11,27 +11,27 @@
 ## Help function
 Help() {
     echo
-    echo "## $0: Run SortMeRNA to sort FASTQ into rRNA-derived and other reads"
+    echo "$0: Run SortMeRNA to sort FASTQ into rRNA-derived and other reads"
     echo
-    echo "## Syntax: $0 -i <R1-FASTQ-file> -o <output-dir> ..."
+    echo "Syntax: $0 -i <R1-FASTQ-file> -o <output-dir> ..."
     echo 
-    echo "## Required options:"
-    echo "## -i STRING       Input R1 FASTQ file"
-    echo "## -o STRING       Output directory"
+    echo "Required options:"
+    echo "  -i FILE         Input R1 FASTQ file (name of R2 will be inferred)"
+    echo "  -o DIR          Output directory"
     echo
-    echo "## Other options:"
-    echo "## -r              Directory with SortMeRNA repo (for reference FASTA files)  [default: download repo]"
-    echo "## -d              Don't 'de-interleave' output FASTQ file                    [default: de-interleave]"
-    echo "## -h              Print this help message and exit"
+    echo "Other options:"
+    echo "  -r              Directory with SortMeRNA repo (for reference FASTA files)  [default: download repo]"
+    echo "  -d              Don't 'de-interleave' output FASTQ file                    [default: de-interleave]"
+    echo "  -h              Print this help message and exit"
     echo
-    echo "## Example: $0 -i data/A1_R1_001.fastq.gz -o results/sortmerna"
-    echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
+    echo "Example: $0 -i data/A1_R1_001.fastq.gz -o results/sortmerna"
+    echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
     echo
-    echo "## Output:"
-    echo "##   - Aligned sequences will be placed in <output-dir>/mapped"
-    echo "##   - Non-aligned sequences will be placed in <output-dir>/unmapped"
-    echo "## Output sequence files will keep sample identifiers,"
-    echo "##   so the script can be run for multiple samples using the same <output-dir> (-o)"
+    echo "Output:"
+    echo "  - Aligned sequences will be placed in <output-dir>/mapped"
+    echo "  - Non-aligned sequences will be placed in <output-dir>/unmapped"
+    echo "Output sequence files will keep sample identifiers,"
+    echo "  so the script can be run for multiple samples using the same <output-dir> (-o)"
     echo
 }
 
@@ -56,15 +56,9 @@ done
 
 
 # OTHER SETUP ------------------------------------------------------------------
-## Report
-echo "## Starting script sortmerna.sh"
-date
-echo
-
 ## Load software
 module load python/3.6-conda5.2
-source activate /fs/project/PAS0471/jelmer/conda/sortmerna-env
-BBTOOLS_ENV=/users/PAS0471/jelmer/miniconda3/envs/bbmap-env # Used at end
+source activate /fs/project/PAS0471/jelmer/conda/sortmerna-env # NOTE: this env also had BBMap installed
 
 ## Bash strict settings
 set -euo pipefail
@@ -72,15 +66,18 @@ set -euo pipefail
 ## Infer the name of the R2 file
 R2=${R1/_R1_/_R2_}
 
-## Infer the sampleID and define the fill output dir
+## Check input
+[[ "$R1" = "" ]] && echo "## ERROR: Please specify an R1 FASTQ file with -i" >&2 && exit 1
+[[ "$outdir" = "" ]] && echo "## ERROR: Please specify an output dir with -o" >&2 && exit 1
+[[ ! -f "$R1" ]] && echo "## ERROR: R1 FASTQ file $R1 not found" >&2 && exit 1
+[[ ! -f "$R2" ]] && echo "## ERROR: R2 FASTQ file $R2 not found" >&2 && exit 1
+
+## Infer the sampleID and define the full output dir
 sampleID=$(basename "$R1" | sed 's/_R1.*//')
 outdir_full="$outdir"/"$sampleID"
 
-mapped_tmpdir="$outdir"/mapped_tmp/"$sampleID"
-unmapped_tmpdir="$outdir"/unmapped_tmp/"$sampleID"
-
-mapped_prefix="$mapped_tmpdir"/"$sampleID"
-unmapped_prefix="$unmapped_tmpdir"/"$sampleID"
+out_mapped_raw="$outdir_full"/mapped_raw/"$sampleID"
+out_unmapped_raw="$outdir_full"/unmapped_raw/"$sampleID"
 
 R1_mapped="$outdir"/mapped/"$sampleID"_R1_001.fastq.gz
 R2_mapped="$outdir"/mapped/"$sampleID"_R2_001.fastq.gz
@@ -93,6 +90,9 @@ ref_18s="$repo_dir"/data/rRNA_databases/silva-euk-18s-id95.fasta
 ref_28s="$repo_dir"/data/rRNA_databases/silva-euk-28s-id98.fasta
 
 ## Report
+echo "## Starting script sortmerna.sh"
+date
+echo
 echo "## R1 FASTQ file:              $R1"
 echo "## R2 FASTQ file:              $R2"
 echo "## Output dir:                 $outdir_full"
@@ -102,20 +102,21 @@ echo "## 28S reference file:         $ref_28s"
 echo "## Deinterleave FASTQ files:   $deinterleave"  
 echo -e "---------------------------\n"
 
-## Check input
-[[ ! -f "$R1" ]] && echo "## ERROR: R1 FASTQ file $R1 not found" >&2 && exit 1
-[[ ! -f "$R2" ]] && echo "## ERROR: R2 FASTQ file $R2 not found" >&2 && exit 1
-
-## Make output dir if needed
-mkdir -p "$mapped_tmpdir" "$unmapped_tmpdir" "$outdir"/mapped "$outdir"/unmapped
+## Make output dirs if needed
+mkdir -p "$outdir"/mapped "$outdir"/unmapped \
+    "$outdir_full"/mapped_raw "$outdir_full"/unmapped_raw \
+    "$outdir"/logs
 
 
 # GET DATABASE FILES -----------------------------------------------------------
 ## Clone sortmerna repo to get db FASTA files
 if [[ ! -f "$ref_18s" && ! -f "$ref_28s" ]]; then
+    n_seconds=$(( RANDOM % 50 + 1 ))
+    sleep "$n_seconds"s # Sleep for a while so git doesn't error when running this multiple times in parallel
+    
     mkdir -p "$repo_dir"
     echo "## Cloning sortmerna repo..."
-    git clone https://github.com/biocore/sortmerna "$repo_dir"
+    [[ ! -f "$ref_18s" && ! -f "$ref_28s" ]] && git clone https://github.com/biocore/sortmerna "$repo_dir"
 fi
 
 ## Check that db files are there
@@ -131,45 +132,42 @@ sortmerna \
     --reads "$R1" \
     --reads "$R2" \
     --fastx \
-    --aligned "$mapped_prefix" \
-    --other "$unmapped_prefix" \
+    --aligned "$out_mapped_raw" \
+    --other "$out_unmapped_raw" \
     --workdir "$outdir_full" \
     --paired_in \
     --threads "$SLURM_CPUS_PER_TASK"
 
 #?--paired_in Flags the paired-end reads as Aligned, when either of them is Aligned.
 
-## Move to log files to main dir
-mv "$mapped_tmpdir"/*log "$outdir"
-
 
 # CONVERTING INTERLEAVED FASTQ BACK TO SEPARATED -------------------------------
 if [[ "$deinterleave" = true ]]; then
-    set +u
-    conda deactivate
-    source activate "$BBTOOLS_ENV"
-    set -u
-
-    echo -e "\n## Deinterleaving R1..."
+    echo -e "\n## Deinterleaving mapped reads..."
     reformat.sh \
-        in="$mapped_prefix".fq.gz \
+        in="$out_mapped_raw".fq.gz \
         out1="$R1_mapped" \
         out2="$R2_mapped"
 
-    echo -e "\n## Deinterleaving R2..."
+    echo -e "\n## Deinterleaving unmapped reads..."
     reformat.sh \
-        in="$unmapped_prefix".fq.gz \
+        in="$out_unmapped_raw".fq.gz \
         out1="$R1_unmapped" \
         out2="$R2_unmapped"
     
     echo
 else
-    mv -v "$mapped_prefix".fq.gz "$outdir"/mapped
-    mv -v "$unmapped_prefix".fq.gz "$outdir"/unmapped
+    mv -v "$out_mapped_raw".fq.gz "$outdir"/mapped
+    mv -v "$out_unmapped_raw".fq.gz "$outdir"/unmapped
 fi
 
+
+# HOUSEKEEPING -----------------------------------------------------------------
+## Move log files to main dir
+mv "$outdir_full"/mapped_raw/"$sampleID"*log "$outdir"/logs/
+
 ## Remove temporary files
-rm -rv "$mapped_tmpdir" "$unmapped_tmpdir"
+rm -rv "$outdir_full"/mapped_raw "$outdir_full"/unmapped_raw
 
 
 # QUANTIFY MAPPING SUCCESS -----------------------------------------------------
@@ -177,6 +175,7 @@ n_mapped=$(zcat "$R1_mapped" | awk '{ s++ } END{ print s/4 }')
 n_unmapped=$(zcat "$R1_unmapped" | awk '{ s++ } END{ print s/4 }')
 pct=$(python3 -c "print(round($n_mapped / ($n_unmapped + $n_mapped) * 100, 2))")
 echo -e "\nNumber of reads mapped/unmapped, and % mapped:\t$sampleID\t$n_mapped\t$n_unmapped\t$pct"
+
 
 # WRAP UP ----------------------------------------------------------------------
 echo -e "\n## Listing output files:"

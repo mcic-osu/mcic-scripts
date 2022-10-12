@@ -2,6 +2,7 @@
 
 ## Bash strict settings
 set -euo pipefail
+shopt -s globstar
 
 ## Constants
 SUBSAMPLE_SCRIPT="mcic-scripts/utils/fqsub.sh"
@@ -10,23 +11,23 @@ SUBSAMPLE_SCRIPT="mcic-scripts/utils/fqsub.sh"
 ## Help function
 Help()
 {
-   echo
-   echo "fqsub_dir.sh: script to subsample a dir with FASTQ files using seqtk"
-   echo
-   echo "Syntax: fqsub_dir.sh -i <input-dir> -o <output-dir> ..."
-   echo "NOTE: Don't submit this script to the SLURM queue -- it will itself spawn jobs instead."
-   echo
-   echo "Required options:"
-   echo "   -i     Input dir"
-   echo "   -o     Output dir"
-   echo
-   echo "Other options:"
-   echo "   -s     Single-end sequences         [default: paired-end]"
-   echo "   -n     Number of reads              [default: 100,000]"
-   echo "   -p     Proportion of reads          [alternative to '-n', not applied by default]"
-   echo "   -x     Sample ID pattern (select only matching filenames)"
-   echo "   -h     Print this help message and exit"
-   echo
+    echo
+    echo "fqsub_dir.sh: script to subsample a dir with FASTQ files using seqtk"
+    echo
+    echo "Syntax: fqsub_dir.sh -i <input-dir> -o <output-dir> ..."
+    echo "NOTE: Don't submit this script to the SLURM queue -- it will itself spawn jobs instead."
+    echo
+    echo "Required options:"
+    echo "   -i     Input dir"
+    echo "   -o     Output dir"
+    echo
+    echo "Other options:"
+    echo "   -s     Single-end sequences         [default: paired-end]"
+    echo "   -n     Number of reads              [default: 100,000]"
+    echo "   -p     Proportion of reads          [alternative to '-n', not applied by default]"
+    echo "   -x     Sample ID pattern (select only matching filenames)"
+    echo "   -h     Print this help message and exit"
+    echo
 }
 
 ## Option defaults
@@ -73,23 +74,25 @@ mkdir -p "$outdir"
 # RUN SCRIPT FOR EACH PAIR OF FASTQ FILES --------------------------------------
 if [ "$single_end" = false ]; then
 
-    for R1 in "$indir"/${sample_pattern}*_R1*q.gz; do
-        R1=$(basename "$R1")
-        R2=${R1/_R1/_R2}
+    for R1 in "$indir"/**/${sample_pattern}*1.f*q.gz; do
+        ## Determine R2
+        R1_suffix=$(echo "$R1" | sed -E 's/.*(_R?1).*fa?s?t?q.gz/\1/')
+        R2_suffix=${R1_suffix/1/2}
+        R2=${R1/$R1_suffix/$R2_suffix}
 
         ## Report input files:
         echo "## R1 input file:"
-        ls -lh "$indir/$R1"
+        ls -lh "$R1"
         echo "## R2 input file:"
-        ls -lh "$indir/$R2"
+        ls -lh "$R2"
 
         ## SLURM log file
-        sample_id=$(basename "$R1" .fastq.gz)
+        sample_id=$(basename "$R1" | sed 's/.fa?s?t?q.gz//')
         log=slurm-fqsub-"$sample_id"-%j.out
 
         sbatch -o "$log" "$SUBSAMPLE_SCRIPT" \
-            -i "$indir/$R1" -I "$indir/$R2" \
-            -o "$outdir/$R1" -O "$outdir/$R2" \
+            -i "$R1" -I "$R2" \
+            -o "$outdir/$(basename "$R1")" -O "$outdir/$(basename "$R2")" \
             -n "$n_reads" -p "$prop_reads"
     
         echo -e "---------------------------\n"
@@ -97,7 +100,7 @@ if [ "$single_end" = false ]; then
 
 else
 
-    for R1 in "$indir"/${sample_pattern}*q.gz; do
+    for R1 in "$indir"/**/${sample_pattern}*q.gz; do
         R1=$(basename "$R1")
 
         ## Report input file:
