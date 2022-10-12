@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=12:00:00
+#SBATCH --time=8:00:00
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=8G
 #SBATCH --job-name=nfc_rnaseq
@@ -21,7 +21,7 @@ Help() {
     echo "    -i DIR      Sample sheet containing paths to FASTQ files and sample info"
     echo "                (See https://nf-co.re/rnaseq/3.9/usage#samplesheet-input)"
     echo "    -f FILE     Reference genome FASTA file"
-    echo "    -a FILE     Reference genome annotation file (GTF/GFF - GTF preferred)"
+    echo "    -g FILE     Reference genome annotation file (GTF/GFF - GTF preferred)"
     echo "    -o DIR      Output directory (will be created if needed)"
     echo
     echo "OTHER OPTIONS:"
@@ -52,7 +52,7 @@ Help() {
     echo
     echo "DOCUMENTATION:"
     echo "------------------"
-    echo " - https://nf-co.re/rnaseq"
+    echo " - https://nf-co.re/rnaseq "
 }
 
 ## Option defaults
@@ -97,19 +97,6 @@ done
 module load python/3.6-conda5.2
 source activate /fs/project/PAS0471/jelmer/conda/nextflow
 
-## Get the OSC config file
-SCRIPTPATH="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
-OSC_CONFIG_FILE="$SCRIPTPATH"/../nextflow/osc.config
-
-if [[ ! -f "$OSC_CONFIG_FILE" ]]; then
-    echo "## Cloning mcic-scripts repo..."
-    [[ ! -d "mcic-scripts" ]] && git clone https://github.com/mcic-osu/mcic-scripts.git
-    OSC_CONFIG_FILE=mcic-scripts/nextflow/osc.config
-fi
-[[ ! -f "$OSC_CONFIG_FILE" ]] && echo "## No OSC config file" >&2 && exit 1
-
-config_arg="-c $OSC_CONFIG_FILE"
-
 ## Singularity container dir - any downloaded containers will be stored here;
 ## if the required container is already there, it won't be re-downloaded
 export NXF_SINGULARITY_CACHEDIR="$container_dir"
@@ -132,6 +119,20 @@ set -ueo pipefail
 [[ ! -f "$ref_fasta" ]] && echo "## ERROR: Reference FASTA file $ref_fasta does not exist" && exit 1
 [[ ! -f "$ref_annot" ]] && echo "## ERROR: Reference annotation file $ref_annot does not exist" && exit 1
 
+## Get the OSC config file
+SCRIPTPATH="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+OSC_CONFIG_FILE="$SCRIPTPATH"/../nextflow/osc.config
+if [[ ! -f "$OSC_CONFIG_FILE" ]]; then
+    if [[ ! -d "mcic-scripts" ]]; then
+        git clone https://github.com/mcic-osu/mcic-scripts.git
+        echo "## Cloning mcic-scripts repo..."
+    fi
+    OSC_CONFIG_FILE=mcic-scripts/nextflow/osc.config
+fi
+[[ ! -f "$OSC_CONFIG_FILE" ]] && echo "## ERROR: No OSC config file" >&2 && exit 1
+
+config_arg="-c $OSC_CONFIG_FILE"
+
 ## Setup Nextflow arguments: add config file
 [[ "$config_file" != "" ]] && config_arg="$config_arg -c $config_file"
 
@@ -153,7 +154,7 @@ fi
 
 ## Report
 echo -e "\n=========================================================================="
-echo "## STARTING SCRIP NCF_RNASEQ.SH"
+echo "## STARTING SCRIPT NCF_RNASEQ.SH"
 date
 echo -e "==========================================================================\n"
 echo "## Sample sheet:                      $samplesheet"
@@ -165,10 +166,10 @@ echo "## Container dir:                     $container_dir"
 echo "## Scratch (work) dir:                $scratch_dir"
 echo "## Dir with workflow files:           $workflow_dir"
 echo "## Config 'profile':                  $profile"
+[[ "$config_file" != "" ]] && echo "## Additional config file:                       $config_file"
 echo "## Config file arg:                   $config_arg"
 echo "## Resume previous run:               $resume"
 [[ "$more_args" != "" ]] && echo "## Additional arguments:              $more_args"
-[[ "$config_file" != "" ]] && echo "## Config file:                       $config_file"
 echo -e "-------------------------\n"
 
 
@@ -194,9 +195,9 @@ run_workflow() {
         --outdir "$outdir" \
         --fasta "$ref_fasta" \
         $annot_arg \
-        --save_reference \
         --aligner star_salmon \
         --remove_ribo_rna \
+        --save_reference \
         --save_non_ribo_reads \
         --save_merged_fastq \
         -work-dir "$scratch_dir" \
@@ -213,6 +214,7 @@ if [[ "$debug" = true ]]; then
     echo "## Final command:"
     type run_workflow | sed '1,3d;$d'
     nextflow config "$workflow_dir" -profile "$profile"
+    exit 0
 fi
 
 if [[ "$debug" != true ]]; then
