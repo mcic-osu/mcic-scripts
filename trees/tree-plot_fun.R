@@ -1,37 +1,35 @@
 ## Function to plot the tree
 plot_tree <- function(tree,
                       alignment = NULL,
-                      annot = NULL, label_cols = NA, color_col = NULL,
+                      annot = NULL, label_cols = NULL, color_col = NULL,
                       fig_file = "tree.png",
                       plot_msa = FALSE, msa_offset = "auto") {
 
   if (!is.null(annot)) {
     p <- ggtree(tree) %<+% annot
     
-    if (is.na(label_cols[1])) p <- p + geom_tiplab(aes_string(label = annot_col))
+    if (is.null(label_cols)) {
+        p <- p + geom_tiplab()
+    } else {
+
+        if (!is.na(label_cols[1])) {
+            if(!is.null(color_col)) {
+                p <- p + geom_tiplab(aes_string(label = label_cols[1],
+                                                color = color_col),
+                                    align = TRUE)
+                if (color_col == label_cols[1]) p <- p + guides(color = "none")
+            } else {
+                p <- p + geom_tiplab(aes_string(label = label_cols[1]))
+            }
+        }
     
-    if (!is.na(label_cols[1])) {
-      if(!is.null(color_col)) {
-        p <- p + geom_tiplab(aes_string(label = label_cols[1],
-                                        color = color_col),
-                             align = TRUE)
-        if (color_col == label_cols[1]) p <- p + guides(color = "none")
-      } else {
-        p <- p + geom_tiplab(aes_string(label = label_cols[1]))
-      }
+        if (!is.na(label_cols[2]))
+            p <- p + geom_tiplab(aes_string(label = label_cols[2]),
+                                align = TRUE, linetype = "blank", offset = 3.5)
+        if (!is.na(label_cols[3]))
+            p <- p + geom_tiplab(aes_string(label = label_cols[3]),
+                                align = TRUE, linetype = "blank", offset = 5)
     }
-  } else {
-    p <- ggtree(tree) +
-      geom_tiplab()
-  }
-  
-  if (!is.na(label_cols[2])) {
-    p <- p + geom_tiplab(aes_string(label = label_cols[2]),
-                         align = TRUE, linetype = "blank", offset = 3.5)
-  }
-  if (!is.na(label_cols[3])) {
-    p <- p + geom_tiplab(aes_string(label = label_cols[3]),
-                         align = TRUE, linetype = "blank", offset = 5)
   }
 
   p <- p +
