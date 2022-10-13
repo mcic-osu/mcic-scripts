@@ -9,26 +9,26 @@
 # PARSE ARGUMENTS --------------------------------------------------------------
 ## Help function
 Help() {
-  echo
-  echo "$0: Run Roary for a pangenome analysis"
-  echo
-  echo "Syntax: $0 -i <input-dir> -o <output-dir>..."
-  echo
-  echo "Required options:"
-  echo "    -i DIR            Input dir with GFFs produced by Prokka"
-  echo "                      NOTE: The GFF files should contain the nucleotide sequences, too."
-  echo "    -o DIR            Output dir"
-  echo
-  echo "Other options:"
-  echo "    -a STRING         Other argument(s) to pass to Roary"
-  echo "    -h                Print this help message and exit"
-  echo
-  echo "Example:              $0 -i results/prokka -o results/roary"
-  echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
-  echo
-  echo "Roary documentation: https://sanger-pathogens.github.io/Roary/"
-  echo "Roary paper: http://bioinformatics.oxfordjournals.org/content/31/22/3691"
-  echo
+    echo
+    echo "$0: Run Roary for a pangenome analysis"
+    echo
+    echo "Syntax: $0 -i <input-dir> -o <output-dir>..."
+    echo
+    echo "Required options:"
+    echo "    -i DIR            Input dir with GFFs produced by Prokka"
+    echo "                      NOTE: The GFF files should contain the nucleotide sequences, too."
+    echo "    -o DIR            Output dir"
+    echo
+    echo "Other options:"
+    echo "    -a STRING         Other argument(s) to pass to Roary"
+    echo "    -h                Print this help message and exit"
+    echo
+    echo "Example:              $0 -i results/prokka -o results/roary"
+    echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
+    echo
+    echo "Roary documentation: https://sanger-pathogens.github.io/Roary/"
+    echo "Roary paper: http://bioinformatics.oxfordjournals.org/content/31/22/3691"
+    echo
 }
 
 ## Option defaults
@@ -38,14 +38,14 @@ more_args=""
 
 ## Parse command-line options
 while getopts ':i:o:a:h' flag; do
-  case "${flag}" in
-    i) indir="$OPTARG" ;;
-    o) outdir="$OPTARG" ;;
-    a) more_args="$OPTARG" ;;
-    h) Help && exit 0 ;;
-    \?) echo -e "\n## $0: ERROR: Invalid option -$OPTARG\n\n" >&2 && exit 1 ;;
-    :) echo -e "\n## $0: ERROR: Option -$OPTARG requires an argument\n\n" >&2 && exit 1 ;;
-  esac
+    case "${flag}" in
+        i) indir="$OPTARG" ;;
+        o) outdir="$OPTARG" ;;
+        a) more_args="$OPTARG" ;;
+        h) Help && exit 0 ;;
+        \?) echo -e "\n## $0: ERROR: Invalid option -$OPTARG\n\n" >&2 && exit 1 ;;
+        :) echo -e "\n## $0: ERROR: Option -$OPTARG requires an argument\n\n" >&2 && exit 1 ;;
+    esac
 done
 
 # SETUP ------------------------------------------------------------------------
@@ -62,11 +62,11 @@ source activate /fs/project/PAS0471/jelmer/conda/roary-3.13
 set -euo pipefail
 
 ## Report
-echo "## starting script roary.sh"
+echo "## Starting script roary.sh"
 date
 echo
-echo "Outdir:         $outdir"
-echo "Input:          $indir"
+echo "Input dir:          $indir"
+echo "Outdir dir:         $outdir"
 [[ $more_args != "" ]] && echo "## Other arguments to pass to Roary:    $more_args"
 echo -e "--------------------\n"
 
