@@ -1,3 +1,60 @@
+run_enrich <- function(
+  contrast,                # Comparison as specified in 'contrast' column in DE results
+  DE_direction = "either", # 'either', 'up' (LFC>0), or 'down' (LFC<0)
+  DE_res,                  # DE results df
+  cat_map,                 # Functional category to gene mapping
+  p_DE = 0.05,
+  lfc_DE = 0,
+  p_enrich = 0.05,
+  q_enrich = 0.2
+) {
+  fcontrast <- contrast
+  
+  ## Filter the DE results, if needed: only take up- or downregulated
+  if (DE_direction == "up") DE_res <- DE_res %>% filter(log2FoldChange > 0)
+  if (DE_direction == "down") DE_res <- DE_res %>% filter(log2FoldChange < 0)
+  
+  ## Create a vector with DEGs
+  DE_genes <- DE_res %>%
+    filter(padj < p_DE,
+           abs(log2FoldChange) > lfc_DE,
+           contrast == fcontrast) %>%
+    pull(gene_id)
+  
+  cat(fcontrast, " // DE Direction:", DE_direction, " // Nr DE genes: ", length(DE_genes))
+  
+  ## Run the enrichment analysis
+  if (length(DE_genes) > 1) {
+    enrich_res <- enricher(gene = DE_genes,
+                           TERM2GENE = cat_map,
+                           pAdjustMethod = "BH",
+                           pvalueCutoff = 1,
+                           qvalueCutoff = 1) %>%
+      as.data.frame(.) %>%
+      mutate(sig = ifelse(p.adjust < p_enrich & qvalue < q_enrich, 1, 0),
+             contrast = fcontrast,
+             DE_direction = DE_direction) %>%
+      select(contrast,
+             DE_direction,
+             category = ID,
+             numDEInCat = Count,
+             GeneRatio,
+             BgRatio,
+             p = pvalue,
+             padj = p.adjust,
+             sig,
+             description = Description,
+             gene_ids = geneID)
+    
+    row.names(enrich_res) <- NULL
+    
+    cat(" // Nr enriched pathways:", sum(enrich_res$sig), "\n")
+    return(enrich_res)
+  } else {
+    cat("\n")
+  }
+}
+
 ## Packages
 if (!require("ggforce", quietly = TRUE)) install.packages("ggforce")
 library(ggforce)
@@ -10,8 +67,7 @@ GO_wrap <- function(
                                      # with columns 'gene_id' and 'go_term'
   gene_lens,                         # Df with gene lengths,
                                      # with columns 'gene_id' and 'length'
-  DE_direction = "either",           # 'either' (= both together), 'up', 'down', or 'both' (= both separately)
-                                     # 'up' means LFC>0, 'down' means LFC<0
+  DE_direction = "either",           # 'either' (= both together), 'up' (LFC>0), or 'down' (LFC>0)
   min_in_cat = 2, max_in_cat = Inf,  # Min. & max. nr of total terms in GO category 
   min_DE_in_cat = 2,                 # Min. nr. DE genes in GO term for a term to be significant
   p_DE = 0.05,                       # Adj. p-value threshold for DE significance
@@ -20,98 +76,28 @@ GO_wrap <- function(
   filter_no_descrip = TRUE,          # Remove GO categories with no description
   rm_padj_na = TRUE,                 # Whether to remove genes with NA for `padj`
   ...
-  ) {
-  
+) {
   cat("\n-------------\nStarting analysis for contrast:", contrast_id, "\n")
   
-  if (DE_direction %in% c("either", "up", "down")) {
-    DE_vec <- get_DE_vec(contrast_id,
-                         DE_res,
-                         DE_direction = DE_direction,
-                         rm_padj_na = rm_padj_na,
-                         ...)
-    GO_df <- GO_run(contrast_id,
-                    DE_vec,
-                    GO_map,
-                    gene_lens,
-                    min_in_cat = min_in_cat,
-                    max_in_cat = max_in_cat,
-                    ontologies = ontologies)
-    
-  } else if (DE_direction == "both") {
-    ## Up
-    DE_vec <- get_DE_vec(contrast_id,
-                         DE_res,
-                         DE_direction = "up",
-                         rm_padj_na = rm_padj_na,
-                         ...)
-    GO_df <- GO_run(contrast_id,
-                    DE_vec,
-                    GO_map,
-                    gene_lens,
-                    DE_direction = "up",
-                    min_in_cat = min_in_cat,
-                    max_in_cat = max_in_cat,
-                    ontologies = ontologies)
-    
-    ## Down
-    DE_vec <- get_DE_vec(contrast_id,
-                         DE_res,
-                         DE_direction = "down",
-                         rm_padj_na = rm_padj_na,
-                         ...)
-    GO_df <- GO_run(contrast_id,
-                    DE_vec,
-                    GO_map,
-                    gene_lens,
-                    DE_direction = "down",
-                    min_in_cat = min_in_cat,
-                    max_in_cat = max_in_cat,
-                    ontologies = ontologies)
-    
-    ## Combine up and down
-    GO_df <- bind_rows(GO_df_up, GO_df_down)
-  } else {
-    stop("Error: DE_direction should be one of 'either', 'both', 'up', or 'down'")
-  }
+  DE_vec <- get_DE_vec(contrast_id,
+                       DE_res,
+                       DE_direction = DE_direction,
+                       rm_padj_na = rm_padj_na,
+                       ...)
+  
+  GO_df <- GO_run(contrast_id,
+                  DE_vec,
+                  GO_map,
+                  gene_lens,
+                  min_in_cat = min_in_cat,
+                  max_in_cat = max_in_cat,
+                  ontologies = ontologies)
   
   return(GO_df)
 }
 
-## Create named vector of DE genes (0s and 1s to indicate significane)
-get_DE_vec <- function(contrast_id,             # Focal comparison (contrast)
-                       DE_res,                  # DE results df from DESeq2
-                       DE_direction = "either", # either / both / up / down
-                       rm_padj_na = TRUE,       # Whether to remove genes with NA for `padj`
-                       p_DE = 0.05,             # padj threshold for DE
-                       lfc_DE = 0) {            # LFC threshold for DE
-  
-  if (DE_direction == "up") DE_res <- DE_res %>% filter(log2FoldChange > 0)
-  if (DE_direction == "down") DE_res <- DE_res %>% filter(log2FoldChange < 0)
-  
-  ## Create df for focal contrast, indicate which genes are significant
-  fDE <- DE_res %>%
-    filter(contrast == contrast_id) %>% # Select focal contrast
-    mutate(sig = ifelse(padj < p_DE & abs(log2FoldChange) > lfc_DE, 1, 0)) %>%
-    arrange(gene_id)
-  cat("- Nr unique genes in DE results:", length(unique(fDE$gene_id)), "\n")
-  
-  # Exclude genes with NA adj-p-val - those were not tested
-  if (rm_padj_na == TRUE) {
-    fDE <- fDE %>% filter(!is.na(padj))
-    cat("- Nr unique genes after removing those with NA for padj:",
-        length(unique(fDE$gene_id)), "\n")
-  } else {
-    fDE <- fDE %>% mutate(sig = ifelse(is.na(sig), 0, 1))
-  }
-
-  DE_vec <- fDE$sig
-  names(DE_vec) <- fDE$gene_id
-  
-  return(DE_vec)
-}
-
 ## Function to run a GO analysis with goseq
+## (Helper function, use GO_wrap to run the analysis)
 GO_run <- function(contrast_id, DE_vec, GO_map, gene_lens,
                    DE_direction = "either",
                    min_in_cat = 2, max_in_cat = Inf,
@@ -174,10 +160,45 @@ GO_run <- function(contrast_id, DE_vec, GO_map, gene_lens,
         "\n")
     
     return(GO_df)
-  
+    
   } else {
     cat("Contrast:", contrast_id, " -- 0 or 1 significant DE genes, skipping GO analysis\n")
   }
+}
+
+## Create named vector of DE genes (0s and 1s to indicate significance)
+## for goseq analysis
+## (Helper function, use GO_wrap to run the analysis)
+get_DE_vec <- function(contrast_id,             # Focal comparison (contrast)
+                       DE_res,                  # DE results df from DESeq2
+                       DE_direction = "either", # either / both / up / down
+                       rm_padj_na = TRUE,       # Whether to remove genes with NA for `padj`
+                       p_DE = 0.05,             # padj threshold for DE
+                       lfc_DE = 0) {            # LFC threshold for DE
+  
+  if (DE_direction == "up") DE_res <- DE_res %>% filter(log2FoldChange > 0)
+  if (DE_direction == "down") DE_res <- DE_res %>% filter(log2FoldChange < 0)
+  
+  ## Create df for focal contrast, indicate which genes are significant
+  fDE <- DE_res %>%
+    filter(contrast == contrast_id) %>% # Select focal contrast
+    mutate(sig = ifelse(padj < p_DE & abs(log2FoldChange) > lfc_DE, 1, 0)) %>%
+    arrange(gene_id)
+  cat("- Nr unique genes in DE results:", length(unique(fDE$gene_id)), "\n")
+  
+  # Exclude genes with NA adj-p-val - those were not tested
+  if (rm_padj_na == TRUE) {
+    fDE <- fDE %>% filter(!is.na(padj))
+    cat("- Nr unique genes after removing those with NA for padj:",
+        length(unique(fDE$gene_id)), "\n")
+  } else {
+    fDE <- fDE %>% mutate(sig = ifelse(is.na(sig), 0, 1))
+  }
+  
+  DE_vec <- fDE$sig
+  names(DE_vec) <- fDE$gene_id
+  
+  return(DE_vec)
 }
 
 ## Function to plot the GO results
@@ -215,7 +236,7 @@ GO_plot <- function(GO_res, contrasts,
     mutate(description = paste0(category, " - ", description),
            description = str_trunc(description, width = 45),
            description = ifelse(is.na(description), category, description))
-           #description = fct_inorder(description))
+  #description = fct_inorder(description))
   
   p <- ggplot(GO_sel) +
     aes(x = .data[[x_var]],
@@ -249,10 +270,11 @@ GO_plot <- function(GO_res, contrasts,
                         scales = "free_y", space = "free_y",
                         switch = "y")
   }
-
+  
   ## Add x-axis label
   if (!is.null(xlabs)) p <- p + scale_x_discrete(labels = xlabs)
-
+  
   ## Print the final figure
   print(p)
 }
+
