@@ -1,13 +1,21 @@
+## Packages
+if (!require("ggforce", quietly = TRUE)) install.packages("ggforce")
+library(ggforce)
+
+
+# CLUSTERPROFILER FUNCTIONS ----------------------------------------------------
 run_enrich <- function(
   contrast,                # Comparison as specified in 'contrast' column in DE results
   DE_direction = "either", # 'either', 'up' (LFC>0), or 'down' (LFC<0)
   DE_res,                  # DE results df
-  cat_map,                 # Functional category to gene mapping
-  p_DE = 0.05,
-  lfc_DE = 0,
-  p_enrich = 0.05,
-  q_enrich = 0.2
+  cat_map,                 # Functional category to gene mapping with columns: 1:category, 2:gene_id, and optionally 3:description
+  p_DE = 0.05,             # Adj. pvalue threshold for DE
+  lfc_DE = 0,              # LFC threshold for DE
+  p_enrich = 0.05,         # Adj. pvalue threshold for enrichment
+  q_enrich = 0.2,          # Q value threshold for enrichment
+  filter_no_descrip = TRUE # Remove pathways with no description
 ) {
+  
   fcontrast <- contrast
   
   ## Filter the DE results, if needed: only take up- or downregulated
@@ -21,12 +29,23 @@ run_enrich <- function(
            contrast == fcontrast) %>%
     pull(gene_id)
   
+  ## Report
   cat(fcontrast, " // DE Direction:", DE_direction, " // Nr DE genes: ", length(DE_genes))
+  
+  ## Prep term mappings
+  term2gene <- cat_map[, 1:2]
+  if (ncol(cat_map > 2)) {
+    term2name <- cat_map[, c(1, 3)]
+    if (filter_no_descrip == TRUE) term2name <- term2name[!is.na(term2name[[2]]), ]
+  } else {
+    term2name <- NA
+  }
   
   ## Run the enrichment analysis
   if (length(DE_genes) > 1) {
     enrich_res <- enricher(gene = DE_genes,
-                           TERM2GENE = cat_map,
+                           TERM2GENE = term2gene,
+                           TERM2NAME = term2name,
                            pAdjustMethod = "BH",
                            pvalueCutoff = 1,
                            qvalueCutoff = 1) %>%
@@ -55,10 +74,8 @@ run_enrich <- function(
   }
 }
 
-## Packages
-if (!require("ggforce", quietly = TRUE)) install.packages("ggforce")
-library(ggforce)
 
+# GOSEQ PACKAGE FUNCTIONS ------------------------------------------------------
 ## GO analysis wrapper function
 GO_wrap <- function(
   contrast_id,                       # A DE contrast as specified in the 'contrast' column in the 'DE_res' df
@@ -201,27 +218,35 @@ get_DE_vec <- function(contrast_id,             # Focal comparison (contrast)
   return(DE_vec)
 }
 
+
+# PLOTTING FUNCTIONS -----------------------------------------------------------
 ## Function to plot the GO results
-GO_plot <- function(GO_res, contrasts,
-                    DE_directions = c("up", "down", "either"),
-                    x_var = "contrast", facet_var = NULL,
-                    label_count = TRUE, label_count_size = 2,
-                    xlabs = NULL, ylabsize = 9,
-                    title = NULL) {
+enrich_plot <- function(
+  enrich_res,
+  contrasts,
+  DE_directions = c("up", "down", "either"),
+  plot_ontologies = TRUE,
+  x_var = "contrast",
+  facet_var = NULL,
+  label_count = TRUE,
+  label_count_size = 2,
+  xlabs = NULL,
+  ylabsize = 9,
+  title = NULL
+  ) {
   
   vars <- c("category", "ontology", "description",
             "contrast", "DE_direction", "padj")
   
-  GO_sel <- GO_res %>%
+  enrich_sel <- enrich_res %>%
     select(any_of(vars)) %>%
     filter(contrast %in% contrasts,
            DE_direction %in% DE_directions) %>%
-    #select(any_of(vars)) %>%
     ## Pivot wider and then longer to include all terms in all contrasts
     pivot_wider(names_from = contrast, values_from = padj) %>%
     pivot_longer(cols = any_of(contrasts),
                  names_to = "contrast", values_to = "padj") %>%
-    left_join(GO_res %>% select(contrast, category, DE_direction, numDEInCat, sig),
+    left_join(enrich_res %>% select(contrast, category, DE_direction, numDEInCat, sig),
               by = c("contrast", "category", "DE_direction")) %>%
     ## No labels if not significant
     mutate(numDEInCat = ifelse(padj >= 0.05, NA, numDEInCat)) %>%
@@ -236,9 +261,8 @@ GO_plot <- function(GO_res, contrasts,
     mutate(description = paste0(category, " - ", description),
            description = str_trunc(description, width = 45),
            description = ifelse(is.na(description), category, description))
-  #description = fct_inorder(description))
   
-  p <- ggplot(GO_sel) +
+  p <- ggplot(enrich_sel) +
     aes(x = .data[[x_var]],
         y = str_trunc(description, width = 40),
         fill = padj_log) +
@@ -256,19 +280,27 @@ GO_plot <- function(GO_res, contrasts,
           strip.text = element_text(face = "bold"),
           plot.title = element_text(hjust = 0.5))
   
-  ## Add a count of the nr of DE genes in each GO category
+  ## Add a count of the nr of DE genes in each category
   if (label_count == TRUE)
     p <- p + geom_label(aes(label = numDEInCat),
                         fill = "grey95", size = label_count_size)
   
   ## Faceting - ggforce::facet_col will keep tile heights constant
-  if (is.null(facet_var)) {
-    p <- p + facet_col(vars(ontology), scales = "free_y", space = "free")
+  if (plot_ontologies == TRUE) {
+    if (is.null(facet_var)) {
+      p <- p + facet_col(vars(ontology), scales = "free_y", space = "free")
+    } else {
+      p <- p + facet_grid(rows = vars(ontology),
+                          cols = vars(!!sym(facet_var)),
+                          scales = "free_y", space = "free_y",
+                          switch = "y")
+    }
   } else {
-    p <- p + facet_grid(rows = vars(ontology),
-                        cols = vars(!!sym(facet_var)),
-                        scales = "free_y", space = "free_y",
-                        switch = "y")
+    if (!is.null(facet_var)) {
+      p <- p + facet_grid(cols = vars(!!sym(facet_var)),
+                          scales = "free_y", space = "free_y",
+                          switch = "y")
+    }
   }
   
   ## Add x-axis label
@@ -278,3 +310,105 @@ GO_plot <- function(GO_res, contrasts,
   print(p)
 }
 
+## GO dotplot
+GO_dotplot <- function(df, type = "GO") {
+  
+  if (type == "GO") group_by <- "ontology" else group_by <- NULL 
+  
+  p <- ggdotchart(df,
+                  x = "description", y = "padj_log",
+                  color = "padj_log",
+                  sorting = "descending",                       # Sort value in descending order
+                  add = "segments",                             # Add segments from y = 0 to dots
+                  rotate = TRUE,                                # Rotate vertically
+                  #group = group_by,                             # Order by groups
+                  dot.size = 5,                                 # Large dot size
+                  label = "numDEInCat",                         # Add nr DE genes as dot labels
+                  font.label = list(color = "white", size = 9, vjust = 0.5),
+                  ggtheme = theme_bw()) +                       # ggplot2 theme
+    labs(y = "-log10(adj. p-value)", x = NULL) +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+    scale_color_viridis_c(option = "D", na.value = "grey95") +
+    theme(plot.margin = margin(0.5, 0.5, 0.5, 0.5, unit = "cm"),
+          plot.title = element_text(size = 15, face = "bold"),
+          strip.text.y = element_text(angle = 270, face = "bold"),
+          strip.placement = "outside",
+          axis.title.x = element_text(margin = margin(t = 0.5, b = 0.5, unit = "cm")),
+          axis.title.y = element_blank(),
+          axis.text.x = element_text(size = 9),
+          axis.text.y = element_text(size = 8),
+          legend.position = "none",
+          panel.grid.major.y = element_blank(),
+          panel.grid.minor.x = element_blank())
+  
+  if (type == "GO") {
+    p <- p + facet_grid(ontology~contrast, space = "free", scales = "free")
+  } else if (type == "KEGG") {
+    p <- p + facet_wrap(vars(contrast), scales = "free_x", nrow = 1)
+  }
+  
+  print(p)
+}
+
+
+# KEGG DATABASE FUNCTIONS ------------------------------------------------------
+
+## Function to get the description (technically: 'Name') of a KEGG pathway,
+## given its pathway ID ('ko' or 'map' IDs).
+## Needs tryCatch because come IDs fail (example of a failing pathway ID: "ko01130"),
+## and the function needs to keep running.
+## Use like: `pw_descrip <- map_dfr(.x = kegg_ids, .f = kegg_descrip)`
+get_kegg_descrip <- function(kegg_pathway) {
+  message(kegg_pathway)
+  tryCatch( {
+    description <- keggGet(kegg_pathway)[[1]]$NAME
+    return(data.frame(kegg_pathway, description))
+  }, error = function(cond) {
+    message("keggGet failure")
+    return(NULL)
+  }
+  )
+}
+
+## Get the genes belonging to a certain KEGG pathway
+get_pw_genes <- function(pathway_id) {
+  print(pathway_id)
+  
+  pw <- keggGet(pathway_id)
+  if (is.null(pw[[1]]$GENE)) return(NA)
+  pw2 <- pw[[1]]$GENE[c(TRUE, FALSE)]
+  pw2 <- unlist(lapply(strsplit(pw2, split = ";", fixed = TRUE),
+                       function(x) x[1]))
+  
+  return(pw2)
+}
+
+## Function to get a KEGG pathway (ko-ID) associated with a KEGG K-term
+get_pathway <- function(K_term, outdir) {
+  # K_term <- "K13449"
+  cat("K_term:", K_term, " ")
+  
+  tryCatch(
+    {
+      kegg_info <- keggGet(K_term)
+      pathway_df <- data.frame(pathway_description = kegg_info[[1]]$PATHWAY) %>%
+        rownames_to_column("pathway_id") %>%
+        mutate("K_term" = K_term)
+      
+      cat(" Nr of pathways:", nrow(pathway_df), "\n")
+      
+      if(nrow(pathway_df) > 0) {
+        pathway_df_file <- file.path(outdir, paste0(K_term, ".txt"))
+        write_tsv(pathway_df, pathway_df_file)
+        return(pathway_df)
+      } else {
+        return(NULL)
+      }
+    },
+    error = function(cond) {
+      message("keggGet failure")
+      message(cond)
+      return(NULL)
+    }
+  )
+}
