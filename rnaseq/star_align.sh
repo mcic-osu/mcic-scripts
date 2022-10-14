@@ -81,7 +81,7 @@ done
 # SETUP ---------------------------------------------------------------------
 ## Load software
 module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/.conda/envs/star-env      # NOTE: This env includes samtools
+source activate /fs/project/PAS0471/jelmer/conda/star-2.7.10a      # NOTE: This env includes samtools
 
 ## Bash strict mode
 set -euo pipefail

@@ -53,7 +53,7 @@ done
 # SETUP ------------------------------------------------------------------------
 ## Software
 module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/.conda/envs/trimgalore-env
+source activate /fs/project/PAS0471/jelmer/conda/trimgalore-0.6.7
 
 ## Bash strict settings
 set -euo pipefail

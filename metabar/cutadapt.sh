@@ -8,35 +8,40 @@
 ## Help function
 Help() {
     echo
-    echo "## $0: Run Cutadapt for a single pair of FASTQ files."
+    echo "=================================================================================================="
+    echo "$0: Run Cutadapt to remove metabarcoding primers for a single pair of FASTQ files"
+    echo "=================================================================================================="
     echo
-    echo "## Syntax: $0 -i <input-R1-FASTQ> -o <output-dir> ..."
+    echo "USAGE:"
+    echo "------------------"
+    echo "$0 -i <input-R1-FASTQ> -o <output-dir> [ -f <fwd-primer> -r <rev-primer | -p <primer-file> ] ..."
     echo
-    echo "## Required options:"
-    echo "## -i STR     Input R1 FASTQ file (corresponding R2 will be inferred)"
-    echo "## -o STR     Output dir"
+    echo "REQUIRED OPTIONS:"
+    echo "------------------"
+    echo "  -i FILE          Input R1 FASTQ file (corresponding R2 will be inferred)"
+    echo "  -o DIR           Output dir (will be created if needed)"
+    echo "  NOTE: You should also provide either a pair of primer sequences or a file with primers sequences, see below"
     echo
-    echo "## Other options:"
-    echo "## -f STR     Forward primer sequence"
-    echo "## -r STR     Reverse primer sequence"
-    echo "## -p STR     File with primer sequences, one pair per line"
-    echo "## -d         Don't discard untrimmed sequences (default: discard)"
-    echo "## -h         Print this help message"
+    echo "OTHER OPTIONS:"
+    echo "------------------"
+    echo "  -f STR          Forward primer sequence (use in combination with -r)"
+    echo "  -r STR          Reverse primer sequence (use in combination with -f)"
+    echo "  -p STR          File with primer sequences, one pair per line (alternative to using -f and -r)"
+    echo "  -d              Don't discard untrimmed sequences (default: discard)"
+    echo "  -h              Print this help message and exit"
     echo
-    echo "## Example: $0 -i data/sample1_R1.fastq.gz -o results/cutadapt -f GAGTGYCAGCMGCCGCGGTAA -r ACGGACTACNVGGGTWTCTAAT"
-    echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
+    echo "EXAMPLE COMMAND:"
+    echo "------------------"
+    echo "sbatch $0 -i data/sample1_R1.fastq.gz -o results/cutadapt -f GAGTGYCAGCMGCCGCGGTAA -r ACGGACTACNVGGGTWTCTAAT"
     echo
-    echo "## When you have multiple primer pairs, specify a primer file with -p."
-    echo "## The script will compute and use the reverse complements of both primers."
+    echo "NOTES:"
+    echo "------------------"
+    echo "- When you have multiple primer pairs, specify a primer file with -p."
+    echo "- The script will compute and use the reverse complements of both primers."
     echo
 }
 
 # SETUP ------------------------------------------------------------------------
-## Report
-echo -e "\n## Starting script cutadapt.sh"
-date
-echo
-
 ## Load software
 module load python/3.6-conda5.2  # Load OSC conda module
 source activate /users/PAS0471/osu5685/.conda/envs/cutadaptenv # Activate cutadapt environment
@@ -55,15 +60,15 @@ primer_file=false
 ## Parse command-line options
 while getopts ':i:o:f:r:p:dh' flag; do
     case "${flag}" in
-    i) R1_in="$OPTARG" ;;
-    o) outdir="$OPTARG" ;;
-    f) primer_f="$OPTARG" ;;
-    r) primer_r="$OPTARG" ;;
-    d) discard_untrimmed=false ;;
-    p) primer_file="$OPTARG" ;;
-    h) Help && exit 0 ;;
-    \?) echo "## $0: ERROR: Invalid option" >&2 && exit 1 ;;
-    :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
+        i) R1_in="$OPTARG" ;;
+        o) outdir="$OPTARG" ;;
+        f) primer_f="$OPTARG" ;;
+        r) primer_r="$OPTARG" ;;
+        d) discard_untrimmed=false ;;
+        p) primer_file="$OPTARG" ;;
+        h) Help && exit 0 ;;
+        \?) echo "## $0: ERROR: Invalid option" >&2 && exit 1 ;;
+        :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
     esac
 done
 
@@ -75,15 +80,20 @@ n_cores=$SLURM_CPUS_PER_TASK
 [[ $outdir = "" ]] && echo "## $0: ERROR: No output dir (-o) provided" >&2 && exit 1
 
 ## Report
-echo "## Input FASTQ file R1 (-i):   $R1_in"
-echo "## Output dir (-o):            $outdir"
+echo -e "\n=========================================================================="
+echo "## STARTING SCRIPT CUTADAPT.SH"
+date
+echo -e "==========================================================================\n"
+date
+echo
+echo "## Input FASTQ file R1 (-i):          $R1_in"
+echo "## Output dir (-o):                   $outdir"
 echo
 
 ## Get primers
 primer_arg=""
 
 if [ "$primer_file" = "false" ]; then
-
     echo "## Using forward and reverse primers provided as arguments..."
 
     [[ $primer_f = "" ]] && echo "## $0: ERROR: No forward primer (-f) provided" >&2 && exit 1
@@ -94,8 +104,8 @@ if [ "$primer_file" = "false" ]; then
 
     primer_arg="-a $primer_f...$primer_r_rc -A $primer_r...$primer_f_rc"
 
-    echo "## Forward primer (-f): $primer_f"
-    echo "## Reverse primer (-r): $primer_r"
+    echo "## Forward primer (-f):                 $primer_f"
+    echo "## Reverse primer (-r):                 $primer_r"
     echo "## Forward primer - reverse complement: $primer_f_rc"
     echo "## Reverse primer - reverse complement: $primer_r_rc"
 
@@ -110,8 +120,8 @@ else
         primer_r_rc=$(echo "$primer_r" | tr ATCGYRKMBDHV TAGCRYMKVHDB | rev)
 
         echo
-        echo "## Forward primer (-f): $primer_f"
-        echo "## Reverse primer (-r): $primer_r"
+        echo "## Forward primer (-f):                 $primer_f"
+        echo "## Reverse primer (-r):                 $primer_r"
         echo "## Forward primer - reverse complement: $primer_f_rc"
         echo "## Reverse primer - reverse complement: $primer_r_rc"
 
@@ -141,9 +151,9 @@ R2_basename=$(basename "$R2_in")
 sample_id=${R1_basename%%_R1}
 
 ## Report
-echo "## Input FASTQ file R2 (inferred): $R2_in"
-echo "## Primer argument: $primer_arg"
-echo "## Discard untrimmed (-d): $discard_untrimmed"
+echo "## Input FASTQ file R2 (inferred):    $R2_in"
+echo "## Primer argument:                   $primer_arg"
+echo "## Discard untrimmed (-d):            $discard_untrimmed"
 echo -e "-----------------------------\n"
 
 ## Test input
@@ -157,8 +167,8 @@ mkdir -p "$outdir"
 
 # RUN CUTADAPT --------------------------------------------------------
 echo "## Running cutadapt..."
-
-cutadapt $primer_arg $options \
+cutadapt \
+    $primer_arg $options \
     --cores "$n_cores" \
     --output "$outdir"/"$R1_basename" \
     --paired-output "$outdir"/"$R2_basename" \
@@ -166,9 +176,12 @@ cutadapt $primer_arg $options \
 
 
 # REPORT AND FINALIZE --------------------------------------------------------
-echo -e "\n## Listing output files:"
+echo
+echo "## Listing output files:"
 ls -lh "$outdir"/"$sample_id"*
-
-echo -e "\n## Done with script cutadapt.sh."
+echo
+echo "## Done with script cutadapt.sh"
 date
+echo
+sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
 echo

@@ -11,31 +11,31 @@
 # PARSE OPTIONS ----------------------------------------------------------------
 ## Help function
 Help() {
-  echo
-  echo "$0: Index a reference genome FASTA file with STAR."
-  echo
-  echo "Syntax: $0 -i <input-FASTA> -o <output-dir> ..."
-  echo
-  echo "Required options:"
-  echo "   -i FILE        Input reference FASTA file"
-  echo "   -o DIR         Output directory for index files (will be created if needed)"
-  echo
-  echo "Other options:"
-  echo "   -a FILE        Reference annotation (GFF/GTF) file [default: no GFF/GTF, but this is not recommended]"
-  echo "   -s INTEGER     Index size                          [default: 'auto' => automatically determined from genome size]"
-  echo "   -r INTEGER     Read length                         [default: '150' (bp)]"
-  echo "   -v INTEGER     Overhang                            [default: 'auto' => read length minus 1]"
-  echo "                  (Note: overhang only applies if GFF/GTF file is provided!)"
-  echo "   -h             Print this help message and exit"
-  echo
-  echo "Example:       $0 -i refdata/my_genome.fa -o refdata/star_index -a refdata/my_genome.gff"
-  echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
-  echo
-  echo "Note: the script will check how much memory has been allocated to the SLURM job (default: 64GB),"
-  echo "      and pass that to STAR via the 'limitGenomeGenerateRAM argument'."
-  echo "      When allocating more memory to the SLURM job,"
-  echo "      wich can be necessary for large genomes, this will therefore be passed to STAR as well."
-  echo
+    echo
+    echo "$0: Index a reference genome FASTA file with STAR."
+    echo
+    echo "Syntax: $0 -i <input-FASTA> -o <output-dir> ..."
+    echo
+    echo "Required options:"
+    echo "   -i FILE        Input reference FASTA file"
+    echo "   -o DIR         Output directory for index files (will be created if needed)"
+    echo
+    echo "Other options:"
+    echo "   -a FILE        Reference annotation (GFF/GTF) file [default: no GFF/GTF, but this is not recommended]"
+    echo "   -s INTEGER     Index size                          [default: 'auto' => automatically determined from genome size]"
+    echo "   -r INTEGER     Read length                         [default: '150' (bp)]"
+    echo "   -v INTEGER     Overhang                            [default: 'auto' => read length minus 1]"
+    echo "                  (Note: overhang only applies if GFF/GTF file is provided!)"
+    echo "   -h             Print this help message and exit"
+    echo
+    echo "Example:       $0 -i refdata/my_genome.fa -o refdata/star_index -a refdata/my_genome.gff"
+    echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
+    echo
+    echo "Note: the script will check how much memory has been allocated to the SLURM job (default: 64GB),"
+    echo "      and pass that to STAR via the 'limitGenomeGenerateRAM argument'."
+    echo "      When allocating more memory to the SLURM job,"
+    echo "      wich can be necessary for large genomes, this will therefore be passed to STAR as well."
+    echo
 }
 
 ## Option defaults
@@ -69,7 +69,7 @@ done
 
 ## Load software
 module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/.conda/envs/star-env
+source activate /fs/project/PAS0471/jelmer/conda/star-2.7.10a
 
 ## Strict bash settings
 set -euo pipefail

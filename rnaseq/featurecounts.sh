@@ -57,7 +57,7 @@ done
 # SETUP ------------------------------------------------------------------------
 ## Load software
 module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/.conda/envs/subread-env
+source activate /fs/project/PAS0471/jelmer/conda/subread-2.0.1
 MULTIQC_ENV=/fs/project/PAS0471/jelmer/conda/multiqc-1.12
 
 ## Strict bash settings
