@@ -65,6 +65,15 @@ set -euo pipefail
 R1_list=$(echo "$indir"/*R1*fastq.gz | sed 's/ /,/g')
 R2_list=$(echo "$indir"/*R2*fastq.gz | sed 's/ /,/g')
 
+## Get nr of threads
+set +u
+if [[ -z "$SLURM_CPUS_PER_TASK" ]]; then
+    n_threads="$SLURM_NTASKS"
+else
+    n_threads="$SLURM_CPUS_PER_TASK"
+fi
+set -u
+
 ## Report
 echo -e "\n## Starting script rcorrector.sh"
 date
@@ -75,6 +84,7 @@ echo "## List of R1 files:    $R1_list"
 echo "## List of R2 files:    $R2_list"
 echo
 echo "## Start at step:       $start_at_step"
+echo "## Nr of threads:       $n_threads"
 echo -e "--------------------------\n"
 
 ## Create output dirs if needed
@@ -83,7 +93,7 @@ mkdir -p "$outdir"
 
 # RUN RCORRECTOR ---------------------------------------------------------------
 run_rcorrector.pl \
-    -t "$SLURM_CPUS_PER_TASK" \
+    -t "$n_threads" \
     -od "$outdir" \
     -stage "$start_at_step" \
     -1 "$R1_list" -2 "$R2_list"
