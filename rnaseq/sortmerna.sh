@@ -89,6 +89,15 @@ R2_unmapped="$outdir"/unmapped/"$sampleID"_R2_001.fastq.gz
 ref_18s="$repo_dir"/data/rRNA_databases/silva-euk-18s-id95.fasta
 ref_28s="$repo_dir"/data/rRNA_databases/silva-euk-28s-id98.fasta
 
+## Get number of threads
+set +u
+if [[ -z "$SLURM_CPUS_PER_TASK" ]]; then
+    n_threads="$SLURM_NTASKS"
+else
+    n_threads="$SLURM_CPUS_PER_TASK"
+fi
+set -u
+
 ## Report
 echo "## Starting script sortmerna.sh"
 date
@@ -136,7 +145,7 @@ sortmerna \
     --other "$out_unmapped_raw" \
     --workdir "$outdir_full" \
     --paired_in \
-    --threads "$SLURM_CPUS_PER_TASK"
+    --threads "$n_threads"
 
 #?--paired_in Flags the paired-end reads as Aligned, when either of them is Aligned.
 

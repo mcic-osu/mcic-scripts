@@ -11,6 +11,7 @@ run_enrich <- function(
   cat_map,                 # Functional category to gene mapping with columns: 1:category, 2:gene_id, and optionally 3:description
   p_DE = 0.05,             # Adj. pvalue threshold for DE
   lfc_DE = 0,              # LFC threshold for DE
+  min_DE_in_cat = 2,       # Min. nr. DE genes in GO term for a term to be significant
   p_enrich = 0.05,         # Adj. pvalue threshold for enrichment
   q_enrich = 0.2,          # Q value threshold for enrichment
   filter_no_descrip = TRUE # Remove pathways with no description
@@ -30,11 +31,12 @@ run_enrich <- function(
     pull(gene_id)
   
   ## Report
-  cat(fcontrast, " // DE Direction:", DE_direction, " // Nr DE genes: ", length(DE_genes))
+  cat(fcontrast, " // DE Direction:", DE_direction,
+      " // Nr DE genes: ", length(DE_genes))
   
   ## Prep term mappings
   term2gene <- cat_map[, 1:2]
-  if (ncol(cat_map > 2)) {
+  if (ncol(cat_map) > 2) {
     term2name <- cat_map[, c(1, 3)]
     if (filter_no_descrip == TRUE) term2name <- term2name[!is.na(term2name[[2]]), ]
   } else {
@@ -50,7 +52,10 @@ run_enrich <- function(
                            pvalueCutoff = 1,
                            qvalueCutoff = 1) %>%
       as.data.frame(.) %>%
-      mutate(sig = ifelse(p.adjust < p_enrich & qvalue < q_enrich, 1, 0),
+      mutate(sig = ifelse(p.adjust < p_enrich &
+                            qvalue < q_enrich &
+                            Count >= min_DE_in_cat,
+                          1, 0),
              contrast = fcontrast,
              DE_direction = DE_direction) %>%
       select(contrast,
@@ -77,8 +82,8 @@ run_enrich <- function(
 
 # GOSEQ PACKAGE FUNCTIONS ------------------------------------------------------
 ## GO analysis wrapper function
-GO_wrap <- function(
-  contrast_id,                       # A DE contrast as specified in the 'contrast' column in the 'DE_res' df
+run_GO <- function(
+  contrast,                          # A DE contrast as specified in the 'contrast' column in the 'DE_res' df
   DE_res,                            # Df with DE results from DESeq2
   GO_map,                            # Df with one GOterm-to-gene relation per row,
                                      # with columns 'gene_id' and 'go_term'
@@ -92,53 +97,78 @@ GO_wrap <- function(
   ontologies = c("BP", "MF", "CC"),  # GO ontologies to consider
   filter_no_descrip = TRUE,          # Remove GO categories with no description
   rm_padj_na = TRUE,                 # Whether to remove genes with NA for `padj`
+  verbose = FALSE,
   ...
 ) {
-  cat("\n-------------\nStarting analysis for contrast:", contrast_id, "\n")
   
-  DE_vec <- get_DE_vec(contrast_id,
-                       DE_res,
-                       DE_direction = DE_direction,
-                       rm_padj_na = rm_padj_na,
-                       ...)
+  if (verbose == TRUE) {
+    cat("\n-------------\nStarting analysis for contrast:", contrast, "\n")
+  }
   
-  GO_df <- GO_run(contrast_id,
-                  DE_vec,
-                  GO_map,
-                  gene_lens,
-                  min_in_cat = min_in_cat,
-                  max_in_cat = max_in_cat,
-                  ontologies = ontologies)
+DE_vec <- get_DE_vec(
+    contrast,
+    DE_res,
+    DE_direction = DE_direction,
+    rm_padj_na = rm_padj_na,
+    verbose = verbose,
+    ...
+  )
+  
+  GO_df <- run_GO_internal(
+    contrast,
+    DE_vec,
+    GO_map,
+    gene_lens,
+    DE_direction,
+    min_DE_in_cat = min_DE_in_cat, 
+    min_in_cat = min_in_cat,
+    max_in_cat = max_in_cat,
+    ontologies = ontologies,
+    filter_no_descrip = filter_no_descrip,
+    verbose = verbose
+  )
   
   return(GO_df)
 }
 
 ## Function to run a GO analysis with goseq
 ## (Helper function, use GO_wrap to run the analysis)
-GO_run <- function(contrast_id, DE_vec, GO_map, gene_lens,
-                   DE_direction = "either",
-                   min_in_cat = 2, max_in_cat = Inf,
-                   min_DE_in_cat = 2,
-                   ontologies = c("BP", "MF", "CC"),
-                   filter_no_descrip = TRUE) {
+run_GO_internal <- function(
+  contrast, DE_vec, GO_map, gene_lens,
+  DE_direction = "either",
+  min_in_cat = 2,
+  max_in_cat = Inf,
+  min_DE_in_cat = 2,
+  ontologies = c("BP", "MF", "CC"),
+  filter_no_descrip = TRUE,
+  verbose = FALSE
+  ) {
   
-  if (sum(DE_vec >= 2)) {
+  if (verbose == TRUE) {
+    message("GO analysis settings:")
+    message("   - min_in_cat: ", min_in_cat, "  // max_in_cat: ", max_in_cat)
+    message("   - min_DE_in_cat: ", min_DE_in_cat)
+    message("   - Ontologies: ", ontologies)
+    message("   - Filter GO cats with no description: ", filter_no_descrip)
+  }
+  
+  if (sum(DE_vec) >= 2) {
     ## Remove rows from gene length df not in the DE_vec
     fgene_lens <- gene_lens %>% filter(gene_id %in% names(DE_vec))
     if (nrow(fgene_lens) == 0) stop("Error: no rows left in gene length df, gene_id's likely don't match!")
-    cat("- Nr genes removed from gene length df (no matching gene in DE vector):",
-        nrow(gene_lens) - nrow(fgene_lens), "\n")
+    n_removed <- nrow(gene_lens) - nrow(fgene_lens)
+    if (verbose == TRUE) message("- Nr genes removed from gene length df (not in DE vector): ", n_removed)
     
     ## Remove elements from DE_vec not among the gene lengths
     fDE_vec <- DE_vec[fgene_lens$gene_id %in% names(DE_vec)]
     if (length(fDE_vec) == 0) stop("Error: no entries left in DE vector, gene_id's likely don't match!")
-    cat("- Nr genes removed from DE vector (no matching gene in gene length df):",
-        length(DE_vec) - length(fDE_vec), "\n")
-    cat("- Final length of DE vector:", length(fDE_vec), "\n")
+    n_removed <- length(DE_vec) - length(fDE_vec)
+    if (verbose == TRUE) message("- Nr genes removed from DE vector (not in gene length df): ", n_removed)
+    if (verbose == TRUE) message("- Final length of DE vector: ", length(fDE_vec))
     
     ## Check nr of genes with GO annotations
     ngenes_go <- length(intersect(GO_map$gene_id, names(fDE_vec)))
-    cat("- Nr genes in DE vector with GO annotations:", ngenes_go, "\n")
+    if (verbose == TRUE) message("- Nr genes in DE vector with GO annotations: ", ngenes_go)
     
     ## Check that gene lengths and contrast vector contain the same genes in the same order
     stopifnot(all(fgene_lens$gene_id == names(fDE_vec)))
@@ -149,72 +179,89 @@ GO_run <- function(contrast_id, DE_vec, GO_map, gene_lens,
                  plot.fit = FALSE, genome = NULL, id = NULL)
     
     ## Run GO test
-    GO_df <- goseq(pwf = pwf, gene2cat = GO_map, method = "Wallenius")
+    GO_df <- suppressMessages(
+      goseq(pwf = pwf, gene2cat = GO_map, method = "Wallenius")
+    )
     
     ## Process GO results
-    GO_df <- GO_df %>%
-      filter(numDEInCat >= min_DE_in_cat,    # P-adjustment only for genes that were actually tested
-             numInCat >= min_in_cat,         # Exclude very small categories
-             numInCat <= max_in_cat,         # Exclude very large categories
-             ontology %in% ontologies)       # Only select certain ontologies
+    GO_df <- GO_df %>% filter(numDEInCat >= min_DE_in_cat)
+    GO_df <- GO_df %>% filter(numInCat >= min_in_cat)
+    GO_df <- GO_df %>% filter(numInCat <= max_in_cat)
+    GO_df <- GO_df %>% filter(ontology %in% ontologies)
     if (filter_no_descrip == TRUE) GO_df <- GO_df %>% filter(!is.na(term))
     
     GO_df <- GO_df %>%
       mutate(padj = p.adjust(over_represented_pvalue, method = "BH"),
              sig = ifelse(padj < 0.05 & numDEInCat >= min_DE_in_cat, 1, 0),
-             contrast = contrast_id,
+             contrast = contrast,
              DE_direction = DE_direction) %>%
       select(contrast, DE_direction,
              sig, p = over_represented_pvalue, padj,
              numDEInCat, numInCat,
              category, ontology, description = term)
     
-    cat(contrast_id,
+    cat(contrast,
         "  DE dir.:", DE_direction,
         "  Nr DEG:", sum(DE_vec),
         "  Nr GO cat:", nrow(GO_df),
-        "  Nr sig. (padj/p):", sum(GO_df$sig), "/", sum(GO_df$p < 0.05),
+        "  Nr sig. (p/padj):", sum(GO_df$p < 0.05), "/", sum(GO_df$sig),
         "\n")
     
     return(GO_df)
     
   } else {
-    cat("Contrast:", contrast_id, " -- 0 or 1 significant DE genes, skipping GO analysis\n")
+    cat(contrast,
+        "  DE dir.:", DE_direction,
+        "  Nr DEG:", sum(DE_vec),
+        " -- skipping GO analysis\n")
   }
 }
 
 ## Create named vector of DE genes (0s and 1s to indicate significance)
 ## for goseq analysis
 ## (Helper function, use GO_wrap to run the analysis)
-get_DE_vec <- function(contrast_id,             # Focal comparison (contrast)
-                       DE_res,                  # DE results df from DESeq2
-                       DE_direction = "either", # either / both / up / down
-                       rm_padj_na = TRUE,       # Whether to remove genes with NA for `padj`
-                       p_DE = 0.05,             # padj threshold for DE
-                       lfc_DE = 0) {            # LFC threshold for DE
+get_DE_vec <- function(
+  contrast,             # Focal comparison (contrast)
+  DE_res,                  # DE results df from DESeq2
+  DE_direction = "either", # either / both / up / down
+  rm_padj_na = TRUE,       # Whether to remove genes with NA for `padj`
+  p_DE = 0.05,             # padj threshold for DE
+  lfc_DE = 0,              # LFC threshold for DE
+  verbose = FALSE
+  ) {            
   
+  fcontrast <- contrast
+  
+  if (verbose == TRUE) {
+    message("DE settings:")
+    message("    - DE p value:", p_DE)
+    message("    - Min DE LFC:", lfc_DE)
+    message("    - Remove genes with NA as the adj. p-value:", rm_padj_na)
+  }
+  
+  ## Subset to up/down DEGs if needed
   if (DE_direction == "up") DE_res <- DE_res %>% filter(log2FoldChange > 0)
   if (DE_direction == "down") DE_res <- DE_res %>% filter(log2FoldChange < 0)
   
   ## Create df for focal contrast, indicate which genes are significant
   fDE <- DE_res %>%
-    filter(contrast == contrast_id) %>% # Select focal contrast
+    filter(contrast == fcontrast) %>% # Select focal contrast
     mutate(sig = ifelse(padj < p_DE & abs(log2FoldChange) > lfc_DE, 1, 0)) %>%
     arrange(gene_id)
-  cat("- Nr unique genes in DE results:", length(unique(fDE$gene_id)), "\n")
+  n_genes <- length(unique(fDE$gene_id))
+  if (verbose == TRUE) message("- Nr unique genes in DE results: ", n_genes)
   
   # Exclude genes with NA adj-p-val - those were not tested
   if (rm_padj_na == TRUE) {
     fDE <- fDE %>% filter(!is.na(padj))
-    cat("- Nr unique genes after removing those with NA for padj:",
-        length(unique(fDE$gene_id)), "\n")
+    n_genes <- length(unique(fDE$gene_id))
+    if (verbose == TRUE) message("- Nr unique genes after removing padj=NA: ", n_genes)
   } else {
     fDE <- fDE %>% mutate(sig = ifelse(is.na(sig), 0, 1))
   }
   
   DE_vec <- fDE$sig
   names(DE_vec) <- fDE$gene_id
-  
   return(DE_vec)
 }
 
@@ -222,14 +269,15 @@ get_DE_vec <- function(contrast_id,             # Focal comparison (contrast)
 # PLOTTING FUNCTIONS -----------------------------------------------------------
 ## Function to plot the GO results
 enrich_plot <- function(
-  enrich_res,
-  contrasts,
-  DE_directions = c("up", "down", "either"),
-  plot_ontologies = TRUE,
-  x_var = "contrast",
-  facet_var = NULL,
-  label_count = TRUE,
-  label_count_size = 2,
+  enrich_res,                   # Enrichment results
+  contrasts,                    # One or more contrasts
+  DE_directions = c("up", "down", "either"),  # One or more DE directions
+  plot_ontologies = TRUE,       # Show BP/CC/MF ontologies separately.
+                                # NOTE: should be FALSE for KEGG results
+  x_var = "contrast",           # What to plot along the x-axis (refer to column in `enrich_res`)
+  facet_var = NULL,             # What to facet by
+  label_count = TRUE,           # Print nrDEInCat in the box 
+  label_count_size = 2,         # Size of nrDEInCat
   xlabs = NULL,
   ylabsize = 9,
   title = NULL
@@ -302,7 +350,6 @@ enrich_plot <- function(
                           switch = "y")
     }
   }
-  
   ## Add x-axis label
   if (!is.null(xlabs)) p <- p + scale_x_discrete(labels = xlabs)
   

@@ -64,7 +64,13 @@ set -euo pipefail
 [[ ! -f "$R1_in" ]] && echo "## ERROR: Input R1 FASTQ file $R1_in does not exist" >&2 && exit 1
 
 ## Get number of threads
-n_threads="$SLURM_CPUS_PER_TASK"
+set +u
+if [[ -z "$SLURM_CPUS_PER_TASK" ]]; then
+    n_threads="$SLURM_NTASKS"
+else
+    n_threads="$SLURM_CPUS_PER_TASK"
+fi
+set -u
 
 ## Output dir for TrimGalore logs
 outdir_trim="$outdir"/trimmed

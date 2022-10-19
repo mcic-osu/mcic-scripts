@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=8:00:00
+#SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=8G
 #SBATCH --job-name=nfc_rnaseq
@@ -43,14 +43,20 @@ Help() {
     echo "                    - This dir should preferably be in OSC's scratch"
     echo "                      space, rather than in the main project dir."
     echo "    -a STRING   Additional arguments to pass to 'nextflow run'"
-    echo "    -x          Turn on debugging mode: print information, but don't run"
+    echo "    -x          Turn on debugging/dry-run mode: print run information, but don't run"
     echo "    -h          Print this help message and exit"
     echo
     echo "EXAMPLE COMMAND:"
     echo "------------------"
     echo "    sbatch $0 -i data/meta/samplesheet.csv -f data/ref/my.fa -a data/ref/my.gtf -o results/nfc_rnaseq"
     echo
-    echo "DOCUMENTATION:"
+    echo "OUTPUT:"
+    echo "------------------"
+    echo "      - HTML file with summary of results: <outdir>/multiqc/star_salmon/multiqc_report.html"
+    echo "      - Gene counts for use with DESeq2 in <outdir>/star_salmon/salmon.merged.gene_counts_length_scaled.rds"
+    echo "        Use the script 'mcic-scripts/R_templates/nfcore-rnaseq_load-counts.R' to get started with that."
+    echo
+    echo "NFCORE RNASEQ WORKFLOW DOCUMENTATION:"
     echo "------------------"
     echo " - https://nf-co.re/rnaseq "
 }
@@ -177,6 +183,13 @@ echo -e "-------------------------\n"
 ## Make necessary dirs
 trace_dir="$outdir"/pipeline_info
 mkdir -p "$scratch_dir" "$container_dir" "$outdir" "$trace_dir"
+
+## Remove old trace files
+echo "## Removing old trace files..."
+[[ -f "$trace_dir"/report.html ]] && rm -v "$trace_dir"/report.html
+[[ -f "$trace_dir"/trace.txt ]] && rm -v "$trace_dir"/trace.txt
+[[ -f "$trace_dir"/timeline.html ]] && rm -v"$trace_dir"/timeline.html
+[[ -f "$trace_dir"/dag.png ]] && rm -v"$trace_dir"/dag.png
 
 ## Download workflow, if needed
 if [[ ! -d "$workflow_dir" ]]; then
