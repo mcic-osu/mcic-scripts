@@ -107,9 +107,6 @@ echo "## Min. confidence:                $min_conf"
 echo "## Use RAM to load database:       $use_ram"
 echo
 
-## Create output dir
-mkdir -p "$outdir"
-
 ## Use RAM or not
 if [[ "$use_ram" = false ]]; then
     mem_map_arg="--memory-mapping"
@@ -151,9 +148,7 @@ if [[ "$infile" =~ \.fastq.gz$ ]]; then
 
     else
         echo "## Input is:                       single-end FASTQ file"
-        
         sample_ID=$(basename "$R1_in" .fastq.gz)
-        
         infile_arg="--gzip-compressed $R1_in"
 
         if [[ "$write_class" = true ]]; then
@@ -167,10 +162,8 @@ if [[ "$infile" =~ \.fastq.gz$ ]]; then
 
 else
     echo -e "## Input is:                    FASTA file"
-    
     infile_basename=$(basename "$infile")
     sample_ID=${infile_basename%%.*}
-    
     infile_arg="$infile"
 
     if [[ "$write_class" = true ]]; then
@@ -195,7 +188,11 @@ echo "## Output file - report:           $outfile_report"
 echo -e "------------------------\n"
 
 
-# RUN KRAKEN -------------------------------------------------------------------
+# MAIN -------------------------------------------------------------------------
+## Create output dir
+mkdir -p "$outdir"/logs
+
+## Run Kraken
 echo "## Starting Kraken2 run..."
 kraken2 ${names_arg}--threads "$SLURM_CPUS_ON_NODE" \
     ${mem_map_arg}--minimum-base-quality "$min_q" \
@@ -207,8 +204,7 @@ kraken2 ${names_arg}--threads "$SLURM_CPUS_ON_NODE" \
 
 #? report-minimizer-data: see https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#distinct-minimizer-count-information
 
-
-# RENAME AND ZIP FASTQ FILES -------------------------
+## Rename and zip FASTQ files
 if [[ "$write_class" = true ]]; then
     mv "$outdir"/classified/"$sample_ID"_1.fastq "$outdir"/classified/"$sample_ID"_R1.fastq
     gzip -f "$outdir"/classified/"$sample_ID"_R1.fastq
@@ -224,6 +220,7 @@ if [[ "$write_unclass" = true ]]; then
     mv "$outdir"/unclassified/"$sample_ID"_2.fastq "$outdir"/unclassified/"$sample_ID"_R2.fastq
     gzip -f "$outdir"/unclassified/"$sample_ID"_R2.fastq
 fi
+
 
 # WRAP UP ----------------------------------------------------------------------
 echo
