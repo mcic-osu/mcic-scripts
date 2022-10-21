@@ -6,6 +6,8 @@
 #SBATCH --job-name=gubbins
 #SBATCH --output=slurm-gubbins-%j.out
 
+#TODO - Process dates once Gubbins 3.3 comes on conda -- see `--date` argument in docs
+
 # FUNCTIONS --------------------------------------------------------------------
 ## Help function
 print_help() {
@@ -24,7 +26,6 @@ print_help() {
     echo
     echo "OTHER OPTIONS:"
     echo "------------------"
-    echo "    -d FILE           Input two-column TSV with sampling date for each sample"
     echo "    -t FILE           Tree file for starting tree"
     echo "    -a STRING         Other argument(s) to pass to Gubbins"
     echo "    -v                Print the version and exit"
@@ -37,6 +38,7 @@ print_help() {
     echo "DOCUMENTATION:"
     echo "------------------"
     echo "Documentation:        http://nickjcroucher.github.io/gubbins/ "
+    echo "Tutorial:             https://github.com/nickjcroucher/gubbins/blob/master/docs/gubbins_tutorial.md "
     echo "Manual:               https://github.com/nickjcroucher/gubbins/blob/master/docs/gubbins_manual.md "
     echo "Repository:           https://github.com/nickjcroucher/gubbins "
     echo "Paper:                https://academic.oup.com/nar/article/43/3/e15/2410982 "
@@ -59,17 +61,15 @@ print_version() {
 # PARSE OPTIONS ----------------------------------------------------------------
 ## Option defaults
 aln=""
-tree=""
-dates=""
+tree="" && tree_arg=""
 out_prefix=""
 more_args=""
 
 ## Parse command-line options
-while getopts ':i:d:t:o:a:vh' flag; do
+while getopts ':i:t:o:a:vh' flag; do
     case "${flag}" in
         i) aln="$OPTARG" ;;
         o) out_prefix="$OPTARG" ;;
-        d) dates="$OPTARG" ;;
         t) tree="$OPTARG" ;;
         a) more_args="$OPTARG" ;;
         v) print_version && exit 0 ;;
@@ -89,39 +89,27 @@ set -euo pipefail
 
 ## Check input
 [[ "$aln" = "" ]] && echo "## ERROR: Please specify an alignment with -i" >&2 && exit 1
-#[[ "$dates" = "" ]] && echo "## ERROR: Please specify a dates file -d" >&2 && exit 1
 [[ "$out_prefix" = "" ]] && echo "## ERROR: Please specify an output dir with -o" >&2 && exit 1
 [[ ! -f "$aln" ]] && echo "## ERROR: Input file $aln does not exist" >&2 && exit 1
-#[[ ! -f "$dates" ]] && echo "## ERROR: Input file $dates does not exist" >&2 && exit 1
 [[ "$tree" != "" && ! -f "$tree" ]] && echo "## ERROR: Input file $tree does not exist" >&2 && exit 1
 
-## Build tree argument
-if [[ $tree != "" ]]; then
-    tree_arg="--starting-tree $tree"
-    infiles="$aln $dates $tree"
-else
-    tree_arg=""
-    infiles="$aln $dates"
-fi
-
-#TODO
-dates_arg=""
+## Build tree and dates arguments
+[[ $tree != "" ]] && tree_arg="--starting-tree $tree"
 
 ## Report
 echo "=========================================================================="
-echo "## Starting script gubbins.sh"
+echo "                       STARTING SCRIPT GUBBINS.SH"
 date
 echo "=========================================================================="
-echo
 echo "## Alignment input file:                      $aln"
-#echo "## CSV/TSV dates input file:                  $dates"
+echo "## Output prefix:                             $out_prefix"
 [[ "$tree" != "" ]] && echo "## Tree input file:                           $tree"
-echo "## Output prefix:                                $outdir"
 [[ $more_args != "" ]] && echo "## Other arguments for Gubbins:              $more_args"
 echo
 echo "## Listing the input files:"
-ls -lh $infiles
-echo -e "--------------------\n"
+ls -lh "$aln"
+[[ $tree != "" ]] && ls -lh "$tree"
+echo "=========================================================================="
 
 
 # MAIN -------------------------------------------------------------------------
@@ -131,20 +119,19 @@ mkdir -p "$outdir"/logs
 
 ## Run treetime
 echo "## Now running Gubbins..."
-set -o xtrace
 
+set -o xtrace
 run_gubbins.py \
     --threads "$SLURM_CPUS_PER_TASK" \
     --prefix "$out_prefix" \
-    $tree_arg $dates_arg \
+    $tree_arg \
     "$aln"
-
 set +o xtrace
 
 
 # WRAP UP ----------------------------------------------------------------------
 echo -e "\n-------------------------------"
-echo "## Treetime version used:"
+echo "## Gubbins version used:"
 run_gubbins.py --version
 echo
 echo "## Listing files in the output dir:"
