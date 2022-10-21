@@ -23,19 +23,19 @@ Help() {
     echo "OTHER KEY OPTIONS:"
     echo "------------------"
     echo "    -o DIR      Output directory for workflow results                   [default: 'results/ghru_assembly']"
-    echo "    -n DIR      Workflow definition file (a '*.nf' file)                [default: '/fs/project/PAS0471/jelmer/assist/2022-09_alejandra/workflows/ghru_assembly/assembly.nf']"
     echo "    -r          Don't attempt to resume the workflow, but start over    [default: resume where you left off]"
-    echo "    -g STRING   Sample ID glob to select only some samples/files        [default: '*R{1,2}*.fastq.gz']"
+    echo "    -g STRING   FASTQ pattern (glob)                                    [default: '*R{1,2}*.fastq.gz']"
     echo "                    - Modify if your sample names don't adhere to the default, e.g. if they are 'fq.gz'"
     echo "                    - Can also use this to subset samples, e.g. 'sampleA*R{1,2}*.fastq.gz'"
+    echo
+    echo "OPTIONS YOU PROBABLY DON'T NEED TO USE:"
+    echo "------------------"
+    echo "    -n DIR      Workflow definition file (a '*.nf' file)                [default: '/fs/project/PAS0471/jelmer/assist/2022-09_alejandra/workflows/ghru_assembly/assembly.nf']"
     echo "    -p STRING   Profile from any of the config files to use             [default: 'standard,singularity']"
     echo "    -c FILE     Additional config file(s)"
     echo "                    - Any settings in this file will override settings in default config files"
     echo "                    - Use a comma-separated list when supplying multiple files" 
     echo "                    - The mcic-scripts OSC config will always be used, https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config"
-    echo
-    echo "OPTIONS YOU PROBABLY DON'T NEED TO USE:"
-    echo "------------------"
     echo "    -t DIR      Singularity container dir                               [default: '/fs/project/PAS0471/containers']"
     echo "                    - This is where any containers used in the workflow will be downloaded to"
     echo "    -w DIR      Scratch (work) dir for the workflow                     [default: '/fs/scratch/PAS0471/$USER/mlst']"
@@ -71,7 +71,7 @@ Load_software() {
 
 # CONSTANTS AND DEFAULTS -------------------------------------------------------
 ## Option defaults
-file_glob='*R{1,2}*.fastq.gz'
+fastq_pattern='*R{1,2}*.fastq.gz'
 nextflow_file="/fs/project/PAS0471/jelmer/assist/2022-09_alejandra/workflows/ghru_assembly/assembly.nf"
 outdir="results/ghru_assembly"
 container_dir=/fs/project/PAS0471/containers
@@ -90,7 +90,7 @@ more_args=""
 while getopts 'i:g:o:c:n:w:s:p:a:xhr' flag; do
     case "${flag}" in
         i) indir="$OPTARG" ;;
-        g) file_glob="$OPTARG" ;;
+        g) fastq_pattern="$OPTARG" ;;
         o) outdir="$OPTARG" ;;
         n) nextflow_file="$OPTARG" ;;
         w) scratch_dir="$OPTARG" ;;
@@ -154,7 +154,7 @@ echo "                   STARTING SCRIPT GHRU_ASSEMBLY.SH"
 date
 echo "=========================================================================="
 echo "## Input dir:                       $indir"
-echo "## FASTQ file glob:                 $file_glob"
+echo "## FASTQ file glob:                 $fastq_pattern"
 echo "## Output dir:                      $outdir"
 echo "## Nextflow workflow file:          $nextflow_file"
 echo
@@ -185,7 +185,7 @@ fi
 ## Define the workflow run command
 command="nextflow run $nextflow_file \
     --input_dir $indir \
-    --fastq_pattern '$file_glob' \
+    --fastq_pattern '$fastq_pattern' \
     --output_dir $outdir \
     --adapter_file $ADAPTER_FILE \
     --qc_conditions $QC_YAML \

@@ -12,27 +12,25 @@
 Help() {
     echo
     echo "=================================================================================================="
-    echo "                            $0: Run the GHRU MLST pipeline"
-    echo "                       This pipeline uses ARIBA to perform MLST typing"
+    echo "                            $0: Run the GHRU ARIBA pipeline"
     echo "=================================================================================================="
     echo
     echo "REQUIRED OPTIONS:"
     echo "------------------"
     echo "    -i DIR        Input directory with FASTQ files"
-    echo "    -s STRING     Focal species - see below for list of possible species"
-    echo "                  Make sure to quote the species string, e.g. 'Enterobacter cloacae'"
+    echo "    -d STRING     Database ...."
     echo
     echo "OTHER KEY OPTIONS:"
     echo "------------------"
-    echo "    -o DIR      Output directory for workflow results                   [default: 'results/ghru_mlst']"
-    echo "    -g STRING   FASTQ pattern (glob)                                    [default: '*R{1,2}*.fastq.gz']"
+    echo "    -o DIR      Output directory for workflow results                   [default: 'results/ghru_ariba']"
+    echo "    -n DIR      Workflow definition file (a '*.nf' file)                [default: '/fs/project/PAS0471/jelmer/assist/2022-09_alejandra/workflows/ghru_ariba/ariba.nf']"
+    echo "    -g STRING   Sample ID glob to select only some samples/files        [default: '*R{1,2}*.fastq.gz']"
     echo "                    - Modify if your sample names don't adhere to the default, e.g. if they are 'fq.gz'"
     echo "                    - Can also use this to subset samples, e.g. 'sampleA*R{1,2}*.fastq.gz'"
     echo "    -r          Don't attempt to resume the workflow, but start over    [default: resume where you left off]"
     echo
     echo "OPTIONS YOU PROBABLY DON'T NEED TO USE:"
     echo "------------------"
-    echo "    -n DIR      Workflow definition file (a '*.nf' file)                [default: '/fs/project/PAS0471/jelmer/assist/2022-09_alejandra/workflows/ghru_mlst/main.nf']"
     echo "    -p STRING   Profile from any of the config files to use             [default: 'conda']"
     echo "    -c FILE     Additional config file(s)"
     echo "                    - Any settings in this file will override settings in default config files"
@@ -56,8 +54,7 @@ Help() {
     echo
     echo "DOCUMENTATION:"
     echo "------------------"
-    echo "  - https://gitlab.com/cgps/ghru/pipelines/mlst"
-    echo "  - https://github.com/sanger-pathogens/ariba/wiki/MLST-calling-with-ARIBA"
+    echo "  - https://gitlab.com/cgps/ghru/pipelines/ariba "
     echo
 }
 
@@ -79,7 +76,7 @@ OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/next
 osc_config=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present here
 
 ## Option defaults
-fastq_pattern='*R{1,2}*.fastq.gz'
+file_glob='*R{1,2}*.fastq.gz'
 outdir="results/ghru_mlst"
 nextflow_file="/fs/project/PAS0471/jelmer/assist/2022-09_alejandra/workflows/ghru_mlst/main.nf"
 profile="conda"
@@ -106,7 +103,7 @@ while getopts 'i:s:o:n:w:t:p:c:g:a:xhr' flag; do
         t) container_dir="$OPTARG" ;;
         p) profile="$OPTARG" ;;
         c) config_file="$OPTARG" ;;
-        g) fastq_pattern="$OPTARG" ;;
+        g) file_glob="$OPTARG" ;;
         a) more_args="$OPTARG" ;;
         r) resume=false ;;
         x) debug=true ;;
@@ -158,7 +155,7 @@ echo "                     STARTING SCRIPT GHRU_MLST.SH"
 date
 echo "=========================================================================="
 echo "## Input dir:                       $indir"
-echo "## FASTQ file glob:                 $fastq_pattern"
+echo "## FASTQ file glob:                 $file_glob"
 echo "## Output dir:                      $outdir"
 echo "## Species:                         $species"
 echo "## Nextflow workflow file:          $nextflow_file"
@@ -190,7 +187,7 @@ fi
 ## Define the workflow run command
 command="nextflow run $nextflow_file \
     --input_dir $indir \
-    --fastq_pattern '$fastq_pattern' \
+    --fastq_pattern '$file_glob' \
     --output_dir $outdir \
     --species '$species' \
     -work-dir $scratch_dir \
@@ -223,6 +220,6 @@ if [[ "$debug" = false ]]; then
     sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
     echo
 fi
-echo "## Done with script ghru_mlst.sh"
+echo "## Done with script ghru_ariba.sh"
 date
 echo

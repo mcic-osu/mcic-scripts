@@ -24,7 +24,7 @@ Help() {
     echo "------------------"
     echo "    -o DIR      Output directory for workflow results                   [default: 'results/ghru_mlst']"
     echo "    -n DIR      Workflow definition file (a '*.nf' file)                [default: '/fs/project/PAS0471/jelmer/assist/2022-09_alejandra/workflows/ghru_mlst/main.nf']"
-    echo "    -g STRING   Sample ID glob to select only some samples/files        [default: '*R{1,2}*.fastq.gz']"
+    echo "    -g STRING   FASTQ pattern (glob)                                    [default: '*R{1,2}*.fastq.gz']"
     echo "                    - Modify if your sample names don't adhere to the default, e.g. if they are 'fq.gz'"
     echo "                    - Can also use this to subset samples, e.g. 'sampleA*R{1,2}*.fastq.gz'"
     echo "    -r          Don't attempt to resume the workflow, but start over    [default: resume where you left off]"
@@ -76,7 +76,7 @@ OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/next
 osc_config=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present here
 
 ## Option defaults
-file_glob='*R{1,2}*.fastq.gz'
+fastq_pattern='*R{1,2}*.fastq.gz'
 nextflow_file="/fs/project/PAS0471/jelmer/assist/2022-09_alejandra/workflows/ghru_snp_phylogeny/snp_phylogeny.nf"
 outdir="results/ghru_snp_phylogeny"
 container_dir=/fs/project/PAS0471/containers
@@ -103,7 +103,7 @@ while getopts 'i:R:o:n:w:t:p:c:g:a:xhr' flag; do
         t) container_dir="$OPTARG" ;;
         p) profile="$OPTARG" ;;
         c) config_file="$OPTARG" ;;
-        g) file_glob="$OPTARG" ;;
+        g) fastq_pattern="$OPTARG" ;;
         a) more_args="$OPTARG" ;;
         r) resume=false ;;
         x) debug=true ;;
@@ -160,7 +160,7 @@ echo "                  STARTING SCRIPT GHRU_SNP_PHYLOGENY.SH"
 date
 echo "=========================================================================="
 echo "## Input dir:                       $indir"
-echo "## FASTQ file glob:                 $file_glob"
+echo "## FASTQ file glob:                 $fastq_pattern"
 echo "## Output dir:                      $outdir"
 echo "## Reference FASTA file:            $ref_fasta"
 echo "## Nextflow workflow file:          $nextflow_file"
@@ -192,10 +192,11 @@ fi
 ## Define the workflow run command
 command="nextflow run $nextflow_file \
     --input_dir $indir \
-    --fastq_pattern '$file_glob' \
+    --fastq_pattern '$fastq_pattern' \
     --output_dir $outdir \
     --adapter_file $ADAPTER_FILE \
     --reference $ref_fasta \
+    --tree fasttree \
     -work-dir $scratch_dir \
     -ansi-log false \
     -with-report $trace_dir/report.html \
@@ -206,6 +207,8 @@ command="nextflow run $nextflow_file \
     $config_arg \
     $resume_arg \
     $more_args"
+
+#TODO - modify tree?
 
 #? - Note that the docs say the adapter argument is 'adapter_sequences', but it is actually 'adapter_file'
 #? - Note that the docs say the reference argument is 'reference_sequence', but it is actually 'reference'
