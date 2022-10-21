@@ -4,8 +4,8 @@
 #SBATCH --time=1:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
-#SBATCH --job-name=ghru_mlst
-#SBATCH --output=slurm-ghru_mlst-%j.out
+#SBATCH --job-name=ghru_ariba
+#SBATCH --output=slurm-ghru_ariba-%j.out
 
 # FUNCTIONS --------------------------------------------------------------------
 ## Help function
@@ -18,7 +18,7 @@ Help() {
     echo "REQUIRED OPTIONS:"
     echo "------------------"
     echo "    -i DIR        Input directory with FASTQ files"
-    echo "    -d STRING     Database ...."
+    echo "    -d STRING     ARG Database ...."
     echo
     echo "OTHER KEY OPTIONS:"
     echo "------------------"
@@ -77,11 +77,11 @@ osc_config=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present
 
 ## Option defaults
 file_glob='*R{1,2}*.fastq.gz'
-outdir="results/ghru_mlst"
-nextflow_file="/fs/project/PAS0471/jelmer/assist/2022-09_alejandra/workflows/ghru_mlst/main.nf"
+outdir="results/ghru_ariba"
+nextflow_file="/fs/project/PAS0471/jelmer/assist/2022-09_alejandra/workflows/ghru_ariba/main.nf"
 profile="conda"
 container_dir=/fs/project/PAS0471/containers
-scratch_dir=/fs/scratch/PAS0471/$USER/ghru_mlst
+scratch_dir=/fs/scratch/PAS0471/$USER/ghru_ariba
 resume=true
 debug=false
 
@@ -151,7 +151,7 @@ trace_dir="$outdir"/pipeline_info
 ## Report
 echo
 echo "=========================================================================="
-echo "                     STARTING SCRIPT GHRU_MLST.SH"
+echo "                     STARTING SCRIPT GHRU_ARIBA.SH"
 date
 echo "=========================================================================="
 echo "## Input dir:                       $indir"

@@ -179,11 +179,10 @@ if [[ "$debug" = false ]]; then
     mkdir -p "$scratch_dir" "$container_dir" "$outdir" "$trace_dir"
 
     ## Remove old trace files
-    echo "## Removing old trace files..."
-    [[ -f "$trace_dir"/report.html ]] && rm -v "$trace_dir"/report.html
-    [[ -f "$trace_dir"/trace.txt ]] && rm -v "$trace_dir"/trace.txt
-    [[ -f "$trace_dir"/timeline.html ]] && rm -v "$trace_dir"/timeline.html
-    [[ -f "$trace_dir"/dag.png ]] && rm -v "$trace_dir"/dag.png
+    [[ -f "$trace_dir"/report.html ]] && rm "$trace_dir"/report.html
+    [[ -f "$trace_dir"/trace.txt ]] && rm "$trace_dir"/trace.txt
+    [[ -f "$trace_dir"/timeline.html ]] && rm "$trace_dir"/timeline.html
+    [[ -f "$trace_dir"/dag.png ]] && rm "$trace_dir"/dag.png
     echo
 fi
 

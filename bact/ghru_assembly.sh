@@ -30,7 +30,7 @@ Help() {
     echo
     echo "OPTIONS YOU PROBABLY DON'T NEED TO USE:"
     echo "------------------"
-    echo "    -n DIR      Workflow definition file (a '*.nf' file)                [default: '/fs/project/PAS0471/jelmer/assist/2022-09_alejandra/workflows/ghru_assembly/assembly.nf']"
+    echo "    -n DIR      Workflow definition file (a '*.nf' file)                [default: '/fs/project/PAS0471/jelmer/assist/2022-09_alejandra/workflows/ghru_assembly/main.nf']"
     echo "    -p STRING   Profile from any of the config files to use             [default: 'standard,singularity']"
     echo "    -c FILE     Additional config file(s)"
     echo "                    - Any settings in this file will override settings in default config files"
@@ -70,9 +70,13 @@ Load_software() {
 
 
 # CONSTANTS AND DEFAULTS -------------------------------------------------------
+## URL to OSC Nextflow config file
+OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config
+osc_config=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present here
+
 ## Option defaults
 fastq_pattern='*R{1,2}*.fastq.gz'
-nextflow_file="/fs/project/PAS0471/jelmer/assist/2022-09_alejandra/workflows/ghru_assembly/assembly.nf"
+nextflow_file="/fs/project/PAS0471/jelmer/assist/2022-09_alejandra/workflows/ghru_assembly/main.nf"
 outdir="results/ghru_assembly"
 container_dir=/fs/project/PAS0471/containers
 scratch_dir=/fs/scratch/PAS0471/$USER/ghru_assembly
@@ -174,11 +178,10 @@ if [[ "$debug" = false ]]; then
     mkdir -p "$scratch_dir" "$container_dir" "$outdir" "$trace_dir"
 
     ## Remove old trace files
-    echo "## Removing old trace files..."
-    [[ -f "$trace_dir"/report.html ]] && rm -v "$trace_dir"/report.html
-    [[ -f "$trace_dir"/trace.txt ]] && rm -v "$trace_dir"/trace.txt
-    [[ -f "$trace_dir"/timeline.html ]] && rm -v "$trace_dir"/timeline.html
-    [[ -f "$trace_dir"/dag.png ]] && rm -v "$trace_dir"/dag.png
+    [[ -f "$trace_dir"/report.html ]] && rm "$trace_dir"/report.html
+    [[ -f "$trace_dir"/trace.txt ]] && rm "$trace_dir"/trace.txt
+    [[ -f "$trace_dir"/timeline.html ]] && rm "$trace_dir"/timeline.html
+    [[ -f "$trace_dir"/dag.png ]] && rm "$trace_dir"/dag.png
     echo
 fi
 
