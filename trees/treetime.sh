@@ -62,18 +62,20 @@ print_version() {
 # PARSE OPTIONS ----------------------------------------------------------------
 ## Option defaults
 aln=""
-tree=""
 dates=""
 outdir=""
+tree="" && tree_arg=""
+clock_rate="" && clock_rate_arg=""
 more_args=""
 
 ## Parse command-line options
-while getopts ':i:d:t:o:a:vh' flag; do
+while getopts ':i:d:t:o:c:a:vh' flag; do
     case "${flag}" in
         i) aln="$OPTARG" ;;
         d) dates="$OPTARG" ;;
         t) tree="$OPTARG" ;;
         o) outdir="$OPTARG" ;;
+        c) clock_rate="$OPTARG" ;;
         a) more_args="$OPTARG" ;;
         v) print_version && exit 0 ;;
         h) print_help && exit 0 ;;
@@ -99,13 +101,8 @@ set -euo pipefail
 [[ "$tree" != "" && ! -f "$tree" ]] && echo "## ERROR: Input file $tree does not exist" >&2 && exit 1
 
 ## Build tree argument
-if [[ $tree != "" ]]; then
-    tree_arg="--tree $tree"
-    infiles="$aln $dates $tree"
-else
-    tree_arg=""
-    infiles="$aln $dates"
-fi
+[[ $tree != "" ]] && tree_arg="--tree $tree"
+[[ $clock_rate != "" ]] && clock_rate_arg="--clock-rate $clock_rate"
 
 ## Report
 echo "=========================================================================="
@@ -115,13 +112,15 @@ echo "==========================================================================
 echo
 echo "## Alignment (or VCF) input file:             $aln"
 echo "## CSV/TSV dates input file:                  $dates"
-[[ "$tree" != "" ]] && echo "## Tree input file:                           $tree"
 echo "## Output dir:                                $outdir"
+[[ "$tree" != "" ]] && echo "## Tree input file:                           $tree"
 [[ $more_args != "" ]] && echo "## Other arguments for treetime:              $more_args"
 echo
 echo "## Listing the input files:"
-ls -lh $infiles
-echo -e "--------------------\n"
+ls -lh "$aln" "$dates"
+[[ "$tree" != "" ]] && ls -lh "$tree"
+echo "=========================================================================="
+
 
 
 # MAIN -------------------------------------------------------------------------
@@ -133,25 +132,26 @@ echo "## Now running treetime..."
 set -o xtrace
 treetime \
     --aln "$aln" \
-    $tree_arg \
+    $tree_arg $clock_rate_arg \
     --dates "$dates" \
     --outdir "$outdir" \
     --confidence
 set +o xtrace
 
-#? - If the temporal signal in the data is weak and the clock rate can’t be estimated
-#?   confidently from the data, it is advisable to specify the rate explicitly. This can be done using the argument
-#?   `clock-rate <rate>`
-#  treetime homoplasy --aln <input.fasta> --tree <input.nwk>
+echo "## Treetime version used:"
+treetime --version | tee "$outdir"/logs/version.txt
 
 
 # WRAP UP ----------------------------------------------------------------------
 echo -e "\n-------------------------------"
-echo "## Treetime version used:"
-treetime --version
 echo
 echo "## Listing files in the output dir:"
 ls -lh "$outdir"
+echo
+tree "$outdir"
+echo
+echo "## Show contents of dates.tsv:"
+cat -n "$outdir"/dates.tsv
 echo 
 echo "## Done with script treetime.sh"
 date
