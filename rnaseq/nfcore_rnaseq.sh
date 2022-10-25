@@ -1,9 +1,9 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=24:00:00
-#SBATCH --cpus-per-task=2
-#SBATCH --mem=8G
+#SBATCH --time=48:00:00
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
 #SBATCH --job-name=nfc_rnaseq
 #SBATCH --output=slurm-nfc_rnaseq-%j.out
 
@@ -109,7 +109,7 @@ export NXF_SINGULARITY_CACHEDIR="$container_dir"
 mkdir -p "$NXF_SINGULARITY_CACHEDIR"
 
 ## Limit memory for Nextflow main process - see https://www.nextflow.io/blog/2021/5_tips_for_hpc_users.html
-export NXF_OPTS='-Xms1g -Xmx7g'
+export NXF_OPTS='-Xms1g -Xmx4g'
 
 
 # OTHER SETUP ------------------------------------------------------------------
