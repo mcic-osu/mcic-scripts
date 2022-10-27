@@ -1,13 +1,15 @@
-#!/bin/bash
+#!/usr/bin/env bash
+
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
-#SBATCH --job-name=canu
-#SBATCH --output=slurm-canu-%j.out
+#SBATCH --job-name=TODO_THIS_SOFTWARE
+#SBATCH --output=slurm-TODO_THIS_SOFTWARE-%j.out
 
-
-# FUNCTIONS --------------------------------------------------------------------
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
 ## Help function
 Print_help() {
     echo
@@ -27,6 +29,7 @@ Print_help() {
     echo "    -a STRING         Other argument(s) to pass to TODO_THIS_SOFTWARE"
     echo
     echo "UTILITY OPTIONS"
+    echo "    -x                Run the script in debug mode"
     echo "    -h                Print this help message and exit"
     echo "    -v                Print the version of TODO_THIS_SOFTWARE and exit"
     echo
@@ -63,74 +66,98 @@ Die() {
     exit 1
 }
 
-# CONSTANT AND OPTION DEFAULTS -------------------------------------------------
+# ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
 ## Constants
 
 ## Option defaults
+debug=false
+dryrun=false
 
+
+# ==============================================================================
+#                          PARSE COMMAND-LINE ARGS
+# ==============================================================================
 ## Placeholder defaults
-infile=""
+indir=""
 outdir=""
 #tree="" && tree_arg=""
 
-## Parse command-line options
-while getopts ':i:o:a:vh' flag; do
-    case "${flag}" in
-        i) infiles="$OPTARG" ;;
-        o) outdir="$OPTARG" ;;
-        a) more_args="$OPTARG" ;;
-        v) Print_version; exit 0 ;;
-        h) Print_help; exit 0 ;;
-        \?) Print_help; Die "Invalid option $OPTARG" ;;
-        :) Print_help; Die "Option -$OPTARG requires an argument" ;;
+## Parse command-line args
+while [ "$1" != "" ]; do
+    case "$1" in
+        -i | --indir )          shift && indir=$1 ;;
+        -o | --outdir )         shift && outdir=$1 ;;
+        -a | --more_args )      shift && more_args=$1 ;;
+        -x | --debug )          debug=true ;;
+        -n | --dryrun )         dryrun=false ;;
+        -v | --version )        Print_version && exit ;;
+        -h | --help )           Print_help && exit ;;
+        * )                     Die "Invalid option $1" && exit 1 ;;
     esac
+    shift
 done
 
 
-# SETUP ------------------------------------------------------------------------
+# ==============================================================================
+#                          OTHER SETUP
+# ==============================================================================
+[[ "$debug" = true ]] && set -o xtrace
+
 ## Load software
-Load_software
+[[ "$dryrun" = false ]] && Load_software
 
 ## Bash script settings
 set -euo pipefail
 
 ## Check input
-[[ $infile = "" ]] && Die "Please specify an input file with -i"
+[[ $indir = "" ]] && Die "Please specify an input dir with -i"
 [[ $outdir = "" ]] && Die "Please specify an output dir with -o"
-[[ ! -f $infile ]] && Die "Input file $infile does not exist"
-
+[[ ! -d $indir ]] && Die "Input dir $indir does not exist"
 
 ## Report
 echo "=========================================================================="
 echo "               STARTING SCRIPT TODO_SCRIPTNAME"
 date
 echo "=========================================================================="
-echo "Input file:                  $infiles"
-echo "Output dir:                           $outdir"
+echo "Input dir:                   $indir"
+echo "Output dir:                  $outdir"
 [[ $more_args != "" ]] && echo "Other arguments for TODO_THIS_SOFTWARE:    $more_args"
 echo "Listing input file:"
-ls -lh "$infile"
+ls -lh "$indir"
 echo "=========================================================================="
 
 
-# MAIN -------------------------------------------------------------------------
-## Create the output directory
-mkdir -p "$outdir"/logs
+# ==============================================================================
+#                               RUN
+# ==============================================================================
+if [[ "$dryrun" = false ]]; then
+    ## Create the output directory
+    mkdir -p "$outdir"/logs
+fi
 
 echo -e "\n## Now running TODO_THIS_SOFTWARE..."
-set -o xtrace
+[[ "$debug" = false ]] && set -o xtrace
+
 TODO_COMMAND \
     -t "$SLURM_CPUS_PER_TASK"
     $more_args \
-set +o xtrace
+
+[[ "$debug" = false ]] && set +o xtrace
 
 
-# WRAP UP ----------------------------------------------------------------------
-echo -e "\n-------------------------------"
-echo "## Version used:"
-Print_version | tee "$outdir"/logs/version.txt
-echo "## Listing files in the output dir:"
-ls -lh "$outdir"
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
+echo -e "\n====================================================================="
+if [[ "$dryrun" = false ]]; then
+    echo "## Version used:"
+    Print_version | tee "$outdir"/logs/version.txt
+    echo "## Listing files in the output dir:"
+    ls -lh "$outdir"
+fi
+
 echo -e "\n## Done with script"
 date
 echo
