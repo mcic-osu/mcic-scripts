@@ -106,10 +106,9 @@ set -euo pipefail
 
 ## Report
 echo "=========================================================================="
-echo "## Starting script treetime.sh"
+echo "                     STARTING SCRIPT TREETIME.SH"
 date
 echo "=========================================================================="
-echo
 echo "## Alignment (or VCF) input file:             $aln"
 echo "## CSV/TSV dates input file:                  $dates"
 echo "## Output dir:                                $outdir"
@@ -120,7 +119,7 @@ echo "## Listing the input files:"
 ls -lh "$aln" "$dates"
 [[ "$tree" != "" ]] && ls -lh "$tree"
 echo "=========================================================================="
-
+echo
 
 
 # MAIN -------------------------------------------------------------------------
@@ -132,10 +131,12 @@ echo "## Now running treetime..."
 set -o xtrace
 treetime \
     --aln "$aln" \
-    $tree_arg $clock_rate_arg \
+    $tree_arg \
+    $clock_rate_arg \
     --dates "$dates" \
     --outdir "$outdir" \
-    --confidence
+    --confidence \
+    --covariation
 set +o xtrace
 
 echo "## Treetime version used:"
