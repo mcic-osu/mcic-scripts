@@ -117,6 +117,7 @@ set -euo pipefail
 [[ ! -d $indir ]] && Die "Input dir $indir does not exist"
 
 ## Report
+echo
 echo "=========================================================================="
 echo "               STARTING SCRIPT TODO_SCRIPTNAME"
 date
@@ -127,7 +128,7 @@ echo "Output dir:                  $outdir"
 echo "Listing input file:"
 ls -lh "$indir"
 echo "=========================================================================="
-
+echo
 
 # ==============================================================================
 #                               RUN
@@ -151,15 +152,14 @@ TODO_COMMAND \
 #                               WRAP-UP
 # ==============================================================================
 echo -e "\n====================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo "## Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo "## Listing files in the output dir:"
-    ls -lh "$outdir"
-fi
-
-echo -e "\n## Done with script"
+echo "## Done with script"
 date
-echo
-sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
+if [[ "$dryrun" = false ]]; then
+    echo -e "\n## Version used:"
+    Print_version | tee "$outdir"/logs/version.txt
+    echo -e "\n## Listing files in the output dir:"
+    ls -lh "$outdir"
+    echo
+    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
+fi
 echo
