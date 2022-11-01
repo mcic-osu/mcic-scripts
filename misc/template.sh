@@ -90,8 +90,8 @@ while [ "$1" != "" ]; do
         -i | --indir )          shift && indir=$1 ;;
         -o | --outdir )         shift && outdir=$1 ;;
         -a | --more_args )      shift && more_args=$1 ;;
-        -x | --debug )          debug=true ;;
-        -n | --dryrun )         dryrun=false ;;
+        -X | --debug )          debug=true ;;
+        -N | --dryrun )         dryrun=false ;;
         -v | --version )        Print_version && exit ;;
         -h | --help )           Print_help && exit ;;
         * )                     Die "Invalid option $1" && exit 1 ;;
@@ -151,7 +151,8 @@ TODO_COMMAND \
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
-echo -e "\n====================================================================="
+echo
+echo "========================================================================="
 echo "## Done with script"
 date
 if [[ "$dryrun" = false ]]; then
