@@ -12,20 +12,17 @@
 function Help() {
     echo
     echo "=================================================================================================="
-    echo "                            $0: Script to run an ARIBA workflow"
+    echo "                       $0: Script to run an ARIBA workflow"
     echo "=================================================================================================="
     echo
     echo "REQUIRED OPTIONS:"
-    echo "------------------"
     echo "  -i / --indir DIR              Input directory with FASTQ files"
     echo
     echo "  -d / --db_name STRING         ARG database name, should be one of:"
     echo "                                  'argannot', 'card', 'megares', 'plasmidfinder', 'resfinder', 'srst2_argannot',"
     echo "                                  'vfdb_core', 'vfdb_full', 'virulencefinder'"
     echo
-    echo
     echo "OTHER KEY OPTIONS:"
-    echo "------------------"
     echo "  -o / --outdir DIR             Output directory for workflow results       [default: 'results/ghru_ariba']"
     echo
     echo "  -g / --fastq_pattern STRING   Single-quoted FASTQ file pattern (glob)     [default: '*R{1,2}*.fastq.gz']"
@@ -42,9 +39,7 @@ function Help() {
     echo "                                  - Use as follows (quote the entire string!): '$0 --more_args \"--option_name option_value\"'"
     echo "                                  - NOTE: This Nextflow workflow does not have additional options"
     echo
-    echo
     echo "OPTIONS YOU PROBABLY DON'T NEED TO USE:"
-    echo "---------------------------------------"
     echo "  -n / --nextflow_file FILE     Workflow definition file (a '*.nf' file)"
     echo "                                [default: '/fs/project/PAS0471/jelmer/assist/2022-09_alejandra/workflows/ghru_ariba/ariba.nf']"
     echo
@@ -62,31 +57,19 @@ function Help() {
     echo "                                  - This is where the workflow results will be stored before final results are copied to the specified output dir"
     echo "                                  - This should preferable be a dir in OSC's scratch dir rather than in the main project dir"
     echo
-    echo
     echo "UTILITY OPTIONS:"
-    echo "------------------"
     echo "  -x / --debug                  Turn on debugging/dry-run mode: print run information, but don't run commands"
     echo "  -h / --help                   Print this help message and exit"
     echo
-    echo
     echo "EXAMPLE COMMANDS:"
-    echo "------------------"
     echo "  sbatch $0 -i data/fastq -d card"
     echo "  sbatch $0 --indir data/fastq -d resfinder --fastq_pattern '*_R{1,2}.fq.gz'"
     echo
     echo "DOCUMENTATION:"
-    echo "------------------"
     echo "- This script runs a workflow based on the GHRU Ariba workflow https://gitlab.com/cgps/ghru/pipelines/ariba"
     echo "- It runs with a Conda environment for Ariba version 2.14.6"
     echo "- Ariba documentation: https://github.com/sanger-pathogens/ariba/wiki/MLST-calling-with-ARIBA"
     echo
-}
-
-## Exit upon error with a message
-function Die() {
-    printf "\n$0: ERROR: %s\n" "$1" >&2
-    echo -e "Exiting\n" >&2
-    exit 1
 }
 
 ## Load the software
@@ -98,6 +81,13 @@ function Load_software() {
     export NXF_SINGULARITY_CACHEDIR="$container_dir"
     ## Limit memory for Nextflow main process - see https://www.nextflow.io/blog/2021/5_tips_for_hpc_users.html
     export NXF_OPTS='-Xms1g -Xmx4g'
+}
+
+## Exit upon error with a message
+function Die() {
+    printf "\n$0: ERROR: %s\n" "$1" >&2
+    echo -e "Exiting\n" >&2
+    exit 1
 }
 
 
@@ -139,9 +129,9 @@ while [ "$1" != "" ]; do
         -c | --config_file )    shift && config_file=$1 ;;
         -a | --more_args )      shift && more_args=$1 ;;
         -x | --debug )          debug=true ;;
-        -r | --no_resume )         resume=false ;;
+        -r | --no_resume )      resume=false ;;
         -h | --help )           Help && exit ;;
-        * )                     Die "Invalid option $1" && exit 1 ;;
+        * )                     Die "Invalid option $1";;
     esac
     shift
 done
@@ -246,6 +236,6 @@ if [[ "$debug" = false ]]; then
     sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
     echo
 fi
-echo "## Done with script ghru_ariba.sh"
+echo "## Done with script"
 date
 echo
