@@ -7,8 +7,9 @@
 #SBATCH --job-name=nfcore_rnaseq
 #SBATCH --output=slurm-nfcore_rnaseq-%j.out
 
-
-# FUNCTIONS --------------------------------------------------------------------
+# ==============================================================================
+#                                FUNCTIONS
+# ==============================================================================
 ## Help function
 Print_help() {
     echo
@@ -24,35 +25,45 @@ Print_help() {
     echo "        (Run the script using 'bash' and the -h option to get help)"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "    -i DIR      Sample sheet containing paths to FASTQ files and sample info"
-    echo "                (See https://nf-co.re/rnaseq/3.9/usage#samplesheet-input)"
-    echo "    -f FILE     Reference genome FASTA file"
-    echo "    -g FILE     Reference genome annotation file (GTF/GFF - GTF preferred)"
-    echo "    -o DIR      Output directory (will be created if needed)"
+    echo "    -i/--samplesheet FILE     Sample sheet containing paths to FASTQ files and sample info"
+    echo "                              (See below and https://nf-co.re/rnaseq/3.9/usage#samplesheet-input)"
+    echo "    -f/--ref_fasta   FILE     Reference genome FASTA file"
+    echo "    -g/--ref_annot   FILE     Reference genome annotation file (GTF/GFF - GTF format preferred)"
+    echo "    -o/--outdir      DIR      Output directory (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "    -r          Don't attempt to resume workflow run, but start over      [default: resume workflow]"
-    echo "    -a STRING   Additional arguments to pass to 'nextflow run'"
-    echo "    -c FILE     Additional config file                                    [default: none]"
-    echo "                    - Settings in this file will override default settings"
-    echo "                    - Note that the mcic-scripts OSC config file will always be included, too"
-    echo "                      (https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config)"
-    echo "    -d DIR      Dir with the assembly workflow repository                 [default: 'workflows/nf-core-rnaseq']"
-    echo "                    - If this dir isn't present, the workflow will be automatically downloaded."
+    echo "    -r/-no-resume             Don't attempt to resume workflow run, but start over      [default: resume workflow]"
+    echo "    -a/--more_args   STRING   Additional arguments to pass to 'nextflow run'"
+    echo "    -c/-config       FILE     Additional config file                                    [default: none]"
+    echo "                                - Settings in this file will override default settings"
+    echo "                                - Note that the mcic-scripts OSC config file will always be included, too"
+    echo "                                  (https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config)"
+    echo "    -n/--nextflow_file FILE   Main .nf workflow definition file                         [default: 'workflows/nfcore-rnaseq/workflow/main.nf']"
+    echo "                                - If this file isn't present, the workflow will be automatically downloaded."
     echo
     echo "OPTIONS YOU PROBABLY DON'T NEED TO USE:"
-    echo "    -p STRING   Profile to use from one of the config files               [default: 'singularity']"
-    echo "    -s DIR      Singularity container dir                                 [default: '/fs/project/PAS0471/containers']"
-    echo "    -w DIR      Scratch (work) dir for the workflow                       [default: '/fs/scratch/PAS0471/\$USER/nfc_rnaseq']"
-    echo "                    - This is where the workflow results will be stored"
-    echo "                      before final results are copied to the output dir."
+    echo "    -p/-profile     STRING    Profile to use from one of the config files               [default: 'singularity']"
+    echo "    -s/--container_dir DIR    Singularity container dir                                 [default: '/fs/project/PAS0471/containers']"
+    echo "    -w/-work-dir    DIR       Scratch (work) dir for the workflow                       [default: '/fs/scratch/PAS0471/\$USER/nfc_rnaseq']"
+    echo "                                - This is where the workflow results will be stored"
+    echo "                                  before final results are copied to the output dir."
     echo
-    echo "UTLITY OPTIONS:"
-    echo "    -x          Turn on debugging/dry-run mode: print run information, but don't run"
-    echo "    -h          Print this help message and exit"
+    echo "UTILITY OPTIONS:"
+    echo "    -x/--debug               Turn on debugging/dry-run mode: print run information, but don't run"
+    echo "    -h/--help                Print this help message and exit"
     echo
-    echo "EXAMPLE COMMAND:"
-    echo "    sbatch $0 -i data/meta/samplesheet.csv -f data/ref/my.fa -a data/ref/my.gtf -o results/nfc_rnaseq"
+    echo "EXAMPLE COMMANDS:"
+    echo "    sbatch $0 -i samplesheet.csv -f data/ref/my.fa -a data/ref/my.gtf -o results/nfc_rnaseq"
+    echo "    sbatch $0 -i samplesheet.csv -f data/ref/my.fa -a data/ref/my.gtf -o results/nfc_rnaseq \\"
+    echo "      -a \"--skip_bbsplit false --bbsplit_fasta_list contaminant_refs.tsv\""
+    echo
+    echo "HARDCODED WORKFLOW OPTIONS:"
+    echo "  --aligner star_salmon"
+    echo "  --remove_ribo_rna"
+    echo "  --save_reference"
+    echo "  --save_non_ribo_reads"
+    echo "  --save_merged_fastq"
+    echo "  -ansi-log false"
     echo
     echo "OUTPUT:"
     echo "    - HTML file with summary of results: <outdir>/multiqc/star_salmon/multiqc_report.html"
@@ -60,8 +71,13 @@ Print_help() {
     echo "      Use the script 'mcic-scripts/R_templates/nfcore-rnaseq_load-counts.R' to get started with that."
     echo
     echo "NFCORE RNASEQ WORKFLOW DOCUMENTATION:"
-    echo " - https://nf-co.re/rnaseq "
+    echo "   - https://nf-co.re/rnaseq "
     echo
+    echo "EXAMPLE CODE FOR CREATING THE SAMPLE SHEET"
+    echo "    wget -L https://raw.githubusercontent.com/nf-core/rnaseq/master/bin/fastq_dir_to_samplesheet.py"
+    echo "    fqdir=data/fastq                         # Dir with your FASTQ files"
+    echo "    samplesheet=data/meta/samplesheet.csv    # Output samplehseet"
+    echo '    python3 fastq_dir_to_samplesheet.py "$fqdir" "$samplesheet" --strandedness reverse'
 }
 
 Load_software() {
@@ -85,21 +101,25 @@ Die() {
 }
 
 
-# CONTSTANTS AND DEFAULTS ------------------------------------------------------
+# ==============================================================================
+#                     CONSTANTS AND DEFAULTS
+# ==============================================================================
 ## URL to OSC Nextflow config file
 OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config
 osc_config=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present here
 
 ## Option defaults
-workflow_dir=workflows/nf-core-rnaseq
+nextflow_file=workflows/nfcore-rnaseq/workflow/main.nf
 container_dir=/fs/project/PAS0471/containers
-scratch_dir=/fs/scratch/PAS0471/$USER/nfc_rnaseq
+work_dir=/fs/scratch/PAS0471/$USER/nfc_rnaseq
 profile=singularity
-resume=true
+resume=true && resume_arg="-resume"
 debug=false
 
 
-# PARSE COMMAND-LINE OPTIONS ---------------------------------------------------
+# ==============================================================================
+#                     PARSE COMMAND-LINE OPTIONS
+# ==============================================================================
 samplesheet=""
 ref_annot=""
 ref_fasta=""
@@ -108,28 +128,30 @@ config_file=""
 more_args=""
 
 ## Parse command-line options
-while getopts 'i:g:f:o:c:d:w:s:p:a:hrx' flag; do
-    case "${flag}" in
-        i) samplesheet="$OPTARG" ;;
-        g) ref_annot="$OPTARG" ;;
-        f) ref_fasta="$OPTARG" ;;
-        o) outdir="$OPTARG" ;;
-        d) workflow_dir="$OPTARG" ;;
-        w) scratch_dir="$OPTARG" ;;
-        s) container_dir="$OPTARG" ;;
-        p) profile="$OPTARG" ;;
-        c) config_file="$OPTARG" ;;
-        r) resume=false ;;
-        a) more_args="$OPTARG" ;;
-        x) debug=true ;;
-        h) Print_help && exit 0 ;;
-        \?) Print_help; Die "Invalid option $OPTARG" ;;
-        :) Print_help; Die "Option -$OPTARG requires an argument" ;;
+while [ "$1" != "" ]; do
+    case "$1" in
+        -i | --samplesheet )    shift && samplesheet=$1 ;;
+        -g | --ref_annot )      shift && ref_annot=$1 ;;
+        -f | --ref_fasta )      shift && ref_fasta=$1 ;;
+        -o | --outdir )         shift && outdir=$1 ;;
+        -n | --nextflow_file )  shift && nextflow_file=$1 ;;
+        -t | --container_dir )  shift && container_dir=$1 ;;
+        -a | --more_args )      shift && more_args=$1 ;;
+        -c | -config )          shift && config_file=$1 ;;
+        -p | -profile )         shift && profile=$1 ;;
+        -w | -work-dir )        shift && work_dir=$1 ;;
+        -r | -no-resume )       resume=false ;;
+        -x | --debug )          debug=true ;;
+        -h | --help )           Print_help; exit ;;
+        * )                     Print_help; Die "Invalid option $1";;
     esac
+    shift
 done
 
 
-# SETUP ---------------------------------------------------------------
+# ==============================================================================
+#                              OTHER SETUP
+# ==============================================================================
 ## Load software
 Load_software
 
@@ -158,11 +180,7 @@ if [[ "$config_file" != "" ]]; then
 fi
 
 ## Setup Nextflow arguments: resume option
-if [[ "$resume" = true ]]; then
-    resume_arg="-resume"
-else
-    resume_arg=""
-fi
+[[ "$resume" = false ]] && resume_arg=""
 
 ## Setup Nextflow arguments: annottation filetype
 if [[ "$ref_annot" =~ .*\.gff3? ]]; then
@@ -186,8 +204,8 @@ echo "Output dir:                        $outdir"
 echo "Resume previous run:               $resume"
 echo
 echo "Container dir:                     $container_dir"
-echo "Scratch (work) dir:                $scratch_dir"
-echo "Dir with workflow files:           $workflow_dir"
+echo "Scratch (work) dir:                $work_dir"
+echo "Dir with workflow files:           $nextflow_file"
 echo "Config 'profile':                  $profile"
 echo "Config file argument:              $config_arg"
 [[ "$config_file" != "" ]] && echo "Additional config file:            $config_file"
@@ -195,11 +213,13 @@ echo "Config file argument:              $config_arg"
 echo "=========================================================================="
 
 
-# MAIN -------------------------------------------------------------------------
+# ==============================================================================
+#                              RUN
+# ==============================================================================
 if [[ "$debug" = false ]]; then
     ## Make necessary dirs
     trace_dir="$outdir"/pipeline_info
-    mkdir -p "$scratch_dir" "$container_dir" "$outdir" "$trace_dir"
+    mkdir -p "$work_dir" "$container_dir" "$outdir" "$trace_dir"
 
     ## Remove old trace files
     [[ -f "$trace_dir"/report.html ]] && rm "$trace_dir"/report.html
@@ -208,19 +228,19 @@ if [[ "$debug" = false ]]; then
     [[ -f "$trace_dir"/dag.png ]] && rm "$trace_dir"/dag.png
 
     ## Download workflow, if needed
-    if [[ ! -d "$workflow_dir" ]]; then
-        mkdir -p "$(dirname "$workflow_dir")"
+    if [[ ! -d "$nextflow_file" ]]; then
+        mkdir -p "$(dirname "$nextflow_file")"
         nf-core download rnaseq \
             --revision 3.9 \
             --compress none \
             --container singularity \
-            --outdir "$workflow_dir"
+            --outdir "$nextflow_file"
     fi
 fi
 
 ## Define the workflow command
-run_workflow() {
-    nextflow run "$workflow_dir"/workflow \
+Run_workflow() {
+    nextflow run "$nextflow_file" \
         --input "$samplesheet" \
         --outdir "$outdir" \
         --fasta "$ref_fasta" \
@@ -230,7 +250,7 @@ run_workflow() {
         --save_reference \
         --save_non_ribo_reads \
         --save_merged_fastq \
-        -work-dir "$scratch_dir" \
+        -work-dir "$work_dir" \
         -with-report "$trace_dir"/report.html \
         -with-trace "$trace_dir"/trace.txt \
         -with-timeline "$trace_dir"/timeline.html \
@@ -242,18 +262,22 @@ run_workflow() {
 ## Run/echo the workflow
 if [[ "$debug" = true ]]; then
     echo -e "\n## Final command:"
-    type run_workflow | sed '1,3d;$d'
-    nextflow config "$workflow_dir" -profile "$profile"
+    type Run_workflow | sed '1,3d;$d'
+    echo -e "\n## Config settings:"
+    nextflow config "$nextflow_file" -profile "$profile"
 else
     echo -e "\n## Starting the nextflow run..."
-    eval run_workflow
+    eval Run_workflow
 fi
 
 
-# WRAP UP ----------------------------------------------------------------------
-echo -e "\n-------------------------------"
+# ==============================================================================
+#                              WRAP UP
+# ==============================================================================
+echo
+echo "========================================================================="
 if [[ "$debug" = false ]]; then
-    echo "## Listing files in the output dir:"
+    echo -e "\n## Listing files in the output dir:"
     ls -lh "$outdir"
     echo
     sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
