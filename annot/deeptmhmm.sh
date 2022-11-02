@@ -1,5 +1,7 @@
 #!/bin/bash
 
+#! THIS SCRIPT DOES NOT WORK -- USE SERVER INSTEAD https://dtu.biolib.com/DeepTMHMM/
+
 #SBATCH --account=PAS0471
 #SBATCH --time=6:00:00
 #SBATCH --cpus-per-task=8
@@ -11,7 +13,7 @@
 ## Help function
 Help() {
   echo
-  echo "$0: Run DeepTMHMM."
+  echo "$0: Run DeepTMHMM. DOES NOT CURRENTLY WORK!! Use the server instead: https://dtu.biolib.com/DeepTMHMM/"
   echo
   echo "Syntax: $0 -i <input-FASTA> -o <output-dir>..."
   echo
