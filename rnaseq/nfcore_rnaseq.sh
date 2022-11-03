@@ -205,7 +205,7 @@ echo "Resume previous run:               $resume"
 echo
 echo "Container dir:                     $container_dir"
 echo "Scratch (work) dir:                $work_dir"
-echo "Dir with workflow files:           $nextflow_file"
+echo "Nextflow workflow definition file: $nextflow_file"
 echo "Config 'profile':                  $profile"
 echo "Config file argument:              $config_arg"
 [[ "$config_file" != "" ]] && echo "Additional config file:            $config_file"
@@ -228,8 +228,8 @@ if [[ "$debug" = false ]]; then
     [[ -f "$trace_dir"/dag.png ]] && rm "$trace_dir"/dag.png
 
     ## Download workflow, if needed
-    if [[ ! -d "$nextflow_file" ]]; then
-        mkdir -p "$(dirname "$nextflow_file")"
+    if [[ ! -f "$nextflow_file" ]]; then
+        mkdir -p "$(dirname "$(dirname "$nextflow_file")")"
         nf-core download rnaseq \
             --revision 3.9 \
             --compress none \
