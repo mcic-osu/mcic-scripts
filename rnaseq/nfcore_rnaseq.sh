@@ -49,7 +49,8 @@ Print_help() {
     echo "                                  before final results are copied to the output dir."
     echo
     echo "UTILITY OPTIONS:"
-    echo "    -x/--debug               Turn on debugging/dry-run mode: print run information, but don't run"
+    echo "    -x/--debug               Turn on debugging mode: print all commands"
+    echo "    -N/--dryrun              Dry run: print info and main commands but don't run"
     echo "    -h/--help                Print this help message and exit"
     echo
     echo "EXAMPLE COMMANDS:"
@@ -115,6 +116,7 @@ work_dir=/fs/scratch/PAS0471/$USER/nfc_rnaseq
 profile=singularity
 resume=true && resume_arg="-resume"
 debug=false
+dryrun=false
 
 
 # ==============================================================================
@@ -142,6 +144,7 @@ while [ "$1" != "" ]; do
         -w | -work-dir )        shift && work_dir=$1 ;;
         -r | -no-resume )       resume=false ;;
         -x | --debug )          debug=true ;;
+        -N | --dryrun )         dryrun=true ;;
         -h | --help )           Print_help; exit ;;
         * )                     Print_help; Die "Invalid option $1";;
     esac
@@ -152,6 +155,8 @@ done
 # ==============================================================================
 #                              OTHER SETUP
 # ==============================================================================
+[[ "$debug" = true ]] && set -o xtrace
+
 ## Load software
 Load_software
 
@@ -191,6 +196,9 @@ else
     Die "Unknown annotation file format" >&2 && exit 1
 fi
 
+## Other output dirs
+trace_dir="$outdir"/pipeline_info
+
 ## Report
 echo
 echo "=========================================================================="
@@ -211,14 +219,13 @@ echo "Config file argument:              $config_arg"
 [[ "$config_file" != "" ]] && echo "Additional config file:            $config_file"
 [[ "$more_args" != "" ]] && echo "Additional arguments:              $more_args"
 echo "=========================================================================="
-
+echo
 
 # ==============================================================================
 #                              RUN
 # ==============================================================================
-if [[ "$debug" = false ]]; then
+if [[ "$dryrun" = false ]]; then
     ## Make necessary dirs
-    trace_dir="$outdir"/pipeline_info
     mkdir -p "$work_dir" "$container_dir" "$outdir" "$trace_dir"
 
     ## Remove old trace files
@@ -239,36 +246,30 @@ if [[ "$debug" = false ]]; then
 fi
 
 ## Define the workflow command
-Run_workflow() {
-    nextflow run "$nextflow_file" \
-        --input "$samplesheet" \
-        --outdir "$outdir" \
-        --fasta "$ref_fasta" \
+command="nextflow run $nextflow_file \
+        --input $samplesheet \
+        --outdir $outdir \
+        --fasta $ref_fasta \
         $annot_arg \
         --aligner star_salmon \
         --remove_ribo_rna \
         --save_reference \
         --save_non_ribo_reads \
         --save_merged_fastq \
-        -work-dir "$work_dir" \
-        -with-report "$trace_dir"/report.html \
-        -with-trace "$trace_dir"/trace.txt \
-        -with-timeline "$trace_dir"/timeline.html \
-        -with-dag "$trace_dir"/dag.png \
+        -work-dir $work_dir \
+        -with-report $trace_dir/report.html \
+        -with-trace $trace_dir/trace.txt \
+        -with-timeline $trace_dir/timeline.html \
+        -with-dag $trace_dir/dag.png \
         -ansi-log false \
-        -profile "$profile" $config_arg $resume_arg $more_args
-}
+        -profile $profile $config_arg $resume_arg $more_args"
 
-## Run/echo the workflow
-if [[ "$debug" = true ]]; then
-    echo -e "\n## Final command:"
-    type Run_workflow | sed '1,3d;$d'
-    echo -e "\n## Config settings:"
-    nextflow config "$nextflow_file" -profile "$profile"
-else
-    echo -e "\n## Starting the nextflow run..."
-    eval Run_workflow
-fi
+## Run the workflow
+echo "## Starting the workflow using the following command:"
+echo
+echo "$command" | tr -s " "
+echo
+[[ "$dryrun" = false ]] && eval $command
 
 
 # ==============================================================================
@@ -276,7 +277,7 @@ fi
 # ==============================================================================
 echo
 echo "========================================================================="
-if [[ "$debug" = false ]]; then
+if [[ "$dryrun" = false ]]; then
     echo -e "\n## Listing files in the output dir:"
     ls -lh "$outdir"
     echo
