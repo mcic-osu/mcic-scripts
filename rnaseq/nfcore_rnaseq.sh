@@ -236,12 +236,15 @@ if [[ "$dryrun" = false ]]; then
 
     ## Download workflow, if needed
     if [[ ! -f "$nextflow_file" ]]; then
-        mkdir -p "$(dirname "$(dirname "$nextflow_file")")"
+        workflow_dir="$(dirname "$(dirname "$nextflow_file")")"
+        mkdir -p "$(dirname "$workflow_dir")"
+        echo "## Downloading workflow to $workflow_dir"
         nf-core download rnaseq \
             --revision 3.9 \
             --compress none \
             --container singularity \
-            --outdir "$nextflow_file"
+            --outdir "$workflow_dir"
+        echo
     fi
 fi
 
