@@ -22,16 +22,16 @@ Print_help() {
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "    -i/--indir FILE       Input"
-    echo "    -o/--outdir DIR       Output dir (will be created if needed)"
+    echo "    -i/--indir FILE        Input"
+    echo "    -o/--outdir DIR        Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "    -a/--more_args QUOTED STRING  Other argument(s) to pass to TODO_THIS_SOFTWARE"
+    echo "    -a/--more_args STRING  Quoted string with additional argument(s) to pass to TODO_THIS_SOFTWARE"
     echo
-    echo "UTILITY OPTIONS"
-    echo "    -x/--debug            Run the script in debug mode"
-    echo "    -h/--help             Print this help message and exit"
-    echo "    -v/--version          Print the version of TODO_THIS_SOFTWARE and exit"
+    echo "UTILITY OPTIONS:"
+    echo "    -x/--debug             Run the script in debug mode (print all code)"
+    echo "    -h/--help              Print this help message and exit"
+    echo "    -v/--version           Print the version of TODO_THIS_SOFTWARE and exit"
     echo
     echo "EXAMPLE COMMANDS:"
     echo "    sbatch $0 -i TODO -o results/TODO "
@@ -66,6 +66,7 @@ Die() {
     echo -e "Exiting\n" >&2
     exit 1
 }
+
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
