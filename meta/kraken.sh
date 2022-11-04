@@ -24,21 +24,22 @@ Print_help() {
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i FILE            Input sequence file (FASTA, single-end FASTQ, or R1 from paired-end FASTQ)"
-    echo "                          (If an R1 paired-end FASTQ file is provided, the name of the R2 file will be inferred.)"
+    echo "                       - If an R1 paired-end FASTQ file is provided, the name of the R2 file will be inferred"
+    echo "                       - FASTA files should be unzipped; FASTQ files should be gzipped"
     echo "  -o DIR             Output directory"
     echo "  -d DIR             Directory with an existing Kraken database"
     echo "                          (Use one of the scripts 'kraken-build-custom-db.sh' or 'kraken-build-std-db.sh' to create a Kraken database)"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  -c NUM             Confidence required for assignment: number between 0 and 1            [default: 0.5]"
+    echo "  -q INTEGER         Base quality Phred score required for use of a base in assignment     [default: 0]"
+    echo "                          NOTE: If setting a score other than 0, any output sequence files (-w and -W options)"
+    echo "                                will contain 'x's for masked bases."
     echo "  -m                 Don't load the full database into RAM memory                          [default: load into memory]"
     echo "                          (Considerably lower, but can be useful/needed with very large databases)"
     echo "  -n                 Add taxonomic names to the Kraken 'main' output file                  [default: don't add]"
     echo "                          NOTE: This option is not compatible with Krona plotting"
-    echo "  -q INTEGER         Base quality Phred score required for use of a base in assignment     [default: 0]"
-    echo "                          NOTE: If setting a score other than 0, any output sequence files (-w and -W options)"
-    echo "                                will contain 'x's for masked bases."
-    echo
+    echo "  -s                 FASTQ files are single-end                                            [default: paired-end]"
     echo "  -w                 Write 'classified' reads/sequences to file (in '<outdir>/classified' dir)     [default: don't write]"
     echo "  -W                 Write 'unclassified' reads/sequences to file (in '<outdir>/unclassified' dir) [default: don't write]"
     echo
@@ -79,7 +80,7 @@ min_conf=0.5
 min_q=0
 add_names=false && names_arg=""
 use_ram=true && mem_map_arg=""
-
+single_end=false
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
@@ -94,7 +95,7 @@ dryrun=false
 debug=false
 
 ## Get command-line options
-while getopts 'i:o:d:c:q:NXmnwWh' flag; do
+while getopts 'i:o:d:c:q:sNXmnwWh' flag; do
     case "${flag}" in
     i) infile="$OPTARG" ;;
     o) outdir="$OPTARG" ;;
@@ -102,6 +103,7 @@ while getopts 'i:o:d:c:q:NXmnwWh' flag; do
     c) min_conf="$OPTARG" ;;
     q) min_q="$OPTARG" ;;
     n) add_names=true ;;
+    s) single_end=true ;;
     w) write_class=true ;;
     W) write_unclass=true ;;
     m) use_ram=false ;;
@@ -160,14 +162,19 @@ echo
 [[ "$add_names" = true ]] && names_arg="--use-names "
 
 ## Make sure input file argument is correct based on file type 
-if [[ "$infile" =~ \.fastq.gz$ ]]; then
+if [[ "$infile" =~ \.fa?s?t?q.gz$ ]]; then
 
     R1_in="$infile"
     R1_basename=$(basename "$R1_in" | sed -E 's/\.fa?s?t?q\.gz//')
     R1_suffix=$(echo "$R1_basename" | sed -E 's/.*(_R?[12]).*/\1/')
     
-    if [[ "$R1_suffix" != "$R1_basename" && "$R1_suffix" != "" ]]; then
+    if [[ "$single_end" = false ]]; then
+
         echo "Input type is:                  paired-end FASTQ files"
+        
+        if [[ "$R1_suffix" != "$R1_basename" && "$R1_suffix" != "" ]]; then
+            die "Can't figure out R2 filename"
+        fi
 
         R2_suffix=${R1_suffix/1/2}
         R2_in=${R1_in/$R1_suffix/$R2_suffix}
@@ -177,7 +184,6 @@ if [[ "$infile" =~ \.fastq.gz$ ]]; then
         echo "Input FASTQ file - R1:          $R1_in"
         echo "Input FASTQ file - R2:          $R2_in"
 
-        
         [[ ! -f "$R2_in" ]] && Die "R2 file $R2_in does not exist"
         [[ "$R1_in" = "$R2_in" ]] && Die "R1 file $R1_in is the same as R2 file $R2_in"
 
@@ -189,6 +195,7 @@ if [[ "$infile" =~ \.fastq.gz$ ]]; then
         fi
 
     else
+
         echo "Input type is:                  single-end FASTQ file"
         sample_ID=$(basename "$R1_in" .fastq.gz)
         infile_arg="--gzip-compressed $R1_in"
@@ -199,10 +206,10 @@ if [[ "$infile" =~ \.fastq.gz$ ]]; then
         if [[ "$write_unclass" = true ]]; then
             unclass_out_arg="--unclassified-out $outdir/unclassified/$sample_ID.fastq "
         fi
-
+    
     fi
 
-else
+elif [[ "$infile" =~ \.fn?a?s?t?a$ ]]; then
     echo -e "Input type is:                   FASTA file"
     infile_basename=$(basename "$infile")
     sample_ID=${infile_basename%%.*}
@@ -214,6 +221,9 @@ else
     if [[ "$write_unclass" = true ]]; then
         unclass_out_arg="--unclassified-out $outdir/unclassified/$sample_ID.fa "
     fi
+
+else
+    Die "Unknown input file type"
 fi
 
 ## Define output text files
