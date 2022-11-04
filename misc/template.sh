@@ -18,23 +18,24 @@ Print_help() {
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 ..."
+    echo "  sbatch $0 -i <input-dir> -o <output-dir> ..."
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "    -i FILE           Input"
-    echo "    -o DIR            Output dir (will be created if needed)"
+    echo "    -i/--indir FILE       Input"
+    echo "    -o/--outdir DIR       Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "    -a STRING         Other argument(s) to pass to TODO_THIS_SOFTWARE"
+    echo "    -a/--more_args QUOTED STRING  Other argument(s) to pass to TODO_THIS_SOFTWARE"
     echo
     echo "UTILITY OPTIONS"
-    echo "    -x                Run the script in debug mode"
-    echo "    -h                Print this help message and exit"
-    echo "    -v                Print the version of TODO_THIS_SOFTWARE and exit"
+    echo "    -x/--debug            Run the script in debug mode"
+    echo "    -h/--help             Print this help message and exit"
+    echo "    -v/--version          Print the version of TODO_THIS_SOFTWARE and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "    sbatch $0 ..."
+    echo "    sbatch $0 -i TODO -o results/TODO "
+    echo "    sbatch $0 -i TODO -o results/TODO -a \"-x TODO\""
     echo
     echo "HARDCODED PARAMETERS:"
     echo "    - ..."
@@ -49,7 +50,7 @@ Print_help() {
 
 ## Load software
 Load_software() {
-    module load python/3.6-conda5.2
+    module load miniconda3/4.12.0-py39
     source activate TODO_THIS_SOFTWARE_ENV
 }
 
@@ -153,8 +154,6 @@ TODO_COMMAND \
 # ==============================================================================
 echo
 echo "========================================================================="
-echo "## Done with script"
-date
 if [[ "$dryrun" = false ]]; then
     echo -e "\n## Version used:"
     Print_version | tee "$outdir"/logs/version.txt
@@ -164,3 +163,5 @@ if [[ "$dryrun" = false ]]; then
     sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
 fi
 echo
+echo "## Done with script"
+date
