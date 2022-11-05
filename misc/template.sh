@@ -14,7 +14,8 @@
 Print_help() {
     echo
     echo "======================================================================"
-    echo "            $0: TODO FUNCTION OF THIS SCRIPT"
+    echo "                            $0"
+    echo "                  TODO FUNCTION OF THIS SCRIPT"
     echo "======================================================================"
     echo
     echo "USAGE:"
@@ -29,8 +30,9 @@ Print_help() {
     echo "    -a/--more_args STRING  Quoted string with additional argument(s) to pass to TODO_THIS_SOFTWARE"
     echo
     echo "UTILITY OPTIONS:"
-    echo "    -x/--debug             Run the script in debug mode (print all code)"
     echo "    -h/--help              Print this help message and exit"
+    echo "    -N/--dryrun            Dry run: don't execute commands, only parse arguments and report"
+    echo "    -x/--debug             Run the script in debug mode (print all code)"
     echo "    -v/--version           Print the version of TODO_THIS_SOFTWARE and exit"
     echo
     echo "EXAMPLE COMMANDS:"
@@ -84,6 +86,7 @@ dryrun=false
 ## Placeholder defaults
 indir=""
 outdir=""
+more_args=""
 #tree="" && tree_arg=""
 
 ## Parse command-line args
@@ -94,9 +97,9 @@ while [ "$1" != "" ]; do
         -a | --more_args )      shift && more_args=$1 ;;
         -X | --debug )          debug=true ;;
         -N | --dryrun )         dryrun=false ;;
-        -v | --version )        Print_version && exit ;;
-        -h | --help )           Print_help && exit ;;
-        * )                     Die "Invalid option $1" && exit 1 ;;
+        -v | --version )        Print_version; exit ;;
+        -h | --help )           Print_help; exit ;;
+        * )                     Print_help; Die "Invalid option $1" ;;
     esac
     shift
 done
@@ -109,6 +112,22 @@ done
 
 ## Load software
 [[ "$dryrun" = false ]] && Load_software
+
+## Get number of threads
+if [[ "$dryrun" = false ]]; then
+    if [[ -z "$SLURM_CPUS_PER_TASK" ]]; then
+        n_threads="$SLURM_NTASKS"
+    else
+        n_threads="$SLURM_CPUS_PER_TASK"
+    fi
+fi
+
+## FASTQ filename parsing
+extension=$(echo "$R1_in" | sed -E 's/.*(\.fa?s?t?q\.gz$)/\1/')
+R1_suffix=$(echo "$R1_in" | sed -E "s/.*(_R?1)_?[[:digit:]]*$extension/\1/")
+R2_suffix=${R1_suffix/1/2}
+R2_in=${R1_in/$R1_suffix/$R2_suffix}
+sample_id=$(basename "$R1_in" | sed -E "s/${R1_suffix}_?[[:digit:]]*${extension}//")
 
 ## Bash script settings
 set -euo pipefail
@@ -132,6 +151,7 @@ ls -lh "$indir"
 echo "=========================================================================="
 echo
 
+
 # ==============================================================================
 #                               RUN
 # ==============================================================================
@@ -144,7 +164,7 @@ echo -e "\n## Now running TODO_THIS_SOFTWARE..."
 [[ "$debug" = false ]] && set -o xtrace
 
 TODO_COMMAND \
-    -t "$SLURM_CPUS_PER_TASK"
+    -t "$n_threads"
     $more_args \
 
 [[ "$debug" = false ]] && set +o xtrace
