@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
+#SBATCH --time=3:00:00
+#SBATCH --mem=172G
 #SBATCH --job-name=pilon
 #SBATCH --output=slurm-pilon-%j.out
 
@@ -23,19 +22,21 @@ Print_help() {
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--genome     <file>  Genome assembly FASTA file"
-    echo "  -I/--bam        <file>  BAM file of Illumina reads mapped to the assembly"
-    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
-    echo "  -p/--out_prefix <str>   Prefix for output files"
+    echo "  -i/--genome     <file>   Genome assembly FASTA file"
+    echo "  -I/--bam        <file>   BAM file of Illumina reads mapped to the assembly"
+    echo "  -o/--outdir     <dir>    Output dir (will be created if needed)"
+    echo "  -p/--out_prefix <str>    Prefix for output files"
     echo
     echo "OTHER KEY OPTIONS:"
+    echo "  --fix           <string> What to fix: 'snps'/'indels'/'gaps'/'local'/'all'/'bases'   [default: 'bases']"
+    echo "                           See the Pilon documentation for details"
     echo "  -a/--more_args  <string> Quoted string with additional argument(s) to pass to Pilon"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  -h/--help               Print this help message and exit"
-    echo "  -N/--dryrun             Dry run: don't execute commands, only parse arguments and report"
-    echo "  -x/--debug              Run the script in debug mode (print all code)"
-    echo "  -v/--version            Print the version of Pilon and exit"
+    echo "  -h/--help                Print this help message and exit"
+    echo "  -N/--dryrun              Dry run: don't execute commands, only parse arguments and report"
+    echo "  -x/--debug               Run the script in debug mode (print all code)"
+    echo "  -v/--version             Print the version of Pilon and exit"
     echo
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 -i TODO -o results/TODO "
@@ -76,6 +77,8 @@ Die() {
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 ## Option defaults
+fix=bases
+
 debug=false
 dryrun=false
 
@@ -97,6 +100,7 @@ while [ "$1" != "" ]; do
         -I | --bamdir )         shift && bamdir=$1 ;;
         -o | --outdir )         shift && outdir=$1 ;;
         -p | --out_prefix )     shift && out_prefix=$1 ;;
+        --fix )                 shift && fix=$1 ;;
         -a | --more_args )      shift && more_args=$1 ;;
         -X | --debug )          debug=true ;;
         -N | --dryrun )         dryrun=true ;;
@@ -115,15 +119,6 @@ done
 
 ## Load software
 [[ "$dryrun" = false ]] && Load_software
-
-## Get number of threads
-if [[ "$dryrun" = false ]]; then
-    if [[ -z "$SLURM_CPUS_PER_TASK" ]]; then
-        n_threads="$SLURM_NTASKS"
-    else
-        n_threads="$SLURM_CPUS_PER_TASK"
-    fi
-fi
 
 ## Build BAM arg
 for bam in "$bamdir"/*bam; do
@@ -151,9 +146,12 @@ echo "Input genome assembly FASTA:  $genome"
 echo "Input BAM:                    $bam"
 echo "Output dir:                   $outdir"
 echo "Output prefix:                $out_prefix"
+echo "What to fix (--fix):          $fix"
 [[ $more_args != "" ]] && echo "Other arguments for Pilon:    $more_args"
+echo
 echo "Listing input genome FASTA:"
 ls -lh "$genome"
+echo
 echo "BAM file argument:"
 echo "$bam_arg"
 [[ $dryrun = true ]] && echo "THIS IS A DRY-RUN"
@@ -176,12 +174,13 @@ pilon \
     --genome "$genome" \
     $bam_arg \
     --outdir "$outdir" \
-    --prefix "$out_prefix" \
-    --fix bases \
-    --threads "$n_threads"
+    --output "$out_prefix" \
+    --fix "$fix" \
     $more_args
 
 [[ "$debug" = false ]] && set +o xtrace
+
+## No --threads: running with v 1.24, got: "--threads argument no longer supported; ignoring!"
 
 
 # ==============================================================================
