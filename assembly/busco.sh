@@ -24,19 +24,19 @@ Print_help() {
     echo "  sbatch $0 -i <input-FASTA> -o <output-dir> -d <db-name> ..."
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i STRING         Input FASTA file with the assembly"
-    echo "  -o STRING         Output directory"
-    echo "  -d STRING         Busco database name (see https://busco.ezlab.org/list_of_lineages.html)"
+    echo "  -i <file>           Input FASTA file with the assembly"
+    echo "  -o <dir>            Output directory"
+    echo "  -d <string>         Busco database name (see https://busco.ezlab.org/list_of_lineages.html)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  -m STRING         Run mode, i.e. assembly type               [default: 'genome']"
-    echo "                    Valid options: 'genome', 'transcripttome', or 'proteins'"
+    echo "  -m <string>         Run mode, i.e. assembly type               [default: 'genome']"
+    echo "                      Valid options: 'genome', 'transcripttome', or 'proteins'"
     echo
     echo "UTILITY OPTIONS:"
     echo "  -h                Print this help message and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i results/assembly/assembly.fa -o results/BUSCO -d bacteria_odb"
+    echo "  sbatch $0 -i results/assembly.fa -o results/busco -d bacteria_odb"
     echo
     echo "DOCUMENTATION:"
     echo "  - https://busco.ezlab.org/busco_userguide.html"
@@ -45,8 +45,9 @@ Print_help() {
 
 ## Load software
 Load_software() {
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do conda deactivate; done
     module load miniconda3/4.12.0-py39
-    source activate /users/PAS0471/jelmer/miniconda3/envs/busco-env
+    source activate /fs/ess/PAS0471/jelmer/conda/busco
 }
 
 ## Print version
@@ -124,9 +125,6 @@ fi
 ## Get a sample/assembly ID from the filename
 fileID=$(basename "$fa_in" | sed -E 's/.fn?as?t?a?//')
 
-## Create output dir if needed
-mkdir -p "$outdir"
-
 ## Report
 echo
 echo "=========================================================================="
@@ -147,11 +145,14 @@ echo
 # ==============================================================================
 #                               RUN
 # ==============================================================================
+## Create output dir if needed
+mkdir -p "$outdir"/logs
+
 ## Move into output dir
 cd "$outdir" || exit 1
 
-echo "## Now running busco..."
-
+## Run BUSCO
+echo "## Now running BUSCO..."
 [[ "$debug" = false ]] && set -o xtrace
 busco \
     -i "$fa_in" \
@@ -169,8 +170,8 @@ busco \
 echo
 echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
-    echo "## Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
+    echo "## BUSCO version used:"
+    Print_version | tee logs/version.txt
     echo -e "\n## Listing files in the output dir:"
     ls -lh "$outdir"
     echo
