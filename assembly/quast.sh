@@ -2,7 +2,7 @@
 
 #SBATCH --account=PAS0471
 #SBATCH --cpus-per-task=12
-#SBATCH --time=6:00:00
+#SBATCH --time=12:00:00
 #SBATCH --job-name=quast
 #SBATCH --output=slurm-quast-%j.out
 
@@ -40,7 +40,8 @@ Print_help() {
     echo "  sbatch $0 -i results/assembly -o results/quast"
     echo
     echo "SOFTWARE DOCUMENTATION:"
-    echo "  - Docs: https://github.com/ablab/quast"
+    echo "  - GitHub repo: https://github.com/ablab/quast"
+    echo "  - Manual: https://quast.sourceforge.net/docs/manual.html"
     echo "  - Paper: https://academic.oup.com/bioinformatics/article/29/8/1072/228832"
     echo
 }
