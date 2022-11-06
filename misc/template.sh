@@ -52,6 +52,7 @@ Print_help() {
 
 ## Load software
 Load_software() {
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do conda deactivate; done
     module load miniconda3/4.12.0-py39
     source activate TODO_THIS_SOFTWARE_ENV
 }
@@ -114,12 +115,12 @@ done
 [[ "$dryrun" = false ]] && Load_software
 
 ## Get number of threads
-if [[ "$dryrun" = false ]]; then
-    if [[ -z "$SLURM_CPUS_PER_TASK" ]]; then
-        n_threads="$SLURM_NTASKS"
-    else
-        n_threads="$SLURM_CPUS_PER_TASK"
-    fi
+if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
+    threads="$SLURM_CPUS_PER_TASK"
+elif [[ -n "$SLURM_NTASKS" ]]; then
+    threads="$SLURM_NTASKS"
+else
+    threads=1
 fi
 
 ## FASTQ filename parsing
@@ -148,35 +149,36 @@ echo "Output dir:                  $outdir"
 [[ $more_args != "" ]] && echo "Other arguments for TODO_THIS_SOFTWARE:    $more_args"
 echo "Listing input file:"
 ls -lh TODO
-[[ $dryrun = true ]] && echo "THIS IS A DRY-RUN"
+[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN\n"
 echo "=========================================================================="
 echo
-
+##TODO print SLURM resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
 if [[ "$dryrun" = false ]]; then
+    
     ## Create the output directory
     mkdir -p "$outdir"/logs
+
+    ## Run
+    echo -e "\n## Now running TODO_THIS_SOFTWARE..."
+    [[ "$debug" = false ]] && set -o xtrace
+    TODO_COMMAND \
+        -t "$threads"
+        $more_args \
+    [[ "$debug" = false ]] && set +o xtrace
+
 fi
-
-echo -e "\n## Now running TODO_THIS_SOFTWARE..."
-[[ "$debug" = false ]] && set -o xtrace
-
-TODO_COMMAND \
-    -t "$n_threads"
-    $more_args \
-
-[[ "$debug" = false ]] && set +o xtrace
 
 
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
-echo
-echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
+    echo
+    echo "========================================================================="
     echo "## Version used:"
     Print_version | tee "$outdir"/logs/version.txt
     echo -e "\n## Listing files in the output dir:"
