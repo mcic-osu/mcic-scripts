@@ -1,5 +1,7 @@
 #!/bin/bash
+
 #SBATCH --account=PAS0471
+#SBATCH --mem=8G
 #SBATCH --job-name=canu
 #SBATCH --output=slurm-canu-%j.out
 
@@ -16,30 +18,31 @@ Print_help() {
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "    -i STRING         Space-separated list of input FASTQ files"
-    echo "    -o DIR            Output dir"
-    echo "    -p DIR            Custom output prefix / name for the genome assembly"
-
-    echo "    -s STRING         Estimated genome size, e.g. '65m' for 65 Mbp"
+    echo "  -i STRING         Space-separated list of input FASTQ files"
+    echo "  -o DIR            Output dir"
+    echo "  -p DIR            Custom output prefix / name for the genome assembly"
+    echo "  -s STRING         Estimated genome size, e.g. '65m' for 65 Mbp"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "    -t STRING         Time limit for Canu jobs: specify as HH:MM:SS     [default: 06:00:00]"
-    echo "    -w DIR            Work dir - initial output dir before files are copied"
+    echo "  -t STRING         Time limit for Canu jobs: specify as HH:MM:SS     [default: 06:00:00]"
+    echo "  -w DIR            Work dir - initial output dir before files are copied"
     echo "                      [default: '/fs/scratch/PAS0471/\$USER/canu/<output-prefix>']"
-    echo "    -a STRING         Other argument(s) to pass to Canu"
+    echo "  -a STRING         Other argument(s) to pass to Canu as a quoted string"
     echo
     echo "UTILITY OPTIONS"
-    echo "    -h                Print this help message and exit"
-    echo "    -v                Print the version of Canu and exit"
+    echo "  -h                Print this help message and exit"
+    echo "  -v                Print the version of Canu and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "    sbatch $0 -i data/my.fastq.gz -o results/canu -p my_genome -s 250m"
+    echo "  sbatch $0 -i data/my.fastq.gz -o results/canu -p my_genome -s 250m"
     echo
     echo "HARDCODED PARAMETERS:"
-    echo "- The script assumes that reads are Nanopore"
+    echo "  - The script assumes that reads are Nanopore"
     echo
+    echo "NOTES"
+    echo "  - This script will only run for a few minutes: Canu will submit its own SLURM jobs"
     echo "SOFTWARE DOCUMENTATION:"
-    echo "- https://canu.readthedocs.io/en/latest/quick-start.html"
+    echo "  - https://canu.readthedocs.io/en/latest/quick-start.html"
     echo
 }
 
@@ -64,8 +67,8 @@ Die() {
 
 # PARSE OPTIONS ----------------------------------------------------------------
 ## Constants
-CNS_MEMORY=4
-GRID_MEMORY="--mem=20G"
+#CNS_MEMORY=4 cnsMemory="$CNS_MEMORY" \
+#GRID_MEMORY="--mem=40G"
 
 ## Option defaults
 WORKDIR_BASE="/fs/scratch/PAS0471/$USER/canu/"
@@ -145,22 +148,41 @@ canu \
     -p "$output_prefix" \
     -d "$workdir" \
     genomeSize="$genome_size" \
+    executiveMemory=8 \
+    gridEngine=slurm \
     gridOptions="$slurm_options" \
-    gridEngineMemoryOption="$GRID_MEMORY" \
-    cnsMemory="$CNS_MEMORY" \
+    ovsMemory=32 \
+    merylMemory=32 \
+    merylThreads=8 \
+    minMemory=32 \
+    minThreads=8 \
+    maxMemory=175 \
+    maxThreads=48 \
+    stageDirectory=\$TMPDIR \
     $more_args $infile_arg
 
-##TODO - Copy some files to outdir
+#gridEngineMemoryOption="$GRID_MEMORY" \
 
+##TODO - Incorporate 'fast' option
+##TODO Use 'high' MhapSensitivity for low cov
+# {prefix}MhapSensitivity <string=”normal”>
+#Coarse sensitivity level: ‘low’, ‘normal’ or ‘high’. Based on read coverage (which is impacted by genomeSize), ‘low’ sensitivity is used if coverage is more than 60; ‘normal’ is used if coverage is between 60 and 30, and ‘high’ is used for coverages less than 30.
 
-# WRAP UP ----------------------------------------------------------------------
-echo -e "\n-------------------------------"
+##TODO - Copy key files to outdir
+
+#? stageDirectory - see https://canu.readthedocs.io/en/latest/parameter-reference.html#file-staging
+
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
+echo
+echo "========================================================================="
 echo "## Version used:"
 Print_version | tee "$outdir"/logs/version.txt
-echo "## Listing files in the output dir:"
+echo -e "\n## Listing files in the output dir:"
 ls -lh "$outdir"
-echo -e "\n## Done with script"
-date
 echo
 sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
 echo
+echo "## Done with script"
+date
