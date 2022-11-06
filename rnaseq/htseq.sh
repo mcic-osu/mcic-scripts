@@ -9,26 +9,26 @@
 # PARSE OPTIONS ----------------------------------------------------------------
 ## Help function
 Help() {
-  echo
-  echo "$0: Create a matrix with per-gene read counts for a directory of BAM files using HtSeq."
-  echo
-  echo "Syntax: $0 -i <input-FASTA> -o <output-dir> -a <gff-file> ..."
-  echo
-  echo "Required options:"
-  echo "    -i DIR        Input directory with BAM files"
-  echo "    -a FILE       Input reference annotation (GFF/GTF) file"
-  echo "    -o FILE       Output file with count matrix (e.g. 'counts.txt')"
-  echo
-  echo "Other options:"
-  echo "    -t STRING     Feature type to count                        [default: 'exon']"
-  echo "                  (This should correspond to a value in the 3rd column in the GFF/GTF file)"
-  echo "    -g STRING     Identifier of the feature type               [default: 'Name']"
-  echo "                  (This should correspond to the key for the desired feature type (e.g. gene) in the last column in the GFF/GTF file)"
-  echo "    -h            Print this help message and exit"
-  echo
-  echo "Example: $        0 -i results/bam -o results/htseq -a refdata/my_genome.gff"
-  echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
-  echo
+    echo
+    echo "$0: Create a matrix with per-gene read counts for a directory of BAM files using HtSeq."
+    echo
+    echo "Syntax: $0 -i <input-FASTA> -o <output-dir> -a <gff-file> ..."
+    echo
+    echo "Required options:"
+    echo "    -i DIR        Input directory with BAM files"
+    echo "    -a FILE       Input reference annotation (GFF/GTF) file"
+    echo "    -o FILE       Output file with count matrix (e.g. 'counts.txt')"
+    echo
+    echo "Other options:"
+    echo "    -t STRING     Feature type to count                        [default: 'exon']"
+    echo "                  (This should correspond to a value in the 3rd column in the GFF/GTF file)"
+    echo "    -g STRING     Identifier of the feature type               [default: 'Name']"
+    echo "                  (This should correspond to the key for the desired feature type (e.g. gene) in the last column in the GFF/GTF file)"
+    echo "    -h            Print this help message and exit"
+    echo
+    echo "Example: $        0 -i results/bam -o results/htseq -a refdata/my_genome.gff"
+    echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
+    echo
 }
 
 ## Option defaults
@@ -40,24 +40,23 @@ id_attr=Name
 
 ## Parse command-line options
 while getopts ':i:o:a:t:g:h' flag; do
-  case "${flag}" in
-  i) indir="$OPTARG" ;;
-  o) outfile="$OPTARG" ;;
-  a) gff="$OPTARG" ;;
-  t) feature_type="$OPTARG" ;;
-  g) id_attr="$OPTARG" ;;
-  h) Help && exit 0 ;;
-  \?) echo -e "\n## $0: ERROR: Invalid option -$OPTARG\n\n" >&2 && exit 1 ;;
-  :) echo -e "\n## $0: ERROR: Option -$OPTARG requires an argument\n\n" >&2 && exit 1 ;;
-  esac
+    case "${flag}" in
+        i) indir="$OPTARG" ;;
+        o) outfile="$OPTARG" ;;
+        a) gff="$OPTARG" ;;
+        t) feature_type="$OPTARG" ;;
+        g) id_attr="$OPTARG" ;;
+        h) Help && exit 0 ;;
+        \?) echo -e "\n## $0: ERROR: Invalid option -$OPTARG\n\n" >&2 && exit 1 ;;
+        :) echo -e "\n## $0: ERROR: Option -$OPTARG requires an argument\n\n" >&2 && exit 1 ;;
+    esac
 done
 
 # SETUP ---------------------------------------------------------------------
 ## Load software
 module load miniconda3
 source activate /fs/project/PAS0471/jelmer/conda/htseq-2.0.2
-conda activate --stack /users/PAS0471/jelmer/miniconda3/envs/samtools-env
-MULTIQC_ENV=/fs/project/PAS0471/jelmer/conda/multiqc-1.12
+conda activate --stack /fs/ess/PAS0471/jelmer/conda/samtools
 
 ## Strict bash settings
 set -euo pipefail
@@ -106,10 +105,6 @@ htseq-count \
     "$indir"/*bam \
     "$gff" \
     > "$outfile"
-
-## Run MultiQC
-conda activate "$MULTIQC_ENV"
-multiqc --force --interactive "$outdir" -o "$outdir"
 
 
 # WRAP UP ----------------------------------------------------------------------
