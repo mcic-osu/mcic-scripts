@@ -23,21 +23,21 @@ Print_help() {
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "    -i/--indir FILE        Input"
-    echo "    -o/--outdir DIR        Output dir (will be created if needed)"
+    echo "  -i/--indir      <dir>   Input dir"
+    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "    -a/--more_args STRING  Quoted string with additional argument(s) to pass to TODO_THIS_SOFTWARE"
+    echo "  -a/--more_args  <string> Quoted string with additional argument(s) to pass to TODO_THIS_SOFTWARE"
     echo
     echo "UTILITY OPTIONS:"
-    echo "    -h/--help              Print this help message and exit"
-    echo "    -N/--dryrun            Dry run: don't execute commands, only parse arguments and report"
-    echo "    -x/--debug             Run the script in debug mode (print all code)"
-    echo "    -v/--version           Print the version of TODO_THIS_SOFTWARE and exit"
+    echo "  -h/--help               Print this help message and exit"
+    echo "  -N/--dryrun             Dry run: don't execute commands, only parse arguments and report"
+    echo "  -x/--debug              Run the script in debug mode (print all code)"
+    echo "  -v/--version            Print the version of TODO_THIS_SOFTWARE and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "    sbatch $0 -i TODO -o results/TODO "
-    echo "    sbatch $0 -i TODO -o results/TODO -a \"-x TODO\""
+    echo "  sbatch $0 -i TODO -o results/TODO "
+    echo "  sbatch $0 -i TODO -o results/TODO -a \"-x TODO\""
     echo
     echo "HARDCODED PARAMETERS:"
     echo "    - ..."
@@ -96,7 +96,7 @@ while [ "$1" != "" ]; do
         -o | --outdir )         shift && outdir=$1 ;;
         -a | --more_args )      shift && more_args=$1 ;;
         -X | --debug )          debug=true ;;
-        -N | --dryrun )         dryrun=false ;;
+        -N | --dryrun )         dryrun=true ;;
         -v | --version )        Print_version; exit ;;
         -h | --help )           Print_help; exit ;;
         * )                     Print_help; Die "Invalid option $1" ;;
@@ -147,7 +147,8 @@ echo "Input dir:                   $indir"
 echo "Output dir:                  $outdir"
 [[ $more_args != "" ]] && echo "Other arguments for TODO_THIS_SOFTWARE:    $more_args"
 echo "Listing input file:"
-ls -lh "$indir"
+ls -lh TODO
+[[ $dryrun = true ]] && echo "THIS IS A DRY-RUN"
 echo "=========================================================================="
 echo
 
@@ -176,7 +177,7 @@ TODO_COMMAND \
 echo
 echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
-    echo -e "\n## Version used:"
+    echo "## Version used:"
     Print_version | tee "$outdir"/logs/version.txt
     echo -e "\n## Listing files in the output dir:"
     ls -lh "$outdir"
