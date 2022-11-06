@@ -287,7 +287,7 @@ fi
 ## Move STAR log files
 echo -e "\n## Moving STAR log files...."
 mv -v "$outdir"/"$sampleID"*out "$starlog_dir"
-
+echo
 
 # ==============================================================================
 #                               WRAP-UP
@@ -307,7 +307,7 @@ if [ "$count" = true ]; then
 fi
 
 echo
-echo "## Version used:"
+echo "## STAR vqersion used:"
 Print_version | tee "$outdir"/logs/version.txt
 echo
 sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
