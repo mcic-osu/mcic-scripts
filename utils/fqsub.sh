@@ -10,21 +10,21 @@
 ## Help function
 Help()
 {
-   echo "$0: Script to subsample FASTQ files using seqtk"
-   echo
-   echo "Syntax: fqsub.sh -i <R1_in> [-I <R2_in>] -o <R1_out> [-o <R2_out>]"
-   echo
-   echo "## Required options:"
-   echo "   -i     R1 (forward/single-end) FASTQ input file"
-   echo "   -o     R1 (forward/single-end) FASTQ output file"
-   echo
-   echo "## Other options:"
-   echo "   -I     R2 (reverse) FASTQ input file"
-   echo "   -O     R2 (reverse) FASTQ output file"
-   echo "   -n     Number of reads to select            [default: 100,000]"
-   echo "   -p     Proportion of reads to select"
-   echo "   -h     Print this help message and exit"
-   echo
+    echo "$0: Script to subsample FASTQ files using seqtk"
+    echo
+    echo "Syntax: fqsub.sh -i <R1_in> [-I <R2_in>] -o <R1_out> [-o <R2_out>]"
+    echo
+    echo "## Required options:"
+    echo "   -i     R1 (forward/single-end) FASTQ input file"
+    echo "   -o     R1 (forward/single-end) FASTQ output file"
+    echo
+    echo "## Other options:"
+    echo "   -I     R2 (reverse) FASTQ input file"
+    echo "   -O     R2 (reverse) FASTQ output file"
+    echo "   -n     Number of reads to select            [default: 100,000]"
+    echo "   -p     Proportion of reads to select"
+    echo "   -h     Print this help message and exit"
+    echo
 }
 
 ## Option defaults
@@ -75,7 +75,7 @@ n_reads_total=$(zcat "$R1_in" | awk '{ s++ } END{ print s/4 }')
 [[ $prop_reads != "" ]] && n_reads=$(python -c "print(int($n_reads_total * $prop_reads))")
 
 ## Create output dir if needed
-outdir=$(dirname "$R1_in")
+outdir=$(dirname "$R1_out")
 mkdir -p "$outdir"
 
 ## Report
