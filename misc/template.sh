@@ -27,17 +27,17 @@ Print_help() {
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  -a/--more_args  <string> Quoted string with additional argument(s) to pass to TODO_THIS_SOFTWARE"
+    echo "  --more_args  <string>   Quoted string with additional argument(s) to pass to TODO_THIS_SOFTWARE"
     echo
     echo "UTILITY OPTIONS:"
+    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
+    echo "  --debug                 Run the script in debug mode (print all code)"
     echo "  -h/--help               Print this help message and exit"
-    echo "  -N/--dryrun             Dry run: don't execute commands, only parse arguments and report"
-    echo "  -x/--debug              Run the script in debug mode (print all code)"
     echo "  -v/--version            Print the version of TODO_THIS_SOFTWARE and exit"
     echo
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 -i TODO -o results/TODO "
-    echo "  sbatch $0 -i TODO -o results/TODO -a \"-x TODO\""
+    echo "  sbatch $0 -i TODO -o results/TODO --more_args \"-x TODO\""
     echo
     echo "HARDCODED PARAMETERS:"
     echo "    - ..."
@@ -95,11 +95,11 @@ while [ "$1" != "" ]; do
     case "$1" in
         -i | --indir )          shift && indir=$1 ;;
         -o | --outdir )         shift && outdir=$1 ;;
-        -a | --more_args )      shift && more_args=$1 ;;
-        -X | --debug )          debug=true ;;
-        -N | --dryrun )         dryrun=true ;;
+        --more_args )           shift && more_args=$1 ;;
         -v | --version )        Print_version; exit ;;
         -h | --help )           Print_help; exit ;;
+        --dryrun )              dryrun=true ;;
+        --debug )               debug=true ;;
         * )                     Print_help; Die "Invalid option $1" ;;
     esac
     shift
