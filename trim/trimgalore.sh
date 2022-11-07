@@ -21,20 +21,20 @@ Print_help() {
     echo "  sbatch $0 -i <input-FASTQ> -o <outdir> [...]"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "    -i FILE        Gzipped (R1) FASTQ input file (if paired-end, R2 file name will be inferred)"
-    echo "    -o DIR         Output dir"
+    echo "  -i/--R1         <file>  Gzipped (R1) FASTQ input file (if paired-end, R2 file name will be inferred)"
+    echo "  -o/--outdir     <dir>   Output dir"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "    -q INTEGER     Quality trimming threshold         [default: 20 (also the TrimGalore default)]"
-    echo "    -l INTEGER     Minimum read length                [default: 20 (also the TrimGalore default)]"
-    echo "    -s             Input is single-end                [default: paired-end]"
-    echo "    -f             Don't run FastQC after trimming    [default: run FastQC after trimming]"
+    echo "  -q/--quality    <int>   Quality trimming threshold         [default: 20 (also the TrimGalore default)]"
+    echo "  -l/--length     <int>   Minimum read length                [default: 20 (also the TrimGalore default)]"
+    echo "  -s/--single_end         Input is single-end                [default: paired-end]"
+    echo "  -F/--no_fastqc          Don't run FastQC after trimming    [default: run FastQC after trimming]"
     echo
     echo "UTTILITY OPTIONS:"
-    echo "    -h             Print this help message and exit"
-    echo "    -N             Dry run: don't execute commands, only parse arguments and report"
-    echo "    -x             Run the script in debug mode (print all code)"
-    echo "    -v             Print the version of TrimGalore and exit"
+    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
+    echo "  --debug                 Run the script in debug mode (print all code)"
+    echo "  -h/--help               Print this help message and exit"
+    echo "  -v/--version            Print the version of TrimGalore and exit"
     echo
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 -i data/fastq/S01_R1.fastq.gz -o results/trimgalore"
@@ -47,6 +47,7 @@ Print_help() {
     echo
     echo "DOCUMENTATION:"
     echo "  - https://github.com/FelixKrueger/TrimGalore/blob/master/Docs/Trim_Galore_User_Guide.md"
+    echo
 }
 
 ## Load software
@@ -73,8 +74,8 @@ Die() {
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 ## Option defaults
-qual=20                 # => 20 is also the TrimGalore default
-len=20                  # => 20 is also the TrimGalore default
+quality=20                 # => 20 is also the TrimGalore default
+length=20                  # => 20 is also the TrimGalore default
 single_end=false        # => paired-end by default
 
 debug=false
@@ -85,21 +86,28 @@ run_fastqc=true
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-while getopts ':i:o:q:l:fshNxv' flag; do
-    case "${flag}" in
-        i) R1_in="$OPTARG" ;;
-        o) outdir="$OPTARG" ;;
-        q) qual="$OPTARG" ;;
-        l) len="$OPTARG" ;;
-        s) single_end=true ;;
-        f) run_fastqc=false ;;
-        N) dryrun=true ;;
-        x) debug=true ;;
-        v) Print_version; exit 0 ;;
-        h) Print_help; exit 0 ;;
-        \?) Die "Invalid option -$OPTARG" ;;
-        :) Die "Option -$OPTARG requires an argument" ;;
+## Placeholder defaults
+R1_in=""
+outdir=""
+more_args=""
+
+## Parse command-line args
+while [ "$1" != "" ]; do
+    case "$1" in
+        -i | --R1 )             shift && R1_in=$1 ;;
+        -o | --outdir )         shift && outdir=$1 ;;
+        -q | --quality )        shift && quality=$1 ;;
+        -l | --length )         shift && length=$1 ;;
+        -s | --single_end )     single_end=true ;;
+        -F | --no_fastqc )      run_fastqc=false ;;
+        -a | --more_args )      shift && more_args=$1 ;;
+        --debug )               debug=true ;;
+        --dryrun )              dryrun=true ;;
+        -v | --version )        Print_version; exit ;;
+        -h | --help )           Print_help; exit ;;
+        * )                     Print_help; Die "Invalid option $1" ;;
     esac
+    shift
 done
 
 
@@ -108,8 +116,17 @@ done
 # ==============================================================================
 [[ "$debug" = true ]] && set -o xtrace
 
-## Software
-Load_software
+## Load software
+[[ "$dryrun" = false ]] && Load_software
+
+## Get number of threads
+if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
+    threads="$SLURM_CPUS_PER_TASK"
+elif [[ -n "$SLURM_NTASKS" ]]; then
+    threads="$SLURM_NTASKS"
+else
+    threads=1
+fi
 
 ## Bash strict settings
 set -euo pipefail
@@ -124,21 +141,10 @@ outdir_trim="$outdir"/trimmed
 outdir_fastqc="$outdir"/fastqc
 outdir_logs="$outdir"/logs
 
-## Get number of threads
-set +u
-if [[ "$dryrun" = false ]]; then
-    if [[ -z "$SLURM_CPUS_PER_TASK" ]]; then
-        n_threads="$SLURM_NTASKS"
-    else
-        n_threads="$SLURM_CPUS_PER_TASK"
-    fi
-fi
-set -u
-
 ## FastQC arg
 if [[ "$run_fastqc" = true ]]; then
     fastqc_arg1="--fastqc --fastqc_args"
-    fastqc_arg2="-t $n_threads --outdir $outdir_fastqc"
+    fastqc_arg2="-t $threads --outdir $outdir_fastqc"
 else
     fastqc_arg1=""
     fastqc_arg2=""
@@ -182,10 +188,11 @@ echo "R1 input file:                     $R1_in"
 echo "Base output dir:                   $outdir"
 echo
 [[ "$single_end" != "true" ]] && echo "R2 input file:                     $R2_in"
-echo "Sequence quality threshold:        $qual"
-echo "Minimum sequence length:           $len"
+echo "Sequence quality threshold:        $quality"
+echo "Minimum sequence length:           $length"
 echo "Sequences are single-end:          $single_end"
 echo "Run FastQC:                        $run_fastqc"
+[[ $more_args != "" ]] && echo "Other arguments for TrimGalore:    $more_args"
 echo
 echo "Sample ID:                         $sample_id"
 echo "Output dir - FastQC:               $outdir_fastqc"
@@ -203,13 +210,18 @@ if [[ "$dryrun" = false ]]; then
     mkdir -p "$outdir_trim" "$outdir_fastqc" "$outdir_logs"
 
     ## Run Trim-Galore
+    [[ "$debug" = false ]] && set -o xtrace
+    
     trim_galore \
         --output_dir "$outdir_trim" \
-        --quality "$qual" \
-        --length "$len" \
+        --quality "$quality" \
+        --length "$length" \
         --gzip \
-        -j "$n_threads" \
+        -j "$threads" \
+        $more_args \
         $fastqc_arg1 "$fastqc_arg2" $input_arg
+    
+    [[ "$debug" = false ]] && set +o xtrace
 
     ## Move output files
     echo -e "\n## Listing original output files:"
