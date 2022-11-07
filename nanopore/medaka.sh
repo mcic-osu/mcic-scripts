@@ -26,15 +26,19 @@ Print_help() {
     echo "  -i/--reads      <file>  Input reads: FASTQ file (reads used for correction)"
     echo "  -r/--assembly   <file>  Input assembly: FASTA file (to be corrected)"
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
-    echo "  -m/--model      <string> Medaka model, see the Medaka docs "
+    echo "  -m/--model      <str>   Medaka model, see the Medaka docs at https://github.com/nanoporetech/medaka#models"
+    echo "                          Get a full list of possible models by running:"
+    echo "                              module load miniconda3/4.12.0-py39"
+    echo "                              source activate /fs/ess/PAS0471/jelmer/conda/medaka-1.7.2"
+    echo "                              medaka tools list_models"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  -a/--more_args  <string> Quoted string with additional argument(s) to pass to Medaka"
+    echo "  --more_args  <str>      Quoted string with additional argument(s) to pass to Medaka"
     echo
     echo "UTILITY OPTIONS:"
+    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
+    echo "  --debug                 Run the script in debug mode (print all code)"
     echo "  -h/--help               Print this help message and exit"
-    echo "  -N/--dryrun             Dry run: don't execute commands, only parse arguments and report"
-    echo "  -x/--debug              Run the script in debug mode (print all code)"
     echo "  -v/--version            Print the version of Medaka and exit"
     echo
     echo "EXAMPLE COMMANDS:"
@@ -97,11 +101,12 @@ while [ "$1" != "" ]; do
         -i | --reads )          shift && reads=$1 ;;
         -r | --assembly )       shift && assembly=$1 ;;
         -o | --outdir )         shift && outdir=$1 ;;
-        -a | --more_args )      shift && more_args=$1 ;;
-        -X | --debug )          debug=true ;;
-        -N | --dryrun )         dryrun=true ;;
+        -m | --model )          shift && model=$1 ;;
+        --more_args )           shift && more_args=$1 ;;
         -v | --version )        Print_version; exit ;;
         -h | --help )           Print_help; exit ;;
+        --debug )               debug=true ;;
+        --dryrun )              dryrun=true ;;
         * )                     Print_help; Die "Invalid option $1" ;;
     esac
     shift
@@ -138,16 +143,17 @@ set -euo pipefail
 ## Report
 echo
 echo "=========================================================================="
-echo "               STARTING SCRIPT RACON.SH"
+echo "               STARTING SCRIPT MEDAKA.SH"
 date
 echo "=========================================================================="
 echo "Input reads (FASTQ) file:         $reads"
 echo "Input assembly (FASTA) file:      $assembly"
 echo "Output dir:                       $outdir"
-[[ $more_args != "" ]] && echo "Other arguments for Racon:    $more_args"
+[[ $more_args != "" ]] && echo "Other arguments for Medaka:    $more_args"
+echo
 echo "Listing input files:"
 ls -lh "$reads" "$assembly" 
-[[ $dryrun = true ]] && echo "THIS IS A DRY-RUN"
+[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 echo
 
@@ -160,14 +166,8 @@ if [[ "$dryrun" = false ]]; then
     mkdir -p "$outdir"/logs
 
     ## Run
-    echo -e "\n## Now running Racon..."
+    echo -e "\n## Now running Medaka..."
     [[ "$debug" = false ]] && set -o xtrace
-    
-    source ${MEDAKA}  # i.e. medaka/venv/bin/activate
-NPROC=$(nproc)
-BASECALLS=basecalls.fa
-DRAFT=draft_assm/assm_final.fa
-OUTDIR=medaka_consensus
     
     medaka_consensus \
         -i "$reads" \
@@ -189,7 +189,7 @@ if [[ "$dryrun" = false ]]; then
     echo "## Version used:"
     Print_version | tee "$outdir"/logs/version.txt
     echo -e "\n## Listing files in the output dir:"
-    ls -lh "$outdir"
+    ls -lhd "$PWD"/"$outdir"/*
     echo
     sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
 fi
