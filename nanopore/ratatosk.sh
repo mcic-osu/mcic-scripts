@@ -19,50 +19,48 @@ Print_help() {
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 -i <input-dir> -o <output-dir> ..."
+    echo "  sbatch $0 -i <longread-FASTQ> -I <shortread-FASTQ-list> -o <output-dir> [...]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "    -i/--fq_long       <file>     Input long-read FASTQ file"
-    echo "    -I/--fq_short_list <file>     List with input short-read FASTQ file(s)"
-    echo "    -o/--outdir        <dir>      Output dir (will be created if needed)"
+    echo "  -i/--fq_long       <file>   Input long-read FASTQ file"
+    echo "  -I/--fq_short_list <file>   List with input short-read FASTQ file(s)"
+    echo "  -o/--outdir        <dir>    Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "    --insert_size      <integer>  Insert size - set to read length for single-end reads  [default: 500]"
-    echo "    -a/--more_args     <string>   Quoted string with additional argument(s) to pass to Ratatosk"
+    echo "  --insert_size      <int>    Insert size - set to read length for single-end reads  [default: 500]"
+    echo "  --more_args        <str>    Quoted string with additional argument(s) to pass to Ratatosk"
     echo
     echo "UTILITY OPTIONS:"
-    echo "    -h/--help                     Print this help message and exit"
-    echo "    -N/--dryrun                   Dry run: don't execute commands, only parse arguments and report"
-    echo "    -x/--debug                    Run the script in debug mode (print all code)"
-    echo "    -v/--version                  Print the version of Ratatosk and exit"
+    echo "  --dryrun                    Dry run: don't execute commands, only parse arguments and report"
+    echo "  --debug                     Run the script in debug mode (print all code)"
+    echo "  -h/--help                   Print this help message and exit"
+    echo "  -v/--version                Print the version of Ratatosk and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "    sbatch $0 -i TODO -o results/TODO "
-    echo "    sbatch $0 -i TODO -o results/TODO -a \"-x TODO\""
+    echo "  sbatch $0 -i data/minion/my.fastq.gz -I data/illumina/fqlist.txt -o results/ratatosk"
     echo
     echo "HARDCODED PARAMETERS:"
-    echo "    - ..."
+    echo "  - ..."
     echo
     echo "OUTPUT:"
-    echo "    - ..."
+    echo "  - ..."
     echo
     echo "SOFTWARE DOCUMENTATION:"
-    echo "    - ..."
+    echo "  - Repo/docs: https://github.com/DecodeGenetics/Ratatosk"
+    echo "  - Paper: https://genomebiology.biomedcentral.com/articles/10.1186/s13059-020-02244-4"
     echo
 }
 
 ## Load software
-#Load_software() {
-    #module load miniconda3/4.12.0-py39
-    #source activate /fs/ess/PAS0471/jelmer/conda/fmlrc2-0.1.7
-    #! Currently installed in /users/PAS0471/jelmer/.local/bin/
-#}
+Load_software() {
+    RATATOSK=/fs/ess/PAS0471/jelmer/software/ratatosk/Ratatosk
+}
 
 ## Print version
 Print_version() {
-    #Load_software
-    Ratatosk --version
+    Load_software
+    "$RATATOSK" --version
 }
 
 ## Exit upon error with a message
@@ -99,9 +97,9 @@ while [ "$1" != "" ]; do
         -I | --fq_short_list )  shift && fq_short_list=$1 ;;
         -o | --outdir )         shift && outdir=$1 ;;
         --insert_size )         shift && insert_size=$1 ;;
-        -a | --more_args )      shift && more_args=$1 ;;
-        -X | --debug )          debug=true ;;
-        -N | --dryrun )         dryrun=true ;;
+        --more_args )           shift && more_args=$1 ;;
+        --debug )               debug=true ;;
+        --dryrun )              dryrun=true ;;
         -v | --version )        Print_version; exit ;;
         -h | --help )           Print_help; exit ;;
         * )                     Print_help; Die "Invalid option $1" ;;
@@ -116,7 +114,7 @@ done
 [[ "$debug" = true ]] && set -o xtrace
 
 ## Load software
-#[[ "$dryrun" = false ]] && Load_software
+[[ "$dryrun" = false ]] && Load_software
 
 ## Get number of threads
 if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
@@ -169,7 +167,7 @@ if [[ "$dryrun" = false ]]; then
     ## Run
     echo -e "\n## Now running Ratatosk..."
     [[ "$debug" = false ]] && set -o xtrace
-    Ratatosk correct \
+    "$RATATOSK" correct \
         -v \
         --cores "$threads" \
         --insert-sz "$insert_size" \
@@ -191,6 +189,12 @@ echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
     echo "## Version used:"
     Print_version | tee "$outdir"/logs/version.txt
+
+    echo "-e\n## Number of reads in the input file:"
+    zcat "$fq_long".fastq.gz | awk '{ s++ } END{ print s/4 }'
+    echo "-e\n## Number of reads in the output file:"
+    zcat "$fq_out".fastq.gz | awk '{ s++ } END{ print s/4 }'
+
     echo -e "\n## Listing files in the output dir:"
     ls -lh "$outdir"
     echo
