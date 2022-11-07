@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --cpus-per-task=12
+#SBATCH --cpus-per-task=16
 #SBATCH --time=12:00:00
 #SBATCH --job-name=quast
 #SBATCH --output=slurm-quast-%j.out
@@ -37,7 +37,8 @@ Print_help() {
     echo "    -h              Print this help message and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i results/assembly -o results/quast"
+    echo "  sbatch $0 -i results/assembly/my.fasta -o results/quast"
+    echo "  sbatch $0 -d results/assemblies -o results/quast"
     echo
     echo "SOFTWARE DOCUMENTATION:"
     echo "  - GitHub repo: https://github.com/ablab/quast"
