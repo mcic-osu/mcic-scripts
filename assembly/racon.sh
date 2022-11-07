@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=3:00:00
+#SBATCH --time=2:00:00
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=50G
 #SBATCH --job-name=racon
@@ -19,27 +19,26 @@ Print_help() {
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 -i <input-dir> -o <output-dir> ..."
+    echo "  sbatch $0 -i <FASTQ-file> -a <alignment-file> -r <assembly-file> -o <output-dir> ..."
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--reads      <file>  Input reads: FASTQ file (reads used for correction)"
-    echo "  -b/--align      <file>  Input aligments: BAM/PAF file (reads mapped to assembly)"
+    echo "  -a/--align      <file>  Input aligments: BAM/PAF file (reads mapped to assembly)"
     echo "  -r/--assembly   <file>  Input assembly: FASTA file (to be corrected)"
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  -a/--more_args  <string> Quoted string with additional argument(s) to pass to Racon"
+    echo "  --more_args  <string>   Quoted string with additional argument(s) to pass to Racon"
     echo
     echo "UTILITY OPTIONS:"
+    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
+    echo "  --debug                 Run the script in debug mode (print all code)"
     echo "  -h/--help               Print this help message and exit"
-    echo "  -N/--dryrun             Dry run: don't execute commands, only parse arguments and report"
-    echo "  -x/--debug              Run the script in debug mode (print all code)"
     echo "  -v/--version            Print the version of Racon and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i TODO -o results/TODO "
-    echo "  sbatch $0 -i TODO -o results/TODO -a \"-x TODO\""
+    echo "  sbatch $0 -i data/my.fastq -a results/my.bam -r results/assembly.fasta -o results/racon"
     echo
     echo "HARDCODED PARAMETERS:"
     echo "    - ..."
@@ -76,8 +75,6 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-## Constants
-
 ## Option defaults
 debug=false
 dryrun=false
@@ -96,12 +93,12 @@ more_args=""
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --reads )          shift && reads=$1 ;;
-        -b | --align )          shift && align=$1 ;;
+        -a | --align )          shift && align=$1 ;;
         -r | --assembly )       shift && assembly=$1 ;;
         -o | --outdir )         shift && outdir=$1 ;;
-        -a | --more_args )      shift && more_args=$1 ;;
-        -X | --debug )          debug=true ;;
-        -N | --dryrun )         dryrun=true ;;
+        --more_args )           shift && more_args=$1 ;;
+        --debug )               debug=true ;;
+        --dryrun )              dryrun=true ;;
         -v | --version )        Print_version; exit ;;
         -h | --help )           Print_help; exit ;;
         * )                     Print_help; Die "Invalid option $1" ;;
@@ -154,6 +151,9 @@ echo "Input alignment (BAM) file:       $align"
 echo "Input assembly (FASTA) file:      $assembly"
 echo "Output dir:                       $outdir"
 [[ $more_args != "" ]] && echo "Other arguments for Racon:    $more_args"
+echo
+echo "Output file:                      $outfile"
+echo
 echo "Listing input files:"
 ls -lh "$reads" "$align" "$assembly" 
 [[ $dryrun = true ]] && echo "THIS IS A DRY-RUN"
@@ -176,7 +176,7 @@ if [[ "$dryrun" = false ]]; then
         "$reads" \
         "$align" \
         "$assembly" \
-        --threads "$threads"
+        --threads "$threads" \
         $more_args \
         > "$outfile"
 
