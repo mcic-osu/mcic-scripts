@@ -182,7 +182,7 @@ if [[ "$dryrun" = false ]]; then
     echo "## Version used:"
     Print_version | tee "$outdir"/logs/version.txt
     echo -e "\n## Listing files in the output dir:"
-    ls -lh "$outdir"
+    ls -lhd "$PWD"/"$outdir"/*
     echo
     sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
 fi
