@@ -116,7 +116,7 @@ done
 [[ "$debug" = true ]] && set -o xtrace
 
 ## Load software
-[[ "$dryrun" = false ]] && Load_software
+#[[ "$dryrun" = false ]] && Load_software
 
 ## Get number of threads
 if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
@@ -137,8 +137,8 @@ set -euo pipefail
 [[ ! -f $fq_long ]] && Die "Input file $fq_long does not exist"
 [[ ! -f $fq_short_list ]] && Die "Input file $fq_short_list does not exist"
 
-## Define output files
-fq_out="$outdir"/$(basename "$fq_long" .fastq.gz).fastq
+## Define output files (NOTE: Ratatosk will add .fastq)
+fq_out="$outdir"/$(basename "$fq_long" .fastq.gz)
 
 ## Report
 echo
@@ -178,6 +178,9 @@ if [[ "$dryrun" = false ]]; then
         --out-long "$fq_out"
     [[ "$debug" = false ]] && set +o xtrace
 
+    ## Gzip FASTQ file
+    echo -e "\n## Now gzipping the output FASTQ file..."
+    gzip "$fq_out".fastq
 fi
 
 # ==============================================================================
