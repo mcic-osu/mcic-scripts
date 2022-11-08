@@ -57,7 +57,7 @@ random_seed=$RANDOM
 # SETUP ------------------------------------------------------------------------
 ## Load software
 module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/miniconda3/envs/seqtk-env
+source activate /fs/ess/PAS0471/jelmer/conda/seqtk
 
 ## Bash strict settings
 set -euo pipefail

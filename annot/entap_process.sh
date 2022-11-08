@@ -8,24 +8,24 @@
 # PARSE OPTIONS ----------------------------------------------------------------
 ## Help function
 Help() {
-  echo
-  echo "$0: Process and check EnTAP output."
-  echo
-  echo "Syntax: $0 -d <EnTap-dir> -o <output-dir> -a <assembly-1trans> -A <assembly-alltrans>"
-  echo
-  echo "Required options:"
-  echo "    -i DIR         Dir with EnTap output (input for this script)"
-  echo "    -o FILE        Output assembly"
-  echo "                   (with only transcripts for annotated genes not flagged as contaminants"
-  echo "    -a FILE        Assembly FASTA file with a single transcript per gene"
-  echo "    -A FILE        Assembly FASTA file all transcripts per gene"
-  echo
-  echo "Other options:"
-  echo "    -h                Print this help message and exit"
-  echo
-  echo "Example:    $0 -i assembly.fa -c entap_config.ini -d uniprot_sprot.dmnd -o results/entap"
-  echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
-  echo
+    echo
+    echo "$0: Process and check EnTAP output."
+    echo
+    echo "Syntax: $0 -d <EnTap-dir> -o <output-dir> -a <assembly-1trans> -A <assembly-alltrans>"
+    echo
+    echo "Required options:"
+    echo "    -i DIR         Dir with EnTap output (input for this script)"
+    echo "    -o FILE        Output assembly"
+    echo "                   (with only transcripts for annotated genes not flagged as contaminants"
+    echo "    -a FILE        Assembly FASTA file with a single transcript per gene"
+    echo "    -A FILE        Assembly FASTA file all transcripts per gene"
+    echo
+    echo "Other options:"
+    echo "    -h                Print this help message and exit"
+    echo
+    echo "Example:    $0 -i assembly.fa -c entap_config.ini -d uniprot_sprot.dmnd -o results/entap"
+    echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
+    echo
 }
 
 ## Option defaults
@@ -36,22 +36,22 @@ in_alltrans=""
 
 ## Parse command-line options
 while getopts 'i:o:a:A:h' flag; do
-  case "${flag}" in
-    i) entap_dir="$OPTARG" ;;
-    o) out_assembly="$OPTARG" ;;
-    a) in_1trans="$OPTARG" ;;
-    A) in_alltrans="$OPTARG" ;;
-    h) Help && exit 0 ;;
-    \?) echo -e "\n## $0: ERROR: Invalid option -$OPTARG\n\n" >&2 && exit 1 ;;
-    :) echo -e "\n## $0: ERROR: Option -$OPTARG requires an argument\n\n" >&2 && exit 1 ;;
-  esac
+    case "${flag}" in
+        i) entap_dir="$OPTARG" ;;
+        o) out_assembly="$OPTARG" ;;
+        a) in_1trans="$OPTARG" ;;
+        A) in_alltrans="$OPTARG" ;;
+        h) Help && exit 0 ;;
+        \?) echo -e "\n## $0: ERROR: Invalid option -$OPTARG\n\n" >&2 && exit 1 ;;
+        :) echo -e "\n## $0: ERROR: Option -$OPTARG requires an argument\n\n" >&2 && exit 1 ;;
+    esac
 done
 
 
 # SETUP ------------------------------------------------------------------------
 ## Software
 module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/miniconda3/envs/seqtk-env
+source activate /fs/ess/PAS0471/jelmer/conda/seqtk
 
 ## Bash strict mode
 set -euo pipefail
