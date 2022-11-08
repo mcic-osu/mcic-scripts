@@ -7,6 +7,10 @@
 #SBATCH --job-name=TODO_THIS_SOFTWARE
 #SBATCH --output=slurm-TODO_THIS_SOFTWARE-%j.out
 
+##TODO - Print SLURM resources
+##TODO - Print mem usage etc with time?
+##TODO - Option to print the program's help
+
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
@@ -124,6 +128,7 @@ else
 fi
 
 ## FASTQ filename parsing
+file_ext=$(echo "$infile" | sed -E 's/.*(fasta|fastq.gz|fq.gz)/\1/')
 extension=$(echo "$R1_in" | sed -E 's/.*(\.fa?s?t?q\.gz$)/\1/')
 R1_suffix=$(echo "$R1_in" | sed -E "s/.*(_R?1)_?[[:digit:]]*$extension/\1/")
 R2_suffix=${R1_suffix/1/2}
@@ -152,7 +157,7 @@ ls -lh TODO
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN\n"
 echo "=========================================================================="
 echo
-##TODO print SLURM resources
+
 
 # ==============================================================================
 #                               RUN
