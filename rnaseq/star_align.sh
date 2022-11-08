@@ -73,7 +73,7 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-max_map=10
+max_map=10                # If this nr is exceeded, read is considered unmapped
 intron_min=21             # STAR default, too
 intron_max=0              # => auto-determined; STAR default, too
 count=false
@@ -158,9 +158,8 @@ else
     R2_in=""
 fi
 
+## Other output
 outfile_prefix="$outdir/$sampleID"_
-
-## Other output dirs
 starlog_dir="$outdir"/star_logs
 
 ## If a GFF/GTF file is provided, build the appropriate argument for STAR
@@ -216,7 +215,7 @@ echo "Output BAM dir:                               $outdir"
 echo
 echo "Output unmapped reads as FASTQ:               $output_unmapped"
 echo "Also perform read counting:                   $count"
-echo "Max nr of alignments for a read:              $max_map"  # If this nr is exceeded, read is considered unmapped
+echo "Max nr of alignments for a read:              $max_map"
 echo "Minimum intron size:                          $intron_min"
 echo "Maximum intron size (0 => STAR default):      $intron_max"
 echo "Sort the BAM file:                            $sort"
@@ -236,7 +235,7 @@ echo
 #                               RUN
 # ==============================================================================
 ## Create the output directory
-mkdir -p "$outdir"/logs "$starlog_dir"
+mkdir -p "$outdir"/logs "$outdir"/bam "$starlog_dir"
 
 ## Run STAR
 echo "## Aligning reads with STAR...."
@@ -264,6 +263,14 @@ if [[ "$sort" = true && "$samtools_sort" = "true" ]]; then
     samtools sort "$bam_unsorted" > "$bam_sorted"
 fi
 
+## Move BAM files
+echo -e "\n## Moving the BAM file..."
+if [[ "$sort" = true ]]; then
+    mv -v "$outfile_prefix"Aligned.out.bam "$outdir"/bam/"$sampleID"_sort.bam
+else
+    mv -v "$outfile_prefix"Aligned.sortedByCoord.out.bam "$outdir"/bam/"$sampleID".bam
+fi
+
 ## Organize STAR output
 if [ "$output_unmapped" = true ]; then
     echo -e "\n## Moving, renaming and zipping unmapped FASTQ files...."
@@ -286,7 +293,7 @@ fi
 
 ## Move STAR log files
 echo -e "\n## Moving STAR log files...."
-mv -v "$outdir"/"$sampleID"*out "$starlog_dir"
+mv -v "$outfile_prefix"Log*out "$starlog_dir"
 echo
 
 # ==============================================================================
