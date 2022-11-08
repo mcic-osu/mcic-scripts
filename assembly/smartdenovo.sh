@@ -136,7 +136,7 @@ echo -e "\n-------------------------------"
 echo "## Version used:"
 Print_version | tee "$outdir"/logs/version.txt
 echo "## Listing files in the output dir:"
-ls -lh "$outdir"
+ls -lhd "$PWD"/"$outdir"/*
 echo -e "\n## Done with script"
 date
 echo

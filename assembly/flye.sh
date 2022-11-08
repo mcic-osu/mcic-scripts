@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=48:00:00
+#SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=43
 #SBATCH --mem=172G
 #SBATCH --job-name=flye
@@ -185,7 +185,7 @@ if [[ "$dryrun" = false ]]; then
     echo "## Version used:"
     Print_version | tee "$outdir"/logs/version.txt
     echo -e "\n## Listing files in the output dir:"
-    ls -lh "$outdir"
+    ls -lhd "$PWD"/"$outdir"/*
     echo
     sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
 fi
