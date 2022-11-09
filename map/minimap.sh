@@ -15,11 +15,11 @@ Print_help() {
     echo
     echo "======================================================================"
     echo "                            $0"
-    echo "             MAP READS TO A GENOME WITH MINIMAP2"
+    echo "              MAP READS TO A REFERENCE WITH MINIMAP2"
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 -i <input-dir> -o <output-dir> ..."
+    echo "  sbatch $0 -i <input FASTQ> -r <input reference> -o <output dir> [...]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
@@ -28,19 +28,20 @@ Print_help() {
     echo "  -o/--outdir     <dir>       Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  -O/--outfile_type <string>  Output file type: 'sam' or 'paf'        [default: 'sam']"
-    echo "  -x/--preset     <string>    Preset: read and operation type, see below for list [default: 'map-ont']" 
-    echo "  -a/--more_args  <string>    Quoted string with additional argument(s) to pass to Minimap2"
+    echo "  --out_type      <str>       Output file type: 'sam' or 'paf'        [default: 'sam']"
+    echo "  -x/--preset     <str>       Preset: read and operation type, see below for list [default: 'map-ont']"
+    echo "  --no_flagstat               Don't run samtools flagstat on the output file"
+    echo "  --more_args     <str>       Quoted string with additional argument(s) to pass to Minimap2"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  -h/--help                   Print this help message and exit"
+    echo "  --threads       <int>       Number of threads to tell Minimap to use [default: nr requested in SLURM job]"
     echo "  --dryrun                    Dry run: don't execute commands, only parse arguments and report"
     echo "  --debug                     Run the script in debug mode (print all code)"
+    echo "  -h/--help                   Print this help message and exit"
     echo "  -v/--version                Print the version of Minimap2 and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i TODO -o results/TODO "
-    echo "  sbatch $0 -i TODO -o results/TODO -a \"-x TODO\""
+    echo "  sbatch $0 -i data/my.fastq -r data/ref/genome.fasta -o results/minimap"
     echo
     echo "MINIMAP2 PRESET OPTIONS:"
     echo "  - map-pb/map-ont - PacBio CLR/Nanopore vs reference mapping"
@@ -50,22 +51,16 @@ Print_help() {
     echo "  - splice/splice:hq - long-read/Pacbio-CCS spliced alignment"
     echo "  - sr - genomic short-read mapping"
     echo
-    echo "HARDCODED PARAMETERS:"
-    echo "    - ..."
-    echo
-    echo "OUTPUT:"
-    echo "    - ..."
-    echo
     echo "SOFTWARE DOCUMENTATION:"
-    echo "    - ..."
+    echo "  - https://github.com/lh3/minimap2/"
     echo
 }
 
 ## Load software
 Load_software() {
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do conda deactivate; done
     module load miniconda3/4.12.0-py39
-    source activate /fs/ess/PAS0471/jelmer/conda/minimap2-2.24
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
+    source activate /fs/ess/PAS0471/jelmer/conda/minimap2-2.24 # Includes samtools
 }
 
 ## Print version
@@ -88,6 +83,7 @@ Die() {
 ## Option defaults
 outfile_type=sam && outfile_arg="-a"
 preset="map-ont"
+flagstat=true
 
 debug=false
 dryrun=false
@@ -97,6 +93,7 @@ dryrun=false
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 ## Placeholder defaults
+threads=1
 reads=""
 reference=""
 outdir=""
@@ -108,9 +105,11 @@ while [ "$1" != "" ]; do
         -i | --reads )          shift && reads=$1 ;;
         -r | --reference )      shift && reference=$1 ;;
         -o | --outdir )         shift && outdir=$1 ;;
-        -O | --outfile_type )   shift && outfile_type=$1 ;;
+        --outfile_type )        shift && outfile_type=$1 ;;
         -x | --preset )         shift && preset=$1 ;;
-        -a | --more_args )      shift && more_args=$1 ;;
+        --no_flagstat )         flagstat=false ;;
+        --threads )             shift && threads=$1 ;;
+        --more_args )           shift && more_args=$1 ;;
         --debug )               debug=true ;;
         --dryrun )              dryrun=true ;;
         -v | --version )        Print_version; exit ;;
@@ -134,8 +133,6 @@ if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
     threads="$SLURM_CPUS_PER_TASK"
 elif [[ -n "$SLURM_NTASKS" ]]; then
     threads="$SLURM_NTASKS"
-else
-    threads=1
 fi
 
 ## Bash script settings
@@ -146,7 +143,8 @@ set -euo pipefail
 
 ## Define output file
 reference_ext=$(echo "$reference" | sed -E 's/.*(\.fn?a?s?t?a$)/\1/')
-outfile="$outdir"/$(basename "$reference" "$reference_ext")."$outfile_type"
+outfile_base="$outdir"/$(basename "$reference" "$reference_ext")
+outfile="$outfile_base"."$outfile_type"
 
 ## Check input
 [[ $reference = "" ]] && Die "Please specify an input reference genome FASTA with -i"
@@ -201,6 +199,14 @@ if [[ "$dryrun" = false ]]; then
 
     [[ "$debug" = false ]] && set +o xtrace
 
+    if [[ "$flagstat" = true && "$outfile_type" = "sam" ]]; then
+        echo -e "\n## Now running Samtools flagstat..."
+        samtools flagstat "$outfile" > "$outfile_base"_flagstat.txt 
+
+        echo -e "\n## Showing Samtools flagstat output:"
+        cat "$outfile_base"_flagstat.txt
+    fi
+
 fi
 
 
@@ -213,7 +219,7 @@ if [[ "$dryrun" = false ]]; then
     echo "## Version used:"
     Print_version | tee "$outdir"/logs/version.txt
     echo -e "\n## Listing files in the output dir:"
-    ls -lh "$outdir"
+    ls -lhd "$PWD"/"$outdir"/*
     echo
     sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
 fi
