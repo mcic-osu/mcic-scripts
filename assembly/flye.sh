@@ -19,36 +19,36 @@ Print_help() {
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 -i <input-dir> -o <output-dir> ..."
+    echo "  sbatch $0 -i <input FASTQ> -o <output-dir> [...]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "    -i/--infile FILE       Input file"
-    echo "    -o/--outdir DIR        Output dir (will be created if needed)"
+    echo "  -i/--infile   <file>    Input FASTQ file"
+    echo "  -o/--outdir   <dir>     Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "    -g/--genome_size STRING  Genome size estimate, e.g '4.6m'         [default: no estimate]"
-    echo "    -a/--more_args STRING  Quoted string with additional argument(s) to pass to Flye"
-    echo "    -r/--resume            Resume previous run"
+    echo "  --genome_size <str>     Genome size estimate, e.g '4.6m'            [default: no estimate]"
+    echo "  --iterations  <int>     Number of polishing iterations              [default: 1]"
+    echo "  --more_args   <str>     Quoted string with additional argument(s) to pass to Flye"
+    echo "  --resume                Resume previous run"
     echo
     echo "UTILITY OPTIONS:"
-    echo "    -h/--help              Print this help message and exit"
-    echo "    -N/--dryrun            Dry run: don't execute commands, only parse arguments and report"
-    echo "    -x/--debug             Run the script in debug mode (print all code)"
-    echo "    -v/--version           Print the version of Flye and exit"
+    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
+    echo "  --debug                 Run the script in debug mode (print all code)"
+    echo "  -h/--help               Print this help message and exit"
+    echo "  -v/--version            Print the version of Flye and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "    sbatch $0 -i TODO -o results/TODO "
-    echo "    sbatch $0 -i TODO -o results/TODO -a \"-x TODO\""
+    echo "  sbatch $0 -i data/minion/my.fastq -o results/flye"
     echo
     echo "HARDCODED PARAMETERS:"
-    echo "    - ..."
+    echo "  - ..."
     echo
     echo "OUTPUT:"
-    echo "    - ..."
+    echo "  - ..."
     echo
     echo "SOFTWARE DOCUMENTATION:"
-    echo "    - ..."
+    echo "  - Docs: https://github.com/fenderglass/Flye/blob/flye/docs/USAGE.md"
     echo
 }
 
@@ -76,7 +76,9 @@ Die() {
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 ## Option defaults
+iterations=1
 resume=false && resume_arg=""
+
 debug=false
 dryrun=false
 
@@ -93,16 +95,17 @@ more_args=""
 ## Parse command-line args
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infile )         shift && infile=$1 ;;
-        -o | --outdir )         shift && outdir=$1 ;;
-        -s | --genome_size )    shift && genome_size=$1 ;;
-        -a | --more_args )      shift && more_args=$1 ;;
-        -r | --resume )         resume=true ;;
-        -X | --debug )          debug=true ;;
-        -N | --dryrun )         dryrun=true ;;
-        -v | --version )        Print_version; exit ;;
-        -h | --help )           Print_help; exit ;;
-        * )                     Print_help; Die "Invalid option $1" ;;
+        -i | --infile )     shift && infile=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        --genome_size )     shift && genome_size=$1 ;;
+        --iterations )      shift && iterations=$1 ;;
+        --more_args )       shift && more_args=$1 ;;
+        --resume )          resume=true ;;
+        -v | --version )    Print_version; exit ;;
+        -h | --help )       Print_help; exit ;;
+        --debug )           debug=true ;;
+        --dryrun )          dryrun=true ;;
+        * )                 Print_help; Die "Invalid option $1" ;;
     esac
     shift
 done
@@ -146,6 +149,7 @@ echo "==========================================================================
 echo "Input file:                  $infile"
 echo "Output dir:                  $outdir"
 echo "Genome size:                 $genome_size"
+echo "Nr of polishing iterations:  $iterations"
 echo "Resume previous run:         $resume"
 [[ $more_args != "" ]] && echo "Other arguments for Flye:    $more_args"
 [[ $dryrun = true ]] && echo "THIS IS A DRY-RUN"
@@ -169,6 +173,7 @@ if [[ "$dryrun" = false ]]; then
         --threads "$n_threads" \
         --nano-raw "$infile" \
         --out-dir "$outdir" \
+        --iterations "$iterations" \
         $resume_arg \
         $genome_size_arg \
         $more_args
