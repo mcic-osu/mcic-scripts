@@ -4,12 +4,10 @@
 #SBATCH --time=1:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
 #SBATCH --job-name=TODO_THIS_SOFTWARE
 #SBATCH --output=slurm-TODO_THIS_SOFTWARE-%j.out
-
-##TODO - Print SLURM resources
-##TODO - Print mem usage etc with time?
-##TODO - Option to print the program's help
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -36,20 +34,22 @@ Print_help() {
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
     echo "  --debug                 Run the script in debug mode (print all code)"
-    echo "  -h/--help               Print this help message and exit"
+    echo "  -h                      Print this help message and exit"
+    echo "  --help                  Print the help for TODO_THIS_SOFTWARE and exit"
     echo "  -v/--version            Print the version of TODO_THIS_SOFTWARE and exit"
     echo
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 -i TODO -o results/TODO "
     echo
     echo "HARDCODED PARAMETERS:"
-    echo "    - ..."
+    echo "  - "
     echo
     echo "OUTPUT:"
-    echo "    - ..."
+    echo "  - "
     echo
     echo "SOFTWARE DOCUMENTATION:"
-    echo "    - ..."
+    echo "  - Docs: "
+    echo "  - Paper: "
     echo
 }
 
@@ -60,14 +60,43 @@ Load_software() {
     source activate TODO_THIS_SOFTWARE_ENV
 }
 
-## Print SLURM job usage
-Res_usage() {
-    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime | \
+## Print version
+Print_version() {
+    Load_software
+    #TODO_THIS_SOFTWARE --version
+}
+
+## Print help for the focal program
+Print_help_program() {
+    Load_software
+    #TODO_THIS_SOFTWARE --help
+}
+
+## Print SLURM job resource usage info
+Resource_usage() {
+    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
         grep -Ev "ba|ex"
 }
 
-Get_threads() {
-    ## Get number of threads
+## Print SLURM job requested resources
+Print_resources() {
+    set +u
+    echo "# SLURM job information:"
+    echo "Job ID:               $SLURM_JOB_ID"
+    echo "Job name:             $SLURM_JOB_NAME"
+    echo "Memory (per node):    $SLURM_MEM_PER_NODE"
+    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
+    echo "Nr of tasks:          $SLURM_NTASKS"
+    echo "Account (project):    $SLURM_JOB_ACCOUNT"
+    echo "Time limit:           $SBATCH_TIMELIMIT"
+    echo "======================================================================"
+    echo
+    set -u
+}
+
+## Set the number of threads/CPUs
+Set_threads() {
+    set +u
     if [[ "$slurm" = true ]]; then
         if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
             threads="$SLURM_CPUS_PER_TASK"
@@ -80,13 +109,15 @@ Get_threads() {
     else
         threads=1
     fi
+    set -u
 }
 
-## Print version
-Print_version() {
-    Load_software
-    #TODO_THIS_SOFTWARE --version
-}
+## Recource usage information
+Time() {
+/usr/bin/time -f \
+    '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Avg Mem: %t K    Exit status: %x \n' \
+    "$@"
+}   
 
 ## Exit upon error with a message
 Die() {
@@ -96,7 +127,8 @@ Die() {
     echo
     echo "====================================================================="
     printf "$0: ERROR: %s\n" "$error_message" >&2
-    echo -e "\nFor help, run this script with the '-h' / '--help' option"
+    echo -e "\nFor help, run this script with the '-h' option"
+    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h"
     if [[ "$error_args" != "none" ]]; then
         echo -e "\nArguments passed to the script:"
         echo "$error_args"
@@ -135,8 +167,9 @@ while [ "$1" != "" ]; do
         -i | --infile )         shift && infile=$1 ;;
         -o | --outdir )         shift && outdir=$1 ;;
         --more_args )           shift && more_args=$1 ;;
-        -v | --version )        Print_version; exit ;;
-        -h | --help )           Print_help; exit ;;
+        -v | --version )        Print_version; exit 0;;
+        -h )                    Print_help; exit 0;;
+        --help )                Print_help_program; exit 0;;
         --dryrun )              dryrun=true && e="echo ";;
         --debug )               debug=true ;;
         * )                     Die "Invalid option $1" "$all_args" ;;
@@ -148,16 +181,18 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
+## In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
 ## Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Load software
-[[ "$dryrun" = false ]] && Load_software
+## Bash script settings
+set -euo pipefail
 
-## Get nr of threads
-Get_threads
+## Load software & set nr of thresads
+[[ "$dryrun" = false ]] && Load_software
+Set_threads
 
 ## FASTQ filename parsing TODO_edit_or_remove
 #file_ext=$(echo "$infile" | sed -E 's/.*(fasta|fastq.gz|fq.gz)/\1/')
@@ -165,9 +200,6 @@ Get_threads
 #R2_suffix=${R1_suffix/1/2}
 #R2_in=${R1_in/$R1_suffix/$R2_suffix}
 #sample_id=$(basename "$R1_in" | sed -E "s/${R1_suffix}_?[[:digit:]]*${file_ext}//")
-
-## Bash script settings
-set -euo pipefail
 
 ## Check input
 [[ $infile = "" ]] && Die "Please specify an input file with -i" "$all_args"
@@ -181,17 +213,19 @@ echo "==========================================================================
 echo "                    STARTING SCRIPT TODO_SCRIPTNAME"
 date
 echo "=========================================================================="
-echo "Input file:                  $infile"
-echo "Output dir:                  $outdir"
-[[ $more_args != "" ]] && echo "Other arguments for TODO_THIS_SOFTWARE:    $more_args"
-echo "Number of threads/cores:     $threads"
+echo "All arguments to this script:     $all_args"
+echo "Input file:                       $infile"
+echo "Output dir:                       $outdir"
+[[ $more_args != "" ]] && echo "Other arguments for TODO_THIS_SOFTWARE:$more_args"
+echo "Number of threads/cores:          $threads"
 echo
 echo "Listing input file:"
 ls -lh "$infile" #TODO
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
-echo
 
+## Print reserved resources
+[[ "$slurm" = true ]] && Print_resources
 
 # ==============================================================================
 #                               RUN
@@ -202,13 +236,10 @@ ${e}mkdir -p "$outdir"/logs
 ## Run
 echo -e "\n# Now running TODO_THIS_SOFTWARE..."
 
-[[ "$dryrun" = false ]] && set -o xtrace
-
-${e}TODO_COMMAND \
-    -t "$threads"
-    $more_args \
-
-[[ "$debug" = false ]] && set +o xtrace
+${e}Time \
+    TODO_COMMAND \
+        -t "$threads"
+        $more_args \
 
 
 # ==============================================================================
@@ -222,7 +253,7 @@ if [[ "$dryrun" = false ]]; then
     echo -e "\n# Listing files in the output dir:"
     ls -lhd "$PWD"/"$outdir"/*
     echo
-    [[ "$slurm" = true ]] && Res_usage
+    [[ "$slurm" = true ]] && Resource_usage
     echo
 fi
 echo "# Done with script"

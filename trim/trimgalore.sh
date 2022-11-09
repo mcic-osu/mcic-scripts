@@ -2,7 +2,10 @@
 
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
+#SBATCH --mem=32G
 #SBATCH --cpus-per-task=8
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
 #SBATCH --job-name=trimgalore
 #SBATCH --output=slurm-trimgalore-%j.out
 
@@ -28,12 +31,14 @@ Print_help() {
     echo "  -q/--quality    <int>   Quality trimming threshold         [default: 20 (also the TrimGalore default)]"
     echo "  -l/--length     <int>   Minimum read length                [default: 20 (also the TrimGalore default)]"
     echo "  -s/--single_end         Input is single-end                [default: paired-end]"
-    echo "  -F/--no_fastqc          Don't run FastQC after trimming    [default: run FastQC after trimming]"
+    echo "  --no_fastqc             Don't run FastQC after trimming    [default: run FastQC after trimming]"
+    echo "  --more_args             Additional arguments to pass to TrimGalore"
     echo
     echo "UTTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
     echo "  --debug                 Run the script in debug mode (print all code)"
-    echo "  -h/--help               Print this help message and exit"
+    echo "  -h                      Print this help message and exit"
+    echo "  --help                  Print the help for TrimGalore and exit"
     echo "  -v/--version            Print the version of TrimGalore and exit"
     echo
     echo "EXAMPLE COMMANDS:"
@@ -52,22 +57,89 @@ Print_help() {
 
 ## Load software
 Load_software() {
+    set +u
     module load miniconda3/4.12.0-py39
     source activate /fs/project/PAS0471/jelmer/conda/trimgalore-0.6.7
+    set -u
 }
 
 ## Print version
 Print_version() {
-    module load python/3.6-conda5.2
+    Load_software
     trim_galore --version
+}
+
+## Print help for the focal program
+Print_help_program() {
+    Load_software
+    trim_galore --help
+}
+
+## Set the number of threads/CPUs
+Set_threads() {
+    set +u
+    if [[ "$slurm" = true ]]; then
+        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
+            threads="$SLURM_CPUS_PER_TASK"
+        elif [[ -n "$SLURM_NTASKS" ]]; then
+            threads="$SLURM_NTASKS"
+        else 
+            echo "WARNING: Can't detect nr of threads, setting to 1"
+            threads=1
+        fi
+    else
+        threads=1
+    fi
+    set -u
+}
+
+## Print SLURM job resource usage info
+Resource_usage() {
+    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
+        grep -Ev "ba|ex"
+}
+
+## Print SLURM job requested resources
+Print_resources() {
+    set +u
+    echo "# SLURM job information:"
+    echo "Job ID:                       $SLURM_JOB_ID"
+    echo "Job name:                     $SLURM_JOB_NAME"
+    echo "Memory in GB (per node):      $SLURM_MEM_PER_NODE"
+    echo "CPUs per task:                $SLURM_CPUS_PER_TASK"
+    echo "Nr of tasks:                  $SLURM_NTASKS"
+    echo "Account (project):            $SLURM_JOB_ACCOUNT"
+    echo "Time limit:                   $SBATCH_TIMELIMIT"
+    echo "======================================================================"
+    echo
+    set -u
 }
 
 ## Exit upon error with a message
 Die() {
-    printf "\n$0: ERROR: %s\n" "$1" >&2
-    echo -e "Exiting\n" >&2
+    error_message=${1}
+    error_args=${2-none}
+    
+    echo
+    echo "====================================================================="
+    printf "$0: ERROR: %s\n" "$error_message" >&2
+    echo -e "\nFor help, run this script with the '-h' / '--help' option"
+    if [[ "$error_args" != "none" ]]; then
+        echo -e "\nArguments passed to the script:"
+        echo "$error_args"
+    fi
+    echo -e "\nEXITING..." >&2
+    echo "====================================================================="
+    echo
     exit 1
 }
+
+## Recource usage information
+Time() {
+/usr/bin/time -f \
+    '\n# Ran the command:\n%C \n# Run stats:\nTime: %E   CPU: %P    Max mem: %M K    Avg Mem: %t K    Exit status: %x \n' \
+    "$@"
+}   
 
 
 # ==============================================================================
@@ -79,9 +151,9 @@ length=20                  # => 20 is also the TrimGalore default
 single_end=false        # => paired-end by default
 
 debug=false
-dryrun=false
+dryrun=false && e=""
 run_fastqc=true
-
+slurm=true
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
@@ -92,6 +164,8 @@ outdir=""
 more_args=""
 
 ## Parse command-line args
+all_args="$*"
+
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --R1 )             shift && R1_in=$1 ;;
@@ -99,13 +173,14 @@ while [ "$1" != "" ]; do
         -q | --quality )        shift && quality=$1 ;;
         -l | --length )         shift && length=$1 ;;
         -s | --single_end )     single_end=true ;;
-        -F | --no_fastqc )      run_fastqc=false ;;
-        -a | --more_args )      shift && more_args=$1 ;;
+        --no_fastqc )           run_fastqc=false ;;
+        --more_args )           shift && more_args=$1 ;;
         --debug )               debug=true ;;
-        --dryrun )              dryrun=true ;;
-        -v | --version )        Print_version; exit ;;
-        -h | --help )           Print_help; exit ;;
-        * )                     Print_help; Die "Invalid option $1" ;;
+        --dryrun )              dryrun=true && e="echo ";;
+        -v | --version )        Print_version; exit 0;;
+        -h )                    Print_help; exit 0;;
+        --help )                Print_help_program; exit 0;;
+        * )                     Die "Invalid option $1" "$all_args";;
     esac
     shift
 done
@@ -114,22 +189,18 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
+## In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
-## Load software
-[[ "$dryrun" = false ]] && Load_software
-
-## Get number of threads
-if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-    threads="$SLURM_CPUS_PER_TASK"
-elif [[ -n "$SLURM_NTASKS" ]]; then
-    threads="$SLURM_NTASKS"
-else
-    threads=1
-fi
+## Check if this is a SLURM job
+[[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
 ## Bash strict settings
 set -euo pipefail
+
+## Load software and set nr of threads
+[[ "$dryrun" = false ]] && Load_software
+Set_threads
 
 ## Check input
 [[ "$outdir" = "" ]] && Die "Please specify an outdir with -o"
@@ -184,34 +255,34 @@ echo "==========================================================================
 echo "               STARTING SCRIPT TRIMGALORE.SH"
 date
 echo "=========================================================================="
-echo "R1 input file:                     $R1_in"
-echo "Base output dir:                   $outdir"
+echo "All arguments:                    $all_args"
+echo "R1 input file:                    $R1_in"
+echo "Base output dir:                  $outdir"
+echo "Sequence quality threshold:       $quality"
+echo "Minimum sequence length:          $length"
+echo "Sequences are single-end:         $single_end"
+echo "Run FastQC:                       $run_fastqc"
 echo
-[[ "$single_end" != "true" ]] && echo "R2 input file:                     $R2_in"
-echo "Sequence quality threshold:        $quality"
-echo "Minimum sequence length:           $length"
-echo "Sequences are single-end:          $single_end"
-echo "Run FastQC:                        $run_fastqc"
-[[ $more_args != "" ]] && echo "Other arguments for TrimGalore:    $more_args"
-echo
-echo "Sample ID:                         $sample_id"
-echo "Output dir - FastQC:               $outdir_fastqc"
-echo "R1 output file:                    $R1_out"
+[[ $more_args != "" ]] && echo "Other arguments for TrimGalore:   $more_args"
+[[ "$single_end" != "true" ]] && echo "R2 input file (inferred):         $R2_in"
+echo "Sample ID (inferred):             $sample_id"
+echo "Output dir - FastQC:              $outdir_fastqc"
+echo "R1 output file:                   $R1_out"
 [[ "$single_end" != "true" ]] && echo "R2 output file:                    $R2_out"
 echo "=========================================================================="
-echo
+
+## Print reserved resources
+[[ "$slurm" = true ]] && Print_resources
 
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-if [[ "$dryrun" = false ]]; then
-    ## Make output dirs
-    mkdir -p "$outdir_trim" "$outdir_fastqc" "$outdir_logs"
+## Make output dirs
+${e}mkdir -p "$outdir_trim" "$outdir_fastqc" "$outdir_logs"
 
-    ## Run Trim-Galore
-    [[ "$debug" = false ]] && set -o xtrace
-    
+## Run Trim-Galore
+${e}Time \
     trim_galore \
         --output_dir "$outdir_trim" \
         --quality "$quality" \
@@ -221,22 +292,16 @@ if [[ "$dryrun" = false ]]; then
         $more_args \
         $fastqc_arg1 "$fastqc_arg2" $input_arg
     
-    [[ "$debug" = false ]] && set +o xtrace
+## Move output files
+echo -e "\n# Moving output files..."
+${e}mv -v "$outdir_trim"/"$(basename "$R1_in")"_trimming_report.txt "$outdir_logs"
 
-    ## Move output files
-    echo -e "\n## Listing original output files:"
-    ls -lh "$outdir_trim"/"$sample_id"*
-    
-    echo -e "\n## Moving output files..."
-    mv -v "$outdir_trim"/"$(basename "$R1_in")"_trimming_report.txt "$outdir_logs"
-
-    if [ "$single_end" != "true" ]; then
-        mv -v "$outdir_trim"/"$sample_id"*_val_1.fq.gz "$R1_out"
-        mv -v "$outdir_trim"/"$sample_id"*_val_2.fq.gz "$R2_out"
-    else
-        R1_basename="$(basename "$R1_in" "$extension")"
-        mv -v "$outdir_trim"/"$R1_basename"_trimmed.fq.gz "$R1_out"
-    fi
+if [ "$single_end" != "true" ]; then
+    ${e}mv -v "$outdir_trim"/"$sample_id"*_val_1.fq.gz "$R1_out"
+    ${e}mv -v "$outdir_trim"/"$sample_id"*_val_2.fq.gz "$R2_out"
+else
+    R1_basename="$(basename "$R1_in" "$extension")"
+    ${e}mv -v "$outdir_trim"/"$R1_basename"_trimmed.fq.gz "$R1_out"
 fi
 
 
@@ -246,14 +311,14 @@ fi
 echo
 echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
-    echo -e "\n## Version used:"
+    echo -e "\n# Version used:"
     Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n## Listing FASTQ output files:"
+    echo -e "\n# Listing FASTQ output files:"
     ls -lh "$R1_out"
     [[ "$single_end" != "true" ]] && ls -lh "$R2_out"
     echo
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
+    [[ "$slurm" = true ]] && Resource_usage
 fi
 echo
-echo "## Done with script"
+echo "# Done with script"
 date
