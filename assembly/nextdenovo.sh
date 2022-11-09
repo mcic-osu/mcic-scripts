@@ -144,6 +144,7 @@ sed -i  -e "s@/absolute/path/to/file.fofn@$fofn@" \
 
 ## Show config file contents
 echo -e "\n## Printing the contents of the config file:"
+ls -lh "$config_file"
 cat -n "$config_file"
 echo -e "--------------------\n"
 
@@ -164,7 +165,7 @@ echo -e "\n-------------------------------"
 echo "## Version used:"
 Print_version | tee "$outdir"/logs/version.txt
 echo -e "\n## Listing files in the output dir:"
-ls -lh "$outdir"
+ls -lhd "$PWD"/"$outdir"/*
 echo -e "\n## Done with script"
 date
 echo
