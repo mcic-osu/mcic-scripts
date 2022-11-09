@@ -178,7 +178,7 @@ echo
 "${e}"mkdir -p "$outdir"/logs
 
 ## Run
-echo -e "\n## Now running TODO_THIS_SOFTWARE..."
+echo -e "\n# Now running TODO_THIS_SOFTWARE..."
     
 "${e}"TODO_COMMAND \
     -t "$threads"
@@ -192,12 +192,12 @@ echo -e "\n## Now running TODO_THIS_SOFTWARE..."
 # ==============================================================================
 echo
 echo "========================================================================="
-echo "## Version used:"
+echo "# Version used:"
 "${e}"Print_version | tee "$outdir"/logs/version.txt
-echo -e "\n## Listing files in the output dir:"
+echo -e "\n# Listing files in the output dir:"
 "${e}"ls -lhd "$PWD"/"$outdir"/*
 echo
-"${e}"sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
+"${e}"sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime | grep -Ev "ba|ex"
 echo
-echo "## Done with script"
+echo "# Done with script"
 date
