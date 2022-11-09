@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=3:00:00
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=50G
+#SBATCH --time=12:00:00
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32G
 #SBATCH --job-name=medaka
 #SBATCH --output=slurm-medaka-%j.out
 
@@ -19,7 +19,7 @@ Print_help() {
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 -i <input-dir> -o <output-dir> ..."
+    echo "  sbatch $0 -i <input reads> -r <input assembly> -o <output dir> -m <model> [...]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
@@ -42,8 +42,7 @@ Print_help() {
     echo "  -v/--version            Print the version of Medaka and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i TODO -o results/TODO "
-    echo "  sbatch $0 -i TODO -o results/TODO -a \"-x TODO\""
+    echo "  sbatch $0 -i data/my.fastq -r results/assembly.fasta -o results/medaka -m r941_min_hac_g507"
     echo
     echo "HARDCODED PARAMETERS:"
     echo "    - ..."
@@ -66,7 +65,9 @@ Load_software() {
 ## Print version
 Print_version() {
     Load_software
-    medaka_consensus --version
+    medaka_consensus -h &> medaka_help.txt
+    sed -n '2p' medaka_help.txt
+    rm medaka_help.txt
 }
 
 ## Exit upon error with a message
