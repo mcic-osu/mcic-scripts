@@ -23,15 +23,15 @@ Print_help() {
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 -i <input-dir> -o <output-dir> ..."
+    echo "  sbatch $0 -i <input file> -o <output dir> [...]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--indir      <dir>   Input dir"
+    echo "  -i/--infile     <file>  Input file"
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --more_args  <string>   Quoted string with additional argument(s) to pass to TODO_THIS_SOFTWARE"
+    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to TODO_THIS_SOFTWARE"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
@@ -41,7 +41,6 @@ Print_help() {
     echo
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 -i TODO -o results/TODO "
-    echo "  sbatch $0 -i TODO -o results/TODO --more_args \"-x TODO\""
     echo
     echo "HARDCODED PARAMETERS:"
     echo "    - ..."
@@ -61,23 +60,50 @@ Load_software() {
     source activate TODO_THIS_SOFTWARE_ENV
 }
 
-## Print args
-Print_args() {
-    echo -e "\n# Arguments passed to the script:"
-    echo "$*"
+## Print SLURM job usage
+Res_usage() {
+    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime | \
+        grep -Ev "ba|ex"
+}
+
+Get_threads() {
+    ## Get number of threads
+    if [[ "$slurm" = true ]]; then
+        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
+            threads="$SLURM_CPUS_PER_TASK"
+        elif [[ -n "$SLURM_NTASKS" ]]; then
+            threads="$SLURM_NTASKS"
+        else 
+            echo "WARNING: Can't detect nr of threads, setting to 1"
+            threads=1
+        fi
+    else
+        threads=1
+    fi
 }
 
 ## Print version
 Print_version() {
     Load_software
-    TODO_THIS_SOFTWARE --version
+    #TODO_THIS_SOFTWARE --version
 }
 
 ## Exit upon error with a message
 Die() {
-    printf "\n$0: ERROR: %s\n" "$1" >&2
-    echo "For help, run this script with the '-h' / '--help' option"
-    echo -e "Exiting\n" >&2
+    error_message=${1}
+    error_args=${2-none}
+    
+    echo
+    echo "====================================================================="
+    printf "$0: ERROR: %s\n" "$error_message" >&2
+    echo -e "\nFor help, run this script with the '-h' / '--help' option"
+    if [[ error_args != "none" ]]; then
+        echo -e "\nArguments passed to the script:"
+        echo "$error_args"
+    fi
+    echo -e "\nEXITING..." >&2
+    echo "====================================================================="
+    echo
     exit 1
 }
 
@@ -90,13 +116,13 @@ Die() {
 ## Option defaults
 debug=false
 dryrun=false && e=""
-
+slurm=true
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 ## Placeholder defaults
-indir=""
+infile=""
 outdir=""
 more_args=""
 #tree="" && tree_arg=""
@@ -106,14 +132,14 @@ all_args="$*"
 
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --indir )          shift && indir=$1 ;;
+        -i | --infile )         shift && infile=$1 ;;
         -o | --outdir )         shift && outdir=$1 ;;
         --more_args )           shift && more_args=$1 ;;
         -v | --version )        Print_version; exit ;;
         -h | --help )           Print_help; exit ;;
-        --dryrun )              dryrun=true && e="echo";;
+        --dryrun )              dryrun=true && e="echo ";;
         --debug )               debug=true ;;
-        * )                     Print_args "$all_args"; Die "Invalid option $1" ;;
+        * )                     Die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
@@ -124,47 +150,45 @@ done
 # ==============================================================================
 [[ "$debug" = true ]] && set -o xtrace
 
+## Check if this is a SLURM job
+[[ -z "$SLURM_JOB_ID" ]] && slurm=false
+
 ## Load software
 [[ "$dryrun" = false ]] && Load_software
 
-## Get number of threads
-if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-    threads="$SLURM_CPUS_PER_TASK"
-elif [[ -n "$SLURM_NTASKS" ]]; then
-    threads="$SLURM_NTASKS"
-else
-    threads=1
-fi
+## Get nr of threads
+Get_threads
 
 ## FASTQ filename parsing TODO_edit_or_remove
-file_ext=$(echo "$infile" | sed -E 's/.*(fasta|fastq.gz|fq.gz)/\1/')
-extension=$(echo "$R1_in" | sed -E 's/.*(\.fa?s?t?q\.gz$)/\1/')
-R1_suffix=$(echo "$R1_in" | sed -E "s/.*(_R?1)_?[[:digit:]]*$extension/\1/")
-R2_suffix=${R1_suffix/1/2}
-R2_in=${R1_in/$R1_suffix/$R2_suffix}
-sample_id=$(basename "$R1_in" | sed -E "s/${R1_suffix}_?[[:digit:]]*${extension}//")
+#file_ext=$(echo "$infile" | sed -E 's/.*(fasta|fastq.gz|fq.gz)/\1/')
+#R1_suffix=$(echo "$R1_in" | sed -E "s/.*(_R?1)_?[[:digit:]]*$R1_suffix/\1/")
+#R2_suffix=${R1_suffix/1/2}
+#R2_in=${R1_in/$R1_suffix/$R2_suffix}
+#sample_id=$(basename "$R1_in" | sed -E "s/${R1_suffix}_?[[:digit:]]*${file_ext}//")
 
 ## Bash script settings
 set -euo pipefail
 
 ## Check input
-[[ $indir = "" ]] && Print_args "$all_args" && Die "Please specify an input dir with -i"
-[[ $outdir = "" ]] && Print_args "$all_args" && Die "Please specify an output dir with -o"
-[[ ! -d $indir ]] && Die "Input dir $indir does not exist"
+[[ $infile = "" ]] && Die "Please specify an input file with -i" "$all_args"
+[[ $outdir = "" ]] && Die "Please specify an output dir with -o" "$all_args"
+[[ ! -f $infile ]] && Die "Input file $infile does not exist"
+
 
 ## Report
 echo
 echo "=========================================================================="
-echo "               STARTING SCRIPT TODO_SCRIPTNAME"
+echo "                    STARTING SCRIPT TODO_SCRIPTNAME"
 date
 echo "=========================================================================="
-echo "Input dir:                   $indir"
+echo "Input file:                  $infile"
 echo "Output dir:                  $outdir"
 [[ $more_args != "" ]] && echo "Other arguments for TODO_THIS_SOFTWARE:    $more_args"
+echo "Number of threads/cores:     $threads"
 echo
 echo "Listing input file:"
-ls -lh TODO
-[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN\n"
+ls -lh "$infile" #TODO
+[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 echo
 
@@ -175,12 +199,12 @@ echo
 [[ "$dryrun" = false ]] && set -o xtrace
     
 ## Create the output directory
-"${e}"mkdir -p "$outdir"/logs
+${e}mkdir -p "$outdir"/logs
 
 ## Run
 echo -e "\n# Now running TODO_THIS_SOFTWARE..."
     
-"${e}"TODO_COMMAND \
+${e}TODO_COMMAND \
     -t "$threads"
     $more_args \
 
@@ -192,12 +216,14 @@ echo -e "\n# Now running TODO_THIS_SOFTWARE..."
 # ==============================================================================
 echo
 echo "========================================================================="
-echo "# Version used:"
-"${e}"Print_version | tee "$outdir"/logs/version.txt
-echo -e "\n# Listing files in the output dir:"
-"${e}"ls -lhd "$PWD"/"$outdir"/*
-echo
-"${e}"sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime | grep -Ev "ba|ex"
-echo
+if [[ "$dryrun" = false ]]; then
+    echo "# Version used:"
+    Print_version | tee "$outdir"/logs/version.txt
+    echo -e "\n# Listing files in the output dir:"
+    ls -lhd "$PWD"/"$outdir"/*
+    echo
+    [[ "$slurm" = true ]] && Res_usage
+    echo
+fi
 echo "# Done with script"
 date
