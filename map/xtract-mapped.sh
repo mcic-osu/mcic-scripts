@@ -17,7 +17,7 @@ bam_out=$2
 
 ## Load software
 module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/miniconda3/envs/samtools-env
+source activate /fs/ess/PAS0471/jelmer/conda/samtools
 
 ## Output files
 outdir=$(basename "$bam_out")
