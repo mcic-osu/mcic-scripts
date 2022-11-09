@@ -60,28 +60,6 @@ Load_software() {
     source activate TODO_THIS_SOFTWARE_ENV
 }
 
-## Print SLURM job usage
-Res_usage() {
-    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime | \
-        grep -Ev "ba|ex"
-}
-
-Get_threads() {
-    ## Get number of threads
-    if [[ "$slurm" = true ]]; then
-        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-            threads="$SLURM_CPUS_PER_TASK"
-        elif [[ -n "$SLURM_NTASKS" ]]; then
-            threads="$SLURM_NTASKS"
-        else 
-            echo "WARNING: Can't detect nr of threads, setting to 1"
-            threads=1
-        fi
-    else
-        threads=1
-    fi
-}
-
 ## Print version
 Print_version() {
     Load_software
@@ -104,13 +82,13 @@ Resource_usage() {
 Print_resources() {
     set +u
     echo "# SLURM job information:"
+    echo "Account (project):    $SLURM_JOB_ACCOUNT"
     echo "Job ID:               $SLURM_JOB_ID"
     echo "Job name:             $SLURM_JOB_NAME"
     echo "Memory (per node):    $SLURM_MEM_PER_NODE"
     echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
-    echo "Nr of tasks:          $SLURM_NTASKS"
-    echo "Account (project):    $SLURM_JOB_ACCOUNT"
-    echo "Time limit:           $SBATCH_TIMELIMIT"
+    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
+    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
     echo "======================================================================"
     echo
     set -u
@@ -134,11 +112,11 @@ Set_threads() {
     set -u
 }
 
-## Recource usage information
+## Resource usage information
 Time() {
-/usr/bin/time -f \
-    '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Avg Mem: %t K    Exit status: %x \n' \
-    "$@"
+    /usr/bin/time -f \
+        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Avg Mem: %t K    Exit status: %x \n' \
+        "$@"
 }   
 
 ## Exit upon error with a message
@@ -171,6 +149,7 @@ Die() {
 debug=false
 dryrun=false && e=""
 slurm=true
+
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
@@ -209,38 +188,19 @@ done
 ## Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Load software
+## Load software and set nr of threads
 [[ "$dryrun" = false ]] && Load_software
-
-## Get nr of threads
-Get_threads
-
-## FASTQ filename parsing TODO_edit_or_remove
-#file_ext=$(echo "$infile" | sed -E 's/.*(fasta|fastq.gz|fq.gz)/\1/')
-#R1_suffix=$(echo "$R1_in" | sed -E "s/.*(_R?1)_?[[:digit:]]*$R1_suffix/\1/")
-#R2_suffix=${R1_suffix/1/2}
-#R2_in=${R1_in/$R1_suffix/$R2_suffix}
-#sample_id=$(basename "$R1_in" | sed -E "s/${R1_suffix}_?[[:digit:]]*${file_ext}//")
+Set_threads
 
 ## Bash script settings
 set -euo pipefail
 
-## Load software & set nr of thresads
-[[ "$dryrun" = false ]] && Load_software
-Set_threads
-
 ## FASTQ filename parsing TODO_edit_or_remove
 #file_ext=$(echo "$infile" | sed -E 's/.*(fasta|fastq.gz|fq.gz)/\1/')
 #R1_suffix=$(echo "$R1_in" | sed -E "s/.*(_R?1)_?[[:digit:]]*$R1_suffix/\1/")
 #R2_suffix=${R1_suffix/1/2}
 #R2_in=${R1_in/$R1_suffix/$R2_suffix}
 #sample_id=$(basename "$R1_in" | sed -E "s/${R1_suffix}_?[[:digit:]]*${file_ext}//")
-
-## Check input
-[[ $infile = "" ]] && Die "Please specify an input file with -i" "$all_args"
-[[ $outdir = "" ]] && Die "Please specify an output dir with -o" "$all_args"
-[[ ! -f $infile ]] && Die "Input file $infile does not exist"
-
 
 ## Report
 echo
@@ -255,12 +215,17 @@ echo "Output dir:                       $outdir"
 echo "Number of threads/cores:          $threads"
 echo
 echo "Listing input file:"
-ls -lh "$infile" #TODO
+#ls -lh "$infile" #TODO
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
 ## Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
+
+## Check input
+[[ $infile = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
+[[ $outdir = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
+[[ ! -f $infile ]] && Die "Input file $infile does not exist"
 
 # ==============================================================================
 #                               RUN
