@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=2:00:00
+#SBATCH --time=6:00:00
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=50G
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
 #SBATCH --job-name=racon
 #SBATCH --output=slurm-racon-%j.out
 
@@ -23,20 +25,20 @@ Print_help() {
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--reads      <file>  Input reads: FASTQ file (reads used for correction)"
-    echo "  -r/--assembly   <file>  Input assembly: FASTA file (to be corrected)"
-    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
+    echo "  -i/--reads          <file>  Input reads: FASTQ file (reads used for correction)"
+    echo "  -r/--assembly       <file>  Input assembly: FASTA file (to be corrected)"
+    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  -x/--minimap_preset <str>  Minimap preset                          [default: 'map-ont']"
-    echo "  --more_args_racon  <str>   Quoted string with additional argument(s) to pass to Racon"
-    echo "  --more_args_minimap  <str> Quoted string with additional argument(s) to pass to Minimap"
+    echo "  -x/--minimap_preset <str>   Minimap preset                          [default: 'map-ont']"
+    echo "  --more_args_racon   <str>   Quoted string with additional argument(s) to pass to Racon"
+    echo "  --more_args_minimap <str>   Quoted string with additional argument(s) to pass to Minimap"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                 Run the script in debug mode (print all code)"
-    echo "  -h/--help               Print this help message and exit"
-    echo "  -v/--version            Print the version of Racon and exit"
+    echo "  --dryrun                    Dry run: don't execute commands, only parse arguments and report"
+    echo "  --debug                     Run the script in debug mode (print all code)"
+    echo "  -h/--help                   Print this help message and exit"
+    echo "  -v/--version                Print the version of Racon and exit"
     echo
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 -i data/my.fastq -a results/my.bam -r results/assembly.fasta -o results/racon"
@@ -59,25 +61,86 @@ Load_minimap() {
     source activate /fs/ess/PAS0471/jelmer/conda/minimap2-2.24
 }
 
-## Print args
-Print_args() {
-    echo -e "\n# Arguments passed to the script:"
-    echo "$*"
-}
-
 ## Print version
 Print_version() {
     Load_software
     racon --version
 }
 
+## Print help for the focal program
+Print_help_program() {
+    Load_software
+    racon --help
+}
+
+## Print SLURM job resource usage info
+Resource_usage() {
+    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
+        grep -Ev "ba|ex"
+}
+
+## Print SLURM job requested resources
+Print_resources() {
+    set +u
+    echo "# SLURM job information:"
+    echo "Job ID:                       $SLURM_JOB_ID"
+    echo "Job name:                     $SLURM_JOB_NAME"
+    echo "Memory in MB (per node):      $SLURM_MEM_PER_NODE"
+    echo "CPUs per task:                $SLURM_CPUS_PER_TASK"
+    echo "Nr of tasks:                  $SLURM_NTASKS"
+    echo "Account (project):            $SLURM_JOB_ACCOUNT"
+    echo "Time limit:                   $SBATCH_TIMELIMIT"
+    echo "======================================================================"
+    echo
+    set -u
+}
+
+## Set the number of threads/CPUs
+Set_threads() {
+    set +u
+    if [[ "$slurm" = true ]]; then
+        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
+            threads="$SLURM_CPUS_PER_TASK"
+        elif [[ -n "$SLURM_NTASKS" ]]; then
+            threads="$SLURM_NTASKS"
+        else 
+            echo "WARNING: Can't detect nr of threads, setting to 1"
+            threads=1
+        fi
+    else
+        threads=1
+    fi
+    set -u
+}
+
+## Recource usage information
+Time() {
+/usr/bin/time -f \
+    '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Avg Mem: %t K    Exit status: %x \n' \
+    "$@"
+}   
+
 ## Exit upon error with a message
 Die() {
-    printf "\n$0: ERROR: %s\n" "$1" >&2
-    echo -e "Exiting\n" >&2
+    error_message=${1}
+    error_args=${2-none}
+    
+    echo
+    echo "====================================================================="
+    printf "$0: ERROR: %s\n" "$error_message" >&2
+    echo -e "\nFor help, run this script with the '-h' option"
+    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h"
+    if [[ "$error_args" != "none" ]]; then
+        echo -e "\nArguments passed to the script:"
+        echo "$error_args"
+    fi
+    echo -e "\nEXITING..." >&2
+    echo "====================================================================="
+    echo
     exit 1
 }
 
+## Run Racon
 Run_racon() {
     assembly_in=${1:-none}
     align=${2:-none}
@@ -89,7 +152,7 @@ Run_racon() {
 
     Load_racon
 
-    racon \
+    ${e}Time racon \
         "$reads" \
         "$align" \
         "$assembly_in" \
@@ -98,6 +161,7 @@ Run_racon() {
         > "$assembly_out"
 }
 
+## Run Minimap
 Run_minimap() {
     assembly=${1:-none}
     align_out=${2:-none}
@@ -107,7 +171,7 @@ Run_minimap() {
 
     Load_minimap
     
-    minimap2 \
+    ${e}Time minimap2 \
         -x "$minimap_preset" \
         -t "$threads" \
         -a \
@@ -126,6 +190,7 @@ iterations=2
 
 debug=false
 dryrun=false && e=""
+slurm=true
 
 
 # ==============================================================================
@@ -162,16 +227,14 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
+## In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
-## Get number of threads
-if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-    threads="$SLURM_CPUS_PER_TASK"
-elif [[ -n "$SLURM_NTASKS" ]]; then
-    threads="$SLURM_NTASKS"
-else
-    threads=1
-fi
+## Check if this is a SLURM job
+[[ -z "$SLURM_JOB_ID" ]] && slurm=false
+
+## Set nr of threads
+Set_threads
 
 ## Bash script settings
 set -euo pipefail
@@ -198,6 +261,7 @@ echo "==========================================================================
 echo "               STARTING SCRIPT RACON.SH"
 date
 echo "=========================================================================="
+echo "All arguments to this script:     $all_args"
 echo "Input reads (FASTQ) file:         $reads"
 echo "Input assembly (FASTA) file:      $assembly_in"
 echo "Output dir:                       $outdir"
@@ -213,7 +277,9 @@ echo "Listing input files:"
 ls -lh "$reads" "$assembly_in" 
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
-echo
+
+## Print reserved resources
+[[ "$slurm" = true ]] && Print_resources
 
 
 # ==============================================================================
@@ -223,8 +289,6 @@ echo
 "${e}"mkdir -p "$outdir"/logs "$outdir"/minimap
 
 ## Run
-[[ "$dryrun" = false ]] && set -o xtrace
-
 echo -e "\n## Now running the first iteration of Minimap..."
 "${e}"Run_minimap "$assembly_in" "$align_1"
 
@@ -239,19 +303,20 @@ if [[ "$iterations" = "2" ]]; then
     "${e}"Run_racon "$assembly_out1" "$align_2" "$assembly_out2"
 fi
 
-[[ "$debug" = false ]] && set +o xtrace
 
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
 echo
 echo "========================================================================="
-echo "## Version used:"
-"${e}"Print_version | tee "$outdir"/logs/version.txt
-echo -e "\n## Listing files in the output dir:"
-"${e}"ls -lhd "$PWD"/"$outdir"/*
-echo
-"${e}"sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
-echo
+if [[ "$dryrun" = false ]]; then
+    echo "# Version used:"
+    Print_version | tee "$outdir"/logs/version.txt
+    echo -e "\n# Listing files in the output dir:"
+    ls -lhd "$PWD"/"$outdir"/*
+    echo
+    [[ "$slurm" = true ]] && Resource_usage
+    echo
+fi
 echo "## Done with script"
 date
