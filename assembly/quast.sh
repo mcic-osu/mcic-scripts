@@ -175,7 +175,7 @@ echo
 #                               RUN
 # ==============================================================================
 ## Make output dir
-mkdir -p "$outdir"
+mkdir -p "$outdir"/logs
 
 [[ "$debug" = false ]] && set -o xtrace
 
