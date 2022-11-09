@@ -56,9 +56,15 @@ Print_help() {
 
 ## Load software
 Load_software() {
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do conda deactivate; done
     module load miniconda3/4.12.0-py39
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
     source activate TODO_THIS_SOFTWARE_ENV
+}
+
+## Print args
+Print_args() {
+    echo -e "\n# Arguments passed to the script:"
+    echo "$*"
 }
 
 ## Print version
@@ -70,6 +76,7 @@ Print_version() {
 ## Exit upon error with a message
 Die() {
     printf "\n$0: ERROR: %s\n" "$1" >&2
+    echo "For help, run this script with the '-h' / '--help' option"
     echo -e "Exiting\n" >&2
     exit 1
 }
@@ -82,7 +89,7 @@ Die() {
 
 ## Option defaults
 debug=false
-dryrun=false
+dryrun=false && e=""
 
 
 # ==============================================================================
@@ -95,6 +102,8 @@ more_args=""
 #tree="" && tree_arg=""
 
 ## Parse command-line args
+all_args="$*"
+
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --indir )          shift && indir=$1 ;;
@@ -102,9 +111,9 @@ while [ "$1" != "" ]; do
         --more_args )           shift && more_args=$1 ;;
         -v | --version )        Print_version; exit ;;
         -h | --help )           Print_help; exit ;;
-        --dryrun )              dryrun=true ;;
+        --dryrun )              dryrun=true && e="echo";;
         --debug )               debug=true ;;
-        * )                     Print_help; Die "Invalid option $1" ;;
+        * )                     Print_args "$all_args"; Die "Invalid option $1" ;;
     esac
     shift
 done
@@ -127,7 +136,7 @@ else
     threads=1
 fi
 
-## FASTQ filename parsing
+## FASTQ filename parsing TODO_edit_or_remove
 file_ext=$(echo "$infile" | sed -E 's/.*(fasta|fastq.gz|fq.gz)/\1/')
 extension=$(echo "$R1_in" | sed -E 's/.*(\.fa?s?t?q\.gz$)/\1/')
 R1_suffix=$(echo "$R1_in" | sed -E "s/.*(_R?1)_?[[:digit:]]*$extension/\1/")
@@ -139,8 +148,8 @@ sample_id=$(basename "$R1_in" | sed -E "s/${R1_suffix}_?[[:digit:]]*${extension}
 set -euo pipefail
 
 ## Check input
-[[ $indir = "" ]] && Die "Please specify an input dir with -i"
-[[ $outdir = "" ]] && Die "Please specify an output dir with -o"
+[[ $indir = "" ]] && Print_args "$all_args" && Die "Please specify an input dir with -i"
+[[ $outdir = "" ]] && Print_args "$all_args" && Die "Please specify an output dir with -o"
 [[ ! -d $indir ]] && Die "Input dir $indir does not exist"
 
 ## Report
@@ -152,6 +161,7 @@ echo "==========================================================================
 echo "Input dir:                   $indir"
 echo "Output dir:                  $outdir"
 [[ $more_args != "" ]] && echo "Other arguments for TODO_THIS_SOFTWARE:    $more_args"
+echo
 echo "Listing input file:"
 ls -lh TODO
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN\n"
@@ -162,35 +172,32 @@ echo
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-if [[ "$dryrun" = false ]]; then
+[[ "$dryrun" = false ]] && set -o xtrace
     
-    ## Create the output directory
-    mkdir -p "$outdir"/logs
+## Create the output directory
+"${e}"mkdir -p "$outdir"/logs
 
-    ## Run
-    echo -e "\n## Now running TODO_THIS_SOFTWARE..."
-    [[ "$debug" = false ]] && set -o xtrace
-    TODO_COMMAND \
-        -t "$threads"
-        $more_args \
-    [[ "$debug" = false ]] && set +o xtrace
+## Run
+echo -e "\n## Now running TODO_THIS_SOFTWARE..."
+    
+"${e}"TODO_COMMAND \
+    -t "$threads"
+    $more_args \
 
-fi
+[[ "$debug" = false ]] && set +o xtrace
 
 
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
-if [[ "$dryrun" = false ]]; then
-    echo
-    echo "========================================================================="
-    echo "## Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n## Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
-    echo
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
-fi
+echo
+echo "========================================================================="
+echo "## Version used:"
+"${e}"Print_version | tee "$outdir"/logs/version.txt
+echo -e "\n## Listing files in the output dir:"
+"${e}"ls -lhd "$PWD"/"$outdir"/*
+echo
+"${e}"sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
 echo
 echo "## Done with script"
 date
