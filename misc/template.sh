@@ -60,6 +60,28 @@ Load_software() {
     source activate TODO_THIS_SOFTWARE_ENV
 }
 
+## Print SLURM job usage
+Res_usage() {
+    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime | \
+        grep -Ev "ba|ex"
+}
+
+Get_threads() {
+    ## Get number of threads
+    if [[ "$slurm" = true ]]; then
+        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
+            threads="$SLURM_CPUS_PER_TASK"
+        elif [[ -n "$SLURM_NTASKS" ]]; then
+            threads="$SLURM_NTASKS"
+        else 
+            echo "WARNING: Can't detect nr of threads, setting to 1"
+            threads=1
+        fi
+    else
+        threads=1
+    fi
+}
+
 ## Print version
 Print_version() {
     Load_software
@@ -186,6 +208,19 @@ done
 
 ## Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
+
+## Load software
+[[ "$dryrun" = false ]] && Load_software
+
+## Get nr of threads
+Get_threads
+
+## FASTQ filename parsing TODO_edit_or_remove
+#file_ext=$(echo "$infile" | sed -E 's/.*(fasta|fastq.gz|fq.gz)/\1/')
+#R1_suffix=$(echo "$R1_in" | sed -E "s/.*(_R?1)_?[[:digit:]]*$R1_suffix/\1/")
+#R2_suffix=${R1_suffix/1/2}
+#R2_in=${R1_in/$R1_suffix/$R2_suffix}
+#sample_id=$(basename "$R1_in" | sed -E "s/${R1_suffix}_?[[:digit:]]*${file_ext}//")
 
 ## Bash script settings
 set -euo pipefail
