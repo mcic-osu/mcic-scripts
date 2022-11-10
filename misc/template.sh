@@ -196,11 +196,11 @@ Set_threads
 set -euo pipefail
 
 ## FASTQ filename parsing TODO_edit_or_remove
-#file_ext=$(echo "$infile" | sed -E 's/.*(fasta|fastq.gz|fq.gz)/\1/')
-#R1_suffix=$(echo "$R1_in" | sed -E "s/.*(_R?1)_?[[:digit:]]*$R1_suffix/\1/")
+#file_ext=$(basename "$R1_in" | sed -E 's/.*(.fasta|.fastq.gz|.fq.gz)/\1/')
+#R1_suffix=$(basename "$R1_in" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
 #R2_suffix=${R1_suffix/1/2}
 #R2_in=${R1_in/$R1_suffix/$R2_suffix}
-#sample_id=$(basename "$R1_in" | sed -E "s/${R1_suffix}_?[[:digit:]]*${file_ext}//")
+#sample_id=$(basename "$R1_in" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
 
 ## Report
 echo
@@ -223,9 +223,10 @@ echo "==========================================================================
 [[ "$slurm" = true ]] && Print_resources
 
 ## Check input
-[[ $infile = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
-[[ $outdir = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
-[[ ! -f $infile ]] && Die "Input file $infile does not exist"
+[[ "$infile" = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
+[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
+[[ ! -f "$infile" ]] && Die "Input file $infile does not exist"
+
 
 # ==============================================================================
 #                               RUN
