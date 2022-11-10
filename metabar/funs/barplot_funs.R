@@ -1,3 +1,8 @@
+## Colors
+mycols <- c("#a74bb4", "#62b54f", "#7064d3", "#b5b348", "#dd6fc5",
+            "#4db18a", "#ce416e", "#45aecf", "#d55035", "#7784cb",
+            "#cc8e3e", "#ac6090", "#647934", "#df837e", "#9c5736")
+
 ## Barplot showing taxon abundances
 pbar <- function(ps, taxrank,
                  xvar = "Sample", facetvar = NULL,
@@ -6,21 +11,15 @@ pbar <- function(ps, taxrank,
                  na_to_unknown = TRUE,
                  sort_by_abund = TRUE,
                  cols = NULL) {
-  #taxrank="phylum"; abund_tres=NA; cols=mycols; ps=fCS
-  #na_to_unknown = TRUE; sort_by_abund = TRUE;
-  #xvar = "travel_time"; facetvar = "Age"
-  
+
+  ## Comput abundance stats  
   df <- abund_stats(ps = ps, taxrank = taxrank, abund_tres = abund_tres,
                     na_to_unknown = na_to_unknown, sort_by_abund = sort_by_abund,
                     groupby = c(xvar, facetvar))
   
   ## Set colors
   ntax <- length(unique(na.omit(df[[taxrank]])))
-  if (is.null(cols)) {
-    cols <- palette(rainbow(ntax))
-  } else {
-    cols <- cols[1:ntax]
-  }
+  if (is.null(cols)) cols <- palette(rainbow(ntax)) else cols <- cols[1:ntax]
   
   ## Set last color ('other' category) to grey:
   if (any(df[[taxrank]] == "other (rare)")) {
@@ -66,9 +65,6 @@ abund_stats <- function(ps, taxrank,
                         abund_tres = 0.01,
                         na_to_unknown = TRUE,
                         sort_by_abund = TRUE) {
-  #taxrank="phylum"; abund_tres=NA; cols=mycols; ps=ps_prop
-  #na_to_unknown = TRUE; sort_by_abund = TRUE; groupby = "Sample"
-  
   ## Agglomerate by a taxrank
   ps <- tax_glom(ps, taxrank = taxrank, NArm = FALSE)
   
@@ -92,7 +88,6 @@ abund_stats <- function(ps, taxrank,
   if (!is.null(groupby)) {
     df <- df %>%
       group_by_at(c(groupby, taxrank)) %>% 
-      #group_by(.data[[taxrank]], .data[[groupby]]) %>%
       summarize(Abundance = mean(Abundance), .groups = "drop")
     
     if (groupby[1] == "Sample")
@@ -113,13 +108,11 @@ abund_stats <- function(ps, taxrank,
     ## Create a df for the lumped taxa, with summed abundance
     other <- df %>%
       filter(.data[[taxrank]] %in% to_lump) %>%
-      #group_by(.data[[groupby]]) %>%
       group_by_at(groupby) %>% 
       summarize(Abundance = sum(Abundance))
     
-    if (groupby[1] == "Sample") {
+    if (groupby[1] == "Sample")
       other <- other %>% left_join(sample_data(ps), by = c("Sample" = "sampleID"))
-    }
     
     other[[taxrank]] <- "other (rare)"
     
