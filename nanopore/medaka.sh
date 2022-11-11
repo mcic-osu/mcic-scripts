@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=12:00:00
+#SBATCH --time=18:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
 #SBATCH --job-name=medaka
 #SBATCH --output=slurm-medaka-%j.out
 
@@ -44,12 +46,6 @@ Print_help() {
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 -i data/my.fastq -r results/assembly.fasta -o results/medaka -m r941_min_hac_g507"
     echo
-    echo "HARDCODED PARAMETERS:"
-    echo "    - ..."
-    echo
-    echo "OUTPUT:"
-    echo "    - ..."
-    echo
     echo "SOFTWARE DOCUMENTATION:"
     echo "    - https://github.com/nanoporetech/medaka"
     echo
@@ -70,10 +66,77 @@ Print_version() {
     rm medaka_help.txt
 }
 
+## Print help for the focal program
+Print_help_program() {
+    Load_software
+    medaka_consensus -h
+}
+
+
+## Print SLURM job resource usage info
+Resource_usage() {
+    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
+        grep -Ev "ba|ex"
+}
+
+## Print SLURM job requested resources
+Print_resources() {
+    set +u
+    echo "# SLURM job information:"
+    echo "Account (project):    $SLURM_JOB_ACCOUNT"
+    echo "Job ID:               $SLURM_JOB_ID"
+    echo "Job name:             $SLURM_JOB_NAME"
+    echo "Memory (per node):    $SLURM_MEM_PER_NODE"
+    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
+    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
+    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
+    echo "======================================================================"
+    echo
+    set -u
+}
+
+## Set the number of threads/CPUs
+Set_threads() {
+    set +u
+    if [[ "$slurm" = true ]]; then
+        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
+            threads="$SLURM_CPUS_PER_TASK"
+        elif [[ -n "$SLURM_NTASKS" ]]; then
+            threads="$SLURM_NTASKS"
+        else 
+            echo "WARNING: Can't detect nr of threads, setting to 1"
+            threads=1
+        fi
+    else
+        threads=1
+    fi
+    set -u
+}
+
+## Resource usage information
+Time() {
+    /usr/bin/time -f \
+        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Avg Mem: %t K    Exit status: %x \n' \
+        "$@"
+}   
+
 ## Exit upon error with a message
 Die() {
-    printf "\n$0: ERROR: %s\n" "$1" >&2
-    echo -e "Exiting\n" >&2
+    error_message=${1}
+    error_args=${2-none}
+    
+    echo
+    echo "====================================================================="
+    printf "$0: ERROR: %s\n" "$error_message" >&2
+    echo -e "\nFor help, run this script with the '-h' option"
+    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h"
+    if [[ "$error_args" != "none" ]]; then
+        echo -e "\nArguments passed to the script:"
+        echo "$error_args"
+    fi
+    echo -e "\nEXITING..." >&2
+    echo "====================================================================="
+    echo
     exit 1
 }
 
@@ -81,12 +144,10 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-## Constants
-
 ## Option defaults
 debug=false
-dryrun=false
-
+dryrun=false && e=""
+slurm=true
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
@@ -97,6 +158,8 @@ assembly=""
 more_args=""
 
 ## Parse command-line args
+all_args="$*"
+
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --reads )          shift && reads=$1 ;;
@@ -104,11 +167,11 @@ while [ "$1" != "" ]; do
         -o | --outdir )         shift && outdir=$1 ;;
         -m | --model )          shift && model=$1 ;;
         --more_args )           shift && more_args=$1 ;;
-        -v | --version )        Print_version; exit ;;
-        -h | --help )           Print_help; exit ;;
+        -h )                    Print_help; exit 0;;
+        --help )                Print_help_program; exit 0;;
         --debug )               debug=true ;;
         --dryrun )              dryrun=true ;;
-        * )                     Print_help; Die "Invalid option $1" ;;
+        * )                     Die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
@@ -117,27 +180,23 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
+## In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
-## Load software
-[[ "$dryrun" = false ]] && Load_software
+## Check if this is a SLURM job
+[[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Get number of threads
-if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-    threads="$SLURM_CPUS_PER_TASK"
-elif [[ -n "$SLURM_NTASKS" ]]; then
-    threads="$SLURM_NTASKS"
-else
-    threads=1
-fi
+## Load software and set nr of threads
+[[ "$dryrun" = false ]] && Load_software
+Set_threads
 
 ## Bash script settings
 set -euo pipefail
 
 ## Check input
-[[ $reads = "" ]] && Die "Please specify a file with input reads with -i"
-[[ $assembly = "" ]] && Die "Please specify an input assembly with -r"
-[[ $outdir = "" ]] && Die "Please specify an output dir with -o"
+[[ $reads = "" ]] && Die "Please specify a file with input reads with -i" "$all_args"
+[[ $assembly = "" ]] && Die "Please specify an input assembly with -r" "$all_args"
+[[ $outdir = "" ]] && Die "Please specify an output dir with -o" "$all_args"
 [[ ! -f $reads ]] && Die "Input FASTQ file $reads does not exist"
 [[ ! -f $assembly ]] && Die "Input assembly file $assembly does not exist"
 
@@ -156,7 +215,9 @@ echo "Listing input files:"
 ls -lh "$reads" "$assembly" 
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
-echo
+
+## Print reserved resources
+[[ "$slurm" = true ]] && Print_resources
 
 
 # ==============================================================================
@@ -168,16 +229,12 @@ if [[ "$dryrun" = false ]]; then
 
     ## Run
     echo -e "\n## Now running Medaka..."
-    [[ "$debug" = false ]] && set -o xtrace
-    
-    medaka_consensus \
+    Time medaka_consensus \
         -i "$reads" \
         -d "$assembly" \
         -o "$outdir" \
         -t "$threads" \
         -m "$model"
-
-    [[ "$debug" = false ]] && set +o xtrace
 
 fi
 
@@ -187,13 +244,13 @@ fi
 echo
 echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
-    echo "## Version used:"
+    echo "# Version used:"
     Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n## Listing files in the output dir:"
+    echo -e "\n# Listing files in the output dir:"
     ls -lhd "$PWD"/"$outdir"/*
     echo
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
+    [[ "$slurm" = true ]] && Resource_usage
+    echo
 fi
-echo
-echo "## Done with script"
+echo "# Done with script"
 date
