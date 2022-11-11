@@ -4,6 +4,8 @@
 #SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=43
 #SBATCH --mem=172G
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
 #SBATCH --job-name=flye
 #SBATCH --output=slurm-flye-%j.out
 
@@ -23,11 +25,11 @@ Print_help() {
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile   <file>    Input FASTQ file"
-    echo "  -o/--outdir   <dir>     Output dir (will be created if needed)"
+    echo "  -i/--infiles   <file>   Input FASTQ file(s)"
+    echo "  -o/--outfile   <dir>    Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --genome_size <str>     Genome size estimate, e.g '4.6m'            [default: no estimate]"
+    echo "  --genome_size <str>     Genome size estimate, e.g '4.6m' or '1g'    [default: no estimate]"
     echo "  --iterations  <int>     Number of polishing iterations              [default: 1]"
     echo "  --more_args   <str>     Quoted string with additional argument(s) to pass to Flye"
     echo "  --resume                Resume previous run"
@@ -41,12 +43,6 @@ Print_help() {
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 -i data/minion/my.fastq -o results/flye"
     echo
-    echo "HARDCODED PARAMETERS:"
-    echo "  - ..."
-    echo
-    echo "OUTPUT:"
-    echo "  - ..."
-    echo
     echo "SOFTWARE DOCUMENTATION:"
     echo "  - Docs: https://github.com/fenderglass/Flye/blob/flye/docs/USAGE.md"
     echo
@@ -55,6 +51,7 @@ Print_help() {
 ## Load software
 Load_software() {
     module load miniconda3/4.12.0-py39
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
     source activate /fs/project/PAS0471/jelmer/conda/flye-2.9.1
 }
 
@@ -64,10 +61,76 @@ Print_version() {
     flye --version
 }
 
+## Print help for the focal program
+Print_help_program() {
+    Load_software
+    flye --help
+}
+
+## Print SLURM job resource usage info
+Resource_usage() {
+    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
+        grep -Ev "ba|ex"
+}
+
+## Print SLURM job requested resources
+Print_resources() {
+    set +u
+    echo "# SLURM job information:"
+    echo "Account (project):    $SLURM_JOB_ACCOUNT"
+    echo "Job ID:               $SLURM_JOB_ID"
+    echo "Job name:             $SLURM_JOB_NAME"
+    echo "Memory (MB per node): $SLURM_MEM_PER_NODE"
+    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
+    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
+    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
+    echo "======================================================================"
+    echo
+    set -u
+}
+
+## Set the number of threads/CPUs
+Set_threads() {
+    set +u
+    if [[ "$slurm" = true ]]; then
+        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
+            threads="$SLURM_CPUS_PER_TASK"
+        elif [[ -n "$SLURM_NTASKS" ]]; then
+            threads="$SLURM_NTASKS"
+        else 
+            echo "WARNING: Can't detect nr of threads, setting to 1"
+            threads=1
+        fi
+    else
+        threads=1
+    fi
+    set -u
+}
+
+## Resource usage information
+Time() {
+    /usr/bin/time -f \
+        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
+        "$@"
+}   
+
 ## Exit upon error with a message
 Die() {
-    printf "\n$0: ERROR: %s\n" "$1" >&2
-    echo -e "Exiting\n" >&2
+    error_message=${1}
+    error_args=${2-none}
+    
+    echo
+    echo "====================================================================="
+    printf "$0: ERROR: %s\n" "$error_message" >&2
+    echo -e "\nFor help, run this script with the '-h' option"
+    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h"
+    if [[ "$error_args" != "none" ]]; then
+        echo -e "\nArguments passed to the script:"
+        echo "$error_args"
+    fi
+    echo -e "\nEXITING..." >&2
+    echo "====================================================================="
+    echo
     exit 1
 }
 
@@ -80,29 +143,35 @@ iterations=1
 resume=false && resume_arg=""
 
 debug=false
-dryrun=false
+dryrun=false && e=""
+slurm=true
 
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 ## Placeholder defaults
-infile=""
-outdir=""
+declare -a infiles
+fofn=""
+outfile=""
+more_args=""
 genome_size="" && genome_size_arg=""
 more_args=""
 
 ## Parse command-line args
+all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infile )     shift && infile=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
+        -i | --infiles )    shift && infiles=($1) ;;
+        -I | --fofn )       shift && fofn=$1 ;;
+        -o | --outfile )    shift && outfile=$1 ;;
         --genome_size )     shift && genome_size=$1 ;;
         --iterations )      shift && iterations=$1 ;;
         --more_args )       shift && more_args=$1 ;;
         --resume )          resume=true ;;
         -v | --version )    Print_version; exit ;;
-        -h | --help )       Print_help; exit ;;
+        -h )                Print_help; exit 0;;
+        --help )            Print_help_program; exit 0;;
         --debug )           debug=true ;;
         --dryrun )          dryrun=true ;;
         * )                 Print_help; Die "Invalid option $1" ;;
@@ -114,31 +183,32 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
+## In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
-## Load software
+## Check if this is a SLURM job
+[[ -z "$SLURM_JOB_ID" ]] && slurm=false
+
+## Load software and set nr of threads
 [[ "$dryrun" = false ]] && Load_software
-
-## Get number of threads
-if [[ "$dryrun" = false ]]; then
-    if [[ -z "$SLURM_CPUS_PER_TASK" ]]; then
-        n_threads="$SLURM_NTASKS"
-    else
-        n_threads="$SLURM_CPUS_PER_TASK"
-    fi
-fi
-
-## Build other args
-[[ "$genome_size" != "" ]] && genome_size_arg="--genome-size $genome_size"
-[[ "$resume" = true ]] && resume_arg="--resume"
+Set_threads
 
 ## Bash script settings
 set -euo pipefail
 
 ## Check input
-[[ $infile = "" ]] && Die "Please specify an input file with -i"
-[[ $outdir = "" ]] && Die "Please specify an output dir with -o"
-[[ ! -f $infile ]] && Die "Input file $infile does not exist"
+[[ ${#infiles[@]} = 0 && "$fofn" = "" ]] && Die "Please specify input files with -i or -I" "$all_args"
+[[ $outfile = "" ]] && Die "Please specify an output prefix with -o" "$all_args"
+
+## Define output dir
+outdir=$(dirname "$outfile")
+
+## Build other args
+[[ "$genome_size" != "" ]] && genome_size_arg="--genome-size $genome_size"
+[[ "$resume" = true ]] && resume_arg="--resume"
+
+## If a FOFN was provided, read file list into an array
+[[ "$fofn" != "" ]] && mapfile -t infiles <"$fofn"
 
 ## Report
 echo
@@ -146,39 +216,51 @@ echo "==========================================================================
 echo "               STARTING SCRIPT FLYE.SH"
 date
 echo "=========================================================================="
-echo "Input file:                  $infile"
-echo "Output dir:                  $outdir"
-echo "Genome size:                 $genome_size"
-echo "Nr of polishing iterations:  $iterations"
-echo "Resume previous run:         $resume"
-[[ $more_args != "" ]] && echo "Other arguments for Flye:    $more_args"
-[[ $dryrun = true ]] && echo "THIS IS A DRY-RUN"
-echo "Listing input file:"
-ls -lh "$infile"
+echo "All arguments to this script:     $all_args"
+echo
+[[ "$fofn" != "" ]] && echo "File with list of FASTQs (fofn):      $fofn"
+echo "Input files:                          ${infiles[*]}"
+echo "Number of input files:                ${#infiles[*]}"
+echo "Output file:                          $outfile"
+echo "Genome size:                          $genome_size"
+echo "Nr of polishing iterations:           $iterations"
+echo "Resume previous run:                  $resume"
+[[ $more_args != "" ]] && echo "Other arguments for Flye:             $more_args"
+echo
+echo "Listing input files:"
+for infile in "${infiles[@]}"; do
+    [[ ! -f $infile ]] && Die "Input file $infile does not exist!"
+    ls -lh "$infile"
+done
+[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 echo
+
+## Print reserved resources
+[[ "$slurm" = true ]] && Print_resources
 
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
 if [[ "$dryrun" = false ]]; then
+    
     ## Create the output directory
     mkdir -p "$outdir"/logs
 
-    echo -e "\n## Now running Flye..."
-    [[ "$debug" = false ]] && set -o xtrace
-
-    flye \
-        --threads "$n_threads" \
-        --nano-raw "$infile" \
+    echo -e "\n# Now running Flye..."
+    Time flye \
+        --nano-raw "${infiles[@]}" \
         --out-dir "$outdir" \
         --iterations "$iterations" \
+        --threads "$threads" \
         $resume_arg \
         $genome_size_arg \
         $more_args
 
-    [[ "$debug" = false ]] && set +o xtrace
+    ## Copy assembly FASTA
+    echo -e "\n# Copying the assembly FASTA file:"
+    cp -v "$outdir"/assembly.fasta "$outfile"
 fi
 
 # ==============================================================================
@@ -187,13 +269,13 @@ fi
 echo
 echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
-    echo "## Version used:"
+    echo "# Version used:"
     Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n## Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
+    echo -e "\n# Listing the final assembly file:"
+    ls -lhd "$PWD"/"$outfile"
     echo
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
+    [[ "$slurm" = true ]] && Resource_usage
+    echo
 fi
-echo
-echo "## Done with script"
+echo "# Done with script"
 date
