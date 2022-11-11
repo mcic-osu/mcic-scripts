@@ -63,8 +63,12 @@ Load_minimap() {
 
 ## Print version
 Print_version() {
-    Load_software
+    echo "# Racon:"
+    Load_racon
     racon --version
+    echo "# Minimap:"
+    Load_minimap
+    minimap2 --version
 }
 
 ## Print help for the focal program
@@ -157,8 +161,7 @@ Run_racon() {
         "$align" \
         "$assembly_in" \
         --threads "$threads" \
-        $more_args_racon \
-        > "$assembly_out"
+        $more_args_racon > "$assembly_out"
 }
 
 ## Run Minimap
