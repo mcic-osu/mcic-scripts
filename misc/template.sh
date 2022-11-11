@@ -74,8 +74,10 @@ Print_help_program() {
 
 ## Print SLURM job resource usage info
 Resource_usage() {
+    echo
     ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
         grep -Ev "ba|ex"
+    echo
 }
 
 ## Print SLURM job requested resources
@@ -115,7 +117,7 @@ Set_threads() {
 ## Resource usage information
 Time() {
     /usr/bin/time -f \
-        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Avg Mem: %t K    Exit status: %x \n' \
+        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
         "$@"
 }   
 
@@ -128,7 +130,7 @@ Die() {
     echo "====================================================================="
     printf "$0: ERROR: %s\n" "$error_message" >&2
     echo -e "\nFor help, run this script with the '-h' option"
-    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h"
+    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'"
     if [[ "$error_args" != "none" ]]; then
         echo -e "\nArguments passed to the script:"
         echo "$error_args"
@@ -168,8 +170,8 @@ while [ "$1" != "" ]; do
         -i | --infile )         shift && infile=$1 ;;
         -o | --outdir )         shift && outdir=$1 ;;
         --more_args )           shift && more_args=$1 ;;
-        -v | --version )        Print_version; exit 0;;
-        -h )                    Print_help; exit 0;;
+        -v | --version )        Print_version; exit 0 ;;
+        -h )                    Print_help; exit 0 ;;
         --help )                Print_help_program; exit 0;;
         --dryrun )              dryrun=true && e="echo ";;
         --debug )               debug=true ;;
@@ -201,6 +203,9 @@ set -euo pipefail
 #R2_suffix=${R1_suffix/1/2}
 #R2_in=${R1_in/$R1_suffix/$R2_suffix}
 #sample_id=$(basename "$R1_in" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
+
+## Read a fofn TODO_edit_or_remove
+# [[ "$fofn" != "" ]] && mapfile -t infiles <"$fofn"
 
 ## Report
 echo
@@ -253,9 +258,7 @@ if [[ "$dryrun" = false ]]; then
     Print_version | tee "$outdir"/logs/version.txt
     echo -e "\n# Listing files in the output dir:"
     ls -lhd "$PWD"/"$outdir"/*
-    echo
     [[ "$slurm" = true ]] && Resource_usage
-    echo
 fi
 echo "# Done with script"
 date
