@@ -29,7 +29,7 @@ Print_help() {
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to TODO_THIS_SOFTWARE"
+    echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to TODO_THIS_SOFTWARE"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
@@ -126,18 +126,18 @@ Die() {
     error_message=${1}
     error_args=${2-none}
     
-    echo
-    echo "====================================================================="
+    echo >&2
+    echo "=====================================================================" >&2
     printf "$0: ERROR: %s\n" "$error_message" >&2
-    echo -e "\nFor help, run this script with the '-h' option"
-    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'"
+    echo -e "\nFor help, run this script with the '-h' option" >&2
+    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
     if [[ "$error_args" != "none" ]]; then
-        echo -e "\nArguments passed to the script:"
-        echo "$error_args"
+        echo -e "\nArguments passed to the script:" >&2
+        echo "$error_args" >&2
     fi
     echo -e "\nEXITING..." >&2
-    echo "====================================================================="
-    echo
+    echo "=====================================================================" >&2
+    echo >&2
     exit 1
 }
 
@@ -167,15 +167,15 @@ all_args="$*"
 
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infile )         shift && infile=$1 ;;
-        -o | --outdir )         shift && outdir=$1 ;;
-        --more_args )           shift && more_args=$1 ;;
-        -v | --version )        Print_version; exit 0 ;;
-        -h )                    Print_help; exit 0 ;;
-        --help )                Print_help_program; exit 0;;
-        --dryrun )              dryrun=true && e="echo ";;
-        --debug )               debug=true ;;
-        * )                     Die "Invalid option $1" "$all_args" ;;
+        -i | --infile )     shift && infile=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        --more-args )       shift && more_args=$1 ;;
+        -v | --version )    Print_version; exit 0 ;;
+        -h )                Print_help; exit 0 ;;
+        --help )            Print_help_program; exit 0;;
+        --dryrun )          dryrun=true && e="echo ";;
+        --debug )           debug=true ;;
+        * )                 Die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
@@ -198,11 +198,11 @@ Set_threads
 set -euo pipefail
 
 ## FASTQ filename parsing TODO_edit_or_remove
-#file_ext=$(basename "$R1_in" | sed -E 's/.*(.fasta|.fastq.gz|.fq.gz)/\1/')
-#R1_suffix=$(basename "$R1_in" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
+#file_ext=$(basename "$R1" | sed -E 's/.*(.fasta|.fastq.gz|.fq.gz)/\1/')
+#R1_suffix=$(basename "$R1" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
 #R2_suffix=${R1_suffix/1/2}
-#R2_in=${R1_in/$R1_suffix/$R2_suffix}
-#sample_id=$(basename "$R1_in" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
+#R2_in=${R1/$R1_suffix/$R2_suffix}
+#sample_id=$(basename "$R1" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
 
 ## Read a fofn TODO_edit_or_remove
 # [[ "$fofn" != "" ]] && mapfile -t infiles <"$fofn"
@@ -219,7 +219,7 @@ echo "Output dir:                       $outdir"
 [[ $more_args != "" ]] && echo "Other arguments for TODO_THIS_SOFTWARE:$more_args"
 echo "Number of threads/cores:          $threads"
 echo
-echo "Listing input file:"
+echo "Listing the input file(s):"
 #ls -lh "$infile" #TODO
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
