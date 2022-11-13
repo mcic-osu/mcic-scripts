@@ -26,12 +26,14 @@ Print_help() {
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--indir      <file>  Input dir with FASTQ files"
+    echo "  -i              <file>  Input dir with FASTQ files (de novo assembly) OR a BAM file (genome-guided assembly)"
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo "                          NOTE: The output directory needs to include 'trinity' in its name"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --SS_lib_type   <str>   RNAseq library type: RF, FR, or ...         [default: 'RF']"
+    echo "  --genome_guided         Genome-guided assembly                      [default: de novo assembly]"
+    echo "  --genome_guided_max_intron <int>   Max intron size for genome-guided assembly  [default: 10000]"
     echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to Trinity"
     echo
     echo "UTILITY OPTIONS:"
@@ -143,6 +145,8 @@ Die() {
 #                     CONSTANTS AND DEFAULTS
 # ==============================================================================
 lib_type="RF"
+genome_guided=false
+genome_guided_max_intron=10000  # Only for genome-guided assembly
 
 debug=false
 dryrun=false && e=""
@@ -154,6 +158,7 @@ slurm=true
 ## Placeholder defaults
 indir=""
 outdir=""
+bam=""
 more_args=""
 mem_gb=4   # Will be changed if this is a SLURm job
 
@@ -161,9 +166,11 @@ mem_gb=4   # Will be changed if this is a SLURm job
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --indir )      shift && indir=$1 ;;
+        -i )                shift && input=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
         --SS_lib_type )     shift && lib_type=$1 ;;
+        --genome_guided )   genome_guided=true ;;
+        --genome_guided_max_intron ) shift && genome_guided_max_intron=$1 ;;
         --more-args )       shift && more_args=$1 ;;
         -v | --version )    Print_version; exit 0 ;;
         -h )                Print_help; exit 0 ;;
@@ -193,13 +200,19 @@ Set_threads
 set -euo pipefail
 
 ## Check input
-[[ "$indir" = "" ]] && Die "Please specify an input dir with -i/--indir" "$all_args"
+[[ "$input" = "" ]] && Die "Please specify input with -i" "$all_args"
 [[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
-[[ ! -d "$indir" ]] && Die "Input dir $indir does not exist"
 
 ## Create comma-delimited list of FASTQ files:
-R1_list=$(echo "$indir"/*R1*fastq.gz | sed 's/ /,/g')
-R2_list=$(echo "$indir"/*R2*fastq.gz | sed 's/ /,/g')
+if [[ "$genome_guided" = false ]]; then
+    indir="$input"
+    [[ ! -d "$indir" ]] && Die "Input dir $indir does not exist"
+    R1_list=$(echo "$indir"/*R1*fastq.gz | sed 's/ /,/g')
+    R2_list=$(echo "$indir"/*R2*fastq.gz | sed 's/ /,/g')
+else
+    bam="$input"
+    [[ ! -f "$bam" ]] && Die "Input BAM file $bam does not exist"
+fi
 
 ## Define memory in GB
 [[ "$slurm" = true ]] && mem_gb=$((8*(SLURM_MEM_PER_NODE / 1000)/10))G
@@ -218,11 +231,19 @@ echo "RNAseq library type:              $lib_type"
 echo "Number of threads/cores:          $threads"
 echo "Memory in GB:                     $mem_gb"
 echo
-echo "List of R1 FASTQ files:           $R1_list"
-echo "List of R2 FASTQ files:           $R2_list"
-echo
-echo "Listing the input file(s):"
-ls -lh "$indir"
+if [[ "$genome_guided" = false ]]; then
+    echo "List of R1 FASTQ files:           $R1_list"
+    echo "List of R2 FASTQ files:           $R2_list"
+    echo
+    echo "Listing the input file(s):"
+    ls -lh "$indir"
+else
+    echo "BAM file:                         $bam"
+    echo "Max intron size:                  $genome_guided_max_intron"
+    echo "Listing the input file(s):"
+    ls -lh "$bam"
+fi
+
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
@@ -238,16 +259,28 @@ ${e}mkdir -p "$outdir"/logs
 
 # MAIN -------------------------------------------------------------------------
 echo "## Starting Trinity run..."
-${e}Time Trinity \
-    --seqType fq \
-    --left "$R1_list" \
-    --right "$R2_list" \
-    --SS_lib_type "$lib_type" \
-    --output "$outdir" \
-    --max_memory "$mem_gb" \
-    --CPU "$threads" \
-    --verbose \
-    $more_args
+
+if [[ "$genome_guided" = false ]]; then
+    ${e}Time Trinity \
+        --seqType fq \
+        --left "$R1_list" \
+        --right "$R2_list" \
+        --SS_lib_type "$lib_type" \
+        --output "$outdir" \
+        --max_memory "$mem_gb" \
+        --CPU "$threads" \
+        --verbose \
+        $more_args
+else
+    ${e}Time Trinity \
+        --genome_guided_bam "$bam" \
+        --genome_guided_max_intron "$genome_guided_max_intron" \
+        --SS_lib_type "$lib_type" \
+        --output "$outdir" \
+        --max_memory "$mem_gb" \
+        --CPU "$threads" \
+        --verbose
+fi
 
 
 # ==============================================================================
