@@ -19,43 +19,45 @@ Print_help() {
     echo "===================================================================================="
     echo
     echo "USAGE:"
-    echo "sbatch $0 -i <input-file> -o <output-dir> -d <kraken-db-dir> ..."
-    echo "bash $0 -h"
+    echo "  sbatch $0 -i <input-file> -o <output-dir> -d <kraken-db-dir> ..."
+    echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i FILE            Input sequence file (FASTA, single-end FASTQ, or R1 from paired-end FASTQ)"
-    echo "                       - If an R1 paired-end FASTQ file is provided, the name of the R2 file will be inferred"
-    echo "                       - FASTA files should be unzipped; FASTQ files should be gzipped"
-    echo "  -o DIR             Output directory"
-    echo "  -d DIR             Directory with an existing Kraken database"
-    echo "                          (Use one of the scripts 'kraken-build-custom-db.sh' or 'kraken-build-std-db.sh' to create a Kraken database)"
+    echo "  -i/--infile     <file>  Input sequence file (FASTA, single-end FASTQ, or R1 from paired-end FASTQ)"
+    echo "                            - If an R1 paired-end FASTQ file is provided, the name of the R2 file will be inferred"
+    echo "                            - FASTA files should be unzipped; FASTQ files should be gzipped"
+    echo "  -o/--outdir     <dir>   Output directory"
+    echo "  -d/--db-dir     <dir>   Directory with an existing Kraken database"
+    echo "                            (Use one of the scripts 'kraken-build-custom-db.sh' or 'kraken-build-std-db.sh' to create a Kraken database)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  -c NUM             Confidence required for assignment: number between 0 and 1            [default: 0.5]"
-    echo "  -q INTEGER         Base quality Phred score required for use of a base in assignment     [default: 0]"
-    echo "                          NOTE: If setting a score other than 0, any output sequence files (-w and -W options)"
-    echo "                                will contain 'x's for masked bases."
-    echo "  -m                 Don't load the full database into RAM memory                          [default: load into memory]"
-    echo "                          (Considerably lower, but can be useful/needed with very large databases)"
-    echo "  -n                 Add taxonomic names to the Kraken 'main' output file                  [default: don't add]"
-    echo "                          NOTE: This option is not compatible with Krona plotting"
-    echo "  -s                 FASTQ files are single-end                                            [default: paired-end]"
-    echo "  -w                 Write 'classified' reads/sequences to file (in '<outdir>/classified' dir)     [default: don't write]"
-    echo "  -W                 Write 'unclassified' reads/sequences to file (in '<outdir>/unclassified' dir) [default: don't write]"
+    echo "  --confidence    <num>   Confidence required for assignment: number between 0 and 1            [default: 0.5]"
+    echo "  --minimum-base-quality <int> Base quality Phred score required for use of a base in assignment     [default: 0]"
+    echo "                          NOTE: If setting a score other than 0, any output sequence files will contain 'x's for masked bases"
+    echo "  --memory-mapping        Don't load the full database into RAM memory                          [default: load into memory]"
+    echo "                            (Considerably lower, but can be useful/needed with very large databases)"
+    echo "  --use-names                      Add taxonomic names to the Kraken 'main' output file                  [default: don't add]"
+    echo "                            NOTE: This option is not compatible with Krona plotting"
+    echo "  --single-end            FASTQ files are single-end                                            [default: paired-end]"
+    echo "  --classified-out        Write 'classified' reads/sequences to file (in '<outdir>/classified' dir)     [default: don't write]"
+    echo "  --unclassified-out      Write 'unclassified' reads/sequences to file (in '<outdir>/unclassified' dir) [default: don't write]"
     echo
     echo "UTILITY OPTIONS:"
-    echo "    -x               Run the script in debug mode"
-    echo "    -h               Print this help message and exit"
-    echo "    -v               Print the version of Kraken and exit"
+    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
+    echo "  --debug                 Run the script in debug mode (print all code)"
+    echo "  -h                      Print this help message and exit"
+    echo "  --help                  Print the help for Kraken and exit"
+    echo "  -v/--version            Print the version of Kraken and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "sbatch $0 -i data/A1_R1.fastq.gz -o results/kraken -d /fs/project/PAS0471/jelmer/refdata/kraken/std"
+    echo "  sbatch $0 -i data/A1_R1.fastq.gz -o results/kraken -d /fs/project/PAS0471/jelmer/refdata/kraken/std"
     echo
 }
 
 ## Load software
 Load_software() {
-    module load python/3.6-conda5.2
+    module load miniconda3/4.12.0-py39
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
     source activate /users/PAS0471/jelmer/miniconda3/envs/kraken2-env
 }
 
@@ -65,12 +67,75 @@ Print_version() {
     kraken2 --version
 }
 
+## Print SLURM job resource usage info
+Resource_usage() {
+    echo
+    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
+        grep -Ev "ba|ex"
+    echo
+}
+
+## Print SLURM job requested resources
+Print_resources() {
+    set +u
+    echo "# SLURM job information:"
+    echo "Account (project):    $SLURM_JOB_ACCOUNT"
+    echo "Job ID:               $SLURM_JOB_ID"
+    echo "Job name:             $SLURM_JOB_NAME"
+    echo "Memory (per node):    $SLURM_MEM_PER_NODE"
+    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
+    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
+    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
+    echo "======================================================================"
+    echo
+    set -u
+}
+
+## Set the number of threads/CPUs
+Set_threads() {
+    set +u
+    if [[ "$slurm" = true ]]; then
+        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
+            threads="$SLURM_CPUS_PER_TASK"
+        elif [[ -n "$SLURM_NTASKS" ]]; then
+            threads="$SLURM_NTASKS"
+        else 
+            echo "WARNING: Can't detect nr of threads, setting to 1"
+            threads=1
+        fi
+    else
+        threads=1
+    fi
+    set -u
+}
+
+## Resource usage information
+Time() {
+    /usr/bin/time -f \
+        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
+        "$@"
+}   
+
 ## Exit upon error with a message
 Die() {
-    printf "\n$0: ERROR: %s\n" "$1" >&2
-    echo -e "Exiting\n" >&2
+    error_message=${1}
+    error_args=${2-none}
+    
+    echo
+    echo "====================================================================="
+    printf "$0: ERROR: %s\n" "$error_message" >&2
+    echo -e "\nFor help, run this script with the '-h' option"
+    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'"
+    if [[ "$error_args" != "none" ]]; then
+        echo -e "\nArguments passed to the script:"
+        echo "$error_args"
+    fi
+    echo -e "\nEXITING..." >&2
+    echo "====================================================================="
+    echo
     exit 1
 }
+
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
@@ -82,49 +147,63 @@ add_names=false && names_arg=""
 use_ram=true && mem_map_arg=""
 single_end=false
 
+debug=false
+dryrun=false && e=""
+slurm=true
+
+
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 ## Placeholder variables
 infile=""
 outdir=""
-krakendb_dir=""
-write_class="" && class_out_arg=""
-write_unclass="" && unclass_out_arg=""
-dryrun=false
-debug=false
+db_dir=""
+write_classif="" && class_out_arg=""
+write_unclassif="" && unclass_out_arg=""
+more_args=""
 
-## Get command-line options
-while getopts 'i:o:d:c:q:sNXmnwWh' flag; do
-    case "${flag}" in
-    i) infile="$OPTARG" ;;
-    o) outdir="$OPTARG" ;;
-    d) krakendb_dir="$OPTARG" ;;
-    c) min_conf="$OPTARG" ;;
-    q) min_q="$OPTARG" ;;
-    n) add_names=true ;;
-    s) single_end=true ;;
-    w) write_class=true ;;
-    W) write_unclass=true ;;
-    m) use_ram=false ;;
-    N) dryrun=true ;;
-    X) debug=true ;;
-    h) Print_help && exit 0 ;;
-    \?) Die "Invalid option -$OPTARG" ;;
-    :) Die "Option -$OPTARG requires an argument" ;;
+## Parse command-line args
+all_args="$*"
+
+while [ "$1" != "" ]; do
+    case "$1" in
+        -i | --infile )             shift && infile=$1 ;;
+        -o | --outdir )             shift && outdir=$1 ;;
+        -d | --db-dir )             shift && db_dir=$1 ;;
+        -c | --confidence )         shift && min_conf=$1 ;;
+        -q | --minimum-base-quality )   shift && min_q=$1 ;;
+        --use-names )               add_names=true ;;
+        -s | --single_end )         single_end=true ;;
+        -w | --classified-out )     write_classif=true ;;
+        -W | --unclassified-out )   write_unclassif=true ;;   
+        --memory-mapping )          use_ram=false ;;
+        --more-args )               shift && more_args=$1 ;;
+        -v | --version )            Print_version; exit 0 ;;
+        -h )                        Print_help; exit 0 ;;
+        --help )                    Print_help_program; exit 0;;
+        --dryrun )                  dryrun=true && e="echo ";;
+        --debug )                   debug=true ;;
+        * )                         Die "Invalid option $1" "$all_args" ;;
     esac
+    shift
 done
 
 
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
+## In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
-## Load software
-[[ "$dryrun" = false ]] && Load_software
+## Check if this is a SLURM job
+[[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Bash strict settings
+## Load software and set nr of threads
+[[ "$dryrun" = false ]] && Load_software
+Set_threads
+
+## Bash script settings
 set -euo pipefail
 
 ## Report
@@ -135,7 +214,7 @@ date
 echo "=========================================================================="
 echo "Input file:                     $infile"
 echo "Output dir:                     $outdir"
-echo "Kraken db dir:                  $krakendb_dir"
+echo "Kraken db dir:                  $db_dir"
 echo
 echo "Add tax. names:                 $add_names"
 echo "Min. base qual:                 $min_q"
@@ -143,22 +222,19 @@ echo "Min. confidence:                $min_conf"
 echo "Use RAM to load database:       $use_ram"
 echo
 
-## Process options
-[[ "$infile" = "" ]] && Die "Must specify input file with -i"
+## Check input
+[[ "$infile" = "" ]] && Die "Must specify input file with -i" "$all_args" 
+[[ "$db_dir" = "" ]] && Die "Must specify a Kraken DB dir with -d" "$all_args"
+[[ "$outdir" = "" ]] && Die "Must specify an output dir with -o" "$all_args"
+[[ "$min_conf" = "" ]] && Die "Min confidence is not set" "$all_args"
+[[ "$min_q" = "" ]] && Die "Min quality is not set" "$all_args"
 [[ ! -f "$infile" ]] && Die "Input file $infile does note exist"
-[[ "$krakendb_dir" = "" ]] && Die "Must specify a Kraken DB dir with -d"
-[[ ! -d "$krakendb_dir" ]] && Die "Kraken DB dir $krakendb_dir does note exist"
-[[ "$outdir" = "" ]] && Die "Must specify an output dir with -o"
-[[ "$min_conf" = "" ]] && Die "Min confidence is not set"
-[[ "$min_q" = "" ]] && Die "Min quality is not set"
-
-[[ "$write_class" = true ]] && mkdir -p "$outdir"/classified
-[[ "$write_unclass" = true ]] && mkdir -p "$outdir"/unclassified
+[[ ! -d "$db_dir" ]] && Die "Kraken DB dir $db_dir does note exist"
 
 ## Build Kraken args (leave space after!)
-### RAM
+# RAM
 [[ "$use_ram" = false ]] && mem_map_arg="--memory-mapping "
-### Add tax. names or not -- when adding names, can't use the output for Krona plotting  
+# Add tax. names or not -- when adding names, can't use the output for Krona plotting  
 [[ "$add_names" = true ]] && names_arg="--use-names "
 
 ## Make sure input file argument is correct based on file type 
@@ -172,10 +248,6 @@ if [[ "$infile" =~ \.fa?s?t?q.gz$ ]]; then
 
         echo "Input type is:                  paired-end FASTQ files"
         
-        if [[ "$R1_suffix" != "$R1_basename" && "$R1_suffix" != "" ]]; then
-            die "Can't figure out R2 filename"
-        fi
-
         R2_suffix=${R1_suffix/1/2}
         R2_in=${R1_in/$R1_suffix/$R2_suffix}
         sample_ID=${R1_basename/"$R1_suffix"/}
@@ -187,10 +259,10 @@ if [[ "$infile" =~ \.fa?s?t?q.gz$ ]]; then
         [[ ! -f "$R2_in" ]] && Die "R2 file $R2_in does not exist"
         [[ "$R1_in" = "$R2_in" ]] && Die "R1 file $R1_in is the same as R2 file $R2_in"
 
-        if [[ "$write_class" = true ]]; then
+        if [[ "$write_classif" = true ]]; then
             class_out_arg="--classified-out $outdir/classified/$sample_ID#.fastq "
         fi
-        if [[ "$write_unclass" = true ]]; then
+        if [[ "$write_unclassif" = true ]]; then
             unclass_out_arg="--unclassified-out $outdir/unclassified/$sample_ID#.fastq "
         fi
 
@@ -200,10 +272,10 @@ if [[ "$infile" =~ \.fa?s?t?q.gz$ ]]; then
         sample_ID=$(basename "$R1_in" .fastq.gz)
         infile_arg="--gzip-compressed $R1_in"
 
-        if [[ "$write_class" = true ]]; then
+        if [[ "$write_classif" = true ]]; then
             class_out_arg="--classified-out $outdir/classified/$sample_ID.fastq "
         fi
-        if [[ "$write_unclass" = true ]]; then
+        if [[ "$write_unclassif" = true ]]; then
             unclass_out_arg="--unclassified-out $outdir/unclassified/$sample_ID.fastq "
         fi
     
@@ -215,10 +287,10 @@ elif [[ "$infile" =~ \.fn?a?s?t?a$ ]]; then
     sample_ID=${infile_basename%%.*}
     infile_arg="$infile"
 
-    if [[ "$write_class" = true ]]; then
+    if [[ "$write_classif" = true ]]; then
         class_out_arg="--classified-out $outdir/classified/$sample_ID.fa "
     fi
-    if [[ "$write_unclass" = true ]]; then
+    if [[ "$write_unclassif" = true ]]; then
         unclass_out_arg="--unclassified-out $outdir/unclassified/$sample_ID.fa "
     fi
 
@@ -231,13 +303,20 @@ outfile_main="$outdir"/"$sample_ID"_main.txt
 outfile_report="$outdir"/"$sample_ID"_report.txt
 
 ## Report
+echo "Number of threads/cores:        $threads"
 echo "Sample ID (inferred):           $sample_ID"
 echo "Output file - main:             $outfile_main"
 echo "Output file - report:           $outfile_report"
-[[ "$write_class" = true ]] && echo "Writing classified sequences:   $class_out_arg"
-[[ "$write_unclass" = true ]] && echo "Writing unclassified sequences: $unclass_out_arg"
+[[ "$write_classif" = true ]] && echo "Writing classified sequences:   $class_out_arg"
+[[ "$write_unclassif" = true ]] && echo "Writing unclassified sequences: $unclass_out_arg"
+echo "Listing the input file(s):"
+ls -lh "$infile"
+[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 echo
+
+## Print reserved resources
+[[ "$slurm" = true ]] && Print_resources
 
 
 # ==============================================================================
@@ -245,27 +324,25 @@ echo
 # ==============================================================================
 if [[ "$dryrun" = false ]]; then
 
-    ## Create output dir
+    ## Create output dirs
+    [[ "$write_classif" = true ]] && mkdir -p "$outdir"/classified
+    [[ "$write_unclassif" = true ]] && mkdir -p "$outdir"/unclassified
     mkdir -p "$outdir"/logs
 
     ## Run Kraken
     echo "## Starting Kraken2 run..."
-    [[ "$debug" = false ]] && set -o xtrace
-
-    kraken2 ${names_arg}--threads "$SLURM_CPUS_ON_NODE" \
+    Time kraken2 ${more_args}${names_arg}--threads "$threads" \
         ${mem_map_arg}--minimum-base-quality "$min_q" \
         --confidence "$min_conf" \
         --report-minimizer-data \
-        ${unclass_out_arg}--db "$krakendb_dir" \
+        ${unclass_out_arg}--db "$db_dir" \
         ${class_out_arg}--report "$outfile_report" \
         ${infile_arg}> "$outfile_main"
-
-    [[ "$debug" = false ]] && set +o xtrace
 
     #? report-minimizer-data: see https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#distinct-minimizer-count-information
 
     ## Rename and zip FASTQ files
-    if [[ "$write_class" = true ]]; then
+    if [[ "$write_classif" = true ]]; then
         mv "$outdir"/classified/"$sample_ID"_1.fastq "$outdir"/classified/"$sample_ID"_R1.fastq
         gzip -f "$outdir"/classified/"$sample_ID"_R1.fastq
 
@@ -273,7 +350,7 @@ if [[ "$dryrun" = false ]]; then
         gzip -f "$outdir"/classified/"$sample_ID"_R2.fastq
     fi
 
-    if [[ "$write_unclass" = true ]]; then
+    if [[ "$write_unclassif" = true ]]; then
         mv "$outdir"/unclassified/"$sample_ID"_1.fastq "$outdir"/unclassified/"$sample_ID"_R1.fastq
         gzip -f "$outdir"/unclassified/"$sample_ID"_R1.fastq
 
@@ -288,16 +365,14 @@ fi
 # ==============================================================================
 echo
 echo "========================================================================="
+if [[ "$dryrun" = false ]]; then
+    echo -e "\n# Version used:"
+    Print_version | tee "$outdir"/logs/version.txt
+    echo -e "\n# Listing output files:"
+    ls -lh "$outfile_main" "$outfile_report"
+    [[ "$write_classif" = true ]] && ls -lh "$outdir"/classified/"$sample_ID"*
+    [[ "$write_unclassif" = true ]] && ls -lh "$outdir"/unclassified/"$sample_ID"*
+    [[ "$slurm" = true ]] && Resource_usage
+fi
 echo "## Done with script"
 date
-if [[ "$dryrun" = false ]]; then
-    echo -e "\n## Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n## Listing output files:"
-    ls -lh "$outfile_main" "$outfile_report"
-    [[ "$write_class" = true ]] && ls -lh "$outdir"/classified/"$sample_ID"*
-    [[ "$write_unclass" = true ]] && ls -lh "$outdir"/unclassified/"$sample_ID"*
-    echo
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
-fi
-echo
