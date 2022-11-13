@@ -4,33 +4,51 @@
 #SBATCH --ntasks=1
 #SBATCH --nodes=1
 #SBATCH --exclusive
-#SBATCH --mem=100G
-#SBATCH --cpus-per-task=12
+#SBATCH --mem=170G
+#SBATCH --cpus-per-task=42
 #SBATCH --job-name=trinity
 #SBATCH --output=slurm-trinity-%j.out
 
 
-# PARSE ARGS -------------------------------------------------------------------
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
 ## Help function
-Help() {
-  echo
-  echo "$0: Run Trinity to assemble a transcriptome using a directory of FASTQ files."
-  echo
-  echo "Syntax: $0 -i <input-dir> -o <output-dir> ..."
-  echo
-  echo "Required options:"
-  echo "    -i DIR        Input directory with FASTQ files"
-  echo "    -o DIR        Output directory"
-  echo "                  NOTE: The output directory needs to include 'trinity' in its name"
-  echo
-  echo "Other options:"
-  echo "    -h            Print this help message and exit"
-  echo
-  echo "Example command:"
-  echo "    $0 -i data/fastq/ -o results/trinity"
-  echo "To submit to the OSC queue, preface with 'sbatch': sbatch $0 ..."
-  echo
+Print_help() {
+    echo
+    echo "============================================================================"
+    echo "                            $0"
+    echo "  Run Trinity to assemble a transcriptome using a directory of FASTQ files"
+    echo "============================================================================"
+    echo
+    echo "USAGE:"
+    echo "  sbatch $0 -i <input file> -o <output dir> [...]"
+    echo "  bash $0 -h"
+    echo
+    echo "REQUIRED OPTIONS:"
+    echo "  -i/--indir      <file>  Input dir with FASTQ files"
+    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
+    echo "                          NOTE: The output directory needs to include 'trinity' in its name"
+    echo
+    echo "OTHER KEY OPTIONS:"
+    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to TODO_THIS_SOFTWARE"
+    echo
+    echo "UTILITY OPTIONS:"
+    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
+    echo "  --debug                 Run the script in debug mode (print all code)"
+    echo "  -h                      Print this help message and exit"
+    echo "  --help                  Print the help for TODO_THIS_SOFTWARE and exit"
+    echo "  -v/--version            Print the version of TODO_THIS_SOFTWARE and exit"
+    echo
+    echo "EXAMPLE COMMANDS:"
+    echo "  sbatch $0 -i data/fastq/ -o results/trinity"
+    echo
+    echo "SOFTWARE DOCUMENTATION:"
+    echo "  - Docs: "
+    echo "  - Paper: "
+    echo
 }
+
 
 ## Default parameter values
 indir=""
