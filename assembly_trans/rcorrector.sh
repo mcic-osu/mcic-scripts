@@ -2,110 +2,240 @@
 
 #SBATCH --account=PAS0471
 #SBATCH --time=120:00:00
+#SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=12
+#SBATCH --mem=48G
 #SBATCH --job-name=rcorrector
 #SBATCH --output=slurm-rcorr-%j.out
 
 
-# PARSE ARGS -------------------------------------------------------------------
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
 ## Help function
-Help() {
+Print_help() {
     echo
-    echo "$0: Run rcorrector for a directory of FASTQ files."
+    echo "======================================================================"
+    echo "                            $0"
+    echo "             Run Rcorrector for a directory of FASTQ files"
+    echo "======================================================================"
     echo
-    echo "Syntax: $0 -i <input-dir> -o <output-dir> ..."
+    echo "USAGE:"
+    echo "  sbatch $0 -i <input dir> -o <output dir> [...]"
+    echo "  bash $0 -h"
     echo
-    echo "Required options:"
-    echo "    -i STRING     Input directory with FASTQ files"
-    echo "    -o STRING     Output directory for corrected FASTQ FILES"
+    echo "REQUIRED OPTIONS:"
+    echo "  -i/--indir     <file>   Input dir with FASTQ files"
+    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
-    echo "Other options:"
-    echo "    -s INTEGER    Start at specified step           [default: '0']"
-    echo "                  Should be 0 unless restarting an interrupted/failed run"
-    echo "    -h             Print this help message and exit"
+    echo "OTHER KEY OPTIONS:"
+    echo "  --stage         <int>   Start at specified step           [default: '0']"
+    echo "                          Should be 0 unless restarting an interrupted/failed run"
+    echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to Rcorrector"
     echo
-    echo "Example: $0 -i data/fastq/ -o results/rcorrector"
-    echo "To submit to the OSC queue, preface with 'sbatch': sbatch $0 ..."
+    echo "UTILITY OPTIONS:"
+    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
+    echo "  --debug                 Run the script in debug mode (print all code)"
+    echo "  -h                      Print this help message and exit"
+    echo "  --help                  Print the help for Rcorrector and exit"
+    echo
+    echo "EXAMPLE COMMANDS:"
+    echo "  sbatch $0 -i data/fastq -o results/rcorrector"
     echo
 }
 
-## Default parameter values
+## Load software
+Load_software() {
+    module load miniconda3/4.12.0-py39
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
+    source activate /fs/ess/PAS0471/jelmer/conda/rcorrector-1.0.5
+}
+
+## Print help for the focal program
+Print_help_program() {
+    Load_software
+    run_rcorrector.pl
+}
+
+## Print SLURM job resource usage info
+Resource_usage() {
+    echo
+    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
+        grep -Ev "ba|ex"
+    echo
+}
+
+## Print SLURM job requested resources
+Print_resources() {
+    set +u
+    echo "# SLURM job information:"
+    echo "Account (project):    $SLURM_JOB_ACCOUNT"
+    echo "Job ID:               $SLURM_JOB_ID"
+    echo "Job name:             $SLURM_JOB_NAME"
+    echo "Memory (per node):    $SLURM_MEM_PER_NODE"
+    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
+    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
+    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
+    echo "======================================================================"
+    echo
+    set -u
+}
+
+## Set the number of threads/CPUs
+Set_threads() {
+    set +u
+    if [[ "$slurm" = true ]]; then
+        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
+            threads="$SLURM_CPUS_PER_TASK"
+        elif [[ -n "$SLURM_NTASKS" ]]; then
+            threads="$SLURM_NTASKS"
+        else 
+            echo "WARNING: Can't detect nr of threads, setting to 1"
+            threads=1
+        fi
+    else
+        threads=1
+    fi
+    set -u
+}
+
+## Resource usage information
+Time() {
+    /usr/bin/time -f \
+        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
+        "$@"
+}   
+
+## Exit upon error with a message
+Die() {
+    error_message=${1}
+    error_args=${2-none}
+    
+    echo
+    echo "====================================================================="
+    printf "$0: ERROR: %s\n" "$error_message" >&2
+    echo -e "\nFor help, run this script with the '-h' option"
+    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'"
+    if [[ "$error_args" != "none" ]]; then
+        echo -e "\nArguments passed to the script:"
+        echo "$error_args"
+    fi
+    echo -e "\nEXITING..." >&2
+    echo "====================================================================="
+    echo
+    exit 1
+}
+
+
+# ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
+## Option defaults
+stage=0
+
+debug=false
+dryrun=false && e=""
+slurm=true
+
+
+# ==============================================================================
+#                          PARSE COMMAND-LINE ARGS
+# ==============================================================================
+## Placeholder defaults
 indir=""
 outdir=""
-start_at_step=0
+more_args=""
 
-## Get command-line parameter values
-while getopts ':i:o:s:h' flag; do
-    case "${flag}" in
-        i) indir="$OPTARG" ;;
-        o) outdir="$OPTARG" ;;
-        s) start_at_step="$OPTARG" ;;
-        h) Help && exit 0 ;;
-        \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
-        :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
+## Parse command-line args
+all_args="$*"
+
+while [ "$1" != "" ]; do
+    case "$1" in
+        -i | --indir )     shift && indir=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        --more-args )       shift && more_args=$1 ;;
+        --stage )           shift && stage=$1 ;;
+        -h )                Print_help; exit 0 ;;
+        --help )            Print_help_program; exit 0;;
+        --dryrun )          dryrun=true && e="echo ";;
+        --debug )           debug=true ;;
+        * )                 Die "Invalid option $1" "$all_args" ;;
     esac
+    shift
 done
 
+# ==============================================================================
+#                          OTHER SETUP
+# ==============================================================================
+## In debugging mode, print all commands
+[[ "$debug" = true ]] && set -o xtrace
 
-# SOFTWARE ---------------------------------------------------------------------
-## Load software
-module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/miniconda3/envs/rcorrector-env
+## Check if this is a SLURM job
+[[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
+## Load software and set nr of threads
+[[ "$dryrun" = false ]] && Load_software
+Set_threads
 
-# OTHER SETUP ------------------------------------------------------------------
-## Bash strict mode
+## Bash script settings
 set -euo pipefail
 
 ## Test parameter values
-[[ ! -d "$indir" ]] && echo "## ERROR: Input dir (-i) $indir does not exist" >&2 && exit 1
+[[ "$indir" = "" ]] && Die "Please specify an input dir with -i/--indir" "$all_args"
+[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
+[[ ! -d "$indir" ]] && Die "Input dir $indir does not exist"
 
 ## Process parameters
 R1_list=$(echo "$indir"/*R1*fastq.gz | sed 's/ /,/g')
 R2_list=$(echo "$indir"/*R2*fastq.gz | sed 's/ /,/g')
 
-## Get nr of threads
-set +u
-if [[ -z "$SLURM_CPUS_PER_TASK" ]]; then
-    n_threads="$SLURM_NTASKS"
-else
-    n_threads="$SLURM_CPUS_PER_TASK"
-fi
-set -u
-
 ## Report
-echo -e "\n## Starting script rcorrector.sh"
+echo
+echo "=========================================================================="
+echo "                STARTING SCRIPT RCORRECTOR.SH"
 date
-echo "## Input dir:           $indir"
-echo "## Output dir:          $outdir"
+echo "=========================================================================="
+echo "All arguments to this script:     $all_args"
+echo "Input dir:                        $indir"
+echo "Output dir:                       $outdir"
+[[ $more_args != "" ]] && echo "Other arguments for Rcorrector:   $more_args"
+echo "Number of threads/cores:          $threads"
 echo
-echo "## List of R1 files:    $R1_list"
-echo "## List of R2 files:    $R2_list"
+echo "List of R1 files:                 $R1_list"
+echo "List of R2 files:                 $R2_list"
 echo
-echo "## Start at step:       $start_at_step"
-echo "## Nr of threads:       $n_threads"
-echo -e "--------------------------\n"
-
-## Create output dirs if needed
-mkdir -p "$outdir"
+echo "Listing the input file(s):"
+ls -lh "$indir"
+[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
+echo "=========================================================================="
 
 
-# RUN RCORRECTOR ---------------------------------------------------------------
-run_rcorrector.pl \
-    -t "$n_threads" \
+# ==============================================================================
+#                               RUN
+# ==============================================================================
+## Create the output directory
+${e}mkdir -p "$outdir"/logs
+
+## Run Rcorrector
+${e}Time run_rcorrector.pl \
+    -t "$threads" \
     -od "$outdir" \
-    -stage "$start_at_step" \
-    -1 "$R1_list" -2 "$R2_list"
+    -stage "$stage" \
+    -1 "$R1_list" \
+    -2 "$R2_list" \
+    $more_args
 
 
-# WRAP-UP ----------------------------------------------------------------------
-echo -e "\n--------------------------"
-echo "## Listing file in the output dir:"
-ls -lh "$outdir"
-
-echo -e "\n## Done with script rcorrector.sh"
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
+echo
+echo "========================================================================="
+if [[ "$dryrun" = false ]]; then
+    echo -e "\n# Listing files in the output dir:"
+    ls -lhd "$PWD"/"$outdir"/*
+    [[ "$slurm" = true ]] && Resource_usage
+fi
+echo "# Done with script"
 date
-echo
-sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
-echo

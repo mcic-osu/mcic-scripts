@@ -31,6 +31,8 @@ Print_help() {
     echo "  -q/--quality    <int>   Quality trimming threshold         [default: 20 (also the TrimGalore default)]"
     echo "  -l/--length     <int>   Minimum read length                [default: 20 (also the TrimGalore default)]"
     echo "  -s/--single_end         Input is single-end                [default: paired-end]"
+    echo "  --nextseq               Sequences are from NextSeq or NovaSeq with 2-color chemistry"
+    echo "                            This setting will help remove polyG tails"
     echo "  --no_fastqc             Don't run FastQC after trimming    [default: run FastQC after trimming]"
     echo "  --more_args             Additional arguments to pass to TrimGalore"
     echo
@@ -148,7 +150,8 @@ Time() {
 ## Option defaults
 quality=20                 # => 20 is also the TrimGalore default
 length=20                  # => 20 is also the TrimGalore default
-single_end=false        # => paired-end by default
+single_end=false           # => paired-end by default
+nextseq=false
 
 debug=false
 dryrun=false && e=""
@@ -173,6 +176,7 @@ while [ "$1" != "" ]; do
         -q | --quality )        shift && quality=$1 ;;
         -l | --length )         shift && length=$1 ;;
         -s | --single_end )     single_end=true ;;
+        --nextseq )             nextseq=true ;;
         --no_fastqc )           run_fastqc=false ;;
         --more_args )           shift && more_args=$1 ;;
         --debug )               debug=true ;;
@@ -221,6 +225,13 @@ else
     fastqc_arg2=""
 fi
 
+## NextSeq arg
+if [[ "$nextseq" = true ]]; then
+    quality_arg="--nextseq $quality"
+else
+    quality_arg="--quality $quality"
+fi
+
 ## Get file extension (.fastq.gz or .fq.gz)
 extension=$(echo "$R1_in" | sed -E 's/.*(\.fa?s?t?q\.gz$)/\1/')
 
@@ -261,6 +272,7 @@ echo "Base output dir:                  $outdir"
 echo "Sequence quality threshold:       $quality"
 echo "Minimum sequence length:          $length"
 echo "Sequences are single-end:         $single_end"
+echo "Sequences are from NextSeq/NovaSeq: $nextseq"
 echo "Run FastQC:                       $run_fastqc"
 echo
 [[ $more_args != "" ]] && echo "Other arguments for TrimGalore:   $more_args"
@@ -285,7 +297,7 @@ ${e}mkdir -p "$outdir_trim" "$outdir_fastqc" "$outdir_logs"
 ${e}Time \
     trim_galore \
         --output_dir "$outdir_trim" \
-        --quality "$quality" \
+        $quality_arg \
         --length "$length" \
         --gzip \
         -j "$threads" \
