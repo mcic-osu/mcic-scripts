@@ -220,10 +220,10 @@ outdir_full="$outdir"/"$sampleID"
 out_mapped_raw="$outdir_full"/mapped_raw/"$sampleID"
 out_unmapped_raw="$outdir_full"/unmapped_raw/"$sampleID"
 
-R1_mapped="$outdir"/mapped/"$sampleID"_R1_001.fastq.gz
-R2_mapped="$outdir"/mapped/"$sampleID"_R2_001.fastq.gz
-R1_unmapped="$outdir"/unmapped/"$sampleID"_R1_001.fastq.gz
-R2_unmapped="$outdir"/unmapped/"$sampleID"_R2_001.fastq.gz
+R1_mapped="$outdir"/mapped/"$sampleID""$R1_suffix".fastq.gz
+R2_mapped="$outdir"/mapped/"$sampleID""$R2_suffix".fastq.gz
+R1_unmapped="$outdir"/unmapped/"$sampleID""$R1_suffix".fastq.gz
+R2_unmapped="$outdir"/unmapped/"$sampleID""$R2_suffix".fastq.gz
 
 ## Reference FASTA files (to be downloaded)
 [[ $repo_dir = "" ]] && repo_dir="$outdir"/"$sampleID"/sortmerna_repo
