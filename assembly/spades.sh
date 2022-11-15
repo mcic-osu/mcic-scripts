@@ -4,164 +4,344 @@
 #SBATCH --time=36:00:00
 #SBATCH --cpus-per-task=20
 #SBATCH --mem=80G
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --job-name=spades
 #SBATCH --output=slurm-spades-%j.out
 
-# HELP AND COMMAND-LINE OPTIONS ------------------------------------------------
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
 ## Help function
-Help() {
+Print_help() {
     echo
-    echo "$0: Assemble a genome with SPAdes"
+    echo "======================================================================"
+    echo "                            $0"
+    echo "        Assemble a genome or transcriptome with Spades"
+    echo "======================================================================"
     echo
-    echo "Syntax:      $0 -i <input-R1-file> -o <output-dir> ..."
-    echo 
-    echo "Required options:"
-    echo "  -i STRING          Input R1 (forward) FASTQ file (the name of the R2 file will be inferred)"
-    echo "  -y STRING          YAML file with input files"
-    echo "        NOTE: _Either_ -i or -y has to be be specified"
-    echo "  -o STRING          Output directory"
+    echo "USAGE:"
+    echo "  sbatch $0 [ -i <input R1> / -I <fofn> ] -o <output dir> [...]"
+    echo "  bash $0 -h"
     echo
-    echo "Other options:"
-    echo "  -a STRING          Other arguments to pass to SPAdes"
-    echo "  -m STRING          SPAdes run mode                             [default: default SPAdes]"
-    echo "                     Possible values: 'isolate', 'meta', 'metaplasmid, 'metaviral', 'plasmid', 'rna', 'rnaviral'"
-    echo "  -k STRING          Comma-separated list of kmer sizes          [default: 'auto' => SPAdes default of auto-selecting kmer sizes]"
-    echo "  -c                 Run in 'careful' mode (small genomes only)  [default: don't run in careful mode]"
-    echo "  -C                 Continue an interrupted run                 [default: start anew]"
-    echo "  -h                 Print this help message and exit"
+    echo "REQUIRED OPTIONS:"
+    echo "  NOTE: Either -i/--R1 or -I/--fofn has to be be used to specify the input"
+    echo "  -i/--R1         <file>  Input R1 (forward) FASTQ file (the name of the R2 file will be inferred)"
+    echo "  -I/--fofn       <file>  File of file names (fofn): one line per input FASTQ file"
+    echo "  -o/--outdir     <dir>   Output directory"
     echo
-    echo "- Example:"
-    echo "      $0 -i data/A1_R1_001.fastq.gz -o results/spades -m meta"
-    echo 
-    echo "- To submit the OSC queue, preface with 'sbatch':"
-    echo "      sbatch $0 ..."
-    echo 
-    echo "- To override one of the SLURM/SBATCH parameters in the script, add these after 'sbatch' - for example:"
-    echo "      sbatch --time=60 $0 ..."
+    echo "OTHER KEY OPTIONS:"
+    echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to Spades"
+    echo "  --mode          <str>   Spades run mode                             [default: default Spades]"
+    echo "                            Possible values: 'isolate', 'meta', 'metaplasmid, 'metaviral', 'plasmid', 'rna', 'rnaviral'"
+    echo "  --kmer_sizes    <str>   Comma-separated list of kmer sizes          [default: 'auto' => Spades default of auto-selecting kmer sizes]"
+    echo "  --careful               Run in 'careful' mode (small genomes only)  [default: don't run in careful mode]"
+    echo "  --continue              Resume an interrupted run                   [default: start anew]"
     echo
-    echo "- SPAdes documentation: https://github.com/ablab/spades"
+    echo "UTILITY OPTIONS:"
+    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
+    echo "  --debug                 Run the script in debug mode (print all code)"
+    echo "  -h                      Print this help message and exit"
+    echo "  --help                  Print the help for Spades and exit"
+    echo "  -v/--version            Print the version of Spades and exit"
+    echo
+    echo "EXAMPLE COMMANDS:"
+    echo "  sbatch $0 -i data/A_R1.fastq.gz -o results/spades"
+    echo
+    echo "SOFTWARE DOCUMENTATION:"
+    echo "  - Docs: https://github.com/ablab/spades"
+    echo
 }
 
+## Load software
+Load_software() {
+    module load miniconda3/4.12.0-py39
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
+    source activate /fs/ess/PAS0471/jelmer/conda/spades-3.15.5
+}
+
+## Print version
+Print_version() {
+    Load_software
+    spades.py --version
+}
+
+## Print help for the focal program
+Print_help_program() {
+    Load_software
+    spades.py --help
+}
+
+## Print SLURM job resource usage info
+Resource_usage() {
+    echo
+    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
+        grep -Ev "ba|ex"
+    echo
+}
+
+## Print SLURM job requested resources
+Print_resources() {
+    set +u
+    echo "# SLURM job information:"
+    echo "Account (project):    $SLURM_JOB_ACCOUNT"
+    echo "Job ID:               $SLURM_JOB_ID"
+    echo "Job name:             $SLURM_JOB_NAME"
+    echo "Memory (per node):    $SLURM_MEM_PER_NODE"
+    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
+    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
+    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
+    echo "======================================================================"
+    echo
+    set -u
+}
+
+## Set the number of threads/CPUs
+Set_threads() {
+    set +u
+    if [[ "$slurm" = true ]]; then
+        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
+            threads="$SLURM_CPUS_PER_TASK"
+        elif [[ -n "$SLURM_NTASKS" ]]; then
+            threads="$SLURM_NTASKS"
+        else 
+            echo "WARNING: Can't detect nr of threads, setting to 1"
+            threads=1
+        fi
+    else
+        threads=1
+    fi
+    set -u
+}
+
+## Resource usage information
+Time() {
+    /usr/bin/time -f \
+        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
+        "$@"
+}   
+
+## Exit upon error with a message
+Die() {
+    error_message=${1}
+    error_args=${2-none}
+    
+    echo >&2
+    echo "=====================================================================" >&2
+    printf "$0: ERROR: %s\n" "$error_message" >&2
+    echo -e "\nFor help, run this script with the '-h' option" >&2
+    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
+    if [[ "$error_args" != "none" ]]; then
+        echo -e "\nArguments passed to the script:" >&2
+        echo "$error_args" >&2
+    fi
+    echo -e "\nEXITING..." >&2
+    echo "=====================================================================" >&2
+    echo >&2
+    exit 1
+}
+
+
+# ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
 ## Option defaults
+kmer_sizes="auto" && kmer_arg=""
+careful=false && careful_arg=""
+continue=false
+
+debug=false
+dryrun=false && e=""
+slurm=true
+
+
+# ==============================================================================
+#                          PARSE COMMAND-LINE ARGS
+# ==============================================================================
+## Placeholder defaults
+mem=4  # When not running a SLURM job
 R1=""
-infile_yaml=""
+fofn=""
 outdir=""
 mode=""
 mode_arg=""
-kmers="auto"
-careful=false
-careful_arg=""
-continue=false
-more_args=""
 
-## Get command-line options
-while getopts 'i:y:o:m:k:a:Cch' flag; do
-    case "${flag}" in
-    i) R1="$OPTARG" ;;
-    y) infile_yaml="$OPTARG" ;;
-    o) outdir="$OPTARG" ;;
-    k) kmers="$OPTARG" ;;
-    m) mode="$OPTARG" ;;
-    c) careful=true ;;
-    C) continue=true ;;
-    a) more_args="$OPTARG" ;;
-    h) Help && exit 0 ;;
-    \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
-    :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
+## Parse command-line args
+all_args="$*"
+
+while [ "$1" != "" ]; do
+    case "$1" in
+        -i | --R1 )         shift && R1=$1 ;;
+        -y | --fofn )       shift && fofn=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        --kmer_sizes )      shift && kmer_sizes=$1 ;;
+        --mode )            shift && mode=$1 ;;
+        --careful )         careful=true ;;
+        --continue )        continue=true ;;
+        --more-args )       shift && more_args=$1 ;;
+        -v | --version )    Print_version; exit 0 ;;
+        -h )                Print_help; exit 0 ;;
+        --help )            Print_help_program; exit 0;;
+        --dryrun )          dryrun=true && e="echo ";;
+        --debug )           debug=true ;;
+        * )                 Die "Invalid option $1" "$all_args" ;;
     esac
+    shift
 done
 
-[[ "$R1" = "" ]] && [[ "$infile_yaml" = "" ]] && echo "## ERROR: Please specify either an R1 input file with -i, or an input YAML file with -y" >&2 && exit 1
-[[ "$outdir" = "" ]] && echo "## ERROR: Please specify an output dir with -o" >&2 && exit 1
-[[ "$R1" != "" ]] && [[ ! -f "$R1" ]] && echo "## ERROR: input file R1 $R1 does note exist" >&2 && exit 1
-[[ "$infile_yaml" != "" ]] && [[ ! -f "$infile_yaml" ]] && echo "## ERROR: input YAML file R1 $infile_yaml does note exist" >&2 && exit 1
 
+# ==============================================================================
+#                          OTHER SETUP
+# ==============================================================================
+## In debugging mode, print all commands
+[[ "$debug" = true ]] && set -o xtrace
 
-# OTHER SETUP ------------------------------------------------------------------
-## Software
-module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/miniconda3/envs/spades-env
+## Check if this is a SLURM job
+[[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Bash strict mode
+## Load software and set nr of threads
+[[ "$dryrun" = false ]] && Load_software
+Set_threads
+
+## Bash script settings
 set -euo pipefail
 
 ## Additional variables
-n_cores="$SLURM_CPUS_ON_NODE"                            # Retrieve number of cores
-mem=$(( (($SLURM_MEM_PER_NODE / 1000)) - 1))             # Convert memory in MB to GB (and subtract 1)
+[[ "$slurm" = true ]] && mem=$(( ((SLURM_MEM_PER_NODE / 1000)) - 1)) # Convert MB memory to GB (and subtract 1)
 
 ## Build some arguments to pass to SPAdes
 [[ "$mode" != "" ]] && mode_arg="--$mode"
 [[ "$careful" = true ]] && careful_arg="--careful"
+[[ "$kmer_sizes" != "auto" ]] && kmer_arg="-k $kmer_sizes"
 
 ## Input file arg
 if [[ "$R1" != "" ]]; then
-
     ## Infer R2 filename
-    R1_suffix=$(echo "$R1" | sed -E 's/.*(_R?[1-2])[_\.][0-9]+\.fastq\.gz/\1/')
+    file_ext=$(basename "$R1" | sed -E 's/.*(.fastq.gz|.fq.gz)/\1/')
+    R1_suffix=$(basename "$R1" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
     R2_suffix=${R1_suffix/1/2}
     R2=${R1/$R1_suffix/$R2_suffix}
-    [[ "$R1" = "$R2" ]] && echo "## ERROR: input file R1 and R2 are the same: $R1" >&2 && exit 1
-    [[ ! -f "$R2" ]] && echo "## ERROR: input file R1 $R2 does note exist" >&2 && exit 1
+    [[ "$R1" = "$R2" ]] && Die "Input file R1 and R2 are the same: $R1"
+    [[ ! -f "$R2" ]] && Die "Input file R2 ($R2) does not exist"
 
     infile_arg="--pe1-1 $R1 --pe1-2 $R2"
 else
-    infile_arg="--dataset $infile_yaml"
+    yaml="$outdir"/input_filenames.yml
+    infile_arg="--dataset $yaml"
 fi
 
-## Kmer arg
-if [[ "$kmers" != "" && "$kmers" != "auto" ]]; then
-    kmer_arg="-k $kmers"
-else
-    kmer_arg=""
-fi
+## Check input
+[[ "$R1" = "" ]] && [[ "$fofn" = "" ]] && Die "Please specify either an R1 input file with -i, or an input FOFN with -I"
+[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o"
+[[ "$R1" != "" ]] && [[ ! -f "$R1" ]] && Die "Input file R1 $R1 does note exist"
+[[ "$fofn" != "" ]] && [[ ! -f "$fofn" ]] && Die "Input FOFN $fofn does note exist"
 
 ## Report
-echo "## Starting script spades.sh..."
+echo
+echo "=========================================================================="
+echo "                   STARTING SCRIPT SPADES.SH"
 date
+echo "=========================================================================="
+echo "All arguments to this script:     $all_args"
+[[ "$R1" != "" ]] && echo "Input FASTQ file - R1:            $R1"
+echo "Output dir:                       $outdir"
+[[ "$mode" != "" ]] && echo "Running mode:                     $mode"
+echo "Kmer sizes:                       $kmer_sizes"
+echo "Using 'careful' setting:          $careful"
+echo "Continuing a previous run:        $continue"
+[[ $more_args != "" ]] && echo "Other arguments for Spades:       $more_args"
+echo "Number of threads/cores:          $threads"
+echo "Memory in GB:                     $mem"
 echo
-echo "## Command-line args:"
-[[ "$R1" != "" ]] && echo "## Input FASTQ file - R1:            $R1"
-echo "## Output dir:                       $outdir"
-[[ "$kmers" != "" ]] && echo "## kmer sizes:                       $kmers"
-echo "## Using 'careful' setting:          $careful"
-echo "## Continuing a previous run:        $continue"
-[[ "$mode" != "" ]] && echo "## Running mode:                     $mode"
-[[ "$more_args" != "" ]] && echo "## Other SPAdes arguments:           $more_args"
+[[ "$R1" != "" ]] && echo "Input FASTQ file - R2:            $R2"
+echo "Input file argument:              $infile_arg"
 echo
-echo "## Other variables and settings:"
-[[ "$R1" != "" ]] && echo "## Input FASTQ file - R2:            $R2"
-echo "## Input file argument:              $infile_arg"
-echo "## Number of cores:                  $n_cores"
-echo "## Memory in GB:                     $mem"
-if [[ $infile_yaml != "" ]]; then
-    echo -e "\n Printing contents of input YAML file:\n"
-    cat "$infile_yaml"
-    echo
+echo "Listing the input file(s):"
+[[ "$R1" != "" ]] && ls -lh "$R1" "$R2"
+[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
+echo "=========================================================================="
+
+## Print reserved resources
+[[ "$slurm" = true ]] && Print_resources
+
+## Create the output directory
+${e}mkdir -p "$outdir"/logs
+
+
+# ==============================================================================
+#                               PREPARE YAML
+# ==============================================================================
+if [[ "$fofn" != "" ]]; then
+
+## Create template file
+    cat > "$yaml".tmp1 <<'_EOF'
+    [
+        {
+            orientation: "fr",
+            type: "paired-end",
+            right reads: [
+            R2_reads
+            ],
+            left reads: [
+            R1_reads
+            ]
+        },
+    ]
+_EOF
+
+    ## Make dirs absolute if needed
+    sed "/^\//d" "$fofn" | sed -E "s@^@$PWD/@" > "$yaml".modlist
+    sed -n "/^\//p" "$fofn" >> "$yaml".modlist   # Paths that were already absolute
+
+    ## Replace placeholder strings with filenames
+    R1=$(sed -e 's/^/"/' -e 's/$/"/' "$yaml".modlist | sed 's/$/,/')
+    R2=$(sed -e 's/^/"/' -e 's/$/"/' "$yaml".modlist | sed 's/$/,/' | sed 's/_R1/_R2/')
+    awk -v r="$R1" '{gsub(/R1_reads/,r)}1' "$yaml".tmp1 > "$yaml".tmp2
+    awk -v r="$R2" '{gsub(/R2_reads/,r)}1' "$yaml".tmp2 > "$yaml"
+
+    ## Remove temporay files
+    rm "$yaml".tmp1 "$yaml".tmp2 "$yaml".modlist
+
+    echo -e "\n # Printing the contents of the input YAML file:\n"
+    cat "$yaml"
 fi
-echo -e "-----------------------\n\n"
-
-## Create output dir
-mkdir -p "$outdir"
 
 
-# RUN SPADES -------------------------------------------------------------------
+# ==============================================================================
+#                               RUN
+# ==============================================================================
+## Run Spades
 if [ "$continue" = false ]; then
+
     echo "## Now running SPAdes..."
-    spades.py $infile_arg \
+    [[ "$dryrun" = false ]] && set -o xtrace
+
+    ${e}Time spades.py \
+        $infile_arg \
         -o "$outdir" \
-        -t "$n_cores" \
+        -t "$threads" \
         -m "$mem" \
         ${kmer_arg} ${mode_arg} ${careful_arg} ${more_args}
+
+    [[ "$debug" = false ]] && set +o xtrace
 else
-    echo "## Now resuming SPAdes run..."
+
+    echo "## Now resuming a previous SPAdes run..."
     spades.py -o "$outdir" --continue
 fi
 
 
-# WRAP UP ----------------------------------------------------------------------
-echo -e "\n## Listing output files:"
-ls -lh "$outdir"
-echo -e "\n## Done with script spades.sh"
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
+echo
+echo "========================================================================="
+if [[ "$dryrun" = false ]]; then
+    echo "# Version used:"
+    Print_version | tee "$outdir"/logs/version.txt
+    echo -e "\n# Listing files in the output dir:"
+    ls -lhd "$PWD"/"$outdir"/*
+    [[ "$slurm" = true ]] && Resource_usage
+fi
+echo "# Done with script"
 date
-echo
-sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
-echo

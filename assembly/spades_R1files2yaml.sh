@@ -10,16 +10,16 @@ yaml_out=$2
 ## Create template file
 cat > "$yaml_out".tmp1 <<'_EOF'
 [
-   {
-     orientation: "fr",
-     type: "paired-end",
-     right reads: [
-       R2_reads
-     ],
-     left reads: [
-       R1_reads
-     ]
-   },
+    {
+        orientation: "fr",
+        type: "paired-end",
+        right reads: [
+        R2_reads
+        ],
+        left reads: [
+        R1_reads
+        ]
+    },
 ]
 _EOF
 
