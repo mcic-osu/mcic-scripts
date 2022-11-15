@@ -201,11 +201,16 @@ set -euo pipefail
 #file_ext=$(basename "$R1" | sed -E 's/.*(.fasta|.fastq.gz|.fq.gz)/\1/')
 #R1_suffix=$(basename "$R1" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
 #R2_suffix=${R1_suffix/1/2}
-#R2_in=${R1/$R1_suffix/$R2_suffix}
+#R2=${R1/$R1_suffix/$R2_suffix}
 #sample_id=$(basename "$R1" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
 
 ## Read a fofn TODO_edit_or_remove
 # [[ "$fofn" != "" ]] && mapfile -t infiles <"$fofn"
+
+## Check input
+[[ "$infile" = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
+[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
+[[ ! -f "$infile" ]] && Die "Input file $infile does not exist"
 
 ## Report
 echo
@@ -227,11 +232,6 @@ echo "==========================================================================
 ## Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
 
-## Check input
-[[ "$infile" = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
-[[ ! -f "$infile" ]] && Die "Input file $infile does not exist"
-
 
 # ==============================================================================
 #                               RUN
@@ -242,10 +242,14 @@ ${e}mkdir -p "$outdir"/logs
 ## Run
 echo -e "\n# Now running TODO_THIS_SOFTWARE..."
 
+# [[ "$dryrun" = false ]] && set -o xtrace
+
 ${e}Time \
     TODO_COMMAND \
         -t "$threads"
         $more_args \
+
+# [[ "$debug" = false ]] && set +o xtrace
 
 
 # ==============================================================================
