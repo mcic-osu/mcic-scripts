@@ -18,7 +18,7 @@ Print_help() {
     echo
     echo "============================================================================"
     echo "                            $0"
-    echo "  Run Trinity to assemble a transcriptome using a directory of FASTQ files"
+    echo "                     Run Trinity to assemble a transcriptome"
     echo "============================================================================"
     echo
     echo "USAGE:"
@@ -26,29 +26,31 @@ Print_help() {
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i              <file>  Input dir with FASTQ files (de novo assembly) OR a BAM file (genome-guided assembly)"
-    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
-    echo "                          NOTE: The output directory needs to include 'trinity' in its name"
+    echo "  -i                          <file>  Input dir with FASTQ files (de novo assembly) OR a BAM file (genome-guided assembly)"
+    echo "  -o/--outdir                 <dir>   Output dir (will be created if needed)"
+    echo "                                      NOTE: The output directory needs to include 'trinity' in its name"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --SS_lib_type   <str>   RNAseq library type: RF, FR, or ...         [default: 'RF']"
-    echo "  --genome_guided         Genome-guided assembly                      [default: de novo assembly]"
-    echo "  --genome_guided_max_intron <int>   Max intron size for genome-guided assembly  [default: 10000]"
-    echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to Trinity"
+    echo "  --SS_lib_type               <str>   RNAseq library type: 'RF', 'FR', or 'unstranded'   [default: 'RF']"
+    echo "  --min_contig_length         <int>   Minimum contig length                   [default: 200 (= Trinity default)]"
+    echo "  --normalize                 <bool>  Whether to normalize reads, 'true' or 'false' [default: 'true']"
+    echo "  --normalize_max_read_cov    <int>   Normalize to this coverage              [default: 200 (= Trinity default)]"
+    echo "  --genome_guided                     Genome-guided assembly                  [default: de novo assembly]"
+    echo "  --genome_guided_max_intron  <int>   Max intron size for genome-guided assembly  [default: 10000]"
+    echo "  --more-args                 <str>   Quoted string with additional argument(s) to pass to Trinity"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                 Run the script in debug mode (print all code)"
-    echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for Trinity and exit"
-    echo "  -v/--version            Print the version of Trinity and exit"
+    echo "  --dryrun                            Dry run: don't execute commands, only parse arguments and report"
+    echo "  --debug                             Run the script in debug mode (print all code)"
+    echo "  -h                                  Print this help message and exit"
+    echo "  --help                              Print the help for Trinity and exit"
+    echo "  -v/--version                        Print the version of Trinity and exit"
     echo
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 -i data/fastq/ -o results/trinity"
     echo
     echo "SOFTWARE DOCUMENTATION:"
-    echo "  - Docs: "
-    echo "  - Paper: "
+    echo "  - Docs: https://github.com/trinityrnaseq/trinityrnaseq/wiki"
     echo
 }
 
@@ -147,6 +149,9 @@ Die() {
 lib_type="RF"
 genome_guided=false
 genome_guided_max_intron=10000  # Only for genome-guided assembly
+normalize=true && normalize_arg=""
+min_contig_length=200
+normalize_max_read_cov=200
 
 debug=false
 dryrun=false && e=""
@@ -166,18 +171,21 @@ mem_gb=4   # Will be changed if this is a SLURm job
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i )                shift && input=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
-        --SS_lib_type )     shift && lib_type=$1 ;;
-        --genome_guided )   genome_guided=true ;;
-        --genome_guided_max_intron ) shift && genome_guided_max_intron=$1 ;;
-        --more-args )       shift && more_args=$1 ;;
-        -v | --version )    Print_version; exit 0 ;;
-        -h )                Print_help; exit 0 ;;
-        --help )            Print_help_program; exit 0;;
-        --dryrun )          dryrun=true && e="echo ";;
-        --debug )           debug=true ;;
-        * )                 Die "Invalid option $1" "$all_args" ;;
+        -i )                            shift && input=$1 ;;
+        -o | --outdir )                 shift && outdir=$1 ;;
+        --SS_lib_type )                 shift && lib_type=$1 ;;
+        --min_contig_length )           shift && min_contig_length=$1 ;;
+        --normalize )                   shift && normalize=$1 ;;
+        --normalize_max_read_cov )      shift && normalize_max_read_cov=$1 ;;
+        --genome_guided )               genome_guided=true ;;
+        --genome_guided_max_intron )    shift && genome_guided_max_intron=$1 ;;
+        --more-args )                   shift && more_args=$1 ;;
+        -v | --version )                Print_version; exit 0 ;;
+        -h )                            Print_help; exit 0 ;;
+        --help )                        Print_help_program; exit 0;;
+        --dryrun )                      dryrun=true && e="echo ";;
+        --debug )                       debug=true ;;
+        * )                             Die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
@@ -202,6 +210,7 @@ set -euo pipefail
 ## Check input
 [[ "$input" = "" ]] && Die "Please specify input with -i" "$all_args"
 [[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
+[[ "$normalize" != "true" && "$normalize" != "false" ]] && Die "--normalize should be 'true' or 'false', instead it is $normalize"
 
 ## Create comma-delimited list of FASTQ files:
 if [[ "$genome_guided" = false ]]; then
@@ -213,6 +222,16 @@ else
     bam="$input"
     [[ ! -f "$bam" ]] && Die "Input BAM file $bam does not exist"
 fi
+
+## Library type argument
+if [[ "$lib_type" = "unstranded" ]]; then
+    lib_type_arg=""
+else
+    lib_type_arg="--SS_lib_type $lib_type"
+fi
+
+## Normalization arg
+[[ "$normalize" = "false" ]] && normalize_arg="--no_normalize_reads"
 
 ## Define memory in GB
 [[ "$slurm" = true ]] && mem_gb=$((8*(SLURM_MEM_PER_NODE / 1000)/10))G
@@ -227,6 +246,9 @@ echo "All arguments to this script:     $all_args"
 echo "Input dir:                        $indir"
 echo "Output dir:                       $outdir"
 echo "RNAseq library type:              $lib_type"
+echo "Minimum contig length:            $min_contig_length"
+echo "Normalize reads:                  $normalize"
+echo "Max cov. to normalize reads to:   $normalize_max_read_cov"
 [[ $more_args != "" ]] && echo "Other arguments for Trinity:      $more_args"
 echo "Number of threads/cores:          $threads"
 echo "Memory in GB:                     $mem_gb"
@@ -260,12 +282,17 @@ ${e}mkdir -p "$outdir"/logs
 # MAIN -------------------------------------------------------------------------
 echo "## Starting Trinity run..."
 
+[[ "$dryrun" = false ]] && set -o xtrace
+
 if [[ "$genome_guided" = false ]]; then
     ${e}Time Trinity \
         --seqType fq \
         --left "$R1_list" \
         --right "$R2_list" \
-        --SS_lib_type "$lib_type" \
+        --min_contig_length "$min_contig_length" \
+        --normalize_max_read_cov "$normalize_max_read_cov" \
+        $normalize_arg \
+        $lib_type_arg \
         --output "$outdir" \
         --max_memory "$mem_gb" \
         --CPU "$threads" \
@@ -275,13 +302,17 @@ else
     ${e}Time Trinity \
         --genome_guided_bam "$bam" \
         --genome_guided_max_intron "$genome_guided_max_intron" \
-        --SS_lib_type "$lib_type" \
+        --min_contig_length "$min_contig_length" \
+        --normalize_max_read_cov "$normalize_max_read_cov" \
+        $normalize_arg \
+        $lib_type_arg \
         --output "$outdir" \
         --max_memory "$mem_gb" \
         --CPU "$threads" \
         --verbose
 fi
 
+[[ "$debug" = false ]] && set +o xtrace
 
 # ==============================================================================
 #                               WRAP-UP

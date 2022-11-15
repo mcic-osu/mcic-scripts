@@ -4,107 +4,268 @@
 #SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=50G
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
 #SBATCH --job-name=transabyss
 #SBATCH --output=slurm-transabyss-%j.out
 
-
-# PARSE ARGUMENTS --------------------------------------------------------------
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
 ## Help function
-Help() {
-  echo
-  echo "$0: Run Trans-ABySS to create a transcriptome assembly."
-  echo
-  echo "Syntax: $0 -i <genome-FASTA> -o <output-dir> ..."
-  echo
-  echo "Required options:"
-  echo "    -i STRING         Genome (nucleotide) FASTA file"
-  echo "    -o STRING         Output dir"
-  echo
-  echo "Other options:"
-  echo "    -a STRING         Other argument(s) to pass to Trans-ABySS"
-  echo "    -h                Print this help message"
-  echo
-  echo "Example: $0 -i data/fastq -o results/transabyss"
-  echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
-  echo
-  echo "Trans-ABySS documentation: https://github.com/bcgsc/transabyss/blob/master/TUTORIAL.md"
-  echo
+Print_help() {
+    echo
+    echo "======================================================================"
+    echo "                            $0"
+    echo "           Run Trans-ABySS to create a transcriptome assembly"
+    echo "======================================================================"
+    echo
+    echo "USAGE:"
+    echo "  sbatch $0 -i <input dir> -o <output dir> [...]"
+    echo "  bash $0 -h"
+    echo
+    echo "REQUIRED OPTIONS:"
+    echo "  -i/--indir          <file>  Input dir"
+    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
+    echo "  --id                <str>   Assembly ID (output filename prefix"
+    echo
+    echo "OTHER KEY OPTIONS:"
+    echo "  --kmer_size         <int>   Kmer size"
+    echo "  --min_contig_length <int>   Minimum contig length           [default: 100]"
+    echo "  --unstranded                RNAseq library is unstranded    [default: stranded]"
+    echo "  --more-args         <str>   Quoted string with additional argument(s) to pass to Trans-ABySS"
+    echo
+    echo "UTILITY OPTIONS:"
+    echo "  --dryrun                    Dry run: don't execute commands, only parse arguments and report"
+    echo "  --debug                     Run the script in debug mode (print all code)"
+    echo "  -h                          Print this help message and exit"
+    echo "  --help                      Print the help for Trans-ABySS and exit"
+    echo "  -v/--version                Print the version of Trans-ABySS and exit"
+    echo
+    echo "EXAMPLE COMMANDS:"
+    echo "  sbatch $0 i data/fastq -o results/transabyss --id kmer31 --kmer_size 31"
+    echo
+    echo "SOFTWARE DOCUMENTATION:"
+    echo "  - Docs: https://github.com/bcgsc/transabyss/blob/master/TUTORIAL.md"
+    echo
 }
 
+## Load software
+Load_software() {
+    module load miniconda3/4.12.0-py39
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
+    source activate /fs/project/PAS0471/jelmer/conda/transabyss-2.0.1
+}
+
+## Print version
+Print_version() {
+    Load_software
+    transabyss --version
+}
+
+## Print help for the focal program
+Print_help_program() {
+    Load_software
+    transabyss --help
+}
+
+## Print SLURM job resource usage info
+Resource_usage() {
+    echo
+    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
+        grep -Ev "ba|ex"
+    echo
+}
+
+## Print SLURM job requested resources
+Print_resources() {
+    set +u
+    echo "# SLURM job information:"
+    echo "Account (project):    $SLURM_JOB_ACCOUNT"
+    echo "Job ID:               $SLURM_JOB_ID"
+    echo "Job name:             $SLURM_JOB_NAME"
+    echo "Memory (per node):    $SLURM_MEM_PER_NODE"
+    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
+    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
+    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
+    echo "======================================================================"
+    echo
+    set -u
+}
+
+## Set the number of threads/CPUs
+Set_threads() {
+    set +u
+    if [[ "$slurm" = true ]]; then
+        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
+            threads="$SLURM_CPUS_PER_TASK"
+        elif [[ -n "$SLURM_NTASKS" ]]; then
+            threads="$SLURM_NTASKS"
+        else 
+            echo "WARNING: Can't detect nr of threads, setting to 1"
+            threads=1
+        fi
+    else
+        threads=1
+    fi
+    set -u
+}
+
+## Resource usage information
+Time() {
+    /usr/bin/time -f \
+        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
+        "$@"
+}   
+
+## Exit upon error with a message
+Die() {
+    error_message=${1}
+    error_args=${2-none}
+    
+    echo >&2
+    echo "=====================================================================" >&2
+    printf "$0: ERROR: %s\n" "$error_message" >&2
+    echo -e "\nFor help, run this script with the '-h' option" >&2
+    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
+    if [[ "$error_args" != "none" ]]; then
+        echo -e "\nArguments passed to the script:" >&2
+        echo "$error_args" >&2
+    fi
+    echo -e "\nEXITING..." >&2
+    echo "=====================================================================" >&2
+    echo >&2
+    exit 1
+}
+
+
+# ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
 ## Option defaults
+kmer_size=32
+min_contig_length=300
+unstranded=false
+
+debug=false
+dryrun=false && e=""
+slurm=true
+
+
+# ==============================================================================
+#                          PARSE COMMAND-LINE ARGS
+# ==============================================================================
+## Placeholder defaults
 indir=""
 outdir=""
-assembly_ID=""
-kmer_size=32
-minlen=350
+assembly_id=""
 more_args=""
 
-## Parse command-line options
-while getopts ':i:I:o:k:l:a:h' flag; do
-  case "${flag}" in
-    i) indir="$OPTARG" ;;
-    I) assembly_ID="$OPTARG" ;;
-    o) outdir="$OPTARG" ;;
-    k) kmer_size="$OPTARG" ;;
-    l) minlen="$OPTARG" ;;
-    a) more_args="$OPTARG" ;;
-    h) Help && exit 0 ;;
-    \?) echo -e "\n## $0: ERROR: Invalid option -$OPTARG\n\n" >&2 && exit 1 ;;
-    :) echo -e "\n## $0: ERROR: Option -$OPTARG requires an argument\n\n" >&2 && exit 1 ;;
-  esac
+## Parse command-line args
+all_args="$*"
+
+while [ "$1" != "" ]; do
+    case "$1" in
+        -i | --indir )          shift && indir=$1 ;;
+        -o | --outdir )         shift && outdir=$1 ;;
+        --id )                  shift && assembly_id=$1 ;;
+        --unstranded )          unstranded=true ;;
+        --kmer_size )           shift && kmer_size=$1 ;;
+        --min_contig_length )   shift && min_contig_length=$1 ;;
+        --more-args )           shift && more_args=$1 ;;
+        -v | --version )        Print_version; exit 0 ;;
+        -h )                    Print_help; exit 0 ;;
+        --help )                Print_help_program; exit 0;;
+        --dryrun )              dryrun=true && e="echo ";;
+        --debug )               debug=true ;;
+        * )                     Die "Invalid option $1" "$all_args" ;;
+    esac
+    shift
 done
 
-## Check input
-[[ "$indir" = "" ]] && echo "## ERROR: Please specify an input dir with -i" >&2 && exit 1
-[[ "$assembly_ID" = "" ]] && echo "## ERROR: Please specify an assembly ID with -I" >&2 && exit 1
-[[ "$outdir" = "" ]] && echo "## ERROR: Please specify an output dir with -o" >&2 && exit 1
-[[ ! -d "$indir" ]] && echo "## ERROR: Input dir (-i) $indir does not exist" >&2 && exit 1
 
+# ==============================================================================
+#                          OTHER SETUP
+# ==============================================================================
+## In debugging mode, print all commands
+[[ "$debug" = true ]] && set -o xtrace
 
-# SETUP ------------------------------------------------------------------------
-## Software
-module load python/3.6-conda5.2
-source activate /fs/project/PAS0471/jelmer/conda/transabyss-2.0.1
+## Check if this is a SLURM job
+[[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Bash strict mode
+## Load software and set nr of threads
+[[ "$dryrun" = false ]] && Load_software
+Set_threads
+
+## Bash script settings
 set -euo pipefail
 
-## Make output dir
-mkdir -p "$outdir"
+## Library type
+if [[ "$unstranded" = true ]]; then
+    strand_arg=""
+else
+    strand_arg="--SS"
+fi
 
 ## Report
 echo
-echo "## Starting script transabyss.sh"
+echo "=========================================================================="
+echo "                    STARTING SCRIPT TRANSABYSS.SH"
 date
+echo "=========================================================================="
+echo "All arguments to this script:     $all_args"
+echo "Input dir:                        $indir"
+echo "Output dir:                       $outdir"
+echo "Assembly ID:                      $assembly_id"
+echo "Kmer size:                        $kmer_size"
+echo "Min contig length:                $min_contig_length"
+echo "Library is unstranded:            $unstranded"
+[[ $more_args != "" ]] &&echo "Other arguments for Trans-ABySS:  $more_args"
+echo "Number of threads/cores:          $threads"
 echo
-echo "## Input dir:                            $indir"
-echo "## Output dir:                           $outdir"
-echo "## Assembly ID:                          $assembly_ID"
-echo
-echo "## Kmer size:                            $kmer_size"
-echo "## Min contig length:                    $minlen"
-[[ "$more_args" != "" ]] &&echo "## Other arguments for Trans-ABySS:       $more_args"
-echo -e "--------------------\n"
+echo "Listing the input file(s):"
+ls -lh "$indir"
+[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
+echo "=========================================================================="
+
+## Print reserved resources
+[[ "$slurm" = true ]] && Print_resources
 
 
-# RUN SOAPDENOVO ---------------------------------------------------------------
+# ==============================================================================
+#                               RUN
+# ==============================================================================
+## Make output dir
+${e}mkdir -p "$outdir"/logs
+
 echo -e "\n## Now running Trans-ABySS..."
-transabyss \
+
+[[ "$dryrun" = false ]] && set -o xtrace
+
+${e}Time transabyss \
     --pe "$indir"/*fastq.gz \
-    --SS \
     --kmer "$kmer_size" \
-    --length "$minlen" \
-    --threads "$SLURM_CPUS_PER_TASK" \
+    --length "$min_contig_length" \
+    --threads "$threads" \
     --outdir "$outdir" \
-    --name "$assembly_ID" $more_args
+    --name "$assembly_id" \
+    $strand_arg \
+    $more_args
+
+[[ "$debug" = false ]] && set +o xtrace
 
 
-# WRAP-UP ----------------------------------------------------------------------
-echo -e "\n-------------------------------"
-echo "## Listing files in the output dir:"
-ls -lh "$outdir"
-echo -e "\n## Done with script transabyss.sh"
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
+echo
+echo "========================================================================="
+if [[ "$dryrun" = false ]]; then
+    echo "# Version used:"
+    Print_version | tee "$outdir"/logs/version.txt
+    echo -e "\n# Listing files in the output dir:"
+    ls -lhd "$PWD"/"$outdir"/*
+    [[ "$slurm" = true ]] && Resource_usage
+fi
+echo "# Done with script"
 date
-echo
-sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
-echo
