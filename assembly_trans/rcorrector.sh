@@ -26,12 +26,14 @@ Print_help() {
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--indir     <file>   Input dir with FASTQ files"
+    echo "  Note: Specify input either with -i/--indir or with -I/--fofn"
+    echo "  -i/--indir      <file>  Input dir with FASTQ files (mutually exclusive with -I/--fofn)"
+    echo "  -I/--fofn       <file>  File of file names (fofn): text file with paths to FASTQ files, one file per line"
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --stage         <int>   Start at specified step           [default: '0']"
-    echo "                          Should be 0 unless restarting an interrupted/failed run"
+    echo "                            Should be '0' unless restarting an interrupted/failed run"
     echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to Rcorrector"
     echo
     echo "UTILITY OPTIONS:"
@@ -144,6 +146,7 @@ slurm=true
 # ==============================================================================
 ## Placeholder defaults
 indir=""
+fofn=""
 outdir=""
 more_args=""
 
@@ -152,7 +155,8 @@ all_args="$*"
 
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --indir )     shift && indir=$1 ;;
+        -i | --indir )      shift && indir=$1 ;;
+        -I | --fofn )       shift && fofn=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
         --more-args )       shift && more_args=$1 ;;
         --stage )           shift && stage=$1 ;;
@@ -182,13 +186,19 @@ Set_threads
 set -euo pipefail
 
 ## Test parameter values
-[[ "$indir" = "" ]] && Die "Please specify an input dir with -i/--indir" "$all_args"
+[[ "$indir" = "" && "$fofn" = "" ]] && Die "Please specify input file with -i/--indir or with -I/--fofn" "$all_args"
 [[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
-[[ ! -d "$indir" ]] && Die "Input dir $indir does not exist"
+[[ "$indir" != "" && ! -d "$indir" ]] && Die "Input dir $indir does not exist"
+[[ "$fofn" != "" && ! -f "$fofn" ]] && Die "Input fofn $fofn does not exist"
 
-## Process parameters
-R1_list=$(echo "$indir"/*R1*fastq.gz | sed 's/ /,/g')
-R2_list=$(echo "$indir"/*R2*fastq.gz | sed 's/ /,/g')
+## Get list of input files
+if [[ "$fofn" = "" ]]; then
+    R1_list=$(echo "$indir"/*R1*fastq.gz | sed 's/ /,/g')
+    R2_list=$(echo "$indir"/*R2*fastq.gz | sed 's/ /,/g')
+else
+    R1_list=$(grep "R1.*fastq.gz$" "$fofn" | tr "\n" ",")
+    R2_list=$(grep "R2.*fastq.gz$" "$fofn" | tr "\n" ",")
+fi
 
 ## Report
 echo
@@ -206,7 +216,8 @@ echo "List of R1 files:                 $R1_list"
 echo "List of R2 files:                 $R2_list"
 echo
 echo "Listing the input file(s):"
-ls -lh "$indir"
+[[ $indir != "" ]] && ls -lh "$indir"
+[[ $fofn != "" ]] && cat "$fofn" | xargs ls -lh
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
