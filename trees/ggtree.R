@@ -4,11 +4,15 @@
 # remotes::install_version("dplyr", version = "1.0.5")
 # remotes::install_github("YuLab-SMU/tidytree")
 # remotes::install_github("YuLab-SMU/ggtree")
+if (!"pacman" %in% installed.packages())
+  install.packages("pacman", repos = "https://cloud.r-project.org")
+if (!"BiocManager" %in% installed.packages())
+  install.packages("BiocManager", repos = "https://cloud.r-project.org")
+if (!"ggtree" %in% installed.packages()) BiocManager::install("ggtree")
+packages <- c("tidyverse", "here", "ape", "ggtree", "argparse")
+pacman::p_load(char = packages, install = TRUE, repos = "https://cloud.r-project.org")
 
 ## Parse command-line arguments
-if (!require(argparse)) install.packages("argparse", repos = "https://cran.rstudio.com/")
-library(argparse)
-
 parser <- ArgumentParser()
 parser$add_argument("-i", "--tree_file",
                     type = "character", required = TRUE,
@@ -26,14 +30,6 @@ message("\n## Starting script ggtree.R")
 message("## Input tree file:          ", tree_file)
 message("## Output figure file:       ", figure_file, "\n")
 
-## Packages
-if (!"pacman" %in% installed.packages())
-  install.packages("pacman", repos='http://cran.us.r-project.org')
-if (!"BiocManager" %in% installed.packages())
-  install.packages("BiocManager", repos='http://cran.us.r-project.org')
-if (!"ggtree" %in% installed.packages()) BiocManager::install("ggtree")
-packages <- c("tidyverse", "here", "ape", "ggtree", "argparse", "readxl")
-pacman::p_load(char = packages, install = TRUE, repos = 'http://cran.us.r-project.org')
 
 
 # PLOT THE TREE ----------------------------------------------------------------

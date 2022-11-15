@@ -2,7 +2,8 @@
 plot_tree <- function(tree,
                       alignment = NULL,
                       annot = NULL, label_cols = NULL, color_col = NULL,
-                      fig_file = "tree.png",
+                      label_size = 3,
+                      fig_file = "tree.png", print_fig = FALSE,
                       plot_msa = FALSE, msa_offset = "auto") {
 
   if (!is.null(annot)) {
@@ -16,19 +17,22 @@ plot_tree <- function(tree,
             if(!is.null(color_col)) {
                 p <- p + geom_tiplab(aes_string(label = label_cols[1],
                                                 color = color_col),
-                                    align = TRUE)
+                                     align = TRUE, size = label_size)
                 if (color_col == label_cols[1]) p <- p + guides(color = "none")
             } else {
-                p <- p + geom_tiplab(aes_string(label = label_cols[1]))
+                p <- p + geom_tiplab(aes_string(label = label_cols[1]),
+                                     size = label_size)
             }
         }
     
         if (!is.na(label_cols[2]))
             p <- p + geom_tiplab(aes_string(label = label_cols[2]),
-                                align = TRUE, linetype = "blank", offset = 3.5)
+                                align = TRUE, linetype = "blank", offset = 3.5,
+                                size = label_size)
         if (!is.na(label_cols[3]))
             p <- p + geom_tiplab(aes_string(label = label_cols[3]),
-                                align = TRUE, linetype = "blank", offset = 5)
+                                align = TRUE, linetype = "blank", offset = 5,
+                                size = label_size)
     }
   }
 
@@ -62,6 +66,7 @@ plot_tree <- function(tree,
   
   ## Save the plot to file
   ggsave(fig_file, width = plot_width, height = plot_height)
+  if (print_fig == TRUE) print(p)
 }
 
 ## Function to prep the annotation dataframe associated with the tree
