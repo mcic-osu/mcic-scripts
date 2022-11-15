@@ -92,8 +92,7 @@ echo "## Memory in GB / bytes:             $mem_gb / $mem_bytes"
 echo
 
 ## Make output dir if needed
-mkdir -p "$index_dir"
-
+mkdir -p "$index_dir"/logs
 
 # PREP INPUT -------------------------------------------------------------------
 ## STAR doesn't accept zipped FASTA files -- unzip if needed
