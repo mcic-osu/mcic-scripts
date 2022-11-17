@@ -32,7 +32,7 @@ Print_help() {
     echo "OTHER KEY OPTIONS:"
     echo "  --kmer_size         <int>   Kmer size"
     echo "  --min_contig_length <int>   Minimum contig length           [default: 100]"
-    echo "  --unstranded                RNAseq library is unstranded    [default: stranded]"
+    echo "  --strandedness      <str>   Either 'stranded'/'reverse'/'forward' (all treated the same) or 'unstranded' [default: 'stranded']"
     echo "  --more-args         <str>   Quoted string with additional argument(s) to pass to Trans-ABySS"
     echo
     echo "UTILITY OPTIONS:"
@@ -145,7 +145,7 @@ Die() {
 ## Option defaults
 kmer_size=32
 min_contig_length=300
-unstranded=false
+strandedness=reverse
 
 debug=false
 dryrun=false && e=""
@@ -169,7 +169,7 @@ while [ "$1" != "" ]; do
         -i | --indir )          shift && indir=$1 ;;
         -o | --outdir )         shift && outdir=$1 ;;
         --id )                  shift && assembly_id=$1 ;;
-        --unstranded )          unstranded=true ;;
+        --strandedness )        shift && strandedness=$1 ;;
         --kmer_size )           shift && kmer_size=$1 ;;
         --min_contig_length )   shift && min_contig_length=$1 ;;
         --more-args )           shift && more_args=$1 ;;
@@ -201,10 +201,10 @@ Set_threads
 set -euo pipefail
 
 ## Library type
-if [[ "$unstranded" = true ]]; then
-    strand_arg=""
-else
+if [[ "$strandedness" = "reverse" || "$strandedness" = "forward" || "$strandedness" = "stranded" ]]; then
     strand_arg="--SS"
+else
+    strand_arg=""
 fi
 
 ## Report
@@ -219,7 +219,7 @@ echo "Output dir:                       $outdir"
 echo "Assembly ID:                      $assembly_id"
 echo "Kmer size:                        $kmer_size"
 echo "Min contig length:                $min_contig_length"
-echo "Library is unstranded:            $unstranded"
+echo "Strandedness / strand argument:   $strandedness / $strand_arg"
 [[ $more_args != "" ]] &&echo "Other arguments for Trans-ABySS:  $more_args"
 echo "Number of threads/cores:          $threads"
 echo

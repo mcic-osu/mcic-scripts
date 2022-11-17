@@ -4,8 +4,8 @@
 #SBATCH --time=120:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=48G
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=64G
 #SBATCH --job-name=rcorrector
 #SBATCH --output=slurm-rcorr-%j.out
 
@@ -221,6 +221,8 @@ echo "Listing the input file(s):"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
+## Print reserved resources
+[[ "$slurm" = true ]] && Print_resources
 
 # ==============================================================================
 #                               RUN
