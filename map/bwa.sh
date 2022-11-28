@@ -60,7 +60,7 @@ echo
 ## Load software
 module load python/3.6-conda5.2
 source activate /fs/project/PAS0471/jelmer/conda/bwa-0.7.17
-SAMTOOLS_ENV=/users/PAS0471/jelmer/miniconda3/envs/samtools-env # Loaded later
+SAMTOOLS_ENV=/fs/ess/PAS0471/jelmer/conda/samtools # Loaded later
 
 ## Bash strict settings
 set -euo pipefail
