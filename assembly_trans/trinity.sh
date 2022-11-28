@@ -26,7 +26,7 @@ Print_help() {
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i                          <file>  Input dir with FASTQ files (de novo assembly) OR a BAM file (genome-guided assembly)"
+    echo "  -i/--input                  <dir/file>  Input dir with FASTQ files (de novo assembly) OR a BAM file (genome-guided assembly)"
     echo "  -o/--outdir                 <dir>   Output dir (will be created if needed)"
     echo "                                      NOTE: The output directory needs to include 'trinity' in its name"
     echo
@@ -56,15 +56,19 @@ Print_help() {
 
 ## Load the software
 Load_software() {
+    set +u
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
     source activate /fs/ess/PAS0471/jelmer/conda/trinity-2.13.2
+    set -u
 }
 
 ## Print version
 Print_version() {
     Load_software
+    set +e
     Trinity --version
+    set -e
 }
 
 ## Print help for the focal program
@@ -171,7 +175,7 @@ mem_gb=4   # Will be changed if this is a SLURm job
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i )                            shift && input=$1 ;;
+        -i | --input )                  shift && input=$1 ;;
         -o | --outdir )                 shift && outdir=$1 ;;
         --SS_lib_type | --strandedness) shift && strandedness=$1 ;;
         --min_contig_length )           shift && min_contig_length=$1 ;;
@@ -288,7 +292,9 @@ echo "## Starting Trinity run..."
 
 [[ "$dryrun" = false ]] && set -o xtrace
 
+set +e
 if [[ "$genome_guided" = false ]]; then
+    ## De novo
     ${e}Time Trinity \
         --seqType fq \
         --left "$R1_list" \
@@ -303,6 +309,7 @@ if [[ "$genome_guided" = false ]]; then
         --verbose \
         $more_args
 else
+    ## Genome-guided
     ${e}Time Trinity \
         --genome_guided_bam "$bam" \
         --genome_guided_max_intron "$genome_guided_max_intron" \
@@ -315,6 +322,7 @@ else
         --CPU "$threads" \
         --verbose
 fi
+set -e
 
 [[ "$debug" = false ]] && set +o xtrace
 
