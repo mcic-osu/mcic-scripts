@@ -94,12 +94,10 @@ echo
 echo "## List of R2 files:              $R2_LIST"
 echo -e "-------------------------------\n"
 
-## Make output dir
-mkdir -p "$outdir"
-
 
 # RUN DETONATE -----------------------------------------------------------------
-echo "## Starting Detonate run..."
+## Make output dir
+mkdir -p "$outdir"/logs
 
 echo -e "\n## Running rsem-eval-calculate-score..."
 rsem-eval-calculate-score \
