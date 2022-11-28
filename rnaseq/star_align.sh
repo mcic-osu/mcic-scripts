@@ -238,7 +238,7 @@ echo
 mkdir -p "$outdir"/logs "$outdir"/bam "$starlog_dir"
 
 ## Run STAR
-echo "## Aligning reads with STAR...."
+echo "# Now aligning reads with STAR...."
 STAR --runThreadN "$SLURM_CPUS_ON_NODE" \
     --genomeDir "$index_dir" \
     --readFilesIn "$R1_in" "$R2_in" \
@@ -255,7 +255,7 @@ STAR --runThreadN "$SLURM_CPUS_ON_NODE" \
 ## reads mapping to similar positions. In that case, could use samtools sort. 
 if [[ "$sort" = true && "$samtools_sort" = "true" ]]; then
 
-    echo -e "\n## Sorting the BAM file with samtools sort..."
+    echo -e "\n# Sorting the BAM file with samtools sort..."
     
     bam_unsorted="$outfile_prefix"Aligned.out.bam
     bam_sorted="$outfile_prefix"Aligned.sortedByCoord.out.bam
@@ -264,22 +264,22 @@ if [[ "$sort" = true && "$samtools_sort" = "true" ]]; then
 fi
 
 ## Move BAM files
-echo -e "\n## Moving the BAM file..."
+echo -e "\n# Moving the BAM file..."
 if [[ "$sort" = true ]]; then
-    mv -v "$outfile_prefix"Aligned.out.bam "$outdir"/bam/"$sampleID"_sort.bam
-else
     mv -v "$outfile_prefix"Aligned.sortedByCoord.out.bam "$outdir"/bam/"$sampleID".bam
+else
+    mv -v "$outfile_prefix"Aligned.out.bam "$outdir"/bam/"$sampleID"_sort.bam
 fi
 
 ## Organize STAR output
 if [ "$output_unmapped" = true ]; then
-    echo -e "\n## Moving, renaming and zipping unmapped FASTQ files...."
+    echo -e "\n# Moving, renaming and zipping unmapped FASTQ files...."
     for oldpath in "$outfile_prefix"*Unmapped.out.mate*; do
         oldname=$(basename "$oldpath")
         newname=$(echo "$oldname" | sed -E s'/_Unmapped.out.mate([12])/_R\1.fastq.gz/')
         newpath="$unmapped_dir"/"$newname"
 
-        echo "## Moving $oldpath to $newpath..."
+        echo "# Moving $oldpath to $newpath..."
 
         #> The unmapped FASTQ files output by STAR have a weird format with "0:N" for R1 reads (instead of "1:N")
         #> and "1:N" (instead of "2:N") for R2 reads, which Trinity doesn't accept. The code below will fix that:
@@ -292,7 +292,7 @@ if [ "$output_unmapped" = true ]; then
 fi
 
 ## Move STAR log files
-echo -e "\n## Moving STAR log files...."
+echo -e "\n# Moving the STAR log files...."
 mv -v "$outfile_prefix"Log*out "$starlog_dir"
 echo
 
@@ -300,24 +300,24 @@ echo
 #                               WRAP-UP
 # ==============================================================================
 echo "========================================================================="
-echo -e "## Listing output BAM file(s):"
-ls -lh "$outfile_prefix"*bam
+echo -e "# Listing the output BAM file(s):"
+ls -lh "$outdir"/bam/"$sampleID"*bam
 
 if [ "$output_unmapped" = true ]; then
-    echo "## Listing unmapped FASTQ files:"
+    echo "# Listing the FASTQ files with unmapped reads:"
     ls -lh "$unmapped_dir/$sampleID"*fastq.gz
 fi
 
 if [ "$count" = true ]; then
-    echo -e "\n## Listing output gene count file:"
+    echo -e "\n# Listing the output gene count file:"
     ls -lh "$outdir"/"$sampleID"*ReadsPerGene.out.tab
 fi
 
 echo
-echo "## STAR vqersion used:"
+echo "# STAR version used:"
 Print_version | tee "$outdir"/logs/version.txt
 echo
 sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
 echo
-echo "## Done with script"
+echo "# Done with script"
 date
