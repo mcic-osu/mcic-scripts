@@ -55,9 +55,11 @@ Print_help() {
 
 ## Load software
 Load_software() {
+    set +u
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
     source activate TODO_THIS_SOFTWARE_ENV
+    set -u
 }
 
 ## Print version
@@ -206,6 +208,7 @@ set -euo pipefail
 
 ## Read a fofn TODO_edit_or_remove
 # [[ "$fofn" != "" ]] && mapfile -t infiles <"$fofn"
+# [[ "$indir" != "" ]] && mapfile infiles < <(find "$indir" -type f)
 
 ## Check input
 [[ "$infile" = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
