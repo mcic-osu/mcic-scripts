@@ -299,8 +299,8 @@ else
 fi
 
 ## Define output text files
-outfile_main="$outdir"/"$sample_ID"_main.txt
-outfile_report="$outdir"/"$sample_ID"_report.txt
+outfile_main="$outdir"/"$sample_ID".main.txt
+outfile_report="$outdir"/"$sample_ID".report.txt
 
 ## Report
 echo "Number of threads/cores:        $threads"
