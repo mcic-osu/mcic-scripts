@@ -198,7 +198,7 @@ outdir=$(dirname "$outfile")
 ## Report
 echo
 echo "=========================================================================="
-echo "                    STARTING SCRIPT TODO_SCRIPTNAME"
+echo "                    STARTING SCRIPT KALLISTO.SH"
 date
 echo "=========================================================================="
 echo "All arguments to this script:         $all_args"
@@ -220,7 +220,7 @@ echo "==========================================================================
 #                               RUN
 # ==============================================================================
 ## Create output dirs if needed
-${e}mkdir -p "$outdir"
+${e}mkdir -p "$outdir"/logs
 
 ## Run Kallisto
 echo -e "\n# Now running Kallisto..."

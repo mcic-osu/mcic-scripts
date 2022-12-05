@@ -230,7 +230,7 @@ echo "==========================================================================
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-if [[ "$dryrun" != false ]]; then
+if [[ "$dryrun" = false ]]; then
     ## Create output dir if needed
     mkdir -p "$outdir"/logs
 
@@ -261,9 +261,9 @@ echo
 echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
     echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
+    Print_version | tee logs/version.txt
     echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
+    ls -lhd "$PWD"/*
     [[ "$slurm" = true ]] && Resource_usage
 fi
 echo "# Done with script"

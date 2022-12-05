@@ -226,7 +226,6 @@ ${e}Time rnaQUAST.py \
     --transcripts $infiles \
     --output_dir "$outdir" \
     --threads "$threads" \
-    --strand_specific \
     --gene_mark \
     $strand_arg \
     $more_args

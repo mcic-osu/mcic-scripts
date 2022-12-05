@@ -148,6 +148,10 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
+## Constants
+# If this is a SLURM hob, the temp. dir will be set to /fs/scratch/$SLURM_JOB_ACCOUNT/spades/$RANDOM
+# I was initially using $TMPDIR, but in some cases, spades needs more than the alotted 1TB
+
 ## Option defaults
 kmer_size="auto" && kmer_arg=""
 careful=false && careful_arg=""
@@ -216,8 +220,12 @@ Set_threads
 set -euo pipefail
 
 ## Additional variables
-[[ "$slurm" = true ]] && mem=$(( ((SLURM_MEM_PER_NODE / 1000)) - 1)) # Convert MB memory to GB (and subtract 1)
-[[ "$slurm" = true ]] && tmpdir_arg="--tmp-dir=$TMPDIR"
+if [[ "$slurm" = true ]]; then
+    mem=$(( ((SLURM_MEM_PER_NODE / 1000)) - 1)) # Convert MB memory to GB (and subtract 1)
+    proj=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
+    TMP_DIR=/fs/scratch/"$proj"/spades/"$RANDOM"
+    tmpdir_arg="--tmp-dir=$TMP_DIR"
+fi
 
 ## Build some arguments to pass to SPAdes
 [[ "$mode" != "" ]] && mode_arg="--$mode"
@@ -284,6 +292,7 @@ echo "Continuing a previous run:        $continue"
 [[ $more_args != "" ]] && echo "Other arguments for Spades:       $more_args"
 echo "Number of threads/cores:          $threads"
 echo "Memory in GB:                     $mem"
+[[ $tmpdir_arg != "" ]] && echo "Temp dir argument:                $tmpdir_arg"
 echo
 [[ "$R1" != "" ]] && echo "Input FASTQ file - R2:            $R2"
 echo "Input file argument:              $infile_arg"

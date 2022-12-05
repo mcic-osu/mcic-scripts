@@ -32,7 +32,7 @@ Print_help() {
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to Evigene"
-    echo "  --min_cds_length <int>  Minimum CDS length in bp                    [default: 350]"
+    echo "  --min_cds       <int>   Minimum CDS length in bp                    [default: 350]"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
@@ -145,6 +145,10 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
+## Define output files (note: this is within the $outdir, where we will cd to)
+ASSEMBLY_ALL=final/evigene_all.fasta
+ASSEMBLY_PRIMARY=final/evigene_primarytrans.fasta
+
 ## Option defaults
 min_cds=350
 
@@ -169,7 +173,7 @@ while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
-        --min_cds_length )  shift && min_cds_length=$1 ;;
+        --min_cds )         shift && min_cds=$1 ;;
         --more-args )       shift && more_args=$1 ;;
         -h )                Print_help; exit 0 ;;
         --help )            Print_help_program; exit 0;;
@@ -198,9 +202,9 @@ Set_threads
 ## Bash script settings
 set -euo pipefail
 
-## Define output files (note: this is within the $outdir, where we will cd to)
-assembly_all=final/evigene_all.fasta
-assembly_primary=final/evigene_primarytrans.fasta
+## Get the file ID
+file_ext=$(basename "$infile" | sed -E 's/.*(.fasta|.fa|.fna)$/\1/')
+file_id=$(basename "$infile" "$file_ext")
 
 ## Check input
 [[ "$infile" = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
@@ -216,7 +220,7 @@ echo "==========================================================================
 echo "All arguments to this script:     $all_args"
 echo "Input file:                       $infile"
 echo "Output dir:                       $outdir"
-echo "Minimum CDS size:                 $min_cds_length"
+echo "Minimum CDS size:                 $min_cds"
 [[ $more_args != "" ]] && echo "Other arguments for Evigene:      $more_args"
 echo "Number of threads/cores:          $threads"
 echo
@@ -259,10 +263,10 @@ if [[ "$dryrun" = false ]]; then
         $more_args
 
     ## Copy the final assembly file
-    cp -v okayset/merged.okay.mrna "$assembly_all"
+    cp -v okayset/"$file_id".okay.mrna "$ASSEMBLY_ALL"
 
     ## Make a separate file with primary transcripts
-    awk -v RS='>' '/t1 type/ { print ">" $0 }' "$assembly_all" > "$assembly_primary"
+    awk -v RS='>' '/t1 type/ { print ">" $0 }' "$ASSEMBLY_ALL" > "$ASSEMBLY_PRIMARY"
 
 fi
 

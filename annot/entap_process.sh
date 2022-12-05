@@ -3,57 +3,126 @@
 #SBATCH --account=PAS0471
 #SBATCH --time=15
 #SBATCH --cpus-per-task=1
-#SBATCH --output=slurm-entap-process-%j.out
+#SBATCH --mem=4G
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --job-name=entap_process
+#SBATCH --output=slurm-entap_process-%j.out
 
-# PARSE OPTIONS ----------------------------------------------------------------
+
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
 ## Help function
-Help() {
+Print_help() {
     echo
-    echo "$0: Process and check EnTAP output."
+    echo "======================================================================"
+    echo "                            $0"
+    echo "                  Process and check EnTAP output"
+    echo "======================================================================"
     echo
-    echo "Syntax: $0 -d <EnTap-dir> -o <output-dir> -a <assembly-1trans> -A <assembly-alltrans>"
+    echo "USAGE:"
+    echo "  sbatch $0 -i <input file> -o <output dir> [...]"
+    echo "  bash $0 -h"
     echo
-    echo "Required options:"
-    echo "    -i DIR         Dir with EnTap output (input for this script)"
-    echo "    -o FILE        Output assembly"
-    echo "                   (with only transcripts for annotated genes not flagged as contaminants"
-    echo "    -a FILE        Assembly FASTA file with a single transcript per gene"
-    echo "    -A FILE        Assembly FASTA file all transcripts per gene"
+    echo "REQUIRED OPTIONS:"
+    echo "  -i/--entap-dir  <dir>   Dir with EnTap output (input for this script)"
+    echo "  --in-1trans     <file>  Assembly FASTA file with a single transcript per gene"
+    echo "  --in-alltrans   <file>  Assembly FASTA file all transcripts per gene"
+    echo "  -o/--outdir    <dir>    Output dir"
+    echo "                          Includes an assembly with only transcripts for annotated genes not flagged as contaminants"
     echo
-    echo "Other options:"
-    echo "    -h                Print this help message and exit"
+    echo "OTHER KEY OPTIONS:"
+    echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to TODO_THIS_SOFTWARE"
     echo
-    echo "Example:    $0 -i assembly.fa -c entap_config.ini -d uniprot_sprot.dmnd -o results/entap"
-    echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
+    echo "UTILITY OPTIONS:"
+    echo "  --debug                 Run the script in debug mode (print all code)"
+    echo "  -h / --help             Print this help message and exit"
+    echo
+    echo "EXAMPLE COMMANDS:"
+    echo "  sbatch $0 -i assembly.fa -c entap_config.ini -d uniprot_sprot.dmnd -o results/entap"
     echo
 }
 
-## Option defaults
-entap_dir=""
-out_assembly=""
-in_1trans=""
-in_alltrans=""
+## Load software
+Load_seqtk() {
+    module load miniconda3/4.12.0-py39
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
+    source activate /fs/ess/PAS0471/jelmer/conda/seqtk
+}
 
-## Parse command-line options
-while getopts 'i:o:a:A:h' flag; do
-    case "${flag}" in
-        i) entap_dir="$OPTARG" ;;
-        o) out_assembly="$OPTARG" ;;
-        a) in_1trans="$OPTARG" ;;
-        A) in_alltrans="$OPTARG" ;;
-        h) Help && exit 0 ;;
-        \?) echo -e "\n## $0: ERROR: Invalid option -$OPTARG\n\n" >&2 && exit 1 ;;
-        :) echo -e "\n## $0: ERROR: Option -$OPTARG requires an argument\n\n" >&2 && exit 1 ;;
+Load_bioawk() {
+    module load miniconda3/4.12.0-py39
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
+    source activate /fs/project/PAS0471/jelmer/conda/bioawk
+}
+
+## Exit upon error with a message
+Die() {
+    error_message=${1}
+    error_args=${2-none}
+    
+    echo >&2
+    echo "=====================================================================" >&2
+    printf "$0: ERROR: %s\n" "$error_message" >&2
+    echo -e "\nFor help, run this script with the '-h' option" >&2
+    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
+    if [[ "$error_args" != "none" ]]; then
+        echo -e "\nArguments passed to the script:" >&2
+        echo "$error_args" >&2
+    fi
+    echo -e "\nEXITING..." >&2
+    echo "=====================================================================" >&2
+    echo >&2
+    exit 1
+}
+
+
+# ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
+## Option defaults
+debug=false
+
+
+# ==============================================================================
+#                          PARSE COMMAND-LINE ARGS
+# ==============================================================================
+## Placeholder defaults
+entap_dir=""
+in_1trans=""            # Input assembly with 1 transcript per genes
+in_alltrans=""          # Input assembly with all transcripts
+outdir=""
+
+## Parse command-line args
+all_args="$*"
+
+while [ "$1" != "" ]; do
+    case "$1" in
+        -i | --entap-dir )  shift && entap_dir=$1 ;;
+        --in-1trans )       shift && in_1trans=$1 ;;
+        --in-alltrans )     shift && in_alltrans=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        -v | --version )    Print_version; exit 0 ;;
+        -h )                Print_help; exit 0 ;;
+        --help )            Print_help_program; exit 0;;
+        --debug )           debug=true ;;
+        * )                 Die "Invalid option $1" "$all_args" ;;
     esac
+    shift
 done
 
 
-# SETUP ------------------------------------------------------------------------
-## Software
-module load python/3.6-conda5.2
-source activate /fs/ess/PAS0471/jelmer/conda/seqtk
+# ==============================================================================
+#                          OTHER SETUP
+# ==============================================================================
+## In debugging mode, print all commands
+[[ "$debug" = true ]] && set -o xtrace
 
-## Bash strict mode
+## Load software
+Load_seqtk
+
+## Bash script settings
 set -euo pipefail
 
 ## Input files
@@ -63,30 +132,47 @@ entap_contam="$entap_findir"/final_annotations_contam_lvl0.tsv
 frame_dir="$entap_dir"/frame_selection/TransDecoder/processed
 
 ## Output files
-outdir=$(dirname "$out_assembly")
+assembly_out="$outdir"/assembly.fasta
 not_annot="$outdir"/genes_notannot.txt                      # Genes that weren't annotated
 out_annot="$outdir"/final_annotations_no_contam_lvl0.tsv    # Final annotation after excluding not-annotated genes
 gene_trans_map="$outdir"/gene_trans_map.tsv
+gene_lengths="$outdir"/gene_lengths.tsv
 trans_final="$outdir"/transIDs_final.txt
+
+## Check input
+[[ "$entap_dir" = "" ]] && Die "Please specify an input dir with -i/--entap_dir" "$all_args"
+[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
+[[ ! -f "$in_1trans" ]] && Die "Input file $in_1trans does not exist"
+[[ ! -f "$in_alltrans" ]] && Die "Input file $in_alltrans does not exist"
+
+[[ ! -d "$entap_findir" ]] && Die "Input file $entap_findir does not exist"
+[[ ! -f "$entap_fin" ]] && Die "Input file $entap_fin does not exist"
+[[ ! -f "$entap_contam" ]] && Die "Input file $entap_contam does not exist"
+[[ ! -d "$frame_dir" ]] && Die "Input file $frame_dir does not exist"
 
 ## Report
 echo
-echo "## Starting script entap_process.sh"
+echo "=========================================================================="
+echo "                    STARTING SCRIPT TODO_SCRIPTNAME"
 date
+echo "=========================================================================="
+echo "All arguments to this script:             $all_args"
+echo "Input dir with EnTAP results:             $entap_dir"
+echo "Input assembly - 1 transcript per gene:   $in_1trans"
+echo "Input assembly - all transcripts:         $in_alltrans"
+echo "Output dir:                               $outdir"
+echo "Output assembly:                          $assembly_out"
 echo
-echo "## EnTap dir:                            $entap_dir"
-echo "## Output assembly:                      $out_assembly"
-echo "## Output annotation:                    $out_annot"
-echo -e "------------------------\n"
+echo "Listing the input file(s):"
+ls -lh "$entap_dir" "$in_1trans" "$in_alltrans"
+echo "=========================================================================="
 
-## Check input
-[[ ! -d "$entap_findir" ]] && echo "## ERROR: Dir $entap_findir does not exist" >&2 && exit 1
-[[ ! -f "$entap_fin" ]] && echo "## ERROR: File $entap_findir does not exist" >&2 && exit 1
-[[ ! -f "$entap_contam" ]] && echo "## ERROR: File $entap_findir does not exist" >&2 && exit 1
-[[ ! -d "$frame_dir" ]] && echo "## ERROR: Dir $frame_dir does not exist" >&2 && exit 1
 
-## Create output dir
-mkdir -p "$outdir"
+# ==============================================================================
+#                               RUN
+# ==============================================================================
+## Create the output directory
+mkdir -p "$outdir"/logs
 
 
 # REMOVE NON-ANNOTATED GENES ---------------------------------------------------
@@ -117,11 +203,16 @@ join -t $'\t' "$gene_trans_map" <(tail -n +2 "$out_annot" | cut -f 1 | sed 's/t1
     cut -f 2 >"$trans_final"
 
 ## Subset the FASTA file
-seqtk subseq "$in_alltrans" "$trans_final" >"$out_assembly"
+seqtk subseq "$in_alltrans" "$trans_final" >"$assembly_out"
 
 ## Get stats to report
-ntrans_out=$(grep -c "^>" "$out_assembly")
+ntrans_out=$(grep -c "^>" "$assembly_out")
 ntrans_in=$(grep -c "^>" "$in_alltrans")
+
+
+# GET GENE LENGTHS FOR GO ------------------------------------------------------
+Load_bioawk
+bioawk -c fastx '{ print $name, length($seq) }' "$assembly_out" > "$gene_lengths"
 
 
 # CHECK ENTAP RESULTS ----------------------------------------------------------
@@ -135,28 +226,31 @@ n_complete=$(grep "^>" "$frame_dir"/complete_genes.faa | sort | uniq | wc -l)
 n_contam=$(tail -n +2 "$entap_contam" | wc -l)
 
 
-# WRAP-UP ----------------------------------------------------------------------
-## Report
-echo "## Number of input genes:                            $n_in"
-echo "## Number of output genes:                           $n_out"
+# REPORT -----------------------------------------------------------------------
+echo "Number of input genes:                     $n_in"
+echo "Number of output genes:                    $n_out"
 echo
-echo "## Number of input transcripts:                      $ntrans_in"
-echo "## Number of output transcripts:                     $ntrans_out"
+echo "Number of input transcripts:               $ntrans_in"
+echo "Number of output transcripts:              $ntrans_out"
 echo
-echo "## Number of genes with no frame:                    $n_noframe"
-echo "## Number of non-annotated genes:                    $n_notannot"
-echo "## Number of genes marked as contaminant:            $n_contam"
+echo "Number of genes with no frame:             $n_noframe"
+echo "Number of non-annotated genes:             $n_notannot"
+echo "Number of genes marked as contaminant:     $n_contam"
 echo
-echo "## Number of partial genes:                          $n_partial"
-echo "## Number of internal genes:                         $n_internal"
-echo "## Number of complete genes:                         $n_complete"
+echo "Number of partial genes:                   $n_partial"
+echo "Number of internal genes:                  $n_internal"
+echo "Number of complete genes:                  $n_complete"
 
-echo -e "\n-------------------------------"
-echo "## Listing files in the output dir:"
-ls -lh "$outdir"
-echo -e "\n## Done with script entap_process.sh"
-date
+
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
 echo
+echo "========================================================================="
+echo -e "\n# Listing files in the output dir:"
+ls -lhd "$PWD"/"$outdir"/*
+echo "# Done with script"
+date
 
 
 # SANDBOX ----------------------------------------------------------------------

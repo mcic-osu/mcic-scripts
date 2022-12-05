@@ -64,8 +64,10 @@ Load_software() {
 
 ## Print version
 Print_version() {
+    set +e
     Load_software
     #TODO_THIS_SOFTWARE --version
+    set -e
 }
 
 ## Print help for the focal program
@@ -200,7 +202,7 @@ Set_threads
 set -euo pipefail
 
 ## FASTQ filename parsing TODO_edit_or_remove
-#file_ext=$(basename "$R1" | sed -E 's/.*(.fasta|.fastq.gz|.fq.gz)/\1/')
+#file_ext=$(basename "$R1" | sed -E 's/.*(.fasta|.fastq.gz|.fq.gz)$/\1/')
 #R1_suffix=$(basename "$R1" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
 #R2_suffix=${R1_suffix/1/2}
 #R2=${R1/$R1_suffix/$R2_suffix}

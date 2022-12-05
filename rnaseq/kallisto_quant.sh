@@ -28,6 +28,7 @@ Print_help() {
     echo "  -i/--R1         <file>  R1 FASTQ input file (The name of the R2 file will be inferred by the script.)"
     echo "  -r/--ref_index  <file>  Kallisto transcriptome index (create with 'kallisto_index.sh' script)"
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
+    echo "                          NOTE: Use a separate outdir for each sample, or output files will overwrite each other"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to Kallisto"
@@ -38,6 +39,9 @@ Print_help() {
     echo "  -h                      Print this help message and exit"
     echo "  --help                  Print the help for Kallisto and exit"
     echo "  -v/--version            Print the version of Kallisto and exit"
+    echo
+    echo "OUTPUT:"
+    echo "  - 'abundance.h5' and 'abundance.tsv' files"
     echo
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 -i results/trinity/assembly.fa -o results/kallisto/trans.idx"
@@ -189,23 +193,25 @@ Set_threads
 ## Bash script settings
 set -euo pipefail
 
+## Process parameters
+file_ext=$(basename "$R1" | sed -E 's/.*(.fastq.gz|.fq.gz)$/\1/')
+R1_suffix=$(basename "$R1" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
+R2_suffix=${R1_suffix/1/2}
+R2=${R1/$R1_suffix/$R2_suffix}
+sample_id=$(basename "$R1" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
+
 ## Check input
 [[ "$R1" = "" ]] && Die "Please specify an R1 input file with -i/--infile" "$all_args"
 [[ "$index" = "" ]] && Die "Please specify an index input file with -r/--index" "$all_args"
 [[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
 [[ ! -f "$R1" ]] && Die "Input file $R1 does not exist"
 [[ ! -f "$index" ]] && Die "Input file $index does not exist"
-
-## Process parameters
-R2=${R1/_R1_/_R2_}                               # R2 FASTQ file
-sample_id=$(basename "$R1" | sed 's/_R1_.*//')   # Sample ID - for output files
-outdir_full=$outdir/"$sample_id"
-
+[[ "$R1" = "$R2" ]] && Die "The R1 file is the same as R2: $R2" "$all_args"
 
 ## Report
 echo
 echo "=========================================================================="
-echo "                    STARTING SCRIPT TODO_SCRIPTNAME"
+echo "                 STARTING SCRIPT KALLISTO_QUANT.SH"
 date
 echo "=========================================================================="
 echo "All arguments to this script:     $all_args"
@@ -213,7 +219,7 @@ echo "Input R1 FASTQ file:              $R1"
 echo "Input R2 FASTQ file:              $R2"
 echo "Output dir:                       $outdir"
 [[ $more_args != "" ]] && echo "Other arguments for Kallisto:     $more_args"
-echo "Sample ID (inferred by the script): $sample_id"
+echo "Sample ID:                        $sample_id"
 echo "Number of threads/cores:          $threads"
 echo
 echo "Listing the input file(s):"
@@ -235,7 +241,7 @@ ${e}mkdir -p "$outdir"/logs
 echo -e "\n# Now running Kallisto quant..."
 ${e}Time kallisto quant \
     -i "$index" \
-    -o "$outdir_full" \
+    -o "$outdir" \
     -b 100 \
     "$R1" "$R2"
 
