@@ -1,9 +1,9 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
-#SBATCH --mem=40G
-#SBATCH --cpus-per-task=10
+#SBATCH --time=3:00:00
+#SBATCH --mem=100G
+#SBATCH --cpus-per-task=25
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --job-name=merge_bam
@@ -26,7 +26,7 @@ Print_help() {
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -o/--outfile    <dir>   Output BAM file"
-    echo "  -i/--infile     <file>  Input dir with BAM files (all BAM files in the dir will be used)"
+    echo "  -i/--indir      <dir>   Input dir with BAM files (all BAM files in the dir will be used)"
     echo "                          Specify the input either with an input dir or BAM files as positional arguments"
     echo
     echo "UTILITY OPTIONS:"
@@ -155,6 +155,7 @@ slurm=true
 declare -a bams
 outdir=""
 indir=""
+tmpdir_arg=""
 
 ## Parse command-line args
 all_args="$*"
@@ -199,8 +200,11 @@ outdir=$(dirname "$outfile")
 [[ "$indir" = "" && ${#bams[@]} = 0 ]] && Die "Please specify either an input dir with -i/--indir, or BAM files as positional args" "$all_args"
 [[ "$indir" != "" && ! -d "$indir" ]] && Die "Input file $indir does not exist"
 
-## Get BAM files if an input dir is provided
-[[ "$indir" != "" ]] && mapfile bams < <(find "$indir" -type f)
+## Read BAM files into an array if an input dir is provided
+[[ "$indir" != "" ]] && mapfile -t bams < <(find "$indir" -type f -name "*bam")
+
+## Set temporary directory if this is a SLURM job
+[[ "$slurm" = true ]] && tmpdir_arg="-T $TMPDIR"
 
 ## Report
 echo
@@ -214,7 +218,7 @@ echo "Number of threads/cores:          $threads"
 echo "Number of input BAM files:        ${#bams[@]}"
 echo
 echo "Listing the input BAM files:"
-for bam in "${bams[@]}"; do ls -lh $bam; done
+for bam in "${bams[@]}"; do ls -lh "$bam"; done
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
@@ -229,8 +233,14 @@ echo "==========================================================================
 ${e}mkdir -p "$outdir"/logs
 
 echo "## Now running samtools..."
-${e}Time samtools merge -o - ${bams[@]} |
-    samtools sort -@ "$threads" > "$outfile"
+${e}Time samtools merge \
+    -o - \
+    "${bams[@]}" |
+    samtools sort \
+        -@ "$threads" \
+        -m 4G \
+        $tmpdir_arg \
+        > "$outfile"
 
 
 # ==============================================================================
