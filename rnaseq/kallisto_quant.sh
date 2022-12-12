@@ -26,11 +26,11 @@ Print_help() {
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--R1         <file>  R1 FASTQ input file (The name of the R2 file will be inferred by the script.)"
-    echo "  -r/--ref_index  <file>  Kallisto transcriptome index (create with 'kallisto_index.sh' script)"
+    echo "  -r/--ref-index  <file>  Kallisto transcriptome index (create with 'kallisto_index.sh' script)"
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
-    echo "                          NOTE: Use a separate outdir for each sample, or output files will overwrite each other"
     echo
     echo "OTHER KEY OPTIONS:"
+    echo "  --strandedness  <str>   Library strandedness: 'reverse', 'forward' or 'unstranded'      [default: 'reverse']"
     echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to Kallisto"
     echo
     echo "UTILITY OPTIONS:"
@@ -144,6 +144,8 @@ Die() {
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 ## Option defaults
+strandedness=reverse
+
 debug=false
 dryrun=false && e=""
 slurm=true
@@ -163,8 +165,9 @@ all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --R1 )         shift && R1=$1 ;;
-        -r | --index )      shift && index=$1 ;;
+        -r | --ref-index )  shift && index=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
+        --strandedness )    shift && strandedness=$1 ;;
         --more-args )       shift && more_args=$1 ;;
         -v | --version )    Print_version; exit 0 ;;
         -h )                Print_help; exit 0 ;;
@@ -193,12 +196,22 @@ Set_threads
 ## Bash script settings
 set -euo pipefail
 
-## Process parameters
+## Get name of R2 file and sample ID
 file_ext=$(basename "$R1" | sed -E 's/.*(.fastq.gz|.fq.gz)$/\1/')
 R1_suffix=$(basename "$R1" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
 R2_suffix=${R1_suffix/1/2}
 R2=${R1/$R1_suffix/$R2_suffix}
 sample_id=$(basename "$R1" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
+
+if [[ "$strandedness" = "reverse" ]]; then
+    strand_arg="--rf-stranded"
+elif  [[ "$strandedness" = "forward" ]]; then
+    strand_arg="--fr-stranded"
+elif  [[ "$strandedness" = "unstranded" ]]; then
+    strand_arg=""
+else
+    Die "Unknown strandedness: $strandedness"
+fi
 
 ## Check input
 [[ "$R1" = "" ]] && Die "Please specify an R1 input file with -i/--infile" "$all_args"
@@ -218,6 +231,7 @@ echo "All arguments to this script:     $all_args"
 echo "Input R1 FASTQ file:              $R1"
 echo "Input R2 FASTQ file:              $R2"
 echo "Output dir:                       $outdir"
+echo "Library strandedness:             $strandedness"
 [[ $more_args != "" ]] && echo "Other arguments for Kallisto:     $more_args"
 echo "Sample ID:                        $sample_id"
 echo "Number of threads/cores:          $threads"
@@ -235,17 +249,23 @@ echo "==========================================================================
 #                               RUN
 # ==============================================================================
 ## Create the output directory
-${e}mkdir -p "$outdir"/logs
+${e}mkdir -p "$outdir"/logs "$outdir"/"$sample_id"
 
 ## Run
 echo -e "\n# Now running Kallisto quant..."
 ${e}Time kallisto quant \
-    -i "$index" \
-    -o "$outdir" \
-    -b 100 \
+    --index="$index" \
+    --output-dir="$outdir"/"$sample_id" \
+    --bootstrap-samples=100 \
+    --threads="$threads" \
+    --verbose \
+    $strand_arg \
     "$R1" "$R2"
 
-#? -b = number of bootstraps
+## Rename output
+echo -e "\n# Moving and renaming the main output files..."
+mv -v "$outdir"/"$sample_id"/abundance.h5 "$outdir"/"$sample_id"_abundance.h5
+mv -v "$outdir"/"$sample_id"/abundance.tsv "$outdir"/"$sample_id"_abundance.tsv
 
 
 # ==============================================================================
