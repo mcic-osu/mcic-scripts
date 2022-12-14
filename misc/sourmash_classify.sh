@@ -9,29 +9,29 @@
 # PARSE ARGUMENTS --------------------------------------------------------------
 ## Help function
 Help() {
-  echo
-  echo "$0: Search for a query in a sourmash database using LCA classification."
-  echo
-  echo "Syntax: $0 -i <input-dir> -o <output-dir> ..."
-  echo
-  echo "Required options:"
-  echo "    -i FILE           Input FASTA file"
-  echo "    -o DIR            Output dir"
-  echo
-  echo "Other options:"
-  echo "    -d FILE           Path to a .lca.json.gz sourmash database"
-  echo "                      [default: download GTDB database]"
-  echo "    -D DIR            Directory to download GTDB database to (use either -d or -D)"
-  echo "                      [default: download to output dir]"
-  echo "    -k INTEGER        Kmer size (21, 31, or 51)                [default: 31]"
-  echo "    -h                Print this help message and exit"
-  echo
-  echo "Example:              $0 -i data/refgenomes -o results/sourmash/db -d mydb -k 29"
-  echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
-  echo
-  echo "Sourmash documentation: https://sourmash.readthedocs.io"
-  echo "Sourmash paper: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6720031/"
-  echo
+    echo
+    echo "$0: Search for a query in a sourmash database using LCA classification."
+    echo
+    echo "Syntax: $0 -i <input-dir> -o <output-dir> ..."
+    echo
+    echo "Required options:"
+    echo "    -i FILE           Input FASTA file"
+    echo "    -o DIR            Output dir"
+    echo
+    echo "Other options:"
+    echo "    -d FILE           Path to a .lca.json.gz sourmash database"
+    echo "                      [default: download GTDB database]"
+    echo "    -D DIR            Directory to download GTDB database to (use either -d or -D)"
+    echo "                      [default: download to output dir]"
+    echo "    -k INTEGER        Kmer size (21, 31, or 51)                [default: 31]"
+    echo "    -h                Print this help message and exit"
+    echo
+    echo "Example:              $0 -i data/refgenomes -o results/sourmash/db -d mydb -k 29"
+    echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
+    echo
+    echo "Sourmash documentation: https://sourmash.readthedocs.io"
+    echo "Sourmash paper: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6720031/"
+    echo
 }
 
 ## Option defaults
@@ -43,23 +43,23 @@ kval=31
 
 ## Parse command-line options
 while getopts ':i:o:d:D:k:h' flag; do
-  case "${flag}" in
-    i) fa_in="$OPTARG" ;;
-    d) db="$OPTARG" ;;
-    D) db_dir="$OPTARG" ;;
-    o) outdir="$OPTARG" ;;
-    k) kval="$OPTARG" ;;
-    h) Help && exit 0 ;;
-    \?) echo -e "\n## $0: ERROR: Invalid option -$OPTARG\n\n" >&2 && exit 1 ;;
-    :) echo -e "\n## $0: ERROR: Option -$OPTARG requires an argument\n\n" >&2 && exit 1 ;;
-  esac
+    case "${flag}" in
+        i) fa_in="$OPTARG" ;;
+        d) db="$OPTARG" ;;
+        D) db_dir="$OPTARG" ;;
+        o) outdir="$OPTARG" ;;
+        k) kval="$OPTARG" ;;
+        h) Help && exit 0 ;;
+        \?) echo -e "\n## $0: ERROR: Invalid option -$OPTARG\n\n" >&2 && exit 1 ;;
+        :) echo -e "\n## $0: ERROR: Option -$OPTARG requires an argument\n\n" >&2 && exit 1 ;;
+    esac
 done
 
 
 # SETUP ------------------------------------------------------------------------
 ## Software
 module load python/3.6-conda5.2
-source activate /fs/project/PAS0471/jelmer/conda/sourmash-4.4.0
+source activate /fs/project/PAS0471/jelmer/conda/sourmash
 
 ## Bash strict mode
 set -euo pipefail
@@ -101,7 +101,7 @@ if [[ ! -f "$sig_in" ]]; then
     sourmash sketch dna -p k="$kval" "$fa_in"
     echo
 else
-    echo -e "## Sourmash signature file for query already exists ($sig_in)\nq"
+    echo -e "## Sourmash signature file for query already exists ($sig_in)\n"
 fi
 
 ## Download the database - https://sourmash.readthedocs.io/en/latest/databases.html
