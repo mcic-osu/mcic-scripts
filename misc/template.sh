@@ -188,6 +188,9 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
+## Bash script settings
+set -euo pipefail
+
 ## In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
@@ -197,9 +200,6 @@ done
 ## Load software and set nr of threads
 [[ "$dryrun" = false ]] && Load_software
 Set_threads
-
-## Bash script settings
-set -euo pipefail
 
 ## FASTQ filename parsing TODO_edit_or_remove
 #file_ext=$(basename "$R1" | sed -E 's/.*(.fasta|.fastq.gz|.fq.gz)$/\1/')
