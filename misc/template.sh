@@ -39,7 +39,7 @@ Print_help() {
     echo "  -v/--version            Print the version of TODO_THIS_SOFTWARE and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i TODO -o results/TODO "
+    echo "  sbatch $0 -i TODO -o results/TODO"
     echo
     echo "HARDCODED PARAMETERS:"
     echo "  - "
@@ -57,7 +57,7 @@ Print_help() {
 Load_software() {
     set +u
     module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate TODO_THIS_SOFTWARE_ENV
     set -u
 }
