@@ -9,26 +9,24 @@
 
 # SET-UP & PARSE ARGS ----------------------------------------------------------
 ## Load software
-source ~/.bashrc
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/miniconda3/envs/bbmap-env
+module load python/3.6-conda5.2
+source activate /fs/ess/PAS0471/jelmer/conda/bbmap-38.96
 
 ## Bash strict settings
 set -euo pipefail
 
 ## Help function
-Help()
-{
-   echo "## fqshuffle.sh: script to shuffle FASTQ files using BBmap shuffle.sh"
-   echo
-   echo "## Syntax: fqshuffle.sh -i <R1_in> -I <R2_in> -o <R1_out> -o <R2_out> [-h]"
-   echo "## Options:"
-   echo "## -h     Print help."
-   echo "## -i     R1 input file (REQUIRED)"
-   echo "## -I     R2 input file (REQUIRED)"
-   echo "## -o     R1 output file (REQUIRED)"
-   echo "## -O     R2 output file (REQUIRED)"
-   echo
+Help() {
+    echo "## fqshuffle.sh: script to shuffle FASTQ files using BBmap shuffle.sh"
+    echo
+    echo "## Syntax: fqshuffle.sh -i <R1_in> -I <R2_in> -o <R1_out> -o <R2_out> [-h]"
+    echo "## Options:"
+    echo "## -h     Print help."
+    echo "## -i     R1 input file (REQUIRED)"
+    echo "## -I     R2 input file (REQUIRED)"
+    echo "## -o     R1 output file (REQUIRED)"
+    echo "## -O     R2 output file (REQUIRED)"
+    echo
 }
 
 ## Parse command-line options

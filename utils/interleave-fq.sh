@@ -10,7 +10,7 @@ outdir=$2
 
 ## Software
 module load python
-source activate /users/PAS0471/jelmer/miniconda3/envs/bbmap-env
+source activate /fs/ess/PAS0471/jelmer/conda/bbmap-38.96
 
 ## Bash strict settings
 set -euo pipefail

@@ -14,7 +14,7 @@ lookup="$outdir"/lookup.txt
 
 ## Software
 module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/miniconda3/envs/blast-env
+source activate /fs/ess/PAS0471/jelmer/conda/entrez-direct
 export NCBI_API_KEY=34618c91021ccd7f17429b650a087b585f08
 
 ## Report

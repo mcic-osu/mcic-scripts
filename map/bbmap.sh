@@ -7,9 +7,8 @@
 #SBATCH --output=slurm-bbmap-%j.out
 
 ## Software
-source ~/.bashrc
-[[ $(which conda) = ~/miniconda3/bin/conda ]] || module load python/3.6-conda5.2
-conda activate bbmap-env
+module load python/3.6-conda5.2
+conda activate /fs/ess/PAS0471/jelmer/conda/bbmap-38.96
 conda activate --stack samtools-env
 
 ## Bash strict mode
