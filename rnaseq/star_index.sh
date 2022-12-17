@@ -39,8 +39,8 @@ Help() {
 }
 
 ## Option defaults
-ref_fa=""
-index_dir=""
+fasta=""
+outdir=""
 index_size="auto"
 gff=""
 overhang="auto"
@@ -49,9 +49,9 @@ read_len=150
 ## Parse command-line options
 while getopts ':i:a:o:s:r:v:h' flag; do
     case "${flag}" in
-        i) ref_fa="$OPTARG" ;;
+        i) fasta="$OPTARG" ;;
         a) gff="$OPTARG" ;;
-        o) index_dir="$OPTARG" ;;
+        o) outdir="$OPTARG" ;;
         s) index_size="$OPTARG" ;;
         r) read_len="$OPTARG" ;;
         v) overhang="$OPTARG" ;;
@@ -63,59 +63,67 @@ done
 
 
 # SETUP ------------------------------------------------------------------------
-## Check inputs
-[[ ! -f "$ref_fa" ]] && echo "## ERROR: Input FASTA (-i) $ref_fa does not exist" >&2 && exit 1
-[[ "$gff" != "" ]] && [[ ! -f "$gff" ]] && echo "## ERROR: Input file GFF (-a) $gff does not exist" >&2 && exit 1
-
 ## Load software
 module load python/3.6-conda5.2
 source activate /fs/project/PAS0471/jelmer/conda/star-2.7.10a
 
 ## Strict bash settings
 set -euo pipefail
-
-## Determine amount of memory
-mem_bytes=$((SLURM_MEM_PER_NODE * 1000000))
-mem_gb=$((SLURM_MEM_PER_NODE / 1000))
+## Check input
+[[ "$fasta" = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
+[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
+[[ ! -f "$fasta" ]] && Die "Input FASTA file $fasta does not exist"
+[[ "$gff" != "" ]] && [[ ! -f "$gff" ]] && Die "Input GFF file $fasta does not exist"
 
 
 ## Report
 echo
-echo "## Starting script star_index.sh"
+echo "=========================================================================="
+echo "                    STARTING SCRIPT STAR_INDEX.SH"
 date
-echo
-echo "## Input FASTA file:                 $ref_fa"
+echo "=========================================================================="
+echo "All arguments to this script:     $all_args"
+echo "Input file:                       $fasta"
 [[ "$gff" != "" ]] && echo "## Input GFF file:                   $gff"
-echo "## Genome index dir (output):        $index_dir"
-echo "## Read length:                      $read_len"
-echo "## Memory in GB / bytes:             $mem_gb / $mem_bytes"
+echo "Output dir:                       $outdir"
+echo "Read length:                      $read_len"
+echo "Memory in GB / bytes:             $mem_gb / $mem_bytes"
+[[ $more_args != "" ]] && echo "Other arguments for STAR:         $more_args"
+echo "Number of threads/cores:          $threads"
 echo
+echo "Listing the input file(s):"
+ls -lh "$fasta"
+echo
+[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
+echo "=========================================================================="
 
-## Make output dir if needed
-mkdir -p "$index_dir"/logs
+# ==============================================================================
+#                               RUN
+# ==============================================================================
+## Create the output directory
+${e}mkdir -p "$outdir"/logs
 
-# PREP INPUT -------------------------------------------------------------------
 ## STAR doesn't accept zipped FASTA files -- unzip if needed
-if [[ $ref_fa = *gz ]]; then
-    ref_fa_unzip=${ref_fa/.gz/}
-    if [[ ! -f $ref_fa_unzip ]]; then
-        echo "## Unzipping gzipped FASTA file..."
-        gunzip -c "$ref_fa" > "$ref_fa_unzip"
+if [[ $fasta = *gz ]]; then
+    fasta_unzip=${fasta/.gz/}
+    if [[ ! -f $fasta_unzip ]]; then
+        echo "Unzipping gzipped FASTA file..."
+        gunzip -c "$fasta" > "$fasta_unzip"
     else
-        echo "## Unzipped version of the FASTA file already exists: $ref_fa_unzip"
+        echo "Unzipped version of the FASTA file already exists: $fasta_unzip"
     fi
-    ref_fa="$ref_fa_unzip"
+    fasta="$fasta_unzip"
 fi
 
 ## Determine index size
 if [ "$index_size" = "auto" ]; then
-    echo -e "\n## Automatically determining the index size..."
-    genome_size=$(grep -v "^>" "$ref_fa" | wc -c)
+    echo -e "\nAutomatically determining the index size..."
+    genome_size=$(grep -v "^>" "$fasta" | wc -c)
     index_size=$(python -c "import math; print(math.floor(math.log($genome_size, 2)/2 -1))")
-    echo "## Genome size (autom. determined):  $genome_size"
-    echo "## Index size (autom. determined):   $index_size"
+    echo "Genome size (autom. determined):  $genome_size"
+    echo "Index size (autom. determined):   $index_size"
 else
-    echo "## Index size:                       $index_size"
+    echo "Index size:                       $index_size"
 fi
 
 ## If a GFF file is provided, build the appropriate argument for STAR
@@ -123,29 +131,39 @@ if [ "$gff" != "" ]; then
     ## Overhang length should be read length minus 1 - only if GFF is included
     [[ $overhang = "auto" ]] && overhang=$(( read_len - 1 ))
     gff_arg="--sjdbGTFfile $gff --sjdbGTFtagExonParentTranscript Parent --sjdbOverhang $overhang"
-    echo "## Overhang:                     $overhang"
+    echo "Overhang:                     $overhang"
 else
     gff_arg=""
 fi
 
-echo -e "-----------------------\n"
+## Report
+echo "=========================================================================="
+## Print reserved resources
+[[ "$slurm" = true ]] && Print_resources
 
 
-# RUN STAR ---------------------------------------------------------------------
-echo -e "\n## Indexing genome with STAR...."
-STAR --runMode genomeGenerate \
-     --limitGenomeGenerateRAM "$mem_bytes" \
-     --genomeDir "$index_dir" \
-     --genomeFastaFiles "$ref_fa" \
-     --genomeSAindexNbases "$index_size" \
-     --runThreadN "$SLURM_CPUS_ON_NODE" ${gff_arg}
+## Run STAR
+echo -e "\n# Indexing with STAR...."
+${e}Time STAR \
+    --runMode genomeGenerate \
+    --limitGenomeGenerateRAM "$mem_bytes" \
+    --genomeDir "$outdir" \
+    --genomeFastaFiles "$fasta" \
+    --genomeSAindexNbases "$index_size" \
+    --runThreadN "$threads" ${gff_arg}
 
 
-# WRAP UP ----------------------------------------------------------------------
-echo -e "\n## Listing output files:"
-ls -lh "$index_dir"
-echo -e "\n## Done with script star_index.sh"
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
+echo
+echo "========================================================================="
+if [[ "$dryrun" = false ]]; then
+    echo "# Version used:"
+    Print_version | tee "$outdir"/logs/version.txt
+    echo -e "\n# Listing files in the output dir:"
+    ls -lhd "$PWD"/"$outdir"/*
+    [[ "$slurm" = true ]] && Resource_usage
+fi
+echo "# Done with script"
 date
-echo
-sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
-echo
