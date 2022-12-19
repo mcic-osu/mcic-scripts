@@ -5,14 +5,12 @@
 #SBATCH --output=slurm-dada_qc-%j.out
 
 # SET-UP -----------------------------------------------------------------------
-message("## Starting script dada_qc.R")
-Sys.time()
-message()
+# Packages
+packages <- c("tidyverse", "argparse")
 
-## Parse command-line arguments
+# Parse command-line arguments
 if (!require(argparse)) install.packages("argparse", repos = "https://cran.rstudio.com/")
 library(argparse)
-
 parser <- ArgumentParser()
 parser$add_argument("-i", "--infile",
                     type = "character", required = TRUE,
@@ -25,34 +23,38 @@ args <- parser$parse_args()
 infile <- args$infile
 outdir <- args$outdir
 
-## Load packages
+# Load packages
 if (!require(pacman)) install.packages("pacman", repos = "https://cran.rstudio.com/")
-packages <- c("tidyverse")
 pacman::p_load(char = packages)
 
-## Report
-message("## Input file:     ", infile)
-message("## Output dir:     ", outdir)
-message()
-
-## Files and settings
+# Define output files
 props_df_file <- file.path(outdir, "nseq_props.txt")
 meanprops_df_file <- file.path(outdir, "nseq_meanprops.txt")
 meancounts_df_file <- file.path(outdir, "nseq_mean.txt")
-
 plotfile_bars <- file.path(outdir, "nseq_bars.png")
 plotfile_lines <- file.path(outdir,"nseq_lines.png")
 plotfile_bars_prop <- file.path(outdir,"nseq_prop_bars.png")
 plotfile_lines_prop <- file.path(outdir, "nseq_prop_lines.png")
 
-### Plotting order
+# Set plotting order
 status_levels <- c("input", "fastq_filtered", "denoised", "reads_merged",
                    "non_chimeric", "length_filtered")
 status_levels2 <- c("fastq_filtering", "denoising", "read_merging",
                     "chimera_removal", "length_filtering", "(remaining)")
 
-## Create output dir if necessary
+# Create output dir if necessary
 if (! dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
+
+# Report
+message()
+message("# ====================================================================")
+message("#               STARTING SCRIPT DADA_QC.R")
+message("# ====================================================================")
+Sys.time()
+message("# Input file:     ", infile)
+message("# Output dir:     ", outdir)
+message("# ====================================================================")
+message()
 
 
 # READ INPUT FILES -------------------------------------------------------------
@@ -65,8 +67,9 @@ qc <- read_tsv(infile, show_col_types = FALSE) %>%
   select(-denoised_f)
 colnames(qc)[1] <- "sampleID"
 
+
 # PLOTS WITH ABSOLUTE NUMBERS --------------------------------------------------
-## Barplot
+# Barplot
 p_bars <- qc %>%
   mutate(fastq_filtering = input - fastq_filtered,
          denoising = fastq_filtered - denoised,
@@ -88,7 +91,7 @@ p_bars <- qc %>%
   theme(panel.grid.major.y = element_blank()) +
   labs(fill = "Removed by", x = "Number of sequences", y = NULL)
 
-## Line plot
+# Line plot
 p_lines <- qc %>%
   pivot_longer(cols = -sampleID, names_to = "status", values_to = "count") %>%
   mutate(status = factor(status, levels = status_levels)) %>%
@@ -103,7 +106,7 @@ p_lines <- qc %>%
 
 
 # PLOTS WITH PROPORTIONS -------------------------------------------------------
-## Make df with proportions
+# Make df with proportions
 qc_prop <- qc %>%
   mutate(fastq_filtered = round(fastq_filtered / input, 3),
          denoised = round(denoised / input, 3),
@@ -112,7 +115,7 @@ qc_prop <- qc %>%
          length_filtered = round(length_filtered / input, 3),
          input = 1)
 
-## Create plots
+# Create plots
 p_bars_prop <- qc_prop %>%
   mutate(fastq_filtering = input - fastq_filtered,
          denoising = fastq_filtered - denoised,
@@ -148,7 +151,7 @@ p_lines_prop <- qc_prop %>%
   theme(plot.margin = margin(0.2, 1.5, 0.2, 0.2, "cm")) +
   labs(y = "Proportion of sequences retained")
 
-## Get mean proportions
+# Get mean proportions
 qc_prop_mean <- qc_prop %>% summarise_if(is.numeric, ~ round(mean(.x), 4))
 qc_mean <- qc %>% summarise_if(is.numeric, ~ round(mean(.x)))
 
@@ -168,8 +171,8 @@ write_tsv(qc_prop, props_df_file)
 write_tsv(qc_prop_mean, meanprops_df_file)
 write_tsv(qc_mean, meancounts_df_file)
 
-## Report
-message("\n## Listing output files:")
+# Report
+message("\n# Listing output files:")
 system(paste("ls -lh", props_df_file))
 system(paste("ls -lh", meanprops_df_file))
 system(paste("ls -lh", meancounts_df_file))
@@ -178,6 +181,8 @@ system(paste("ls -lh", plotfile_lines))
 system(paste("ls -lh", plotfile_bars_prop))
 system(paste("ls -lh", plotfile_lines_prop))
 
-message("\n## Done with script dada_qc.R")
+message("\n# Done with script dada_qc.R")
 Sys.time()
+message()
+sessionInfo()
 message()
