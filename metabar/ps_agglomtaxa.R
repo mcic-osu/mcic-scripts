@@ -59,16 +59,19 @@ message()
 
 
 # CREATE PHYLOSEQ OBJECTS AGGLOMERATED BY TAXRANK ------------------------------
+# Create the output dir
+dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+
 # Read input file
 ps <- readRDS(ps_in)
 
 # Agglomerate
-ps_phylum <- tax_glom(ps, taxrank = "phylum")
-ps_class <- tax_glom(ps, taxrank = "class")
-ps_order <- tax_glom(ps, taxrank = "order")
-ps_family <- tax_glom(ps, taxrank = "family")
-ps_genus <- tax_glom(ps, taxrank = "genus")
-ps_species <- tax_glom(ps, taxrank = "species")
+ps_phylum <- tax_glom(ps, taxrank = "Phylum")
+ps_class <- tax_glom(ps, taxrank = "Class")
+ps_order <- tax_glom(ps, taxrank = "Order")
+ps_family <- tax_glom(ps, taxrank = "Family")
+ps_genus <- tax_glom(ps, taxrank = "Genus")
+ps_species <- tax_glom(ps, taxrank = "Species")
 
 # Save output files
 saveRDS(ps_phylum, outfile_phylum)

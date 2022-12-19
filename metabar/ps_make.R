@@ -53,12 +53,12 @@ sample_col_name <- args$sample_col_name
 
 # Load packages
 if (!require(pacman)) install.packages("pacman", repos = "https://cran.rstudio.com/")
-if (!require(MicrobiomeR)) remotes::install("QsRutils") 
+if (!require(QsRutils)) remotes::install_github("QsRutils") 
 pacman::p_load(char = packages)
 
 # Create output dir if needed
 outdir <- dirname(ps_rds)
-if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
+dir.create(file.path(outdir, "logs"), recursive = TRUE, showWarnings = FALSE)
 
 # Report
 message()
