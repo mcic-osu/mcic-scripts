@@ -9,6 +9,8 @@
 #SBATCH --job-name=TODO_THIS_SOFTWARE
 #SBATCH --output=slurm-TODO_THIS_SOFTWARE-%j.out
 
+#TODO - add 'quiet' option
+
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
@@ -180,6 +182,7 @@ while [ "$1" != "" ]; do
         --dryrun )          dryrun=true && e="echo ";;
         --debug )           debug=true ;;
         * )                 Die "Invalid option $1" "$all_args" ;;
+        #* )                 infiles[$count]=$1 && count=$(( count + 1 )) ;;
     esac
     shift
 done
