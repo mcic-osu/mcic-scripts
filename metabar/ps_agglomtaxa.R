@@ -1,7 +1,17 @@
 #!/usr/bin/env Rscript
 
 #SBATCH --account=PAS0471
+#SBATCH --time=60
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --job-name=ps_agglomtaxa
 #SBATCH --output=slurm-ps_agglomtaxa-%j.out
+
+#? This script will 'agglomerate' ASVs in a phyloseq object to higher taxonomic levels,
+#? producing separate phyloseq objects at the genus level, family level, etc
+#? Phyloseq objects agglomerated by higher taxonomic levels are useful for plotting and differential abundance testing
 
 
 # SETUP ------------------------------------------------------------------------

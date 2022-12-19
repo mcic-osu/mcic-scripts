@@ -2,7 +2,15 @@
 
 #SBATCH --account=PAS0471
 #SBATCH --time=15
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --job-name=dada_qc
 #SBATCH --output=slurm-dada_qc-%j.out
+
+#? This script will produce some QC tables and figures from the results of a 
+#? dada2 workflow that was run with the 'dada.R' script
 
 # SET-UP -----------------------------------------------------------------------
 # Packages

@@ -3,8 +3,13 @@
 #SBATCH --account=PAS0471
 #SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=8
-#SBATCH --output=slurm-tree-%j.out
+#SBATCH --mem=32G
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --job-name=tree_build
+#SBATCH --output=slurm-tree_build-%j.out
 
+#? This script will build a phylogenetic tree from a set of ASVs
 
 # SET-UP -----------------------------------------------------------------------
 # Packages

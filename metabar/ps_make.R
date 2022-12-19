@@ -3,8 +3,17 @@
 #SBATCH --account=PAS0471
 #SBATCH --time=15
 #SBATCH --cpus-per-task=2
+#SBATCH --mem=8G
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --job-name=ps_make
 #SBATCH --output=slurm-ps_make-%j.out
 
+#? This script will build a phyloseq object, taking as input:
+#? (1) A metadata table
+#? (2) A table with counts for each sample and ASV ('seqtab' from 'dada.R')
+#? (4) Taxonomic assignments for the ASVs in the dataset (from 'tax_assign_*.R')
+#? (3) A phylogenetic tree of the ASVs in the dataset (from 'tree_build.R')
 #? NOTE: In the metadata file, sample IDs should be in the 1st column
 
 # SET-UP -----------------------------------------------------------------------
@@ -15,21 +24,24 @@ packages <- c("BiocManager", "dada2", "phyloseq", "Biostrings", "QsRutils")
 if (!require(argparse)) install.packages("argparse", repos = "https://cran.rstudio.com/")
 library(argparse)
 parser <- ArgumentParser()
-parser$add_argument("-m", "--meta",
+parser$add_argument("--meta",
                     type = "character", required = TRUE,
                     help = "Input file with metadata (REQUIRED)")
-parser$add_argument("-s", "--seqtab",
+parser$add_argument("--seqtab",
                     type = "character", required = TRUE,
                     help = "RDS file with sequence table (REQUIRED)")
-parser$add_argument("-t", "--tree",
+parser$add_argument("--tree",
                     type = "character", required = TRUE,
                     help = "RDS file with tree (REQUIRED)")
-parser$add_argument("-x", "--taxa",
+parser$add_argument("--taxa",
                     type = "character", required = TRUE,
                     help = "RDS file with tax. assignments (REQUIRED)")
 parser$add_argument("-o", "--outfile",
                     type = "character", required = TRUE,
                     help = "Output phyloseq RDS file (REQUIRED)")
+parser$add_argument("--sample_col_name",
+                    type = "character", required = FALSE, default = "sampleID",
+                    help = "Name that will be given to first column of the metadata, which should contain sample IDs")
 args <- parser$parse_args()
 
 seqtab_rds <- args$seqtab
@@ -37,6 +49,7 @@ taxa_rds <- args$taxa
 tree_rds <- args$tree
 meta_file <- args$meta
 ps_rds <- args$outfile
+sample_col_name <- args$sample_col_name
 
 # Load packages
 if (!require(pacman)) install.packages("pacman", repos = "https://cran.rstudio.com/")
@@ -76,25 +89,25 @@ tree <- readRDS(tree_rds)
 
 # Sample metadata
 meta <- read.table(meta_file, sep = "\t", header = TRUE)
-colnames(meta)[1] <- "sampleID"
-rownames(meta) <- meta$sampleID
+colnames(meta)[1] <- sample_col_name
+rownames(meta) <- meta[[sample_col_name]]
 
 
 # CHECK SAMPLE IDs -------------------------------------------------------------
 # Check for matching sample names in FASTQ files and metadata file
 message("\n# First 6 IDs from metadata:")
-head(meta$sampleID)
+head(meta[[sample_col_name]])
 message("# First 6 IDs from seqtab (i.e., from FASTQ file names):")
 head(sampleIDs_seqtab)
 
 message("\n# Are the sample IDs from the metadata and the seqtab the same?")
-identical(sort(meta$sampleID), sampleIDs_seqtab)
+identical(sort(meta[[sample_col_name]]), sampleIDs_seqtab)
 
 message("# Are any samples missing from the seqtab?")
-setdiff(sort(meta$sampleID), sampleIDs_seqtab)
+setdiff(sort(meta[[sample_col_name]]), sampleIDs_seqtab)
 
 message("# Are any samples missing from the metadata?")
-setdiff(sampleIDs_seqtab, sort(meta$sampleID))
+setdiff(sampleIDs_seqtab, sort(meta[[sample_col_name]]))
 
 
 # CREATE PHYLOSEQ OBJECT -------------------------------------------------------

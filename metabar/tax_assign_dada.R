@@ -2,8 +2,15 @@
 
 #SBATCH --account=PAS0471
 #SBATCH --cpus-per-task=8
+#SBATCH --mem=32G
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --job-name=tax_assign
 #SBATCH --output=slurm-tax_assign-%j.out
 
+#? This script will assign taxonomy to a set of ASV sequences, by default using the Silva database
+#? Run this script after the 'dada.R' script, using the 'seqtab.rds' output from that script as input here
+#? Alternatively, the input can be a Qiime2 QZA file
 
 # SET-UP -----------------------------------------------------------------------
 # Packages
@@ -11,10 +18,8 @@ packages <- c("BiocManager", "dada2", "DECIPHER", "tidyverse")
 
 # Constants
 TAX_LEVELS <- c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
-
-# Defaults
-ref_url <- "https://zenodo.org/record/4587955/files/silva_nr99_v138.1_train_set.fa.gz"
-species_url <- "https://zenodo.org/record/4587955/files/silva_species_assignment_v138.1.fa.gz"
+REF_URL <- "https://zenodo.org/record/4587955/files/silva_nr99_v138.1_train_set.fa.gz"
+SPECIES_URL <- "https://zenodo.org/record/4587955/files/silva_species_assignment_v138.1.fa.gz"
 
 # Set nr of threads
 n_threads <- as.integer(system("echo $SLURM_CPUS_PER_TASK", intern = TRUE))
@@ -36,7 +41,7 @@ parser$add_argument("-r", "--ref_file",
 parser$add_argument("--species_file",
                     type = "character",
                     default = NULL,
-                    help = "Taxonomic reference file [default download Silva v138.1 species file]")
+                    help = "Species-level taxonomic reference file [default download Silva v138.1 species file]")
 parser$add_argument("--add_species",
                     type = "logical",
                     default = TRUE,
@@ -100,12 +105,12 @@ qc_tax <- function(taxa_df, tax_levels = NULL) {
 
 # PREPARE REFERENCE SEQUENCES --------------------------------------------------
 if (is.null(ref_file)) {
-    ref_file <- file.path(outdir_ref, basename(ref_url))
-    if (!file.exists(ref_file)) download.file(url = ref_url, destfile = ref_file)
+    ref_file <- file.path(outdir_ref, basename(REF_URL))
+    if (!file.exists(ref_file)) download.file(url = REF_URL, destfile = ref_file)
 }
 if (is.null(species_file)) {
-    species_file <- file.path(outdir_ref, basename(species_url))
-    if (!file.exists(species_file)) download.file(url = species_url, destfile = species_file)
+    species_file <- file.path(outdir_ref, basename(SPECIES_URL))
+    if (!file.exists(species_file)) download.file(url = SPECIES_URL, destfile = species_file)
 }
 
 # PREPARE INPUT SEQUENCES ------------------------------------------------------

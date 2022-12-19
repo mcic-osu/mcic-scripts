@@ -2,10 +2,16 @@
 
 #SBATCH --account=PAS0471
 #SBATCH --time=24:00:00
-#SBATCH --output=slurm-dada-%j.out
-#SBATCH --nodes=1
-#SBATCH --cpus-per-task=8
 #SBATCH --mem=50G
+#SBATCH --cpus-per-task=8
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --job-name=dada
+#SBATCH --output=slurm-dada-%j.out
+
+#? This script will run a full dada2 ASV inference workflow,
+#? taking FASTQ files (with primers removed by cutadapt) as input,
+#? and outputting, among others, a table with ASV abundances.
 
 # SET-UP -----------------------------------------------------------------------
 # Packages

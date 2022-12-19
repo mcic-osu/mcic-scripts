@@ -1,7 +1,15 @@
 #!/usr/bin/env Rscript
 
 #SBATCH --account=PAS0471
+#SBATCH --time=60
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --job-name=ps_filter
 #SBATCH --output=slurm-ps_filter-%j.out
+
+#? This script will filter a phyloseq object to retain only 'good' samples and ASVs
 
 #TODO - Remove negative controls
 
