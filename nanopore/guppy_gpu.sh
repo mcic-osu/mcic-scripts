@@ -2,7 +2,7 @@
 
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
-#SBATCH --gpus-per-node=4
+#SBATCH --gpus-per-node=2
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --job-name=guppy
