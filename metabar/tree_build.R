@@ -11,6 +11,9 @@
 
 #? This script will build a phylogenetic tree from a set of ASVs
 
+#? Load the Conda environment as follows to run this script directly using sbatch:
+#? module load miniconda3/4.12.0-py39 && source activate /fs/ess/PAS0471/jelmer/conda/r-metabar
+
 # SET-UP -----------------------------------------------------------------------
 # Packages
 packages <- c("BiocManager", "dada2", "DECIPHER", "phangorn")
