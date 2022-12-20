@@ -2,75 +2,242 @@
 
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
-#SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
+#SBATCH --mem=64G
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
 #SBATCH --job-name=kallisto_index
 #SBATCH --output=slurm-kallisto_index-%j.out
 
+
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
 ## Help function
-Help() {
-  echo
-  echo "## $0: Index a transcriptome with Kallisto."
-  echo
-  echo "## Syntax: $0 -i <transcriptome-fasta> -o <transcriptome-index> ..."
-  echo
-  echo "## Required options:"
-  echo "##    -i STR    Input: transcriptomoe FASTA file"
-  echo "##    -o STR    Output: transcriptome index file"
-  echo
-  echo "## Other options:"
-  echo "##    -h        Print this help message"
-  echo
-  echo "## Example: $0 -i -o results/trinity/trans.fa -r results/kallisto/trans.idx"
-  echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
-  echo
+Print_help() {
+    echo
+    echo "======================================================================"
+    echo "                            $0"
+    echo "                  INDEX A TRANSCRIPTOME WITH KALLISTO"
+    echo "======================================================================"
+    echo
+    echo "USAGE:"
+    echo "  sbatch $0 -i <assembly FASTA> -o <index file> [...]"
+    echo "  bash $0 -h"
+    echo
+    echo "REQUIRED OPTIONS:"
+    echo "  -i/--infile     <file>  Input: transcriptome FASTA file"
+    echo "  -o/--outfile    <dir>   Output: transcriptome index file (dir will be created if needed)"
+    echo
+    echo "OTHER KEY OPTIONS:"
+    echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to Kallisto"
+    echo
+    echo "UTILITY OPTIONS:"
+    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
+    echo "  --debug                 Run the script in debug mode (print all code)"
+    echo "  -h                      Print this help message and exit"
+    echo "  --help                  Print the help for Kallisto and exit"
+    echo "  -v/--version            Print the version of Kallisto and exit"
+    echo
+    echo "EXAMPLE COMMANDS:"
+    echo "  sbatch $0 -i results/trinity/assembly.fa -o results/kallisto/trans.idx"
+    echo
 }
 
-## Parse command-line options
-while getopts ':i:o:h' flag; do
-  case "${flag}" in
-  i) transcriptome="$OPTARG" ;;
-  o) index="$OPTARG" ;;
-  h) Help && exit 0 ;;
-  \?) echo "## $0: ERROR: Invalid option" >&2 && exit 1 ;;
-  :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
-  esac
+## Load software
+Load_software() {
+    module load miniconda3/4.12.0-py39
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
+    source activate /fs/ess/PAS0471/jelmer/conda/kallisto-0.48.0
+}
+
+## Print version
+Print_version() {
+    Load_software
+    kallisto version
+}
+
+## Print help for the focal program
+Print_help_program() {
+    Load_software
+    echo "# General help:"
+    kallisto -h
+    echo -e "\n#Help for the 'index' subcommand:"
+    kallisto index
+}
+
+## Print SLURM job resource usage info
+Resource_usage() {
+    echo
+    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
+        grep -Ev "ba|ex"
+    echo
+}
+
+## Print SLURM job requested resources
+Print_resources() {
+    set +u
+    echo "# SLURM job information:"
+    echo "Account (project):    $SLURM_JOB_ACCOUNT"
+    echo "Job ID:               $SLURM_JOB_ID"
+    echo "Job name:             $SLURM_JOB_NAME"
+    echo "Memory (per node):    $SLURM_MEM_PER_NODE"
+    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
+    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
+    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
+    echo "======================================================================"
+    echo
+    set -u
+}
+
+## Set the number of threads/CPUs
+Set_threads() {
+    set +u
+    if [[ "$slurm" = true ]]; then
+        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
+            threads="$SLURM_CPUS_PER_TASK"
+        elif [[ -n "$SLURM_NTASKS" ]]; then
+            threads="$SLURM_NTASKS"
+        else 
+            echo "WARNING: Can't detect nr of threads, setting to 1"
+            threads=1
+        fi
+    else
+        threads=1
+    fi
+    set -u
+}
+
+## Resource usage information
+Time() {
+    /usr/bin/time -f \
+        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
+        "$@"
+}   
+
+## Exit upon error with a message
+Die() {
+    error_message=${1}
+    error_args=${2-none}
+    
+    echo >&2
+    echo "=====================================================================" >&2
+    printf "$0: ERROR: %s\n" "$error_message" >&2
+    echo -e "\nFor help, run this script with the '-h' option" >&2
+    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
+    if [[ "$error_args" != "none" ]]; then
+        echo -e "\nArguments passed to the script:" >&2
+        echo "$error_args" >&2
+    fi
+    echo -e "\nEXITING..." >&2
+    echo "=====================================================================" >&2
+    echo >&2
+    exit 1
+}
+
+
+# ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
+## Option defaults
+debug=false
+dryrun=false && e=""
+slurm=true
+
+
+# ==============================================================================
+#                          PARSE COMMAND-LINE ARGS
+# ==============================================================================
+## Placeholder defaults
+infile=""
+outfile=""
+more_args=""
+
+## Parse command-line args
+all_args="$*"
+
+while [ "$1" != "" ]; do
+    case "$1" in
+        -i | --infile )     shift && infile=$1 ;;
+        -o | --outfile )     shift && outfile=$1 ;;
+        --more-args )       shift && more_args=$1 ;;
+        -v | --version )    Print_version; exit 0 ;;
+        -h )                Print_help; exit 0 ;;
+        --help )            Print_help_program; exit 0;;
+        --dryrun )          dryrun=true && e="echo ";;
+        --debug )           debug=true ;;
+        * )                 Die "Invalid option $1" "$all_args" ;;
+    esac
+    shift
 done
 
+# ==============================================================================
+#                          OTHER SETUP
+# ==============================================================================
+## In debugging mode, print all commands
+[[ "$debug" = true ]] && set -o xtrace
 
-# SETUP ---------------------------------------------------------------------
-## Load software
-module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/miniconda3/envs/kallisto-env
+## Check if this is a SLURM job
+[[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Bash strict mode
+## Load software and set nr of threads
+[[ "$dryrun" = false ]] && Load_software
+Set_threads
+
+## Bash script settings
 set -euo pipefail
 
+## Fin the output dir
+outdir=$(dirname "$outfile")
+
+## Check input
+[[ "$infile" = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
+[[ "$outfile" = "" ]] && Die "Please specify an output file with -o/--outfile" "$all_args"
+[[ ! -f "$infile" ]] && Die "Input file $infile does not exist"
+
 ## Report
-echo "## Starting script kallisto_index.sh"
-date
 echo
+echo "=========================================================================="
+echo "                    STARTING SCRIPT KALLISTO.SH"
+date
+echo "=========================================================================="
+echo "All arguments to this script:         $all_args"
+echo "Input file - transcriptome assembly:  $infile"
+echo "Output file - assembly index:         $outfile"
+[[ $more_args != "" ]] && echo "Other arguments for Kallisto:         $more_args"
+echo "Number of threads/cores:              $threads"
+echo
+echo "Listing the input file(s):"
+ls -lh "$infile"
+[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
+echo "=========================================================================="
 
-## Check inputs
-[[ ! -f "$transcriptome" ]] && echo "## ERROR: Input transcriptome file (-i) $transcriptome does not exist" >&2 && exit 1
+## Print reserved resources
+[[ "$slurm" = true ]] && Print_resources
 
-## Report
-echo "## Transcriptome FASTA (input):                  $transcriptome"
-echo "## Transcriptome index (output):                 $index"
-echo -e "------------------------\n"
 
+# ==============================================================================
+#                               RUN
+# ==============================================================================
 ## Create output dirs if needed
-outdir=$(dirname "$index")
-mkdir -p "$outdir"
+${e}mkdir -p "$outdir"/logs
+
+## Run Kallisto
+echo -e "\n# Now running Kallisto..."
+${e}Time kallisto index -i "$outfile" "$infile"
 
 
-# INDEX ------------------------------------------------------------------------
-kallisto index -i "$index" "$transcriptome"
-
-
-# WRAP-UP ----------------------------------------------------------------------
-echo -e "\n----------------------------\n## Listing output file:"
-ls -lh "$index"
-
-echo -e "\n## Done with script kallisto_index.sh"
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
+echo
+echo "========================================================================="
+if [[ "$dryrun" = false ]]; then
+    echo "# Version used:"
+    Print_version | tee "$outdir"/logs/version.txt
+    echo -e "\n# Listing the output file:"
+    ls -lhd "$PWD"/"$outfile"
+    [[ "$slurm" = true ]] && Resource_usage
+fi
+echo "# Done with script"
 date

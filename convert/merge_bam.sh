@@ -1,15 +1,13 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
+#SBATCH --time=3:00:00
+#SBATCH --mem=100G
+#SBATCH --cpus-per-task=25
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --job-name=TODO_THIS_SOFTWARE
-#SBATCH --output=slurm-TODO_THIS_SOFTWARE-%j.out
-
-#TODO - add 'quiet' option
+#SBATCH --job-name=merge_bam
+#SBATCH --output=slurm-merge_bam-%j.out
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -19,39 +17,34 @@ Print_help() {
     echo
     echo "======================================================================"
     echo "                            $0"
-    echo "                  TODO FUNCTION OF THIS SCRIPT"
+    echo "               MERGE BAM FILES (AND SORT THE OUTPUT BAM)"
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 -i <input file> -o <output dir> [...]"
+    echo "  sbatch $0 -o <output file> [ -o <input dir> / [BAM-file-1 BAM-file-2 ...]]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile     <file>  Input file"
-    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to TODO_THIS_SOFTWARE"
+    echo "  -o/--outfile    <dir>   Output BAM file"
+    echo "  -i/--indir      <dir>   Input dir with BAM files (all BAM files in the dir will be used)"
+    echo "                          Specify the input either with an input dir or BAM files as positional arguments"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
     echo "  --debug                 Run the script in debug mode (print all code)"
     echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for TODO_THIS_SOFTWARE and exit"
-    echo "  -v/--version            Print the version of TODO_THIS_SOFTWARE and exit"
+    echo "  --help                  Print the help for Samtools and exit"
+    echo "  -v/--version            Print the version of Samtools and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i TODO -o results/TODO"
-    echo
-    echo "HARDCODED PARAMETERS:"
-    echo "  - "
-    echo
-    echo "OUTPUT:"
-    echo "  - "
+    echo "  Using an input dir:"
+    echo "    sbatch $0 -o results/merged.bam -i results/mapped"
+    echo "  Using BAM files as positional arguments:"
+    echo "    sbatch $0 -o results/merged.bam results/mapped/A.bam results/mapped/B.bam results/mapped/C.bam"
     echo
     echo "SOFTWARE DOCUMENTATION:"
-    echo "  - Docs: "
-    echo "  - Paper: "
+    echo "  - Samtools merge: http://www.htslib.org/doc/samtools-merge.html"
+    echo "  - Samtools sort: http://www.htslib.org/doc/samtools-merge.html"
     echo
 }
 
@@ -59,23 +52,21 @@ Print_help() {
 Load_software() {
     set +u
     module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate TODO_THIS_SOFTWARE_ENV
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
+    source activate /fs/ess/PAS0471/jelmer/conda/samtools
     set -u
 }
 
 ## Print version
 Print_version() {
-    set +e
     Load_software
-    #TODO_THIS_SOFTWARE --version
-    set -e
+    samtools --version | head -n 2
 }
 
 ## Print help for the focal program
 Print_help_program() {
     Load_software
-    #TODO_THIS_SOFTWARE --help
+    samtools --help
 }
 
 ## Print SLURM job resource usage info
@@ -151,8 +142,6 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-## Constants
-
 ## Option defaults
 debug=false
 dryrun=false && e=""
@@ -163,26 +152,25 @@ slurm=true
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 ## Placeholder defaults
-infile=""
+declare -a bams
 outdir=""
-more_args=""
-#tree="" && tree_arg=""
+indir=""
+tmpdir_arg=""
 
 ## Parse command-line args
 all_args="$*"
+count=0
 
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infile )     shift && infile=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
-        --more-args )       shift && more_args=$1 ;;
+        -i | --indir )      shift && indir=$1 ;;
+        -o | --outfile )    shift && outfile=$1 ;;
         -v | --version )    Print_version; exit 0 ;;
         -h )                Print_help; exit 0 ;;
         --help )            Print_help_program; exit 0;;
         --dryrun )          dryrun=true && e="echo ";;
         --debug )           debug=true ;;
-        * )                 Die "Invalid option $1" "$all_args" ;;
-        #* )                 infiles[$count]=$1 && count=$(( count + 1 )) ;;
+        * )                 bams[$count]=$1 && count=$(( count + 1 )) ;;
     esac
     shift
 done
@@ -191,9 +179,6 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-## Bash script settings
-set -euo pipefail
-
 ## In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
@@ -204,36 +189,36 @@ set -euo pipefail
 [[ "$dryrun" = false ]] && Load_software
 Set_threads
 
-## FASTQ filename parsing TODO_edit_or_remove
-#file_ext=$(basename "$R1" | sed -E 's/.*(.fasta|.fastq.gz|.fq.gz)$/\1/')
-#R1_suffix=$(basename "$R1" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
-#R2_suffix=${R1_suffix/1/2}
-#R2=${R1/$R1_suffix/$R2_suffix}
-#sample_id=$(basename "$R1" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
+## Bash script settings
+set -euo pipefail
 
-## Read a fofn TODO_edit_or_remove
-# [[ "$fofn" != "" ]] && mapfile -t infiles <"$fofn"
-# [[ "$indir" != "" ]] && mapfile infiles < <(find "$indir" -type f)
+## Determine file name for unsorted BAM file
+outdir=$(dirname "$outfile")
 
 ## Check input
-[[ "$infile" = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
-[[ ! -f "$infile" ]] && Die "Input file $infile does not exist"
+[[ "$outfile" = "" ]] && Die "Please specify an output file with -o/--outfile" "$all_args"
+[[ "$indir" = "" && ${#bams[@]} = 0 ]] && Die "Please specify either an input dir with -i/--indir, or BAM files as positional args" "$all_args"
+[[ "$indir" != "" && ! -d "$indir" ]] && Die "Input file $indir does not exist"
+
+## Read BAM files into an array if an input dir is provided
+[[ "$indir" != "" ]] && mapfile -t bams < <(find "$indir" -type f -name "*bam")
+
+## Set temporary directory if this is a SLURM job
+[[ "$slurm" = true ]] && tmpdir_arg="-T $TMPDIR"
 
 ## Report
 echo
 echo "=========================================================================="
-echo "                    STARTING SCRIPT TODO_SCRIPTNAME"
+echo "                    STARTING SCRIPT MERGE_BAM.SH"
 date
 echo "=========================================================================="
 echo "All arguments to this script:     $all_args"
-echo "Input file:                       $infile"
-echo "Output dir:                       $outdir"
-[[ $more_args != "" ]] && echo "Other arguments for TODO_THIS_SOFTWARE:$more_args"
+echo "Output BAM file:                  $outfile"
 echo "Number of threads/cores:          $threads"
+echo "Number of input BAM files:        ${#bams[@]}"
 echo
-echo "Listing the input file(s):"
-#ls -lh "$infile" #TODO
+echo "Listing the input BAM files:"
+for bam in "${bams[@]}"; do ls -lh "$bam"; done
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
@@ -247,17 +232,15 @@ echo "==========================================================================
 ## Create the output directory
 ${e}mkdir -p "$outdir"/logs
 
-## Run
-echo -e "\n# Now running TODO_THIS_SOFTWARE..."
-
-# [[ "$dryrun" = false ]] && set -o xtrace
-
-${e}Time \
-    TODO_COMMAND \
-        -t "$threads"
-        $more_args \
-
-# [[ "$debug" = false ]] && set +o xtrace
+echo "## Now running samtools..."
+${e}Time samtools merge \
+    -o - \
+    "${bams[@]}" |
+    samtools sort \
+        -@ "$threads" \
+        -m 4G \
+        $tmpdir_arg \
+        > "$outfile"
 
 
 # ==============================================================================
@@ -267,9 +250,9 @@ echo
 echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
     echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
+    Print_version | tee "$outdir"/logs/merge_bam_version.txt
+    echo -e "\n# Listing the output file:"
+    ls -lhd "$PWD"/"$outfile"
     [[ "$slurm" = true ]] && Resource_usage
 fi
 echo "# Done with script"

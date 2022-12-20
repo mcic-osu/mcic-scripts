@@ -58,7 +58,7 @@ Print_help() {
 Load_software() {
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
-    source activate /users/PAS0471/jelmer/miniconda3/envs/kraken2-env
+    source activate /fs/ess/PAS0471/jelmer/conda/kraken2-2.1.2
 }
 
 ## Print version
@@ -299,8 +299,8 @@ else
 fi
 
 ## Define output text files
-outfile_main="$outdir"/"$sample_ID"_main.txt
-outfile_report="$outdir"/"$sample_ID"_report.txt
+outfile_main="$outdir"/"$sample_ID".main.txt
+outfile_report="$outdir"/"$sample_ID".report.txt
 
 ## Report
 echo "Number of threads/cores:        $threads"

@@ -1,15 +1,14 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --job-name=TODO_THIS_SOFTWARE
-#SBATCH --output=slurm-TODO_THIS_SOFTWARE-%j.out
+#SBATCH --job-name=sourmash_compare
+#SBATCH --output=slurm-sourmash-compare-%j.out
 
-#TODO - add 'quiet' option
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -19,48 +18,52 @@ Print_help() {
     echo
     echo "======================================================================"
     echo "                            $0"
-    echo "                  TODO FUNCTION OF THIS SCRIPT"
+    echo "           RUN SOURMASH COMPARE (OPTIONALLY WITH ANI)"
     echo "======================================================================"
+    echo
+    echo "DESCRIPTION:"
+    echo "  This script will:"
+    echo "    (1) Create sourmash signatures from FASTA files"
+    echo "    (2) Rename the signature to get rid of the extension for plotting"
+    echo "    (3) Compare the signature with 'sourmash compare'"
+    echo "    (4) Plot a dendrogram and distance/similarity matrix with 'sourmash plot'"
     echo
     echo "USAGE:"
     echo "  sbatch $0 -i <input file> -o <output dir> [...]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile     <file>  Input file"
+    echo "  -i/--indir      <dir>   Input dir with FASTA files"
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to TODO_THIS_SOFTWARE"
+    echo "  --ani                   Use ANI (Average Nucleotide Identity) as the similarity metric"
+    echo "  --kmer_size     <int>   Kmer size                                   [default: 31]"
+    echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to Sourmash compare"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
     echo "  --debug                 Run the script in debug mode (print all code)"
     echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for TODO_THIS_SOFTWARE and exit"
-    echo "  -v/--version            Print the version of TODO_THIS_SOFTWARE and exit"
+    echo "  --help                  Print the help for Sourmash Compare and exit"
+    echo "  -v/--version            Print the version of Sourmash Compare and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i TODO -o results/TODO"
-    echo
-    echo "HARDCODED PARAMETERS:"
-    echo "  - "
-    echo
-    echo "OUTPUT:"
-    echo "  - "
+    echo "  sbatch $0 -i data/refgenomes -o results/sourmash -k 29"
     echo
     echo "SOFTWARE DOCUMENTATION:"
-    echo "  - Docs: "
-    echo "  - Paper: "
+    echo "  - Docs: https://sourmash.readthedocs.io"
+    echo "  - Paper:  https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6720031/"
     echo
 }
+
 
 ## Load software
 Load_software() {
     set +u
     module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate TODO_THIS_SOFTWARE_ENV
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
+    source activate /fs/project/PAS0471/jelmer/conda/sourmash
     set -u
 }
 
@@ -68,14 +71,14 @@ Load_software() {
 Print_version() {
     set +e
     Load_software
-    #TODO_THIS_SOFTWARE --version
+    sourmash --version
     set -e
 }
 
 ## Print help for the focal program
 Print_help_program() {
     Load_software
-    #TODO_THIS_SOFTWARE --help
+    sourmash compare --help
 }
 
 ## Print SLURM job resource usage info
@@ -151,30 +154,22 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-## Constants
-
 ## Option defaults
-debug=false
-dryrun=false && e=""
-slurm=true
-
-
-# ==============================================================================
-#                          PARSE COMMAND-LINE ARGS
-# ==============================================================================
-## Placeholder defaults
-infile=""
+kmer_size=31
+ani=false && ani_arg=""
+prefix="compare"           # Output filename prefix
+indir=""
 outdir=""
-more_args=""
-#tree="" && tree_arg=""
 
 ## Parse command-line args
 all_args="$*"
 
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infile )     shift && infile=$1 ;;
+        -i | --indir )      shift && indir=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
+        --kmer-size )       shift && kmer_size=$1 ;;
+        --ani )             ani=true && ani_arg="--ani" ;;
         --more-args )       shift && more_args=$1 ;;
         -v | --version )    Print_version; exit 0 ;;
         -h )                Print_help; exit 0 ;;
@@ -182,7 +177,6 @@ while [ "$1" != "" ]; do
         --dryrun )          dryrun=true && e="echo ";;
         --debug )           debug=true ;;
         * )                 Die "Invalid option $1" "$all_args" ;;
-        #* )                 infiles[$count]=$1 && count=$(( count + 1 )) ;;
     esac
     shift
 done
@@ -191,9 +185,6 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-## Bash script settings
-set -euo pipefail
-
 ## In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
@@ -204,36 +195,38 @@ set -euo pipefail
 [[ "$dryrun" = false ]] && Load_software
 Set_threads
 
-## FASTQ filename parsing TODO_edit_or_remove
-#file_ext=$(basename "$R1" | sed -E 's/.*(.fasta|.fastq.gz|.fq.gz)$/\1/')
-#R1_suffix=$(basename "$R1" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
-#R2_suffix=${R1_suffix/1/2}
-#R2=${R1/$R1_suffix/$R2_suffix}
-#sample_id=$(basename "$R1" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
+## Bash script settings
+set -euo pipefail
 
-## Read a fofn TODO_edit_or_remove
-# [[ "$fofn" != "" ]] && mapfile -t infiles <"$fofn"
-# [[ "$indir" != "" ]] && mapfile infiles < <(find "$indir" -type f)
+## Determine output file names
+[[ "$ani" = true ]] && prefix=ani
+csv_out="$outdir"/output/"$prefix".csv     # distance/ANI matrix in CSV format
+cmp_out="$outdir"/output/"$prefix".cmp     # distance/ANI matrix in Python format for sourmash plotting
+
+## Create array with input FASTA files
+mapfile -t fastas < <(find "$indir" -iname '*fasta' -or -iname '*fa' -or -iname '*fna' -or -iname '*fna.gz')
 
 ## Check input
-[[ "$infile" = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
+[[ "$indir" = "" ]] && Die "Please specify an input dir with -i/--indir" "$all_args"
 [[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
-[[ ! -f "$infile" ]] && Die "Input file $infile does not exist"
 
 ## Report
 echo
 echo "=========================================================================="
-echo "                    STARTING SCRIPT TODO_SCRIPTNAME"
+echo "                STARTING SCRIPT SOURMASH_COMPARE.SH"
 date
 echo "=========================================================================="
 echo "All arguments to this script:     $all_args"
-echo "Input file:                       $infile"
+echo "Dir with input FASTA files:       $indir"
 echo "Output dir:                       $outdir"
-[[ $more_args != "" ]] && echo "Other arguments for TODO_THIS_SOFTWARE:$more_args"
+echo "Kmer size:                        $kmer_size"
+echo "Run ANI analysis:                 $ani"
+[[ $more_args != "" ]] && echo "Other arguments for Sourmash compare:$more_args"
 echo "Number of threads/cores:          $threads"
 echo
-echo "Listing the input file(s):"
-#ls -lh "$infile" #TODO
+echo "Number of FASTA files:            ${#fastas[@]}"
+echo "Listing the input FASTA file(s):"
+for fasta in "${fastas[@]}"; do ls -lh "$fasta"; done
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
@@ -244,20 +237,44 @@ echo "==========================================================================
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-## Create the output directory
-${e}mkdir -p "$outdir"/logs
+## Create output dirs
+mkdir -p "$outdir"/signatures "$outdir"/sig_renamed "$outdir"/output "$outdir"/logs
 
-## Run
-echo -e "\n# Now running TODO_THIS_SOFTWARE..."
+## Create a signature for each FASTA file
+echo "# Creating sourmash signatures..."
+${e}sourmash sketch dna \
+    -p k="$kmer_size" \
+    --outdir "$outdir"/signatures \
+    "${fastas[@]}"
 
-# [[ "$dryrun" = false ]] && set -o xtrace
+## Rename signatures so they have short names
+echo -e "--------------------\n"
+echo "# Renaming sourmash signatures..."
+for sig in "$outdir"/signatures/*sig; do
+    newname=$(basename "$sig" .fasta.sig | sed 's/^Spades//')
+    newfile="$outdir"/sig_renamed/"$(basename "$sig")"
 
-${e}Time \
-    TODO_COMMAND \
-        -t "$threads"
-        $more_args \
+    ${e}sourmash signature rename \
+        "$sig" \
+        "$newname" \
+        -o "$newfile"
+done
 
-# [[ "$debug" = false ]] && set +o xtrace
+## Compare genomes
+echo -e "--------------------\n"
+echo "## Comparing genomes..."
+${e}Time sourmash compare \
+    -k"$kmer_size" \
+    $ani_arg \
+    --from-file <(ls "$outdir"/sig_renamed/*) \
+    --csv "$csv_out" \
+    $more_args \
+    -o "$cmp_out"
+
+## Make plots - run separately for PNG and PDF output
+echo -e "\n# Creating plots..."
+${e}sourmash plot --labels --output-dir "$outdir"/output "$cmp_out"
+${e}sourmash plot --labels --pdf --output-dir "$outdir"/output "$cmp_out"
 
 
 # ==============================================================================
@@ -269,7 +286,7 @@ if [[ "$dryrun" = false ]]; then
     echo "# Version used:"
     Print_version | tee "$outdir"/logs/version.txt
     echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
+    ls -lhd "$PWD"/"$outdir"/output/*
     [[ "$slurm" = true ]] && Resource_usage
 fi
 echo "# Done with script"

@@ -68,7 +68,7 @@ done
 
 ## Software and scripts
 module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/miniconda3/envs/fasttree-env
+source activate /fs/ess/PAS0471/jelmer/conda/fasttree-2.1.11
 #? Note: additional Conda environments are loaded below, depending on the alignment program, etc
 
 ## Bash strict mode

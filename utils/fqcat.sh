@@ -1,14 +1,13 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=30
-#SBATCH --cpus-per-task=2
-#SBATCH --mem=8G
+#SBATCH --time=1:00:00
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --job-name=multiqc
-#SBATCH --out=slurm-multiqc-%j.out
-
+#SBATCH --job-name=concat_fq
+#SBATCH --output=slurm-concat_fq-%j.out
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -17,66 +16,29 @@
 Print_help() {
     echo
     echo "======================================================================"
-    echo "                            $0"
-    echo "   Run MultiQC to summarize output by e.g. FastQC, Cutadapt, STAR"
+    echo "                       $0"
+    echo "                  CONCATENATE ONT FASTQ FILES"
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 -i <input file> -o <output dir> [...]"
+    echo "  sbatch $0 -i <input dir> -o <output file> [...]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--indir      <file>  Input directory (e.g. with FastQC output files)"
-    echo "  -o/--outdir     <dir>   Output directory for MultiQC report"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --filename      <file>  Provide filename for MultiQC HTML report    [default: <outdir>/multiqc_report.html]"
-    echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to MultiQC"
+    echo "  -i/--indir     <dir>    Input file"
+    echo "  -o/--outfile   <file>   Output file (its dir will be created if needed)"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
     echo "  --debug                 Run the script in debug mode (print all code)"
     echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for TODO_THIS_SOFTWARE and exit"
-    echo "  -v/--version            Print the version of TODO_THIS_SOFTWARE and exit"
     echo
-    echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i results/fastqc -o results/multiqc"
-    echo
-    echo "HARDCODED PARAMETERS:"
-    echo "  - '--interactive'      Reports will always have interactive figures"
-    echo "  - '--force'            Overwrite existing MultiQC reports with the same name"
-    echo
-    echo "OUTPUT:"
-    echo "  - The main output is an HTML file, by default named <outdir>/multiqc_report.html"
-    echo
-}
-
-## Load software
-Load_software() {
-    module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /fs/project/PAS0471/jelmer/conda/multiqc
-}
-
-## Print version
-Print_version() {
-    Load_software
-    multiqc --version
-}
-
-## Print help for the focal program
-Print_help_program() {
-    Load_software
-    multiqc --help
 }
 
 ## Print SLURM job resource usage info
 Resource_usage() {
-    echo
     ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
         grep -Ev "ba|ex"
-    echo
 }
 
 ## Print SLURM job requested resources
@@ -95,10 +57,10 @@ Print_resources() {
     set -u
 }
 
-## Resource usage information
+## Recource usage information
 Time() {
     /usr/bin/time -f \
-        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
+        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Avg Mem: %t K    Exit status: %x \n' \
         "$@"
 }   
 
@@ -107,20 +69,21 @@ Die() {
     error_message=${1}
     error_args=${2-none}
     
-    echo >&2
-    echo "=====================================================================" >&2
+    echo
+    echo "====================================================================="
     printf "$0: ERROR: %s\n" "$error_message" >&2
-    echo -e "\nFor help, run this script with the '-h' option" >&2
-    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
+    echo -e "\nFor help, run this script with the '-h' option"
+    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h"
     if [[ "$error_args" != "none" ]]; then
-        echo -e "\nArguments passed to the script:" >&2
-        echo "$error_args" >&2
+        echo -e "\nArguments passed to the script:"
+        echo "$error_args"
     fi
     echo -e "\nEXITING..." >&2
-    echo "=====================================================================" >&2
-    echo >&2
+    echo "====================================================================="
+    echo
     exit 1
 }
+
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
@@ -136,25 +99,19 @@ slurm=true
 # ==============================================================================
 ## Placeholder defaults
 indir=""
-outdir=""
-more_args=""
-filename="" && filename_arg=""
+outfile=""
 
 ## Parse command-line args
 all_args="$*"
 
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --indir )      shift && indir=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
-        --filename )        shift && filename=$1 ;;
-        --more-args )       shift && more_args=$1 ;;
-        -v | --version )    Print_version; exit 0 ;;
-        -h )                Print_help; exit 0 ;;
-        --help )            Print_help_program; exit 0;;
-        --dryrun )          dryrun=true && e="echo ";;
-        --debug )           debug=true ;;
-        * )                 Die "Invalid option $1" "$all_args" ;;
+        -i | --indir )          shift && indir=$1 ;;
+        -o | --outfile )        shift && outfile=$1 ;;
+        -h )                    Print_help; exit 0;;
+        --dryrun )              dryrun=true && e="echo ";;
+        --debug )               debug=true ;;
+        * )                     Die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
@@ -169,38 +126,31 @@ done
 ## Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Load software and set nr of threads
-[[ "$dryrun" = false ]] && Load_software
-
 ## Bash script settings
 set -euo pipefail
 
-## Filename argument
-[[ "$filename" != "" ]] && filename_arg="--filename $filename"
-
 ## Check input
-[[ "$indir" = "" ]] && Die "Please specify an input file with -i/--indir" "$all_args"
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
-[[ ! -d "$indir" ]] && Die "Input dir $indir does not exist"
+[[ $indir = "" ]] && Die "Please specify an input dir with -i" "$all_args"
+[[ $outfile = "" ]] && Die "Please specify an output file with -o" "$all_args"
+[[ ! -d $indir ]] && Die "Input file $indir does not exist"
+
+## Determine outdir
+outdir=$(dirname "$outfile")
 
 ## Report
 echo
 echo "=========================================================================="
-echo "              STARTING SCRIPT MULTIQC.SH"
+echo "                    STARTING SCRIPT CONCAT_FQ.SH"
 date
 echo "=========================================================================="
 echo "All arguments to this script:     $all_args"
 echo "Input dir:                        $indir"
-echo "Output dir:                       $outdir"
-[[ $filename_arg != "" ]] && echo "Output filename:                  $filename"
-[[ $more_args != "" ]] && echo "Other arguments for MultiQC:      $more_args"
-echo
+echo "Output file:                      $outfile"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
 ## Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
-
 
 # ==============================================================================
 #                               RUN
@@ -208,16 +158,18 @@ echo "==========================================================================
 ## Create the output directory
 ${e}mkdir -p "$outdir"/logs
 
-echo "## Starting MultiQC run..."
-${e}Time multiqc \
-    --interactive \
-    --force \
-    -o "$outdir" \
-    $filename_arg \
-    "$indir"
+## Run
+mapfile -t fq_files < <(find "$indir"/*/pass -name "*fastq.gz" | sort)
+echo -e "\n# Number of FASTQ files found: ${#fq_files[@]}"
 
-#? --interactive will ensure interactive plots, regardless of number of samples
-#? --force will overwrite any old report
+echo -e "\n# Now concatenating the FASTQ files..."
+${e}Time cat "${fq_files[@]}" > "$outfile"
+
+if [[ "$dryrun" = false ]]; then
+    echo -e "\n# Now counting the number of sequences..."
+    nseqs=$(zcat "$outfile" | awk '{l++}END{print l/4}')
+    echo -e "# Number of sequences in output file: $nseqs"
+fi
 
 
 # ==============================================================================
@@ -226,11 +178,11 @@ ${e}Time multiqc \
 echo
 echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
-    echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
+    echo -e "\n# Listing the output file:"
+    ls -lh "$outfile"
+    echo
     [[ "$slurm" = true ]] && Resource_usage
+    echo
 fi
 echo "# Done with script"
 date

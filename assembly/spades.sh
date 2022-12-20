@@ -21,20 +21,23 @@ Print_help() {
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 [ -i <input R1> / -I <fofn> ] -o <output dir> [...]"
+    echo "  sbatch $0 [ -i <input R1> / -I <indir> / -F <fofn> ] -o <output dir> [...]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  NOTE: Either -i/--R1 or -I/--fofn has to be be used to specify the input"
+    echo "  NOTE: Either -i/--R1, -I/--indir, or -f/--fofn has to be be used to specify the input"
     echo "  -i/--R1         <file>  Input R1 (forward) FASTQ file (the name of the R2 file will be inferred)"
-    echo "  -I/--fofn       <file>  File of file names (fofn): one line per input FASTQ file"
+    echo "  -I/--indir      <dir>   Dir with gzipped FASTQ files"
+    echo "  -f/--fofn       <file>  File of file names (fofn): one line per input R1 FASTQ file"
     echo "  -o/--outdir     <dir>   Output directory"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to Spades"
     echo "  --mode          <str>   Spades run mode                             [default: default Spades]"
     echo "                            Possible values: 'isolate', 'meta', 'metaplasmid, 'metaviral', 'plasmid', 'rna', 'rnaviral'"
-    echo "  --kmer_sizes    <str>   Comma-separated list of kmer sizes          [default: 'auto' => Spades default of auto-selecting kmer sizes]"
+    echo "  --kmer_size    <str>    Comma-separated list of kmer sizes          [default: 'auto' => Spades default of auto-selecting kmer sizes]"
+    echo "  --ss / --strandedness <str>   Strandedness for RNAseq libraries     [default: 'rf' (reverse)]"
+    echo "                          Options: 'rf'/'reverse', 'fr'/'forward', or 'unstranded'"
     echo "  --careful               Run in 'careful' mode (small genomes only)  [default: don't run in careful mode]"
     echo "  --continue              Resume an interrupted run                   [default: start anew]"
     echo
@@ -145,13 +148,19 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-## Option defaults
-kmer_sizes="auto" && kmer_arg=""
-careful=false && careful_arg=""
-continue=false
+## Constants
+# If this is a SLURM hob, the temp. dir will be set to /fs/scratch/$SLURM_JOB_ACCOUNT/spades/$RANDOM
+# I was initially using $TMPDIR, but in some cases, spades needs more than the alotted 1TB
 
-debug=false
-dryrun=false && e=""
+## Option defaults
+kmer_size="auto" && kmer_arg=""
+careful=false && careful_arg=""
+continue="false"
+strandedness="rf"       # Only applies for mode 'rna'
+
+mem=4                   # Only applies when not running a SLURM job
+debug="false"
+dryrun="false" && e=""
 slurm=true
 
 
@@ -159,32 +168,36 @@ slurm=true
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 ## Placeholder defaults
-mem=4  # When not running a SLURM job
 R1=""
 fofn=""
 outdir=""
 mode=""
 mode_arg=""
+tmpdir_arg=""
+strand_arg=""
+more_args=""
 
 ## Parse command-line args
 all_args="$*"
 
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --R1 )         shift && R1=$1 ;;
-        -y | --fofn )       shift && fofn=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
-        --kmer_sizes )      shift && kmer_sizes=$1 ;;
-        --mode )            shift && mode=$1 ;;
-        --careful )         careful=true ;;
-        --continue )        continue=true ;;
-        --more-args )       shift && more_args=$1 ;;
-        -v | --version )    Print_version; exit 0 ;;
-        -h )                Print_help; exit 0 ;;
-        --help )            Print_help_program; exit 0;;
-        --dryrun )          dryrun=true && e="echo ";;
-        --debug )           debug=true ;;
-        * )                 Die "Invalid option $1" "$all_args" ;;
+        -i | --R1 )             shift && R1=$1 ;;
+        -I | --indir )          shift && indir=$1 ;;
+        -f | --fofn )           shift && fofn=$1 ;;
+        -o | --outdir )         shift && outdir=$1 ;;
+        --kmer_size )           shift && kmer_size=$1 ;;
+        --ss | --strandedness)  shift && strandedness=$1 ;;
+        --mode )                shift && mode=$1 ;;
+        --careful )             careful=true ;;
+        --continue )            continue=true ;;
+        --more-args )           shift && more_args=$1 ;;
+        -v | --version )        Print_version; exit 0 ;;
+        -h )                    Print_help; exit 0 ;;
+        --help )                Print_help_program; exit 0;;
+        --dryrun )              dryrun=true && e="echo ";;
+        --debug )               debug=true ;;
+        * )                     Die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
@@ -207,12 +220,29 @@ Set_threads
 set -euo pipefail
 
 ## Additional variables
-[[ "$slurm" = true ]] && mem=$(( ((SLURM_MEM_PER_NODE / 1000)) - 1)) # Convert MB memory to GB (and subtract 1)
+if [[ "$slurm" = true ]]; then
+    mem=$(( ((SLURM_MEM_PER_NODE / 1000)) - 1)) # Convert MB memory to GB (and subtract 1)
+    proj=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
+    TMP_DIR=/fs/scratch/"$proj"/spades/"$RANDOM"
+    tmpdir_arg="--tmp-dir=$TMP_DIR"
+fi
 
 ## Build some arguments to pass to SPAdes
 [[ "$mode" != "" ]] && mode_arg="--$mode"
 [[ "$careful" = true ]] && careful_arg="--careful"
-[[ "$kmer_sizes" != "auto" ]] && kmer_arg="-k $kmer_sizes"
+[[ "$kmer_size" != "auto" ]] && kmer_arg="-k $kmer_size"
+
+if [[ "$mode" = rna ]]; then
+    if [[ "$strandedness" = "unstranded" ]]; then
+        strand_arg=""
+    elif [[ "$strandedness" = "reverse" ]]; then
+        strand_arg="--ss rf"
+    elif [[ "$strandedness" = "forward" ]]; then
+        strand_arg="--ss fr"
+    else
+        strand_arg="--ss $strandedness"
+    fi
+fi
 
 ## Input file arg
 if [[ "$R1" != "" ]]; then
@@ -230,8 +260,17 @@ else
     infile_arg="--dataset $yaml"
 fi
 
+## Create the output directory
+${e}mkdir -p "$outdir"/logs
+
+## If an input dir was provided, create a FOFN
+if [[ "$indir" != "" ]]; then
+    fofn="$outdir"/input_filenames.txt
+    ls "$indir"/*_R1*q.gz > "$fofn"
+fi
+
 ## Check input
-[[ "$R1" = "" ]] && [[ "$fofn" = "" ]] && Die "Please specify either an R1 input file with -i, or an input FOFN with -I"
+[[ "$R1" = "" ]] && [[ "$indir" = "" ]] && [[ "$fofn" = "" ]] && Die "Please specify either an R1 input file with -i, an input dir with -I, or an input FOFN with -f"
 [[ "$outdir" = "" ]] && Die "Please specify an output dir with -o"
 [[ "$R1" != "" ]] && [[ ! -f "$R1" ]] && Die "Input file R1 $R1 does note exist"
 [[ "$fofn" != "" ]] && [[ ! -f "$fofn" ]] && Die "Input FOFN $fofn does note exist"
@@ -246,26 +285,26 @@ echo "All arguments to this script:     $all_args"
 [[ "$R1" != "" ]] && echo "Input FASTQ file - R1:            $R1"
 echo "Output dir:                       $outdir"
 [[ "$mode" != "" ]] && echo "Running mode:                     $mode"
-echo "Kmer sizes:                       $kmer_sizes"
+[[ "$mode" = rna ]] && echo "Strandedness / strand argument:   $strandedness / $strand_arg"
+echo "Kmer size(s):                     $kmer_size"
 echo "Using 'careful' setting:          $careful"
 echo "Continuing a previous run:        $continue"
 [[ $more_args != "" ]] && echo "Other arguments for Spades:       $more_args"
 echo "Number of threads/cores:          $threads"
 echo "Memory in GB:                     $mem"
+[[ $tmpdir_arg != "" ]] && echo "Temp dir argument:                $tmpdir_arg"
 echo
 [[ "$R1" != "" ]] && echo "Input FASTQ file - R2:            $R2"
 echo "Input file argument:              $infile_arg"
 echo
 echo "Listing the input file(s):"
 [[ "$R1" != "" ]] && ls -lh "$R1" "$R2"
+[[ "$fofn" != "" ]] && cat -n "$fofn"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
 ## Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
-
-## Create the output directory
-${e}mkdir -p "$outdir"/logs
 
 
 # ==============================================================================
@@ -321,7 +360,12 @@ if [ "$continue" = false ]; then
         -o "$outdir" \
         -t "$threads" \
         -m "$mem" \
-        ${kmer_arg} ${mode_arg} ${careful_arg} ${more_args}
+        ${kmer_arg} \
+        ${mode_arg} \
+        ${strand_arg} \
+        ${careful_arg} \
+        ${tmpdir_arg} \
+        ${more_args}
 
     [[ "$debug" = false ]] && set +o xtrace
 else

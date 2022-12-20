@@ -1,13 +1,15 @@
 #!/usr/bin/env Rscript
-
 #SBATCH --account=PAS0471
 #SBATCH --time=15
 #SBATCH --output=slurm-tximport-%j.out
 
+
 # DESCRIPTION ------------------------------------------------------------------
-# This script will import Kallisto files into R and create a DEseq2 object
+# This script will import Kallisto files into R and create a tximport object,
+# and if metadata is provided, also a DEseq2 object
+
 #TODO - Also accept Salmon counts
-#TODO - Make column names for tx2gene/metadata explicit/flexible
+
 
 # SET-UP -----------------------------------------------------------------------
 message("\n## Starting script tximport.R")
@@ -37,27 +39,26 @@ parser$add_argument("-i", "--indir",
 parser$add_argument("-o", "--outdir",
                     type = "character", required = TRUE, default = NULL,
                     help = "Output directory")
-parser$add_argument("-m", "--meta",
-                    type = "character", required = TRUE, default = NULL,
-                    help = "Metadata file (TSV)")
 parser$add_argument("-t", "--tx2gene",
                     type = "integer", required = TRUE, default = NULL,
                     help = "Transcript-to-gene map (TSV)")
+parser$add_argument("-m", "--meta",
+                    type = "character", required = FALSE, default = NULL,
+                    help = "Metadata file (TSV), needed to create a DESeq object")
+parser$add_argument("-t", "--sample_id_column",
+                    type = "character", required = FALSE, default = "id_short",
+                    help = "Name of the column in the metadata file with the sample IDs")
 args <- parser$parse_args()
 
-## Output file
+## Output files
+txi_out <- here(outdir, "tximport_object.rds")
 dds_out <- here(outdir, "deseq_object.rds")
 
-## Settings
-dirname_column <- "id_long"    # Column in metadata with Kallisto dirnames
-sampleid_column <- "id_short"  # Column in metadata with desired sample names
+## Create output dir
+dir.create(here(outdir, "logs"), recursive = TRUE, showWarnings = FALSE)
 
 
-# PROCESS METADATA AND KALLISTO COUNTS -----------------------------------------
-## Read metadata
-meta <- read.delim(meta_file) %>% arrange(.data[[sampleid_column]])
-rownames(meta) <- meta[[sampleid_column]]
-
+# PROCESS KALLISTO COUNTS ------------------------------------------------------
 ## Read transcript-to-gene map
 transmap <- read_tsv(transmap_file,
                      col_names = c("GENEID", "TXNAME"),
@@ -67,35 +68,47 @@ transmap <- read_tsv(transmap_file,
 ## Import Kallisto transcript counts --
 ## create gene-level count estimates normalized by library size and transcript length
 ## See https://bioconductor.org/packages/devel/bioc/vignettes/tximport/inst/doc/tximport.html
-kallisto_files <- here(kallisto_dir, meta[[dirname_column]], "abundance.h5")
-names(kallisto_files) <- meta[[sampleid_column]]
-
+kallisto_files <- list.files(kallisto_dir, pattern = "abundance.h5$")
 txi <- tximport(kallisto_files,
                 type = "kallisto",
                 tx2gene = transmap,
                 countsFromAbundance = "lengthScaledTPM")
 
+## Save tximport object
+saveRDS(txi, txi_out)
+
 
 # CREATE DESEQ OBJECT ----------------------------------------------------------
-## Check that sample names are the same and samples are in same order
-stopifnot(all(rownames(meta) == colnames(txi$counts)))
-message("\n## Sample names:")
-print(rownames(meta))
-message("\n## Dimensions of count matrix:")
-dim(txi$counts)
+if (!is.null(meta_file)) {
+    ## Read metadata
+    meta <- read.delim(meta_file) %>% arrange(.data[[sample_id_column]])
+    rownames(meta) <- meta[[sample_id_column]]
 
-## Create DESeq object
-dds <- DESeqDataSetFromTximport(txi, meta, ~1)
+    ## Name Kallisto files according to metadata
+    names(kallisto_files) <- meta[[sample_id_column]]
 
-## Save DESeq object
-saveRDS(dds, dds_out)
+    ## Check that sample names are the same, and that samples are in the same order
+    stopifnot(all(rownames(meta) == colnames(txi$counts)))
+    message("\n# Sample names:")
+    print(rownames(meta))
+    message("\n# Dimensions of count matrix:")
+    dim(txi$counts)
+
+    ## Create DESeq object
+    dds <- DESeqDataSetFromTximport(txi, meta, ~1)
+
+    ## Save DESeq object
+    saveRDS(dds, dds_out)
+}
 
 
 # WRAP UP ----------------------------------------------------------------------
 ## List output
-message("\n## Listing output file:")
-system(paste("ls -lh", dds_out))
+message("\n# Listing the output file(s):")
+system(paste("ls -lh", txi_out))
+if (!is.null(meta_file)) system(paste("ls -lh", dds_out))
 
-message("\n## Done with script tximport.R")
+message("\n# Done with script tximport.R")
 Sys.time()
 message()
+sessionInfo()

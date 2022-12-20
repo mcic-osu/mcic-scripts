@@ -1,118 +1,282 @@
 #!/bin/bash
+
 #SBATCH --account=PAS0471
 #SBATCH --time=180
-#SBATCH --output=slurm-cutadapt-%j.out
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
+#SBATCH --job-name=cutadapt
+#SBATCH --output=slurm-cutadapt-%j.out
 
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
 ## Help function
-Help() {
+Print_help() {
     echo
-    echo "=================================================================================================="
-    echo "$0: Run Cutadapt to remove metabarcoding primers for a single pair of FASTQ files"
-    echo "=================================================================================================="
+    echo "================================================================================"
+    echo "                            $0"
+    echo " Run Cutadapt to remove metabarcoding primers for a single pair of FASTQ files"
+    echo "================================================================================"
     echo
     echo "USAGE:"
-    echo "------------------"
-    echo "$0 -i <input-R1-FASTQ> -o <output-dir> [ -f <fwd-primer> -r <rev-primer | -p <primer-file> ] ..."
+    echo "  sbatch $0 -i <input-R1-FASTQ> -o <output-dir> [ -f <fwd-primer> -r <rev-primer | -p <primer-file> ] [...]"
+    echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "------------------"
-    echo "  -i FILE          Input R1 FASTQ file (corresponding R2 will be inferred)"
-    echo "  -o DIR           Output dir (will be created if needed)"
+    echo "  -i/--R1         <file>  Input R1 FASTQ file (corresponding R2 will be inferred)"
+    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo "  NOTE: You should also provide either a pair of primer sequences or a file with primers sequences, see below"
     echo
-    echo "OTHER OPTIONS:"
-    echo "------------------"
-    echo "  -f STR          Forward primer sequence (use in combination with -r)"
-    echo "  -r STR          Reverse primer sequence (use in combination with -f)"
-    echo "  -p STR          File with primer sequences, one pair per line (alternative to using -f and -r)"
-    echo "  -d              Don't discard untrimmed sequences (default: discard)"
-    echo "  -h              Print this help message and exit"
+    echo "OTHER KEY OPTIONS:"
+    echo "  --primer-f      <str>   Forward primer sequence (use in combination with -r)"
+    echo "  --primer-r      <str>   Reverse primer sequence (use in combination with -f)"
+    echo "  --primer-file   <file>  File with primer sequences, one pair per line separated by a space (alternative to using -f and -r)"
+    echo "  --keep-untrimmed        Don't discard untrimmed sequences (default: discard sequences with no primers)"
+    echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to Cutadapt"
     echo
-    echo "EXAMPLE COMMAND:"
-    echo "------------------"
-    echo "sbatch $0 -i data/sample1_R1.fastq.gz -o results/cutadapt -f GAGTGYCAGCMGCCGCGGTAA -r ACGGACTACNVGGGTWTCTAAT"
+    echo "UTILITY OPTIONS:"
+    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
+    echo "  --debug                 Run the script in debug mode (print all code)"
+    echo "  -h                      Print this help message and exit"
+    echo "  --help                  Print the help for Cutadapt and exit"
+    echo "  -v/--version            Print the version of Cutadapt and exit"
     echo
+    echo "EXAMPLE COMMANDS:"
+    echo "  sbatch $0 -i data/sample1_R1.fastq.gz -o results/cutadapt -f GAGTGYCAGCMGCCGCGGTAA -r ACGGACTACNVGGGTWTCTAAT"
+    echo
+    echo "HARDCODED PARAMETERS:"
+    echo "  The '--pair-filter=any' option is always used."
+    echo 
     echo "NOTES:"
-    echo "------------------"
-    echo "- When you have multiple primer pairs, specify a primer file with -p."
-    echo "- The script will compute and use the reverse complements of both primers."
+    echo "  - When you have multiple primer pairs, specify a primer file with -p."
+    echo "  - The script will compute and use the reverse complements of both primers."
+
+    echo "SOFTWARE DOCUMENTATION:"
+    echo "  - Docs: https://cutadapt.readthedocs.io/en/stable/"
+    echo "  - Paper: https://journal.embnet.org/index.php/embnetjournal/article/view/200/0"
     echo
 }
 
-# SETUP ------------------------------------------------------------------------
 ## Load software
-module load python/3.6-conda5.2  # Load OSC conda module
-source activate /users/PAS0471/osu5685/.conda/envs/cutadaptenv # Activate cutadapt environment
+Load_software() {
+    set +u
+    module load miniconda3/4.12.0-py39
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
+    source activate /fs/ess/PAS0471/jelmer/conda/cutadapt-4.1
+    set -u
+}
 
-## Bash strict settings
-set -euo pipefail
+## Print version
+Print_version() {
+    set +e
+    Load_software
+    cutadapt --version
+    set -e
+}
 
+## Print help for the focal program
+Print_help_program() {
+    Load_software
+    cutadapt --help
+}
+
+## Print SLURM job resource usage info
+Resource_usage() {
+    echo
+    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
+        grep -Ev "ba|ex"
+    echo
+}
+
+## Print SLURM job requested resources
+Print_resources() {
+    set +u
+    echo "# SLURM job information:"
+    echo "Account (project):    $SLURM_JOB_ACCOUNT"
+    echo "Job ID:               $SLURM_JOB_ID"
+    echo "Job name:             $SLURM_JOB_NAME"
+    echo "Memory (per node):    $SLURM_MEM_PER_NODE"
+    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
+    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
+    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
+    echo "======================================================================"
+    echo
+    set -u
+}
+
+## Set the number of threads/CPUs
+Set_threads() {
+    set +u
+    if [[ "$slurm" = true ]]; then
+        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
+            threads="$SLURM_CPUS_PER_TASK"
+        elif [[ -n "$SLURM_NTASKS" ]]; then
+            threads="$SLURM_NTASKS"
+        else 
+            echo "WARNING: Can't detect nr of threads, setting to 1"
+            threads=1
+        fi
+    else
+        threads=1
+    fi
+    set -u
+}
+
+## Resource usage information
+Time() {
+    /usr/bin/time -f \
+        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
+        "$@"
+}   
+
+## Exit upon error with a message
+Die() {
+    error_message=${1}
+    error_args=${2-none}
+    
+    echo >&2
+    echo "=====================================================================" >&2
+    printf "$0: ERROR: %s\n" "$error_message" >&2
+    echo -e "\nFor help, run this script with the '-h' option" >&2
+    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
+    if [[ "$error_args" != "none" ]]; then
+        echo -e "\nArguments passed to the script:" >&2
+        echo "$error_args" >&2
+    fi
+    echo -e "\nEXITING..." >&2
+    echo "=====================================================================" >&2
+    echo >&2
+    exit 1
+}
+
+
+# ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
 ## Option defaults
+discard_untrimmed=true && discard_arg="--discard-untrimmed"
+
+debug=false
+dryrun=false && e=""
+slurm=true
+
+# ==============================================================================
+#                          PARSE COMMAND-LINE ARGS
+# ==============================================================================
+## Placeholder defaults
 R1_in=""
 outdir=""
 primer_f=""
 primer_r=""
-discard_untrimmed=true
-primer_file=false
+primer_file=""
+primer_arg=""
+more_args=""
 
-## Parse command-line options
-while getopts ':i:o:f:r:p:dh' flag; do
-    case "${flag}" in
-        i) R1_in="$OPTARG" ;;
-        o) outdir="$OPTARG" ;;
-        f) primer_f="$OPTARG" ;;
-        r) primer_r="$OPTARG" ;;
-        d) discard_untrimmed=false ;;
-        p) primer_file="$OPTARG" ;;
-        h) Help && exit 0 ;;
-        \?) echo "## $0: ERROR: Invalid option" >&2 && exit 1 ;;
-        :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
+## Parse command-line args
+all_args="$*"
+
+while [ "$1" != "" ]; do
+    case "$1" in
+        -i | --R1 )             shift && R1_in=$1 ;;
+        -o | --outdir )         shift && outdir=$1 ;;
+        --primer-f )            shift && primer_f=$1 ;;
+        --primer-r )            shift && primer_r=$1 ;;
+        --primer-file )         shift && primer_file=$1 ;;
+        --keep-untrimmed )      discard_untrimmed=false ;;
+        --more-args )           shift && more_args=$1 ;;
+        -v | --version )        Print_version; exit 0 ;;
+        -h )                    Print_help; exit 0 ;;
+        --help )                Print_help_program; exit 0;;
+        --dryrun )              dryrun=true && e="echo ";;
+        --debug )               debug=true ;;
+        * )                     Die "Invalid option $1" "$all_args" ;;
     esac
+    shift
 done
 
-## Other parameters
-n_cores=$SLURM_CPUS_PER_TASK
 
-## Test input/options
-[[ $R1_in = "" ]] && echo "## $0: ERROR: No input FASTQ file (-i) provided" >&2 && exit 1
-[[ $outdir = "" ]] && echo "## $0: ERROR: No output dir (-o) provided" >&2 && exit 1
+# ==============================================================================
+#                          OTHER SETUP
+# ==============================================================================
+## Bash script settings
+set -euo pipefail
+
+## In debugging mode, print all commands
+[[ "$debug" = true ]] && set -o xtrace
+
+## Check if this is a SLURM job
+[[ -z "$SLURM_JOB_ID" ]] && slurm=false
+
+## Load software and set nr of threads
+[[ "$dryrun" = false ]] && Load_software
+Set_threads
+
+## Determine input dir and R2 file
+indir=$(dirname "$R1_in")
+file_ext=$(basename "$R1_in" | sed -E 's/.*(.fastq|.fq|.fastq.gz|.fq.gz)$/\1/')
+R1_suffix=$(basename "$R1_in" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
+R2_suffix=${R1_suffix/1/2}
+R2_in=${R1_in/$R1_suffix/$R2_suffix}
+sample_id=$(basename "$R1_in" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
+R1_basename=$(basename "$R1_in")
+R2_basename=$(basename "$R2_in")
+
+## Check input
+[[ "$R1_in" = "" ]] && Die "Please specify an R1 input file with -i/--R1" "$all_args"
+[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
+[[ ! -f "$R1_in" ]] && Die "Input FASTQ file $R1_in not found"
+[[ ! -f "$R2_in" ]] && Die "Input FASTQ file $R2_in not found"
+[[ "$indir" = "$outdir" ]] && Die "Input dir should not be the same as output dir"
+
+## Define cutadapt options
+[[ "$discard_untrimmed" = "false" ]] && discard_arg=""
 
 ## Report
-echo -e "\n=========================================================================="
-echo "## STARTING SCRIPT CUTADAPT.SH"
-date
-echo -e "==========================================================================\n"
-date
 echo
-echo "## Input FASTQ file R1 (-i):          $R1_in"
-echo "## Output dir (-o):                   $outdir"
+echo "=========================================================================="
+echo "                    STARTING SCRIPT CUTADAPT.SH"
+date
+echo "=========================================================================="
+echo "All arguments to this script:     $all_args"
+echo "Input FASTQ file R1:              $R1_in"
+echo "Output dir:                       $outdir"
+echo "Discard untrimmed (-d):           $discard_untrimmed"
+[[ $more_args != "" ]] && echo "Other arguments for Cutadapt:$more_args"
+echo "Input FASTQ file R2 (inferred):   $R2_in"
+echo "Number of threads/cores:          $threads"
 echo
+echo "Listing the input file(s):"
+ls -lh "$R1_in" "$R2_in"
+[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
+echo "=========================================================================="
 
+## Print reserved resources
+[[ "$slurm" = true ]] && Print_resources
+
+
+# ==============================================================================
+#                               DEFINE PRIMERS
+# ==============================================================================
 ## Get primers
-primer_arg=""
-
-if [ "$primer_file" = "false" ]; then
-    echo "## Using forward and reverse primers provided as arguments..."
-
-    [[ $primer_f = "" ]] && echo "## $0: ERROR: No forward primer (-f) provided" >&2 && exit 1
-    [[ $primer_r = "" ]] && echo "## $0: ERROR: No reverse primer (-r) provided" >&2 && exit 1
+if [ "$primer_file" = "" ]; then
+    echo "Using forward and reverse primers provided as arguments..."
+    [[ $primer_f = "" ]] && Die "No forward primer (-f) provided"
+    [[ $primer_r = "" ]] && Die "No reverse primer (-r) provided"
 
     primer_f_rc=$(echo "$primer_f" | tr ATCGYRKMBDHV TAGCRYMKVHDB | rev)
     primer_r_rc=$(echo "$primer_r" | tr ATCGYRKMBDHV TAGCRYMKVHDB | rev)
 
     primer_arg="-a $primer_f...$primer_r_rc -A $primer_r...$primer_f_rc"
 
-    echo "## Forward primer (-f):                 $primer_f"
-    echo "## Reverse primer (-r):                 $primer_r"
-    echo "## Forward primer - reverse complement: $primer_f_rc"
-    echo "## Reverse primer - reverse complement: $primer_r_rc"
+    echo "Forward primer (-f):              $primer_f"
+    echo "Reverse primer (-r):              $primer_r"
+    echo "Forward primer - rev. comp.:      $primer_f_rc"
+    echo "Reverse primer - rev. comp.:      $primer_r_rc"
 
 else
-    echo "## Using primer file $primer_file to read primers..."
-
-    [[ ! -f "$primer_file" ]] && echo -e "\n## $0: ERROR: Primer file $primer_file not found\n" >&2 && exit 1
+    echo "Using primer file $primer_file to read primers..."
+    [[ ! -f "$primer_file" ]] && Die "Primer file $primer_file not found"
 
     while read -r primer_f primer_r; do
 
@@ -120,68 +284,52 @@ else
         primer_r_rc=$(echo "$primer_r" | tr ATCGYRKMBDHV TAGCRYMKVHDB | rev)
 
         echo
-        echo "## Forward primer (-f):                 $primer_f"
-        echo "## Reverse primer (-r):                 $primer_r"
-        echo "## Forward primer - reverse complement: $primer_f_rc"
-        echo "## Reverse primer - reverse complement: $primer_r_rc"
+        echo "Forward primer (-f):          $primer_f"
+        echo "Reverse primer (-r):          $primer_r"
+        echo "Forward primer - rev. comp.:  $primer_f_rc"
+        echo "Reverse primer - rev. comp.:  $primer_r_rc"
 
         primer_arg="$primer_arg -a $primer_f...$primer_r_rc -A $primer_r...$primer_f_rc"
         primer_arg=$(echo "$primer_arg" | sed -E 's/^ +//') # Remove leading whitespace
 
     done <"$primer_file"
-
-    echo
 fi
+echo -e "\nPrimer argument:                  $primer_arg"
 
-## Define cutadapt options
-# Including --pair-filter=any is here because cutadapt complains when including empty variable somehow
-# "--discard-untrimmed": Remove pairs with no primer found
-# "--pair-filter=any": Remove pair if one read is filtered (=Default)
-if [ $discard_untrimmed = "true" ]; then
-    options="--discard-untrimmed --pair-filter=any"
-else
-    options="--pair-filter=any"
+
+# ==============================================================================
+#                               RUN
+# ==============================================================================
+## Create the output directory
+${e}mkdir -p "$outdir"/logs
+
+## Run
+echo -e "\n# Now running cutadapt..."
+${e}Time \
+    cutadapt \
+        $primer_arg \
+        --output "$outdir"/"$R1_basename" \
+        --paired-output "$outdir"/"$R2_basename" \
+        --pair-filter=any \
+        $discard_arg \
+        --cores "$threads" \
+        $more_args \
+        "$R1_in" "$R2_in"
+
+# --pair-filter=any: Remove pair if one read is filtered (=Default)
+
+
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
+echo
+echo "========================================================================="
+if [[ "$dryrun" = false ]]; then
+    echo "# Version used:"
+    Print_version | tee "$outdir"/logs/version.txt
+    echo -e "\n# Listing files in the output dir:"
+    ls -lhd "$PWD"/"$outdir"/"$sample_id"*
+    [[ "$slurm" = true ]] && Resource_usage
 fi
-
-## Determine input dir and R2 file
-indir=$(dirname R1_in)
-R2_in=${R1_in/R1/R2}
-R1_basename=$(basename "$R1_in")
-R2_basename=$(basename "$R2_in")
-sample_id=${R1_basename%%_R1}
-
-## Report
-echo "## Input FASTQ file R2 (inferred):    $R2_in"
-echo "## Primer argument:                   $primer_arg"
-echo "## Discard untrimmed (-d):            $discard_untrimmed"
-echo -e "-----------------------------\n"
-
-## Test input
-[[ ! -f "$R1_in" ]] && echo -e "\n## $0: ERROR: Input FASTQ file $R1_in not found\n" >&2 && exit 1
-[[ ! -f "$R2_in" ]] && echo -e "\n## $0: ERROR: Input FASTQ file $R2_in not found\n" >&2 && exit 1
-[[ "$indir" = "$outdir" ]] && echo "## $0: ERROR: Input dir should not be the same as output dir" >&2 && exit 1
-
-## Create output directory if it doesn't already exist
-mkdir -p "$outdir"
-
-
-# RUN CUTADAPT --------------------------------------------------------
-echo "## Running cutadapt..."
-cutadapt \
-    $primer_arg $options \
-    --cores "$n_cores" \
-    --output "$outdir"/"$R1_basename" \
-    --paired-output "$outdir"/"$R2_basename" \
-    "$R1_in" "$R2_in"
-
-
-# REPORT AND FINALIZE --------------------------------------------------------
-echo
-echo "## Listing output files:"
-ls -lh "$outdir"/"$sample_id"*
-echo
-echo "## Done with script cutadapt.sh"
+echo "# Done with script"
 date
-echo
-sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
-echo

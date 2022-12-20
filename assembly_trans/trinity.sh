@@ -26,12 +26,12 @@ Print_help() {
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i                          <file>  Input dir with FASTQ files (de novo assembly) OR a BAM file (genome-guided assembly)"
+    echo "  -i/--input                  <dir/file>  Input dir with FASTQ files (de novo assembly) OR a BAM file (genome-guided assembly)"
     echo "  -o/--outdir                 <dir>   Output dir (will be created if needed)"
     echo "                                      NOTE: The output directory needs to include 'trinity' in its name"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --SS_lib_type               <str>   RNAseq library type: 'RF', 'FR', or 'unstranded'   [default: 'RF']"
+    echo "  --SS_lib_type / --strandedness <str>   RNAseq library type: 'RF'/'reverse', 'FR'/'forward', or 'unstranded'   [default: 'RF']"
     echo "  --min_contig_length         <int>   Minimum contig length                   [default: 200 (= Trinity default)]"
     echo "  --normalize                 <bool>  Whether to normalize reads, 'true' or 'false' [default: 'true']"
     echo "  --normalize_max_read_cov    <int>   Normalize to this coverage              [default: 200 (= Trinity default)]"
@@ -56,15 +56,19 @@ Print_help() {
 
 ## Load the software
 Load_software() {
+    set +u
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
     source activate /fs/ess/PAS0471/jelmer/conda/trinity-2.13.2
+    set -u
 }
 
 ## Print version
 Print_version() {
     Load_software
+    set +e
     Trinity --version
+    set -e
 }
 
 ## Print help for the focal program
@@ -146,7 +150,7 @@ Die() {
 # ==============================================================================
 #                     CONSTANTS AND DEFAULTS
 # ==============================================================================
-lib_type="RF"
+strandedness="RF"
 genome_guided=false
 genome_guided_max_intron=10000  # Only for genome-guided assembly
 normalize=true && normalize_arg=""
@@ -171,9 +175,9 @@ mem_gb=4   # Will be changed if this is a SLURm job
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i )                            shift && input=$1 ;;
+        -i | --input )                  shift && input=$1 ;;
         -o | --outdir )                 shift && outdir=$1 ;;
-        --SS_lib_type )                 shift && lib_type=$1 ;;
+        --SS_lib_type | --strandedness) shift && strandedness=$1 ;;
         --min_contig_length )           shift && min_contig_length=$1 ;;
         --normalize )                   shift && normalize=$1 ;;
         --normalize_max_read_cov )      shift && normalize_max_read_cov=$1 ;;
@@ -224,10 +228,14 @@ else
 fi
 
 ## Library type argument
-if [[ "$lib_type" = "unstranded" ]]; then
-    lib_type_arg=""
+if [[ "$strandedness" = "unstranded" ]]; then
+    strand_arg=""
+elif [[ "$strandedness" = "reverse" ]]; then
+    strand_arg="--SS_lib_type RF"
+elif [[ "$strandedness" = "forward" ]]; then
+    strand_arg="--SS_lib_type FR"
 else
-    lib_type_arg="--SS_lib_type $lib_type"
+    strand_arg="--SS_lib_type $strandedness"
 fi
 
 ## Normalization arg
@@ -245,7 +253,7 @@ echo "==========================================================================
 echo "All arguments to this script:     $all_args"
 echo "Input dir:                        $indir"
 echo "Output dir:                       $outdir"
-echo "RNAseq library type:              $lib_type"
+echo "Strandedness / strand argument:   $strandedness / $strand_arg"
 echo "Minimum contig length:            $min_contig_length"
 echo "Normalize reads:                  $normalize"
 echo "Max cov. to normalize reads to:   $normalize_max_read_cov"
@@ -284,7 +292,9 @@ echo "## Starting Trinity run..."
 
 [[ "$dryrun" = false ]] && set -o xtrace
 
+set +e
 if [[ "$genome_guided" = false ]]; then
+    ## De novo
     ${e}Time Trinity \
         --seqType fq \
         --left "$R1_list" \
@@ -292,25 +302,27 @@ if [[ "$genome_guided" = false ]]; then
         --min_contig_length "$min_contig_length" \
         --normalize_max_read_cov "$normalize_max_read_cov" \
         $normalize_arg \
-        $lib_type_arg \
+        $strand_arg \
         --output "$outdir" \
         --max_memory "$mem_gb" \
         --CPU "$threads" \
         --verbose \
         $more_args
 else
+    ## Genome-guided
     ${e}Time Trinity \
         --genome_guided_bam "$bam" \
         --genome_guided_max_intron "$genome_guided_max_intron" \
         --min_contig_length "$min_contig_length" \
         --normalize_max_read_cov "$normalize_max_read_cov" \
         $normalize_arg \
-        $lib_type_arg \
+        $strand_arg \
         --output "$outdir" \
         --max_memory "$mem_gb" \
         --CPU "$threads" \
         --verbose
 fi
+set -e
 
 [[ "$debug" = false ]] && set +o xtrace
 
