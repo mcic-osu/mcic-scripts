@@ -13,7 +13,7 @@
 #? taking FASTQ files (with primers removed by cutadapt) as input,
 #? and outputting, among others, a table with ASV abundances.
 
-#? Load the Conda environment as follows to run this script directly using sbatch:
+#?Load the Conda environment as follows to run this script directly using sbatch:
 #? module load miniconda3/4.12.0-py39 && source activate /fs/ess/PAS0471/jelmer/conda/r-metabar
 
 # SET-UP -----------------------------------------------------------------------
