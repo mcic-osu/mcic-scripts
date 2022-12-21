@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=6:00:00
-#SBATCH --cpus-per-task=3
-#SBATCH --mem=12G
+#SBATCH --time=1:00:00
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=8G
 #SBATCH --job-name=sabre
 #SBATCH --output=slurm-sabre-%j.out
-
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -20,20 +19,23 @@ Print_help() {
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 --R1 <R1 FASTQ file> --R2 <R2 FASTQ file> --barcode-file <barcode file> -o <output dir>"
+    echo "  sbatch $0 --R1 <R1 FASTQ file> --barcode-file <barcode file> -o <output dir> [...]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -f/--R1             <file>  Input R1 FASTQ file (can be gzipped)"
-    echo "  -r/--R2             <file>  Input R2 FASTQ file (can be gzipped)"
+    echo "  -f/--R1             <file>  Input R1 FASTQ file (can be gzipped)."
+    echo "                              By default, the name of the R2 file will be inferred"
     echo "  -b/--barcode-file   <file>  Input TSV file with 1 line per barcode and 3 columns: barcode, forward output FASTQ, reverse output FASTQ"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
+    echo
+    echo "OTHER KEY OPTIONS:"
+    echo "  -r/--R2             <file>  Input R2 FASTQ file (can be gzipped)    [default: will be inferred from R1 name]"
     echo
     echo "UTILITY OPTIONS:"
     echo "  -h/--help                   Print this help message and exit"
     echo
     echo "OUTPUT:"
-    echo "  - Demultiplexed, gzipped R1 and R2 FASTQ files for each sample in the main output dir"
+    echo "  - Demultiplexed, gzipped R1 and R2 FASTQ files for each in a directory 'assigned' with the output dir"
     echo "  - R1 and R2 files with unassigned reads in a directory 'unassigned' within the output dir"
     echo 
     echo "EXAMPLE COMMANDS:"
@@ -68,12 +70,15 @@ Die() {
 # ==============================================================================
 #                               SETUP
 # ==============================================================================
-# Parse command-line args
+# Option defaults
+R2=""                       # Will be inferred from the R1 filename
+
+# Placeholder defaults
 R1=""
-R2=""
 barcode_file=""
 outdir=""
 
+# Parse command-line args
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
@@ -91,8 +96,16 @@ done
 module load miniconda3/4.12.0-py39
 source activate /fs/ess/PAS0471/jelmer/conda/sabre-1.0
 
-# Bash script settings
+# Strict Bash settings
 set -euo pipefail
+
+# Infer the R2 filename
+if [[ "$R2" = "" ]]; then
+    file_ext=$(basename "$R1" | sed -E 's/.*(.fastq|.fq|.fastq.gz|.fq.gz)$/\1/')
+    R1_suffix=$(basename "$R1" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
+    R2_suffix=${R1_suffix/1/2}
+    R2=${R1/$R1_suffix/$R2_suffix}
+fi
 
 # Make paths absolute, because we will cd into the outdir
 [[ ! "$R1" =~ ^/ ]] && R1="$PWD"/"$R1"
@@ -106,7 +119,6 @@ R2_unassigned_out="$outdir"/unassigned/unassigned_R2.fastq
 
 # Test the input
 [[ "$R1" = "" ]] && Die "Please specify an R1 input FASTQ file with --R1" "$all_args"
-[[ "$R2" = "" ]] && Die "Please specify an R2 input FASTQ file with --R2" "$all_args"
 [[ "$barcode_file" = "" ]] && Die "Please specify a barcode file --barcode-file" "$all_args"
 [[ "$outdir" = "" ]] && Die "Please specify an output dir --outdir" "$all_args"
 
@@ -137,11 +149,11 @@ echo "========================================================================"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Create the output directory
-mkdir -p "$outdir"/logs "$outdir"/unassigned
+# Create the output directories
+mkdir -p "$outdir"/logs "$outdir"/unassigned "$outdir"/assigned
 
 # Move into the output dir
-cd "$outdir" || exit
+cd "$outdir" || exit 1
 
 # Run Sabre
 echo -e "\n# Now running Sabre..."
@@ -150,13 +162,15 @@ sabre pe \
     --pe-file2 "$R2" \
     --barcode-file "$barcode_file" \
     --unknown-output1 "$R1_unassigned_out" \
-    --unknown-output2 "$R2_unassigned_out"
+    --unknown-output2 "$R2_unassigned_out" \
+    --both-barcodes
 
-#! -c, --both-barcodes, Optional flag that indicates that both fastq files have barcodes.
+#? --both-barcodes, Optional flag that indicates that both fastq files have barcodes.
 
 # Zip the output files
-echo -e "\n# Now zipping the output FASTQ files..."
-gzip -v "$outdir"/*fastq
+echo -e "\n# Now moving and zipping the output FASTQ files..."
+mv "$outdir"/*fastq "$outdir"/assigned/
+gzip -vf "$outdir"/assigned/*fastq "$outdir"/unassigned/*fastq
 
 
 # ==============================================================================
@@ -164,8 +178,8 @@ gzip -v "$outdir"/*fastq
 # ==============================================================================
 echo
 echo "========================================================================="
-echo "# Listing files in the output dir:"
-ls -lhd "$outdir"/*
+echo "# Listing files in the 'assigned' output dir:"
+ls -lhd "$outdir"/assigned/*
 echo
 sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
 echo
