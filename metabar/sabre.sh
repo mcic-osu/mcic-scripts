@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
+#SBATCH --time=6:00:00
+#SBATCH --cpus-per-task=3
+#SBATCH --mem=12G
 #SBATCH --job-name=sabre
 #SBATCH --output=slurm-sabre-%j.out
 
