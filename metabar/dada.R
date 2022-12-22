@@ -13,6 +13,8 @@
 #? taking FASTQ files (with primers removed by cutadapt) as input,
 #? and outputting, among others, a table with ASV abundances.
 
+#? The main output file (an ASV count table) will be at: <outdir>/count_table.rds
+
 #?Load the Conda environment as follows to run this script directly using sbatch:
 #? module load miniconda3/4.12.0-py39 && source activate /fs/ess/PAS0471/jelmer/conda/r-metabar
 
@@ -100,10 +102,10 @@ nseq_file <- file.path(qc_dir, "nseq_summary.txt")
 nasv_file <- file.path(qc_dir, "nasv_summary.txt")
 fasta_out <- file.path(outdir, "ASVs.fa")
 
-seqtab_all_file <- file.path(rds_dir, "seqtab_all.rds")
-seqtab_nochim_file <- file.path(rds_dir, "seqtab_nochim.rds")
-seqtab_lenfilt_file <- file.path(rds_dir, "seqtab_nochim_lenfilter.rds")
-seqtab_final_file <- file.path(outdir, "seqtab.rds")
+seqtab_all_file <- file.path(rds_dir, "count_table_all.rds")
+seqtab_nochim_file <- file.path(rds_dir, "count_table_nochim.rds")
+seqtab_lenfilt_file <- file.path(rds_dir, "count_table_nochim_lenfilter.rds")
+seqtab_final_file <- file.path(outdir, "count_table.rds")
 
 # Report command-line arguments
 message()

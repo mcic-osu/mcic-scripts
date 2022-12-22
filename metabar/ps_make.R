@@ -30,13 +30,13 @@ parser <- ArgumentParser()
 parser$add_argument("--meta",
                     type = "character", required = TRUE,
                     help = "Input file with metadata (REQUIRED)")
-parser$add_argument("--seqtab",
+parser$add_argument("--asv_table",
                     type = "character", required = TRUE,
                     help = "RDS file with sequence table (REQUIRED)")
 parser$add_argument("--tree",
                     type = "character", required = TRUE,
                     help = "RDS file with tree (REQUIRED)")
-parser$add_argument("--taxa",
+parser$add_argument("--tax_table",
                     type = "character", required = TRUE,
                     help = "RDS file with tax. assignments (REQUIRED)")
 parser$add_argument("-o", "--outfile",
@@ -47,8 +47,8 @@ parser$add_argument("--sample_col_name",
                     help = "Name that will be given to first column of the metadata, which should contain sample IDs")
 args <- parser$parse_args()
 
-seqtab_rds <- args$seqtab
-taxa_rds <- args$taxa
+seqtab_rds <- args$asv_table
+taxa_rds <- args$tax_table
 tree_rds <- args$tree
 meta_file <- args$meta
 ps_rds <- args$outfile
@@ -69,7 +69,7 @@ message("# ===================================================================="
 message("#               STARTING SCRIPT PS_MAKE.R")
 message("# ====================================================================")
 Sys.time()
-message("# Sequence table RDS file (input):    ", seqtab_rds)
+message("# ASV count table RDS file (input):   ", seqtab_rds)
 message("# Taxa RDS file (input):              ", taxa_rds)
 message("# Tree RDS file (input):              ", tree_rds)
 message("# Sample data file (input):           ", meta_file)
