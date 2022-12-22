@@ -126,6 +126,7 @@ R2_unassigned_out="$outdir"/unassigned/unassigned_R2.fastq
 [[ ! -f "$R2" ]] && Die "Input R2 file $R2 does not exist"
 [[ ! -f "$barcode_file" ]] && Die "Input barcode file $barcode_file does not exist"
 
+[[ "$R1" = "$R2" ]] && Die "The R1 and R2 input files are the same file: $R1"
 
 # Report
 echo "========================================================================="
