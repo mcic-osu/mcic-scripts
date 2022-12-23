@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=6:00:00
+#SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
 #SBATCH --job-name=nfcore_ampliseq
@@ -45,7 +45,9 @@ Print_help() {
     echo "  --sample_inference  <str>   Dada sample inference method            [default: 'independent']"
     echo "                                - 'independent', 'pooled', or 'pseudo'"
     echo "  --dada_ref_taxonomy <str>   Reference taxonomy for dada             [default: 'silva=138' for 16S / 'unite-fungi=8.3' for ITS]"
-    echo "  --filter_ssu        <str>   #TODO"
+    echo "  --filter_ssu        <str>   Quoted, comma-separated list of kingdoms to keep [default: no SSU filtering]"
+    echo "                                - Recommended for 16S: 'bac' / for ITS: 'arc,euk'"
+    echo "                                - See https://nf-co.re/ampliseq/2.4.1/parameters#filter_ssu"
     echo "  --min_frequency     <int>   ASV must be present at least x times    [default: 1]"
     echo "  --metadata          <file>  Metadata TSV file                       [default: no metadata => no by-group stats]"
     echo "                                - At a minimum should have a column named 'id'"
@@ -54,12 +56,12 @@ Print_help() {
     echo "  --metadata_category_barplot <str> Metadata category/ies for barplots [default: none / 'metadata_category' if that is specified]"
     echo
     echo "OPTIONS OF THIS SHELL SCRIPT:"
-    echo "  --its                       Use this flag if the data is ITS, in which case:"
+    echo "  --its                       Use this flag if the data is ITS-derived, in which case:"
     echo "                                - The default taxonomy will be changed to 'unite-fungi=8.3'"
     echo "                                - The '--illumina_pe_its' and '--addsh' flags to the workflow will be used"
-    echo "  --more_args         <str>   Additional arguments to pass to 'nextflow run', pass as a single quoted string"
-    echo "  --nf_file           <file>  Main .nf workflow definition file       [default: 'workflows/nfcore-ampliseq/workflow/main.nf']"
-    echo "                                - If this file isn't present, the workflow will be automatically downloaded."
+    echo "  --more_args         <str>   Additional arguments, all in a single quoted string, to pass to 'nextflow run'"
+    echo "  --workflow_dir      <dir>   Dir with the nfcore/ampliseq workflow   [default: 'workflows/nfcore-ampliseq']"
+    echo "                                - Will be downloaded if needed."
     echo "  --debug                     Turn on debugging mode: print all commands"
     echo "  --dryrun                    Dry run: print info and main commands but don't run"
     echo "  -h/--help                   Print this help message and exit"
@@ -134,11 +136,10 @@ Die() {
 #                     CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Option defaults - workflow parameters
-extension='/*_R{1,2}_001.fastq.gz'     # Same as nfcore/ampliseq default
 is_ITS=false && ITS_arg=""
 
 # Option defaults - Nextflow
-nf_file=workflows/nfcore-ampliseq/workflow/main.nf
+workflow_dir=workflows/nfcore-ampliseq
 container_dir=/fs/project/PAS0471/containers
 work_dir=/fs/scratch/PAS0471/$USER/nfcore-ampliseq
 profile="singularity"
@@ -162,20 +163,20 @@ fastq_dir=""
 outdir=""
 FW_primer=""
 RV_primer=""
-trunclenf=""
-trunclenr=""
-sample_inference=""
-dada_ref_taxonomy=""
+extension="" && extension_arg=""
+trunclenf="" && trunclenf_arg=""
+trunclenr="" && trunclenr_arg=""
+sample_inference="" && sample_inference_arg=""
+dada_ref_taxonomy="" && dada_ref_taxonomy_arg=""
 min_len_asv="" && min_len_asv_arg=""
 max_len_asv="" && max_len_asv_arg=""
-min_frequency=1
-filter_ssu=""
+filter_ssu="" && filter_ssu_arg=""
 config_file=""
 metadata="" && metadata_arg=""
 metadata_category=""
 metadata_category_barplot=""
+min_frequency=1
 more_args=""
-sample_inference="pseudo"
 
 # Parse command-line options
 all_args="$*"
@@ -198,7 +199,7 @@ while [ "$1" != "" ]; do
         --metadata )                    shift && metadata=$1 ;;
         --metadata_category )           shift && metadata_category=$1 ;;
         --metadata_category_barplot )   shift && metadata_category_barplot=$1 ;;
-        --nf_file )                     shift && nf_file=$1 ;;
+        --workflow_dir )                shift && workflow_dir=$1 ;;
         --container_dir )               shift && container_dir=$1 ;;
         --more_args )                   shift && more_args=$1 ;;
         -c | -config )                  shift && config_file=$1 ;;
@@ -256,6 +257,7 @@ fi
 [[ "$trunclenr" != "" ]] && trunclenr_arg="--trunclenr $trunclenr"
 [[ "$min_frequency" != "" ]] && min_frequency_arg="--min_frequency $min_frequency"
 [[ "$filter_ssu" != "" ]] && filter_ssu_arg="--filter_ssu $filter_ssu"
+[[ "$extension" != "" ]] && extension_arg="--extension $extension"
 
 # Get the OSC config file
 if [[ ! -f "$osc_config" ]]; then
@@ -286,7 +288,7 @@ echo "Input FASTQ dir:                  $fastq_dir"
 echo "Output dir:                       $outdir"
 echo "Forward primer:                   $FW_primer"
 echo "Reverse primer:                   $RV_primer"
-echo "Dada reference taxonomy:          $dada_ref_taxonomy"
+[[ "$dada_ref_taxonomy" != "" ]] && echo "Dada reference taxonomy:          $dada_ref_taxonomy"
 [[ "$extension" != "" ]] && echo "File extension:                   $extension"
 [[ "$sample_inference" != "" ]] && echo "Sample inference method:          $sample_inference"
 [[ "$min_len_asv" != "" ]] && echo "Min. ASV length:                  $min_len_asv"
@@ -304,7 +306,7 @@ echo
 echo "Resume previous run:              $resume"
 echo "Container dir:                    $container_dir"
 echo "Scratch (work) dir:               $work_dir"
-echo "Nextflow workflow file:           $nf_file"
+echo "Nextflow workflow dir:            $workflow_dir"
 echo "Config 'profile':                 $profile"
 echo "Config file argument:             $config_arg"
 [[ "$config_file" != "" ]] && echo "Additional config file:           $config_file"
@@ -326,9 +328,9 @@ if [[ "$dryrun" = false ]]; then
     [[ -f "$trace_dir"/dag.png ]] && rm "$trace_dir"/dag.png
 
     # Download workflow, if needed
-    if [[ ! -f "$nf_file" ]]; then
-        workflow_dir="$(dirname "$(dirname "$nf_file")")"
-        mkdir -p "$(dirname "$workflow_dir")"
+    nf_file="$workflow_dir"/workflow/main.nf
+
+    if [[ ! -d "$workflow_dir" ]]; then
         echo "# Downloading workflow to $workflow_dir"
         nf-core download ampliseq \
             --revision 2.4.1 \
@@ -336,6 +338,8 @@ if [[ "$dryrun" = false ]]; then
             --container singularity \
             --outdir "$workflow_dir"
         echo
+    elif [[ ! -f "$nf_file" ]]; then
+        Die "Can't find workflow file $nf_file inside workflow dir $workflow_dir"
     fi
 fi
 
@@ -346,12 +350,12 @@ echo -e "# Starting the workflow...\n"
 ${e}Time nextflow run \
     "$nf_file" \
     --input "$fastq_dir" \
-    --extension "$extension" \
+    $extension_arg \
     --outdir "$outdir" \
     --FW_primer "$FW_primer" \
     --RV_primer "$RV_primer" \
     $ITS_arg \
-    "${dada_ref_taxonomy_arg[@]}" \
+    $dada_ref_taxonomy_arg \
     $trunclenf_arg \
     $trunclenr_arg \
     $sample_inference_arg \
