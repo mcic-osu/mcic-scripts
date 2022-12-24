@@ -4,14 +4,15 @@
 #SBATCH --time=3:00:00
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=100G
+#SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --job-name=STAR-align
-#SBATCH --output=slurm-STAR-align-%j.out
+#SBATCH --job-name=star-align
+#SBATCH --output=slurm-star_align-%j.out
 
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-## Help function
+# Help function
 Print_help() {
     echo
     echo "======================================================================"
@@ -20,59 +21,139 @@ Print_help() {
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "sbatch $0 -i <R1-FASTQ> -r <ref-index-dir> -o <outdir> [...]"
+    echo "  sbatch $0 -i <R1-FASTQ> -r <ref-index-dir> -o <outdir> [...]"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "   -i FILE       Input gzipped R1 FASTQ file path (The name of the R2 file will be inferred by the script)"
-    echo "   -r DIR        Input STAR reference genome index dir (First create index with 'mcic-scripts/rnaseq/star_index.sh')"
-    echo "   -o DIR        BAM output dir"
+    echo "  -i/--R1         <file>  Input gzipped R1 FASTQ file path (The name of the R2 file will be inferred by the script)"
+    echo "  -r/--index_dir  <dir>   Input STAR reference genome index dir (First create index with 'mcic-scripts/rnaseq/star_index.sh')"
+    echo "  -o/--outdir     <dir>   BAM output dir"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "   -a FILE       Reference annotation (GFF/GFF3/GTF) file (GTF preferred)  [default: no annotation file, but this is not recommended]"
-    echo "   -u            Output unmapped reads back as FASTQ file             [default: don't output]"
-    echo "   -P            FASTQ files are single-end, not paired-end           [default: paired-end]"
-    echo "   -s            Don't sort the output BAM file                       [default: position-sort the BAM file]"
-    echo "   -S            Use samtools to sort the output BAM file             [default: Use STAR to sort the BAM file]"
-    echo "   -c            Count reads per gene                                 [default: don't perform counting]"
-    echo "                 NOTE: When using the -c option, you should use a GTF and not a GFF/GFF3"
-    echo "   -m INTEGER    Max. nr. of locations a read can map to              [default: 10]"
-    echo "   -t INTEGER    Min. intron size                                     [default: 21 (also the STAR default)]"
-    echo "   -T INTEGER    Max. intron size                                     [default: 0 => auto-determined by STAR]"
-    echo "   -A STRING     Quoted string with additional arguments to pass to STAR"
+    echo "  --annot         <file>  Reference annotation (GFF/GFF3/GTF) file (GTF preferred)  [default: no annotation file, but this is not recommended]"
+    echo "  --output_unmapped       Output unmapped reads back as FASTQ file    [default: don't output]"
+    echo "  --single_end            FASTQ files are single-end, not paired-end  [default: paired-end]"
+    echo "  --no_sort               Don't sort the output BAM file              [default: position-sort the BAM file]"
+    echo "  --samtools_sort         Use samtools to sort the output BAM file    [default: Use STAR to sort the BAM file]"
+    echo "  --count                 Count reads per gene                        [default: don't perform counting]"
+    echo "                          NOTE: When using this flag, provide a GTF and not a GFF/GFF3 file"
+    echo "  --max_map       <int>   Max. nr. of locations a read can map to     [default: 10]"
+    echo "  --intron_min    <int>   Min. intron size                            [default: 21 (also the STAR default)]"
+    echo "  --intron_max    <int>   Max. intron size                            [default: 0 => auto-determined by STAR]"
+    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to STAR"
     echo
     echo
     echo "UTILITY OPTIONS:"
-    echo "   -h            Print this help message and exit"
-    echo "   -x            Turn on debugging mode: print all code in the script"
+    echo "  --debug                 Run the script in debug mode (print all code)"
+    echo "  -h                      Print this help message and exit"
+    echo "  --help                  Print the help for START and exit"
+    echo "  -v/--version            Print the version of STAR and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "sbatch $0 -i data/fastq/S01_R1.fastq.gz -o results/star -r refdata/star_index"
+    echo "  sbatch $0 -i data/fastq/S01_R1.fastq.gz -o results/star -r refdata/star_index"
+    echo
+    echo "SOFTWARE DOCUMENTATION:"
+    echo "  - https://github.com/alexdobin/STAR"
+    echo "  - https://github.com/alexdobin/STAR/blob/master/doc/STARmanual.pdf"
+}
+
+# Load software
+Load_software() {
+    set +u
+    module load miniconda3/4.12.0-py39
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
+    module load miniconda3/4.12.0-py39
+    source activate /fs/project/PAS0471/jelmer/conda/star-2.7.10a  # NOTE: This env includes samtools
+    set -u
+}
+
+# Print version
+Print_version() {
+    set +e
+    Load_software
+    STAR --version
+    set -e
+}
+
+# Print help for the focal program
+Print_help_program() {
+    Load_software
+    STAR --help
+}
+
+# Print SLURM job resource usage info
+Resource_usage() {
+    echo
+    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
     echo
 }
 
-## Load software
-Load_software() {
-    module load miniconda3/4.12.0-py39
-    source activate /fs/project/PAS0471/jelmer/conda/star-2.7.10a  # NOTE: This env includes samtools
+# Print SLURM job requested resources
+Print_resources() {
+    set +u
+    echo "# SLURM job information:"
+    echo "Account (project):    $SLURM_JOB_ACCOUNT"
+    echo "Job ID:               $SLURM_JOB_ID"
+    echo "Job name:             $SLURM_JOB_NAME"
+    echo "Memory (per node):    $SLURM_MEM_PER_NODE"
+    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
+    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
+    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
+    echo "======================================================================"
+    echo
+    set -u
 }
 
-## Print version
-Print_version() {
-    Load_software
-    STAR --version
+# Set the number of threads/CPUs
+Set_threads() {
+    set +u
+    if [[ "$slurm" = true ]]; then
+        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
+            threads="$SLURM_CPUS_PER_TASK"
+        elif [[ -n "$SLURM_NTASKS" ]]; then
+            threads="$SLURM_NTASKS"
+        else 
+            echo "WARNING: Can't detect nr of threads, setting to 1"
+            threads=1
+        fi
+    else
+        threads=1
+    fi
+    set -u
 }
 
-## Exit upon error with a message
+# Resource usage information
+Time() {
+    /usr/bin/time -f \
+        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
+        "$@"
+}   
+
+# Exit upon error with a message
 Die() {
-    printf "\n$0: ERROR: %s\n" "$1" >&2
-    echo -e "Exiting\n" >&2
+    error_message=${1}
+    error_args=${2-none}
+    
+    echo >&2
+    echo "=====================================================================" >&2
+    printf "$0: ERROR: %s\n" "$error_message" >&2
+    echo -e "\nFor help, run this script with the '-h' option" >&2
+    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
+    if [[ "$error_args" != "none" ]]; then
+        echo -e "\nArguments passed to the script:" >&2
+        echo "$error_args" >&2
+    fi
+    echo -e "\nEXITING..." >&2
+    echo "=====================================================================" >&2
+    echo >&2
     exit 1
 }
+
 
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
+# Option defaults
 max_map=10                # If this nr is exceeded, read is considered unmapped
 intron_min=21             # STAR default, too
 intron_max=0              # => auto-determined; STAR default, too
@@ -81,55 +162,66 @@ sort=true
 samtools_sort=false
 output_unmapped=false && unmapped_arg=""
 paired_end=true
+
 debug=false
+slurm=true
 
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-## Placeholder defaults
+# Placeholder defaults
 R1_in=""
 outdir=""
 index_dir=""
 annot="" && annot_arg=""
 more_args=""
 
-## Parse command-line options
-while getopts ':i:o:r:m:t:T:a:A:PxuSsch' flag; do
-    case "${flag}" in
-        i) R1_in="$OPTARG" ;;
-        a) annot="$OPTARG" ;;
-        o) outdir="$OPTARG" ;;
-        r) index_dir="$OPTARG" ;;
-        m) max_map="$OPTARG" ;;
-        t) intron_min="$OPTARG" ;;
-        T) intron_max="$OPTARG" ;;
-        A) more_args="$OPTARG" ;;
-        c) count=true ;;
-        s) sort=false ;;
-        S) samtools_sort=true ;;
-        u) output_unmapped=true ;;
-        P) paired_end=false ;;
-        x) debug=true ;;
-        h) Print_help && exit 0 ;;
-        \?) Die "Invalid option" ;;
-        :) Die "Option -$OPTARG requires an argument" ;;
+# Parse command-line args
+all_args="$*"
+
+while [ "$1" != "" ]; do
+    case "$1" in
+        -i | --R1 )         shift && R1_in=$1 ;;
+        -r | --index_dir )  shift && index_dir=$1 ;;
+        -a | --annot )      shift && annot=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        --max_map )         shift && max_map=$1 ;;
+        --intron_min )      shift && intron_min=$1 ;;
+        --intron_max )      shift && intron_max=$1 ;;
+        --output_unmapped ) shift && output_unmapped=$1 ;;
+        --count )           count=true ;;
+        --no_sort )         sort=false ;;
+        --samtools_sort )   samtools_sort=true ;;
+        --single_end )      paired_end=false ;;
+        --more_args )       shift && more_args=$1 ;;
+        -v | --version )    Print_version; exit 0 ;;
+        -h )                Print_help; exit 0 ;;
+        --help )            Print_help_program; exit 0;;
+        --debug )           debug=true ;;
+        * )                 Die "Invalid option $1" "$all_args" ;;
     esac
+    shift
 done
 
 
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-[[ "$debug" = true ]] && set -o xtrace
-
-## Load software
-Load_software
-
-## Bash strict mode
+# Bash strict mode
 set -euo pipefail
 
-## Check inputs I
+# In debugging mode, print all commands
+[[ "$debug" = true ]] && set -o xtrace
+
+# Check if this is a SLURM job
+[[ -z "$SLURM_JOB_ID" ]] && slurm=false
+
+# Load software
+Load_software
+Set_threads
+
+# Check inputs I
 [[ "$R1_in" = "" ]] && Die "Please specify an (R1) input FASTQ file with -i"
 [[ "$outdir" = "" ]] && Die "Please specify an output dir with -o"
 [[ "$index_dir" = "" ]] && Die "Please specify a dir with a STAR reference genome index with -r"
@@ -138,12 +230,12 @@ set -euo pipefail
 [[ "$annot" != "" ]] && [[ ! -f "$annot" ]] && Die "Input annotation file (-a) $annot does not exist"
 [[ "$annot" = "" ]] && [[ "$count" = true ]] && Die "Need an annotation file (-a) for gene counting (-c)"
 
-## Determine R2 file, output prefix, etc
+# Determine R2 file, output prefix, etc
 R1_basename=$(basename "$R1_in" | sed -E 's/.fa?s?t?q.gz//')
 
 if [ "$paired_end" = true ]; then
     
-    ## Determine name of R2 file
+    # Determine name of R2 file
     R1_suffix=$(echo "$R1_in" | sed -E 's/.*(_R?1).*fa?s?t?q.gz/\1/')
     R2_suffix=${R1_suffix/1/2}
     R2_in=${R1_in/$R1_suffix/$R2_suffix}
@@ -158,11 +250,11 @@ else
     R2_in=""
 fi
 
-## Other output
+# Define other outputs
 outfile_prefix="$outdir/$sampleID"_
 starlog_dir="$outdir"/star_logs
 
-## If a GFF/GTF file is provided, build the appropriate argument for STAR
+# If a GFF/GTF file is provided, build the appropriate argument for STAR
 if [ "$annot" != "" ]; then
 
     if [[ "$annot" =~ .*\.gff3? ]]; then
@@ -188,21 +280,21 @@ if [ "$annot" != "" ]; then
 
 fi
 
-## Sorted output or not
+# Sorted output or not
 if [[ "$sort" = true && "$samtools_sort" = false ]]; then
     output_arg="--outSAMtype BAM SortedByCoordinate --outBAMsortingBinsN 100"
 else
     output_arg="--outSAMtype BAM Unsorted"
 fi
 
-## Output unmapped reads in a FASTQ file
+# Output unmapped reads in a FASTQ file
 if [ "$output_unmapped" = true ]; then
     unmapped_arg="--outReadsUnmapped Fastx"
     unmapped_dir="$outdir"/unmapped
     mkdir -p "$unmapped_dir"
 fi
 
-## Report
+# Report
 echo
 echo "=========================================================================="
 echo "               STARTING SCRIPT STAR_ALIGN.SH"
@@ -227,19 +319,25 @@ echo "Sample ID (as inferred by the script):        $sampleID"
 [[ "$paired_end" = true ]] && echo "R2 FASTQ file (as inferred by the script):    $R2_in"
 [[ "$annot" != "" ]] && echo "Annotation arg for STAR:                      $annot_arg"
 echo "Output arg for STAR:                          $output_arg"
+
+echo "Listing the input file(s):"
+ls -lh "$R1_in" "$R1_in"
+[[ "$annot" != "" ]] && ls -lh "$annot"
 echo "=========================================================================="
-echo
+
+# Print reserved resources
+[[ "$slurm" = true ]] && Print_resources
 
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-## Create the output directory
+# Create the output directory
 mkdir -p "$outdir"/logs "$outdir"/bam "$starlog_dir"
 
-## Run STAR
+# Run STAR
 echo "# Now aligning reads with STAR...."
-STAR --runThreadN "$SLURM_CPUS_ON_NODE" \
+STAR --runThreadN "$threads" \
     --genomeDir "$index_dir" \
     --readFilesIn "$R1_in" "$R2_in" \
     --readFilesCommand zcat \
@@ -247,12 +345,26 @@ STAR --runThreadN "$SLURM_CPUS_ON_NODE" \
     --alignIntronMin $intron_min \
     --alignIntronMax $intron_max \
     --outFileNamePrefix "$outfile_prefix" \
-    $unmapped_arg $output_arg $annot_arg $more_args
+    --twopassMode Basic \
+    --outSAMstrandField intronMotif \
+    --outSAMattributes NH HI AS NM MD \
+    --outSAMattrRGline ID:"$sampleID" SM:"$sampleID" \
+    $unmapped_arg \
+    $output_arg \
+    $annot_arg \
+    $more_args
+
+#? --twopassMode Basic => Using this following the nf-core RNAseq workflow
+#? --outSAMstrandField intronMotif => Using this following the nf-core RNAseq workflow
+#? --outSAMattributes NH HI AS NM MD => Using this following the nf-core RNAseq workflow
+
+#TODO
+# - Consider using --quantTranscriptomeBan "Singleend", see https://github.com/nf-core/dualrnaseq/blob/master/docs/parameters.md#--quantTranscriptomeBan-Singleend
 
 
-## Sort with samtools sort
-## STAR may fail to sort on some large BAM files, or BAM files with a lot of
-## reads mapping to similar positions. In that case, could use samtools sort. 
+# Sort with samtools sort
+# STAR may fail to sort on some large BAM files, or BAM files with a lot of
+# reads mapping to similar positions. In that case, could use samtools sort. 
 if [[ "$sort" = true && "$samtools_sort" = "true" ]]; then
 
     echo -e "\n# Sorting the BAM file with samtools sort..."
@@ -263,7 +375,7 @@ if [[ "$sort" = true && "$samtools_sort" = "true" ]]; then
     samtools sort "$bam_unsorted" > "$bam_sorted"
 fi
 
-## Move BAM files
+# Move BAM files
 echo -e "\n# Moving the BAM file..."
 if [[ "$sort" = true ]]; then
     mv -v "$outfile_prefix"Aligned.sortedByCoord.out.bam "$outdir"/bam/"$sampleID".bam
@@ -271,7 +383,7 @@ else
     mv -v "$outfile_prefix"Aligned.out.bam "$outdir"/bam/"$sampleID"_sort.bam
 fi
 
-## Organize STAR output
+# Organize STAR output
 if [ "$output_unmapped" = true ]; then
     echo -e "\n# Moving, renaming and zipping unmapped FASTQ files...."
     for oldpath in "$outfile_prefix"*Unmapped.out.mate*; do
@@ -286,12 +398,12 @@ if [ "$output_unmapped" = true ]; then
         [[ "$newpath" = *R1.fastq.gz ]] && sed -E 's/(^@.*) 0:N: (.*)/\1 1:N: \2/' "$oldpath" | gzip -f > "$newpath"
         [[ "$newpath" = *R2.fastq.gz ]] && sed -E 's/(^@.*) 1:N: (.*)/\1 2:N: \2/' "$oldpath" | gzip -f > "$newpath"
 
-        ## Remove old file
+        # Remove old file
         rm -v "$oldpath"
     done
 fi
 
-## Move STAR log files
+# Move STAR log files
 echo -e "\n# Moving the STAR log files...."
 mv -v "$outfile_prefix"Log*out "$starlog_dir"
 echo
@@ -317,7 +429,7 @@ echo
 echo "# STAR version used:"
 Print_version | tee "$outdir"/logs/version.txt
 echo
-sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
+[[ "$slurm" = true ]] && Resource_usage
 echo
 echo "# Done with script"
 date
