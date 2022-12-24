@@ -14,7 +14,7 @@
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-## Help function
+# Help function
 Print_help() {
     echo
     echo "======================================================================"
@@ -31,7 +31,7 @@ Print_help() {
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to TODO_THIS_SOFTWARE"
+    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to TODO_THIS_SOFTWARE"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
@@ -55,7 +55,7 @@ Print_help() {
     echo
 }
 
-## Load software
+# Load software
 Load_software() {
     set +u
     module load miniconda3/4.12.0-py39
@@ -64,7 +64,7 @@ Load_software() {
     set -u
 }
 
-## Print version
+# Print version
 Print_version() {
     set +e
     Load_software
@@ -72,21 +72,20 @@ Print_version() {
     set -e
 }
 
-## Print help for the focal program
+# Print help for the focal program
 Print_help_program() {
     Load_software
     #TODO_THIS_SOFTWARE --help
 }
 
-## Print SLURM job resource usage info
+# Print SLURM job resource usage info
 Resource_usage() {
     echo
-    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
-        grep -Ev "ba|ex"
+    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
     echo
 }
 
-## Print SLURM job requested resources
+# Print SLURM job requested resources
 Print_resources() {
     set +u
     echo "# SLURM job information:"
@@ -102,7 +101,7 @@ Print_resources() {
     set -u
 }
 
-## Set the number of threads/CPUs
+# Set the number of threads/CPUs
 Set_threads() {
     set +u
     if [[ "$slurm" = true ]]; then
@@ -120,14 +119,14 @@ Set_threads() {
     set -u
 }
 
-## Resource usage information
+# Resource usage information
 Time() {
     /usr/bin/time -f \
         '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
         "$@"
 }   
 
-## Exit upon error with a message
+# Exit upon error with a message
 Die() {
     error_message=${1}
     error_args=${2-none}
@@ -151,9 +150,9 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-## Constants
+# Constants
 
-## Option defaults
+# Option defaults
 debug=false
 dryrun=false && e=""
 slurm=true
@@ -162,20 +161,20 @@ slurm=true
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-## Placeholder defaults
+# Placeholder defaults
 infile=""
 outdir=""
 more_args=""
 #tree="" && tree_arg=""
 
-## Parse command-line args
+# Parse command-line args
 all_args="$*"
 
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
-        --more-args )       shift && more_args=$1 ;;
+        --more_args )       shift && more_args=$1 ;;
         -v | --version )    Print_version; exit 0 ;;
         -h )                Print_help; exit 0 ;;
         --help )            Print_help_program; exit 0;;
@@ -191,36 +190,36 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-## Bash script settings
+# Bash script settings
 set -euo pipefail
 
-## In debugging mode, print all commands
+# In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
-## Check if this is a SLURM job
+# Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Load software and set nr of threads
+# Load software and set nr of threads
 [[ "$dryrun" = false ]] && Load_software
 Set_threads
 
-## FASTQ filename parsing TODO_edit_or_remove
+# FASTQ filename parsing TODO_edit_or_remove
 #file_ext=$(basename "$R1" | sed -E 's/.*(.fasta|.fastq.gz|.fq.gz)$/\1/')
 #R1_suffix=$(basename "$R1" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
 #R2_suffix=${R1_suffix/1/2}
 #R2=${R1/$R1_suffix/$R2_suffix}
 #sample_id=$(basename "$R1" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
 
-## Read a fofn TODO_edit_or_remove
+# Read a fofn TODO_edit_or_remove
 # [[ "$fofn" != "" ]] && mapfile -t infiles <"$fofn"
 # [[ "$indir" != "" ]] && mapfile infiles < <(find "$indir" -type f)
 
-## Check input
+# Check input
 [[ "$infile" = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
 [[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
 [[ ! -f "$infile" ]] && Die "Input file $infile does not exist"
 
-## Report
+# Report
 echo
 echo "=========================================================================="
 echo "                    STARTING SCRIPT TODO_SCRIPTNAME"
@@ -237,17 +236,17 @@ echo "Listing the input file(s):"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
-## Print reserved resources
+# Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
 
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-## Create the output directory
+# Create the output directory
 ${e}mkdir -p "$outdir"/logs
 
-## Run
+# Run
 echo -e "\n# Now running TODO_THIS_SOFTWARE..."
 
 # [[ "$dryrun" = false ]] && set -o xtrace
