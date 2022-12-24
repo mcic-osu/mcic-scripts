@@ -11,6 +11,9 @@
 
 #? This script will filter a phyloseq object to retain only 'good' samples and ASVs
 
+#? Load the Conda environment as follows to run this script directly using sbatch:
+#? module load miniconda3/4.12.0-py39 && source activate /fs/ess/PAS0471/jelmer/conda/r-metabar
+
 # SETUP ------------------------------------------------------------------------
 # Packages
 packages <- c("BiocManager", "tidyverse", "phyloseq", "decontam",

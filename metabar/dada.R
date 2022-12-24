@@ -13,6 +13,11 @@
 #? taking FASTQ files (with primers removed by cutadapt) as input,
 #? and outputting, among others, a table with ASV abundances.
 
+#? The main output file (an ASV count table) will be at: <outdir>/count_table.rds
+
+#?Load the Conda environment as follows to run this script directly using sbatch:
+#? module load miniconda3/4.12.0-py39 && source activate /fs/ess/PAS0471/jelmer/conda/r-metabar
+
 # SET-UP -----------------------------------------------------------------------
 # Packages
 packages <- c("BiocManager", "tidyverse", "dada2")
@@ -21,9 +26,9 @@ packages <- c("BiocManager", "tidyverse", "dada2")
 trunc_f <- 150           # Truncate F reads after trunc_f bases
 trunc_r <- 150           # Truncate R reads after trunc_r bases
 asv_size_min <- 0        # Minimum ASV size in bp
-asv_size_max <- Inf      # Minimum ASV size in bp
-max_ee <- c(2, 2)        # Max nr of expected errors in a read
-pool <- TRUE             # Whether or not to using sample pooling in dada algorithm
+asv_size_max <- Inf      # Maximum ASV size in bp
+max_ee <- c(2, 2)        # Max nr of expected errors in the F and R reads (dada2 default = Inf)
+pool <- "pseudo"         # Whether or not to using sample pooling in dada algorithm
 techrep_file <- NULL     # File with technical replicates
 
 # Other variables
@@ -97,10 +102,10 @@ nseq_file <- file.path(qc_dir, "nseq_summary.txt")
 nasv_file <- file.path(qc_dir, "nasv_summary.txt")
 fasta_out <- file.path(outdir, "ASVs.fa")
 
-seqtab_all_file <- file.path(rds_dir, "seqtab_all.rds")
-seqtab_nochim_file <- file.path(rds_dir, "seqtab_nochim.rds")
-seqtab_lenfilt_file <- file.path(rds_dir, "seqtab_nochim_lenfilter.rds")
-seqtab_final_file <- file.path(outdir, "seqtab.rds")
+seqtab_all_file <- file.path(rds_dir, "count_table_all.rds")
+seqtab_nochim_file <- file.path(rds_dir, "count_table_nochim.rds")
+seqtab_lenfilt_file <- file.path(rds_dir, "count_table_nochim_lenfilter.rds")
+seqtab_final_file <- file.path(outdir, "count_table.rds")
 
 # Report command-line arguments
 message()

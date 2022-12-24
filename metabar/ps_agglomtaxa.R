@@ -13,6 +13,8 @@
 #? producing separate phyloseq objects at the genus level, family level, etc
 #? Phyloseq objects agglomerated by higher taxonomic levels are useful for plotting and differential abundance testing
 
+#? Load the Conda environment as follows to run this script directly using sbatch:
+#? module load miniconda3/4.12.0-py39 && source activate /fs/ess/PAS0471/jelmer/conda/r-metabar
 
 # SETUP ------------------------------------------------------------------------
 # Packages
