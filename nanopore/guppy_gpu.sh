@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
+#SBATCH --time=15
 #SBATCH --gpus-per-node=2
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -11,7 +11,7 @@
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-## Help function
+# Help function
 Print_help() {
     echo
     echo "======================================================================"
@@ -20,8 +20,8 @@ Print_help() {
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 -i <input file> -o <output dir> [...]"
-    echo "  bash $0 -h"
+    echo "  sbatch $0 -i <input file> -o <output dir> --config <config file> [...]"
+    echo "  bash $0 --help"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--infile     <file>  Input FAST5 file"
@@ -29,9 +29,9 @@ Print_help() {
     echo "  --config        <str>   Config file name"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --barcode-kit   <str>   Barcode set                                 [default: none - no demultiplexing]"
-    echo "  --min-qscore    <int>   Minimum quality-score                       [default: 9]"
-    echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to Guppy"
+    echo "  --barcode_kit   <str>   Barcode set                                 [default: none - no demultiplexing]"
+    echo "  --min_qscore    <int>   Minimum quality-score                       [default: whatever is specified in the focal config file]"
+    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to Guppy"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
@@ -40,8 +40,19 @@ Print_help() {
     echo "  --help                  Print the help for Guppy and exit"
     echo "  -v/--version            Print the version of Guppy and exit"
     echo
+    echo "HARDCODED GUPPY PARAMETERS:"
+    echo "  - --chunks_per_runner=256"
+    echo "  - --records_per_fastq=0"
+    echo "  - --compress_fastq"
+    echo
     echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i data/minion/my.fast5 -o results/guppy"
+    echo "  sbatch $0 -i data/minion/my.fast5 -o results/guppy --config dna_r9.4.1_450bps_sup.cfg"
+    echo
+    echo "This script will run Guppy for one FAST5 file, so you should loop over the FAST5 files, e.g.:"
+    echo "  for fast5 in data/minion/fast5/*fast5; do"
+    echo '      outdir=results/guppy/$(basename "$infile" .fast5)'
+    echo '      sbatch $0 -i $fast5 -o results/guppy --config dna_r9.4.1_450bps_sup.cfg'
+    echo "  done"
     echo
     echo "SOFTWARE DOCUMENTATION:"
     echo "  - https://community.nanoporetech.com/docs/prepare/library_prep_protocols/Guppy-protocol/v/gpb_2003_v1_revan_14dec2018/run-guppy-on-linux"
@@ -49,20 +60,20 @@ Print_help() {
     echo
 }
 
-## Print version
+# Print version
 Print_version() {
     set +e
     $GUPPY_BIN --version | head -1
     set -e
 }
 
-## Print help for the focal program
+# Print help for the focal program
 Print_help_program() {
     Load_software
     $GUPPY_BIN --help
 }
 
-## Print SLURM job resource usage info
+# Print SLURM job resource usage info
 Resource_usage() {
     echo
     ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
@@ -70,7 +81,7 @@ Resource_usage() {
     echo
 }
 
-## Print SLURM job requested resources
+# Print SLURM job requested resources
 Print_resources() {
     set +u
     echo "# SLURM job information:"
@@ -85,7 +96,7 @@ Print_resources() {
     set -u
 }
 
-## Set the number of threads/CPUs
+# Set the number of threads/CPUs
 Set_threads() {
     set +u
     if [[ "$slurm" = true ]]; then
@@ -101,14 +112,14 @@ Set_threads() {
     set -u
 }
 
-## Resource usage information
+# Resource usage information
 Time() {
     /usr/bin/time -f \
         '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
         "$@"
 }   
 
-## Exit upon error with a message
+# Exit upon error with a message
 Die() {
     error_message=${1}
     error_args=${2-none}
@@ -132,18 +143,16 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-## Software
+# Software
 GUPPY_DIR=/fs/project/PAS0471/jelmer/software/guppy-6.4.2 # https://community.nanoporetech.com/downloads
 GUPPY_BIN="$GUPPY_DIR"/bin/guppy_basecaller
 module load cuda
 
-## Constants
+# Hardcoded parameters
 chunks_per_runner=256
 records_per_fastq=0
 
-## Option defaults
-min_qscore=9
-
+# Option defaults
 debug=false
 dryrun=false && e=""
 slurm=true
@@ -152,14 +161,15 @@ slurm=true
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-## Placeholder defaults
+# Placeholder defaults
 infile=""
 outdir=""
 config=""
+min_qscore="" && qscore_arg=""
 barcode_kit="" && barcode_arg=""
 more_args=""
 
-## Parse command-line args
+# Parse command-line args
 all_args="$*"
 
 while [ "$1" != "" ]; do
@@ -167,9 +177,9 @@ while [ "$1" != "" ]; do
         -i | --infile )     shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
         --config )          shift && config=$1 ;;
-        --barcode-kit )     shift && barcode_kit=$1 ;;
-        --min-qscore )      shift && min_qscore=$1 ;;
-        --more-args )       shift && more_args=$1 ;;
+        --barcode_kit )     shift && barcode_kit=$1 ;;
+        --min_qscore )      shift && min_qscore=$1 ;;
+        --more_args )       shift && more_args=$1 ;;
         -v | --version )    Print_version; exit 0 ;;
         -h )                Print_help; exit 0 ;;
         --help )            Print_help_program; exit 0;;
@@ -184,33 +194,35 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-## Bash script settings
+# Bash script settings
 set -euo pipefail
 
-## In debugging mode, print all commands
+# In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
-## Check if this is a SLURM job
+# Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Set nr of threads
+# Set nr of threads
 Set_threads
 
-## Build input arg
+# Build input argument
 indir=$(dirname "$infile")
 infile_base=$(basename "$infile")
 fofn="$outdir"/tmp/"$infile_base".fofn
 infile_arg="--input_file_list $fofn"
 
-## Build barcode arg
+# Optional parameters
 [[ $barcode_kit != "" ]] && barcode_arg="--barcode_kits $barcode_kit --trim_barcodes"
+[[ $min_qscore != "" ]] && qscore_arg="--qscore_arg $min_qscore"
 
-## Check input
-[[ "$infile" = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
+# Check input
+[[ "$infile" = "" ]] && Die "Please specify an input FAST5 file with -i/--infile" "$all_args"
 [[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
-[[ ! -f "$infile" ]] && Die "Input file $infile does not exist"
+[[ "$config" = "" ]] && Die "Please specify an input config name with --config" "$all_args"
+[[ ! -f "$infile" ]] && Die "Input FAST5 file $infile does not exist"
 
-## Report
+# Report
 echo
 echo "=========================================================================="
 echo "                    STARTING SCRIPT GUPPY_GPU.SH"
@@ -220,7 +232,7 @@ echo "All arguments to this script:     $all_args"
 echo "Input file:                       $infile"
 echo "Output dir:                       $outdir"
 echo "ONT config name:                  $config"
-echo "Minimum qual score to PASS:       $min_qscore"
+[[ $min_qscore != "" ]] && echo "Minimum qual score to PASS:       $min_qscore"
 [[ $barcode_kit != "" ]] && echo "Barcode kit name:                 $barcode_kit"
 [[ $more_args != "" ]] && echo "Other arguments for Guppy:        $more_args"
 echo "Number of threads/cores:          $threads"
@@ -230,27 +242,26 @@ ls -lh "$infile"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
-## Print reserved resources
+# Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
 
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-## Create the output directory if it doesn't already exist
+# Create the output directory if it doesn't already exist
 ${e}mkdir -p "$outdir"/tmp "$outdir"/logs
 
-## Create fofn
+# Create fofn
 echo "$infile_base" > "$fofn"
 
-## Run Guppy
+# Run Guppy
 echo "Now running Guppy..."
 ${e}Time $GUPPY_BIN \
     --input_path "$indir" \
-    ${infile_arg} \
+    $infile_arg \
     --save_path "$outdir" \
     --config "$config" \
-    --min_qscore "$min_qscore" \
     --compress_fastq \
     --records_per_fastq "$records_per_fastq" \
     --gpu_runners_per_device "$threads" \
@@ -258,18 +269,19 @@ ${e}Time $GUPPY_BIN \
     --chunks_per_runner "$chunks_per_runner" \
     --num_callers "$threads" \
     --device "cuda:0" \
-    ${barcode_arg} \
-    ${more_args}
+    $qscore_arg \
+    $barcode_arg \
+    $more_args
 
-## https://github.com/colindaven/guppy_on_slurm/blob/master/runbatch_gpu_guppy.sh
-# gpu_params='--device "cuda:0" --num_callers 4 --gpu_runners_per_device 4 --chunks_per_runner 512 --chunk_size 3000'
-
-## See "Tuning GPU parameters for Guppy performance" https://hackmd.io/@Miles/S12SKP115
+#? GPU parameters
+# - https://github.com/colindaven/guppy_on_slurm/blob/master/runbatch_gpu_guppy.sh
+#   gpu_params='--device "cuda:0" --num_callers 4 --gpu_runners_per_device 4 --chunks_per_runner 512 --chunk_size 3000'
+# - See "Tuning GPU parameters for Guppy performance" https://hackmd.io/@Miles/S12SKP115
 
 #? To print config names for flowcell + kit combs:
 #$ guppy_basecaller --print_workflows
-## For kit LSK109 and flowcell FLO-MIN106, this is dna_r9.4.1_450bps_hac
-## See also the available config files is /fs/ess/PAS0471/jelmer/software/guppy-6.4.2/data/
+# - For kit LSK109 and flowcell FLO-MIN106, this is dna_r9.4.1_450bps_hac
+# - See also the available config files is /fs/ess/PAS0471/jelmer/software/guppy-6.4.2/data/
 
 
 # ==============================================================================
