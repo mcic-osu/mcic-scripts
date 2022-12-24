@@ -41,9 +41,6 @@ Print_help() {
     echo "    - This script assumes that the input file is a sequencing summary file,"
     echo "      whereas Nanoplot can also be run on actual sequence files."
     echo
-    echo "OUTPUT:"
-    echo "    - ..."
-    echo
     echo "SOFTWARE DOCUMENTATION:"
     echo "    - https://github.com/wdecoster/NanoPlot"
     echo
@@ -94,7 +91,7 @@ while [ "$1" != "" ]; do
         -N | --dryrun )         dryrun=false ;;
         -v | --version )        Print_version && exit ;;
         -h | --help )           Print_help && exit ;;
-        * )                     Die "Invalid option $1" && exit 1 ;;
+        * )                     Die "Invalid option $1" ;;
     esac
     shift
 done
