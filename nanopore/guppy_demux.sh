@@ -7,7 +7,7 @@
 
 # SETUP ------------------------------------------------------------------------
 ## Load software 
-GUPPY_DIR=/fs/project/PAS0471/jelmer/software/guppy-6.0.1
+GUPPY_DIR=/fs/project/PAS0471/jelmer/software/guppy-6.4.2
 DEMUX_BIN="$GUPPY_DIR"/bin/guppy_barcoder
 CONFIG_FILE="$GUPPY_DIR"/data/barcoding/configuration.cfg
 
