@@ -25,14 +25,14 @@ Print_help() {
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  --config_out    <file>  Output EnTAP config file"
-    echo "  --db_dir         <dir>  Output dir for database files (will be created if needed)" 
+    echo "  --config-out    <file>  Output EnTAP config file"
+    echo "  --db-dir        <dir>   Output dir for database files (will be created if needed)" 
     echo "  --taxon         <str>   Taxon name (use underscores, e.g. homo_sapiens)"
     echo "  --contam        <str>   Comma-separated list of contaminant taxa"
     echo "  One or more database protein FASTA files as positional arguments"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --config_in     <file>  Input EnTAP config file"
+    echo "  --config-in     <file>  Input EnTAP config file"
     echo "                          Default: download & use file at https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/annot/entap_config.ini"
     echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to EnTAP"
     echo "  --qcoverage     <int>   Min. query coverage for similarity searching  [default: 50]"
@@ -182,9 +182,9 @@ count=0
 
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --config_in )  shift && config_in=$1 ;;
-        -o | --config_out ) shift && config_out=$1 ;;
-        --db_dir )          shift && db_dir=$1 ;;
+        -i | --config-in )  shift && config_in=$1 ;;
+        -o | --config-out ) shift && config_out=$1 ;;
+        --db-dir )          shift && db_dir=$1 ;;
         --taxon )           shift && taxon=$1 ;;
         --contam )          shift && contam=$1 ;;
         --qcoverage )       shift && qcoverage=$1 ;;
@@ -230,7 +230,7 @@ count=0
 for db in "${dbs[@]}"; do
     [[ ! -f $db ]] && Die "Input db FASTA $db does not exist!"
     suffix=$(basename "$db" | sed -E 's/.*(.fasta|.fa|.fna|.faa)$/\1/')
-    db_out="$db_dir"/$(basename "$db" "$suffix").dmnd
+    db_out="$db_dir"/bin/$(basename "$db" "$suffix").dmnd
     dbs_out[$count]=$db_out && count=$(( count + 1 ))
 done
 
@@ -294,20 +294,11 @@ echo "==========================================================================
 ## Create the output dir
 ${e} mkdir -p "$db_dir"/logs "$db_dir"/diamond_from_fasta
 
-## Run EnTAP config
-echo -e "\n# Now running EnTAP config..."
-${e}Time EnTAP --config \
-    --ini "$config_in" \
-    --out-dir "$db_dir" \
-    -t "$threads" \
-    $db_arg \
-    $more_args
-
 ## Modify the config file
 echo -e "\n# Now preparing the config file..."
-sed -e "s/entap-db-bin=.*/taxon=$entap_db/" \
-    -e "s/eggnog-sql=.*/eggnog-sql=$eggnog_diamond/" \
-    -e "s/eggnog-dmnd=.*/eggnog-dmnd=$eggnog_sql/" \
+sed -e "s@entap-db-bin=.*@entap-db-bin=$entap_db@" \
+    -e "s@eggnog-sql=.*@eggnog-sql=$eggnog_sql@" \
+    -e "s@eggnog-dmnd=.*@eggnog-dmnd=$eggnog_diamond@" \
     -e "s/taxon=.*/taxon=$taxon/" \
     -e "s/contam=.*/contam=$contam/" \
     -e "s/qcoverage=.*/qcoverage=$qcoverage/" \
@@ -320,6 +311,15 @@ echo "Printing the contents of the output config file:"
 echo "=========================================================================="
 cat -n "$config_out"
 echo "=========================================================================="
+
+## Run EnTAP config
+echo -e "\n# Now running EnTAP config..."
+${e}Time EnTAP --config \
+    --ini "$config_in" \
+    --out-dir "$db_dir" \
+    -t "$threads" \
+    $db_arg \
+    $more_args
 
 ## Move the DIAMOND db files that were created from the FASTAs
 for db_out in "${dbs_out[@]}"; do

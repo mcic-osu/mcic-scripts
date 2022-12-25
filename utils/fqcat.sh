@@ -17,21 +17,28 @@ Print_help() {
     echo
     echo "======================================================================"
     echo "                       $0"
-    echo "                  CONCATENATE ONT FASTQ FILES"
+    echo "                  CONCATENATE FASTQ FILES"
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 -i <input dir> -o <output file> [...]"
+    echo "  sbatch $0 -o <output file> [ -i <input dir> | <infile1> <infile2> ... ]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--indir     <dir>    Input file"
+    echo "  -i/--indir     <dir>    Input dir with FASTQ files (OR: pass files as positional args after all options)"
     echo "  -o/--outfile   <file>   Output file (its dir will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS"
     echo "  --subdir       <dir>    Subdir which may or may not be one layer removed from the indir specified by -i/--indir"
     echo "                          This can be useful if FASTQ files are inside sample-specific folders"
     echo "  --extension    <str>    Input file extension                        [default: 'fastq.gz']"
+    echo "  --skip_count            Don't count nr of reads in output file (useful for very large files)"
+    echo
+    echo "EXAMPLE COMMANDS:"
+    echo "  sbatch $0 -i data/fastq -o data/R1_concat.fastq.gz --extension '_R1.fastq.gz'"
+    echo "  sbatch $0 -i data/fastq -o data/R2_concat.fastq.gz --extension '_R2.fastq.gz'"
+    echo "  sbatch $0 -i data/fastq -o data/concat.fastq.gz --subdir 'pass'"
+    echo "  sbatch $0 -o data/concat.fastq.gz data/A.fastq.gz data/B.fastq.gz data/C.fastq.gz"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
@@ -95,6 +102,7 @@ Die() {
 # ==============================================================================
 # Option defaults
 extension="fastq.gz"
+skip_count=false
 
 debug=false
 dryrun=false && e=""
@@ -105,23 +113,25 @@ slurm=true
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Placeholder defaults
+declare -a infiles
 indir=""
 outfile=""
 subdir=""
 
 # Parse command-line args
 all_args="$*"
-
+count=0
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --indir )          shift && indir=$1 ;;
         -o | --outfile )        shift && outfile=$1 ;;
         --subdir )              shift && subdir=$1 ;;
         --extension )           shift && extension=$1 ;;
+        --skip_count )          skip_count=true ;;
         -h )                    Print_help; exit 0;;
         --dryrun )              dryrun=true && e="echo ";;
         --debug )               debug=true ;;
-        * )                     Die "Invalid option $1" "$all_args" ;;
+        * )                     infiles[$count]=$1 && count=$(( count + 1 )) ;;
     esac
     shift
 done
@@ -140,9 +150,14 @@ done
 set -euo pipefail
 
 # Check input
-[[ $indir = "" ]] && Die "Please specify an input dir with -i" "$all_args"
+if [[ $indir = "" && ${#infiles[@]} -eq 0 ]]; then
+    Die "Please specify input dir/files with -i or positional args" "$all_args"
+fi
 [[ $outfile = "" ]] && Die "Please specify an output file with -o" "$all_args"
-[[ ! -d $indir ]] && Die "Input dir $indir does not exist"
+[[ $indir != "" && ! -d $indir ]] && Die "Input dir $indir does not exist"
+
+# Get input files
+[[ "$indir" != "" ]] && mapfile infiles < <(find "$indir" -type f)
 
 # Determine outdir
 outdir=$(dirname "$outfile")
@@ -156,6 +171,7 @@ echo "==========================================================================
 echo "All arguments to this script:     $all_args"
 echo "Input dir:                        $indir"
 echo "File extension:                   $extension"
+echo "Skip counting reads?              $skip_count"
 [[ $subdir != "" ]] && echo "Input subdir:                     $subdir"
 echo "Output file:                      $outfile"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
@@ -180,15 +196,17 @@ fi
 echo -e "\n# Number of FASTQ files found: ${#fq_files[@]}"
 [[ ${#fq_files[@]} -eq 0 ]] && Die "No FASTQ files were found..."
 
-# Concatenate the FASTQ files
-echo -e "\n# Now concatenating the FASTQ files..."
-${e}Time cat "${fq_files[@]}" > "$outfile"
-
-# Count the number of sequences in the output file
 if [[ "$dryrun" = false ]]; then
-    echo -e "\n# Now counting the number of sequences..."
-    nseqs=$(zcat "$outfile" | awk '{l++}END{print l/4}')
-    echo -e "# Number of sequences in output file: $nseqs"
+    # Concatenate the FASTQ files
+    echo -e "\n# Now concatenating the FASTQ files..."
+    Time cat "${fq_files[@]}" > "$outfile"
+
+    # Count the number of sequences in the output file
+    if [[ "$skip_count" = false ]]; then
+        echo -e "\n# Now counting the number of sequences..."
+        nseqs=$(zcat "$outfile" | awk '{l++}END{print l/4}')
+        echo -e "# Number of sequences in output file: $nseqs"
+    fi
 fi
 
 

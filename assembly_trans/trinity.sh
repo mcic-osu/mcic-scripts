@@ -13,7 +13,7 @@
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-## Help function
+# Help function
 Print_help() {
     echo
     echo "============================================================================"
@@ -37,7 +37,7 @@ Print_help() {
     echo "  --normalize_max_read_cov    <int>   Normalize to this coverage              [default: 200 (= Trinity default)]"
     echo "  --genome_guided                     Genome-guided assembly                  [default: de novo assembly]"
     echo "  --genome_guided_max_intron  <int>   Max intron size for genome-guided assembly  [default: 10000]"
-    echo "  --more-args                 <str>   Quoted string with additional argument(s) to pass to Trinity"
+    echo "  --more_args                 <str>   Quoted string with additional argument(s) to pass to Trinity"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                            Dry run: don't execute commands, only parse arguments and report"
@@ -54,16 +54,16 @@ Print_help() {
     echo
 }
 
-## Load the software
+# Load the software
 Load_software() {
     set +u
     module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /fs/ess/PAS0471/jelmer/conda/trinity-2.13.2
     set -u
 }
 
-## Print version
+# Print version
 Print_version() {
     Load_software
     set +e
@@ -71,21 +71,20 @@ Print_version() {
     set -e
 }
 
-## Print help for the focal program
+# Print help for the focal program
 Print_help_program() {
     Load_software
     Trinity --help
 }
 
-## Print SLURM job resource usage info
+# Print SLURM job resource usage info
 Resource_usage() {
     echo
-    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
-        grep -Ev "ba|ex"
+    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
     echo
 }
 
-## Print SLURM job requested resources
+# Print SLURM job requested resources
 Print_resources() {
     set +u
     echo "# SLURM job information:"
@@ -101,7 +100,7 @@ Print_resources() {
     set -u
 }
 
-## Set the number of threads/CPUs
+# Set the number of threads/CPUs
 Set_threads() {
     set +u
     if [[ "$slurm" = true ]]; then
@@ -119,14 +118,14 @@ Set_threads() {
     set -u
 }
 
-## Resource usage information
+# Resource usage information
 Time() {
     /usr/bin/time -f \
         '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
         "$@"
 }   
 
-## Exit upon error with a message
+# Exit upon error with a message
 Die() {
     error_message=${1}
     error_args=${2-none}
@@ -150,12 +149,14 @@ Die() {
 # ==============================================================================
 #                     CONSTANTS AND DEFAULTS
 # ==============================================================================
+# Defaults
 strandedness="RF"
 genome_guided=false
-genome_guided_max_intron=10000  # Only for genome-guided assembly
+genome_guided_max_intron=10000          # Only for genome-guided assembly
 normalize=true && normalize_arg=""
 min_contig_length=200
 normalize_max_read_cov=200
+workdir_arg="-workdir $TMPDIR"          # Will be omitted if this is not a SLURM job
 
 debug=false
 dryrun=false && e=""
@@ -164,14 +165,14 @@ slurm=true
 # ==============================================================================
 #                     PARSE COMMAND-LINE OPTIONS
 # ==============================================================================
-## Placeholder defaults
+# Placeholder defaults
 indir=""
 outdir=""
 bam=""
 more_args=""
-mem_gb=4   # Will be changed if this is a SLURm job
+mem_gb=4        # Will be changed if this is a SLURM job
 
-## Parse command-line options
+# Parse command-line options
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
@@ -183,7 +184,7 @@ while [ "$1" != "" ]; do
         --normalize_max_read_cov )      shift && normalize_max_read_cov=$1 ;;
         --genome_guided )               genome_guided=true ;;
         --genome_guided_max_intron )    shift && genome_guided_max_intron=$1 ;;
-        --more-args )                   shift && more_args=$1 ;;
+        --more_args )                   shift && more_args=$1 ;;
         -v | --version )                Print_version; exit 0 ;;
         -h )                            Print_help; exit 0 ;;
         --help )                        Print_help_program; exit 0;;
@@ -198,25 +199,25 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-## In debugging mode, print all commands
+# In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
-## Check if this is a SLURM job
+# Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Load software and set nr of threads
+# Load software and set nr of threads
 [[ "$dryrun" = false ]] && Load_software
 Set_threads
 
-## Bash script settings
+# Bash script settings
 set -euo pipefail
 
-## Check input
+# Check input
 [[ "$input" = "" ]] && Die "Please specify input with -i" "$all_args"
 [[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
 [[ "$normalize" != "true" && "$normalize" != "false" ]] && Die "--normalize should be 'true' or 'false', instead it is $normalize"
 
-## Create comma-delimited list of FASTQ files:
+# Create comma-delimited list of FASTQ files:
 if [[ "$genome_guided" = false ]]; then
     indir="$input"
     [[ ! -d "$indir" ]] && Die "Input dir $indir does not exist"
@@ -227,7 +228,10 @@ else
     [[ ! -f "$bam" ]] && Die "Input BAM file $bam does not exist"
 fi
 
-## Library type argument
+# Workdir for Trinity phase 2
+[[ "$slurm" = false ]] && workdir_arg=""
+
+# Library type argument
 if [[ "$strandedness" = "unstranded" ]]; then
     strand_arg=""
 elif [[ "$strandedness" = "reverse" ]]; then
@@ -238,13 +242,13 @@ else
     strand_arg="--SS_lib_type $strandedness"
 fi
 
-## Normalization arg
+# Normalization arg
 [[ "$normalize" = "false" ]] && normalize_arg="--no_normalize_reads"
 
-## Define memory in GB
+# Define memory in GB
 [[ "$slurm" = true ]] && mem_gb=$((8*(SLURM_MEM_PER_NODE / 1000)/10))G
 
-## Report
+# Report
 echo
 echo "=========================================================================="
 echo "                    STARTING SCRIPT TRINITY.SH"
@@ -260,6 +264,7 @@ echo "Max cov. to normalize reads to:   $normalize_max_read_cov"
 [[ $more_args != "" ]] && echo "Other arguments for Trinity:      $more_args"
 echo "Number of threads/cores:          $threads"
 echo "Memory in GB:                     $mem_gb"
+[[ ! "$workdir_arg" = "" ]] && echo "Workdir argument:                 $workdir_arg"
 echo
 if [[ "$genome_guided" = false ]]; then
     echo "List of R1 FASTQ files:           $R1_list"
@@ -273,28 +278,27 @@ else
     echo "Listing the input file(s):"
     ls -lh "$bam"
 fi
-
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
-## Print reserved resources
+# Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
 
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-## Create the output directory
+# Create the output directory
 ${e}mkdir -p "$outdir"/logs
 
 # MAIN -------------------------------------------------------------------------
-echo "## Starting Trinity run..."
+echo "# Starting Trinity run..."
 
 [[ "$dryrun" = false ]] && set -o xtrace
 
 set +e
 if [[ "$genome_guided" = false ]]; then
-    ## De novo
+    # De novo
     ${e}Time Trinity \
         --seqType fq \
         --left "$R1_list" \
@@ -307,9 +311,10 @@ if [[ "$genome_guided" = false ]]; then
         --max_memory "$mem_gb" \
         --CPU "$threads" \
         --verbose \
+        $workdir_arg \
         $more_args
 else
-    ## Genome-guided
+    # Genome-guided
     ${e}Time Trinity \
         --genome_guided_bam "$bam" \
         --genome_guided_max_intron "$genome_guided_max_intron" \
@@ -320,7 +325,8 @@ else
         --output "$outdir" \
         --max_memory "$mem_gb" \
         --CPU "$threads" \
-        --verbose
+        --verbose \
+        $workdir_arg
 fi
 set -e
 

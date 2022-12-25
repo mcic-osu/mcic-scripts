@@ -3,6 +3,10 @@
 #SBATCH --account=PAS0471
 #SBATCH --time=36:00:00
 #SBATCH --cpus-per-task=12
+#SBATCH --mem=64G
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --job-name=entap
 #SBATCH --output=slurm-entap-%j.out
 
 # ==============================================================================
@@ -57,7 +61,7 @@ Print_help() {
 ## Load software
 Load_software() {
     module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /fs/project/PAS0471/jelmer/conda/entap-0.10.8
 }
 
@@ -78,8 +82,7 @@ Print_help_program() {
 ## Print SLURM job resource usage info
 Resource_usage() {
     echo
-    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
-        grep -Ev "ba|ex"
+    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
     echo
 }
 
@@ -164,7 +167,7 @@ db_dir=""
 db_arg=""
 outdir=""
 config=""
-bam=""
+bam="" && align_arg=""
 more_args=""
 
 ## Parse command-line args
@@ -206,26 +209,21 @@ Set_threads
 ## Bash script settings
 set -euo pipefail
 
-## Build database argument for EnTap
-if [[ "$db_dir" != "" ]]; then
-    for db in "$db_dir"/*dmnd; do
-        db_arg="$db_arg -d $db"
-    done
-elif [[ ${#dbs[@]} -gt 0 ]]; then
-    db_arg="-d ${dbs// / -d }"
-else
-    Die "Please specify input DIAMOND databases with --dbs, --db-dir, or as positional args"
-fi
-
 ## Make paths absolute, or EnTap will fail
 [[ ! $config =~ ^/ ]] && config="$PWD"/"$config"
 [[ ! $assembly =~ ^/ ]] && assembly="$PWD"/"$assembly"
 [[ ! $outdir =~ ^/ ]] && outdir="$PWD"/"$outdir"
 
 ## Check input
+[[ "$assembly" = "" ]] && Die "Please specify an assembly file with -i/--assembly" "$all_args"
 [[ "$config" = "" ]] && Die "Please specify a config file with -c/--config" "$all_args"
-[[ -f "$config" ]] && Die "Config file $config does not exist" "$all_args"
 [[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
+[[ ! -f "$assembly" ]] && Die "Assembly file $assembly does not exist" "$all_args"
+[[ ! -f "$config" ]] && Die "Config file $config does not exist" "$all_args"
+[[ "$bam" != "" ]] && [[ ! -f "$bam" ]] && Die "BAM file $bam does not exist" "$all_args"
+
+## BAM arg
+[[ "$bam" != "" ]] && align_arg="--align $bam"
 
 ## Report
 echo
@@ -233,14 +231,40 @@ echo "==========================================================================
 echo "                    STARTING SCRIPT ENTAP.SH"
 date
 echo "=========================================================================="
-echo "All arguments to this script:     $all_args"
-echo "Output database dir:              $outdir"
-echo "Config file:                      $config"
-echo "Number of threads/cores:          $threads"
-[[ "$bam" != "" ]] && echo "Input BAM file:                   $bam"
-[[ $more_args != "" ]] && echo "Other arguments for EnTAP:        $more_args"
-echo "Input database arg:               $db_arg"
+echo "All arguments to this script:         $all_args"
+echo "Input assembly:                       $assembly"
+echo "Output dir:                           $outdir"
+echo "Config file:                          $config"
+echo "Number of entries in the assembly:    $(grep -c "^>" "$assembly")"
+echo "Number of threads/cores:              $threads"
+[[ "$bam" != "" ]] && echo "Input BAM file:                       $bam"
+[[ $more_args != "" ]] && echo "Other arguments for EnTAP:            $more_args"
 echo
+echo "Listing the DIAMOND databases:"
+## Build database argument for EnTap
+if [[ "$db_dir" != "" ]]; then
+    if compgen -G "$db_dir"/*dmnd > /dev/null; then
+        for db in "$db_dir"/*dmnd; do
+            [[ ! $db =~ ^/ ]] && db="$PWD"/"$db"
+            db_arg="$db_arg -d $db"
+            ls -lh "$db"
+        done
+    else
+        echo "No DIAMOND databases found in $db_dir"
+    fi
+elif [[ ${#dbs[@]} -gt 0 ]]; then
+    db_arg="-d ${dbs// / -d }"
+    for db in "${dbs[@]}"; do ls -lh "$db"; done
+else
+    Die "Please specify input DIAMOND databases with --dbs, --db-dir, or as positional args"
+fi
+
+## Report, part 2
+echo
+echo "Input database arg:                   $db_arg"
+echo
+echo "Printing the contents of the config file:"
+cat -n "$config"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
@@ -254,6 +278,11 @@ echo "==========================================================================
 ## Create output directory
 mkdir -p "$outdir"/logs
 
+## Copy the entap_graphing.py script to the working dir
+## Entap will call it using 'python entap_graphing.py' which won't work unless it's in the current working dir
+graphing_script=$(whereis entap_graphing.py | sed 's/.* //')
+cp -v "$graphing_script" .
+
 echo -e "\n## Now running EnTAP..."
 ${e}Time EnTAP \
     --runP \
@@ -261,6 +290,7 @@ ${e}Time EnTAP \
     -i "$assembly" \
     --out-dir "$outdir" \
     $db_arg \
+    $align_arg \
     -t "$threads" \
     $more_args
 
@@ -274,7 +304,7 @@ if [[ "$dryrun" = false ]]; then
     echo "# Version used:"
     Print_version | tee "$outdir"/logs/version.txt
     echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
+    ls -lhd "$outdir"/*
     [[ "$slurm" = true ]] && Resource_usage
 fi
 echo "# Done with script"
