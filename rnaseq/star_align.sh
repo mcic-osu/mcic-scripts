@@ -24,7 +24,7 @@ Print_help() {
     echo "  sbatch $0 -i <R1-FASTQ> -r <ref-index-dir> -o <outdir> [...]"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--R1         <file>  Input gzipped R1 FASTQ file path (The name of the R2 file will be inferred by the script)"
+    echo "  -i/--R1/--reads <file>  Input gzipped R1 FASTQ file path (The name of the R2 file will be inferred by the script)"
     echo "  -r/--index_dir  <dir>   Input STAR reference genome index dir (First create index with 'mcic-scripts/rnaseq/star_index.sh')"
     echo "  -o/--outdir     <dir>   BAM output dir"
     echo
@@ -83,7 +83,7 @@ Print_help_program() {
 # Print SLURM job resource usage info
 Resource_usage() {
     echo
-    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
+    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
     echo
 }
 
@@ -182,24 +182,24 @@ all_args="$*"
 
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --R1 )         shift && R1_in=$1 ;;
-        -r | --index_dir )  shift && index_dir=$1 ;;
-        -a | --annot )      shift && annot=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
-        --max_map )         shift && max_map=$1 ;;
-        --intron_min )      shift && intron_min=$1 ;;
-        --intron_max )      shift && intron_max=$1 ;;
-        --output_unmapped ) shift && output_unmapped=$1 ;;
-        --count )           count=true ;;
-        --no_sort )         sort=false ;;
-        --samtools_sort )   samtools_sort=true ;;
-        --single_end )      paired_end=false ;;
-        --more_args )       shift && more_args=$1 ;;
-        -v | --version )    Print_version; exit 0 ;;
-        -h )                Print_help; exit 0 ;;
-        --help )            Print_help_program; exit 0;;
-        --debug )           debug=true ;;
-        * )                 Die "Invalid option $1" "$all_args" ;;
+        -i | --R1 | --reads )   shift && R1_in=$1 ;;
+        -r | --index_dir )      shift && index_dir=$1 ;;
+        -a | --annot )          shift && annot=$1 ;;
+        -o | --outdir )         shift && outdir=$1 ;;
+        --max_map )             shift && max_map=$1 ;;
+        --intron_min )          shift && intron_min=$1 ;;
+        --intron_max )          shift && intron_max=$1 ;;
+        --output_unmapped )     shift && output_unmapped=$1 ;;
+        --count )               count=true ;;
+        --no_sort )             sort=false ;;
+        --samtools_sort )       samtools_sort=true ;;
+        --single_end )          paired_end=false ;;
+        --more_args )           shift && more_args=$1 ;;
+        -v | --version )        Print_version; exit 0 ;;
+        -h )                    Print_help; exit 0 ;;
+        --help )                Print_help_program; exit 0;;
+        --debug )               debug=true ;;
+        * )                     Die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
@@ -321,7 +321,8 @@ echo "Sample ID (as inferred by the script):        $sampleID"
 echo "Output arg for STAR:                          $output_arg"
 
 echo "Listing the input file(s):"
-ls -lh "$R1_in" "$R1_in"
+ls -lh "$R1_in"
+[[ "$paired_end" = true ]] && "$R2_in"
 [[ "$annot" != "" ]] && ls -lh "$annot"
 echo "=========================================================================="
 
