@@ -244,7 +244,7 @@ echo "==========================================================================
 #                               RUN
 # ==============================================================================
 # Create the output directory
-${e}mkdir -p "$outdir"/logs
+${e}mkdir -pv "$outdir"/logs
 
 # Run
 echo -e "\n# Now running TODO_THIS_SOFTWARE..."
