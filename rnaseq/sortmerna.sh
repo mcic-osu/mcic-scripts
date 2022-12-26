@@ -12,7 +12,7 @@
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-## Help function
+# Help function
 Print_help() {
     echo
     echo "======================================================================"
@@ -55,34 +55,37 @@ Print_help() {
     echo
 }
 
-## Load software
+# Load software
 Load_software() {
+    set +u
     module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /fs/ess/PAS0471/jelmer/conda/sortmerna-env # NOTE: this env also had BBMap installed
+    set -u
 }
 
-## Print version
+# Print version
 Print_version() {
+    set -e
     Load_software
     sortmerna --version
+    set +e
 }
 
-## Print help for the focal program
+# Print help for the focal program
 Print_help_program() {
     Load_software
     sortmerna --help
 }
 
-## Print SLURM job resource usage info
+# Print SLURM job resource usage info
 Resource_usage() {
     echo
-    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
-        grep -Ev "ba|ex"
+    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
     echo
 }
 
-## Print SLURM job requested resources
+# Print SLURM job requested resources
 Print_resources() {
     set +u
     echo "# SLURM job information:"
@@ -98,7 +101,7 @@ Print_resources() {
     set -u
 }
 
-## Set the number of threads/CPUs
+# Set the number of threads/CPUs
 Set_threads() {
     set +u
     if [[ "$slurm" = true ]]; then
@@ -116,14 +119,14 @@ Set_threads() {
     set -u
 }
 
-## Resource usage information
+# Resource usage information
 Time() {
     /usr/bin/time -f \
         '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
         "$@"
 }   
 
-## Exit upon error with a message
+# Exit upon error with a message
 Die() {
     error_message=${1}
     error_args=${2-none}
@@ -147,7 +150,7 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-## Option defaults
+# Option defaults
 deinterleave=true
 
 debug=false
@@ -158,15 +161,14 @@ slurm=true
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-## Placeholder defaults
+# Placeholder defaults
 R1=""
 outdir=""
 repo_dir=""
 more_args=""
 
-## Parse command-line args
+# Parse command-line args
 all_args="$*"
-
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --R1 )         shift && R1=$1 ;;
@@ -188,34 +190,34 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-## In debugging mode, print all commands
+# Bash script settings
+set -euo pipefail
+
+# In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
-## Check if this is a SLURM job
+# Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Load software and set nr of threads
+# Load software and set nr of threads
 [[ "$dryrun" = false ]] && Load_software
 Set_threads
 
-## Bash script settings
-set -euo pipefail
-
-## Infer the name of the R2 file
+# Infer the name of the R2 file
 file_ext=$(basename "$R1" | sed -E 's/.*(.fasta|.fastq.gz|.fq.gz)/\1/')
 R1_suffix=$(basename "$R1" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
 R2_suffix=${R1_suffix/1/2}
 R2=${R1/$R1_suffix/$R2_suffix}
 sampleID=$(basename "$R1" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
 
-## Check input
+# Check input
 [[ "$R1" = "" ]] && Die "Please specify an input R1 file with -i/--R1" "$all_args"
 [[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
 [[ ! -f "$R1" ]] && Die "Input file $R1 does not exist"
 [[ ! -f "$R2" ]] && Die "Input file $R2 does not exist"
 [[ "$R1" = "$R2" ]] && Die "Input file R1 and R2 refer to the same path ($R1)"
 
-## Define output files
+# Define output files
 outdir_full="$outdir"/"$sampleID"
 out_mapped_raw="$outdir_full"/mapped_raw/"$sampleID"
 out_unmapped_raw="$outdir_full"/unmapped_raw/"$sampleID"
@@ -225,12 +227,12 @@ R2_mapped="$outdir"/mapped/"$sampleID""$R2_suffix".fastq.gz
 R1_unmapped="$outdir"/unmapped/"$sampleID""$R1_suffix".fastq.gz
 R2_unmapped="$outdir"/unmapped/"$sampleID""$R2_suffix".fastq.gz
 
-## Reference FASTA files (to be downloaded)
+# Reference FASTA files (to be downloaded)
 [[ $repo_dir = "" ]] && repo_dir="$outdir"/"$sampleID"/sortmerna_repo
 ref_18s="$repo_dir"/data/rRNA_databases/silva-euk-18s-id95.fasta
 ref_28s="$repo_dir"/data/rRNA_databases/silva-euk-28s-id98.fasta
 
-## Report
+# Report
 echo
 echo "=========================================================================="
 echo "                 STARTING SCRIPT SORTMERNA.SH"
@@ -247,13 +249,12 @@ echo "28S reference file:               $ref_28s"
 echo "R2 FASTQ file:                    $R2"
 [[ $more_args != "" ]] && echo "Other arguments for SortMeRNA:    $more_args"
 echo "Number of threads/cores:          $threads"
-echo
 echo "Listing the input file(s):"
 ls -lh "$R1" "$R2"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
-## Print reserved resources
+# Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
 
 
@@ -262,28 +263,28 @@ echo "==========================================================================
 # ==============================================================================
 if [[ "$dryrun" = false ]]; then
 
-    ## Make output dirs if needed
+    # Make output dirs if needed
     mkdir -p "$outdir"/mapped "$outdir"/unmapped \
         "$outdir_full"/mapped_raw "$outdir_full"/unmapped_raw \
         "$outdir"/logs
 
     # GET DATABASE FILES -----------------------------------------------------------
-    ## Clone sortmerna repo to get db FASTA files
+    # Clone sortmerna repo to get db FASTA files
     if [[ ! -f "$ref_18s" && ! -f "$ref_28s" ]]; then
         n_seconds=$(( RANDOM % 50 + 1 ))
         sleep "$n_seconds"s # Sleep for a while so git doesn't error when running this multiple times in parallel
         
         mkdir -p "$repo_dir"
-        echo "## Cloning sortmerna repo..."
+        echo "# Cloning sortmerna repo..."
         [[ ! -f "$ref_18s" && ! -f "$ref_28s" ]] && git clone https://github.com/biocore/sortmerna "$repo_dir"
     fi
 
-    ## Check that db files are there
-    [[ ! -f "$ref_18s" ]] && echo "## ERROR: 18s reference FASTA file $ref_18s not found" >&2 && exit 1
-    [[ ! -f "$ref_28s" ]] && echo "## ERROR: 28s reference FASTA file $ref_28s not found" >&2 && exit 1
+    # Check that db files are there
+    [[ ! -f "$ref_18s" ]] && Die "18s reference FASTA file $ref_18s not found"
+    [[ ! -f "$ref_28s" ]] && Die "28s reference FASTA file $ref_28s not found"
 
     # RUN SortMeRNA ----------------------------------------------------------------
-    echo -e "## Starting SortMeRNA run....\n"
+    echo -e "# Starting SortMeRNA run....\n"
     Time sortmerna \
         --ref "$ref_18s" \
         --ref "$ref_28s" \
@@ -301,13 +302,13 @@ if [[ "$dryrun" = false ]]; then
 
     # CONVERTING INTERLEAVED FASTQ BACK TO SEPARATED -------------------------------
     if [[ "$deinterleave" = true ]]; then
-        echo -e "\n## Deinterleaving mapped reads..."
+        echo -e "\n# Deinterleaving mapped reads..."
         Time reformat.sh \
             in="$out_mapped_raw".fq.gz \
             out1="$R1_mapped" \
             out2="$R2_mapped"
 
-        echo -e "\n## Deinterleaving unmapped reads..."
+        echo -e "\n# Deinterleaving unmapped reads..."
         Time reformat.sh \
             in="$out_unmapped_raw".fq.gz \
             out1="$R1_unmapped" \
@@ -320,10 +321,10 @@ if [[ "$dryrun" = false ]]; then
     fi
 
     # HOUSEKEEPING -----------------------------------------------------------------
-    ## Move log files to main dir
+    # Move log files to main dir
     mv "$outdir_full"/mapped_raw/"$sampleID"*log "$outdir"/logs/
 
-    ## Remove temporary files
+    # Remove temporary files
     rm -rv "$outdir_full"/mapped_raw "$outdir_full"/unmapped_raw
 
     # QUANTIFY MAPPING SUCCESS -----------------------------------------------------

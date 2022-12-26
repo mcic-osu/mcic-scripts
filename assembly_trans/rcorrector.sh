@@ -13,7 +13,7 @@
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-## Help function
+# Help function
 Print_help() {
     echo
     echo "======================================================================"
@@ -47,28 +47,29 @@ Print_help() {
     echo
 }
 
-## Load software
+# Load software
 Load_software() {
+    set +u
     module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /fs/ess/PAS0471/jelmer/conda/rcorrector-1.0.5
+    set -u
 }
 
-## Print help for the focal program
+# Print help for the focal program
 Print_help_program() {
     Load_software
     run_rcorrector.pl
 }
 
-## Print SLURM job resource usage info
+# Print SLURM job resource usage info
 Resource_usage() {
     echo
-    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
-        grep -Ev "ba|ex"
+    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
     echo
 }
 
-## Print SLURM job requested resources
+# Print SLURM job requested resources
 Print_resources() {
     set +u
     echo "# SLURM job information:"
@@ -84,7 +85,7 @@ Print_resources() {
     set -u
 }
 
-## Set the number of threads/CPUs
+# Set the number of threads/CPUs
 Set_threads() {
     set +u
     if [[ "$slurm" = true ]]; then
@@ -102,14 +103,14 @@ Set_threads() {
     set -u
 }
 
-## Resource usage information
+# Resource usage information
 Time() {
     /usr/bin/time -f \
         '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
         "$@"
 }   
 
-## Exit upon error with a message
+# Exit upon error with a message
 Die() {
     error_message=${1}
     error_args=${2-none}
@@ -133,7 +134,7 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-## Option defaults
+# Option defaults
 stage=0
 
 debug=false
@@ -144,15 +145,14 @@ slurm=true
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-## Placeholder defaults
+# Placeholder defaults
 indir=""
 fofn=""
 outdir=""
 more_args=""
 
-## Parse command-line args
+# Parse command-line args
 all_args="$*"
-
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --indir )      shift && indir=$1 ;;
@@ -172,26 +172,26 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-## In debugging mode, print all commands
+# Bash script settings
+set -euo pipefail
+
+# In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
-## Check if this is a SLURM job
+# Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Load software and set nr of threads
+# Load software and set nr of threads
 [[ "$dryrun" = false ]] && Load_software
 Set_threads
 
-## Bash script settings
-set -euo pipefail
-
-## Test parameter values
+# Test parameter values
 [[ "$indir" = "" && "$fofn" = "" ]] && Die "Please specify input file with -i/--indir or with -I/--fofn" "$all_args"
 [[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
 [[ "$indir" != "" && ! -d "$indir" ]] && Die "Input dir $indir does not exist"
 [[ "$fofn" != "" && ! -f "$fofn" ]] && Die "Input fofn $fofn does not exist"
 
-## Get list of input files
+# Get list of input files
 if [[ "$fofn" = "" ]]; then
     R1_list=$(echo "$indir"/*R1*fastq.gz | sed 's/ /,/g')
     R2_list=$(echo "$indir"/*R2*fastq.gz | sed 's/ /,/g')
@@ -200,7 +200,7 @@ else
     R2_list=$(grep "R2.*fastq.gz$" "$fofn" | tr "\n" ",")
 fi
 
-## Report
+# Report
 echo
 echo "=========================================================================="
 echo "                STARTING SCRIPT RCORRECTOR.SH"
@@ -221,16 +221,16 @@ echo "Listing the input file(s):"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
-## Print reserved resources
+# Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-## Create the output directory
+# Create the output directory
 ${e}mkdir -p "$outdir"/logs
 
-## Run Rcorrector
+# Run Rcorrector
 ${e}Time run_rcorrector.pl \
     -t "$threads" \
     -od "$outdir" \

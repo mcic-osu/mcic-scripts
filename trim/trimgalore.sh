@@ -12,7 +12,7 @@
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-## Help
+# Help
 Print_help() {
     echo
     echo "======================================================================"
@@ -57,27 +57,30 @@ Print_help() {
     echo
 }
 
-## Load software
+# Load software
 Load_software() {
     set +u
     module load miniconda3/4.12.0-py39
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /fs/project/PAS0471/jelmer/conda/trimgalore-0.6.7
     set -u
 }
 
-## Print version
+# Print version
 Print_version() {
+    set +e
     Load_software
     trim_galore --version
+    set -e
 }
 
-## Print help for the focal program
+# Print help for the focal program
 Print_help_program() {
     Load_software
     trim_galore --help
 }
 
-## Set the number of threads/CPUs
+# Set the number of threads/CPUs
 Set_threads() {
     set +u
     if [[ "$slurm" = true ]]; then
@@ -95,13 +98,12 @@ Set_threads() {
     set -u
 }
 
-## Print SLURM job resource usage info
+# Print SLURM job resource usage info
 Resource_usage() {
-    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
-        grep -Ev "ba|ex"
+    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
 }
 
-## Print SLURM job requested resources
+# Print SLURM job requested resources
 Print_resources() {
     set +u
     echo "# SLURM job information:"
@@ -117,7 +119,7 @@ Print_resources() {
     set -u
 }
 
-## Exit upon error with a message
+# Exit upon error with a message
 Die() {
     error_message=${1}
     error_args=${2-none}
@@ -136,7 +138,7 @@ Die() {
     exit 1
 }
 
-## Recource usage information
+# Recource usage information
 Time() {
 /usr/bin/time -f \
     '\n# Ran the command:\n%C \n# Run stats:\nTime: %E   CPU: %P    Max mem: %M K    Avg Mem: %t K    Exit status: %x \n' \
@@ -147,7 +149,7 @@ Time() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-## Option defaults
+# Option defaults
 quality=20                 # => 20 is also the TrimGalore default
 length=20                  # => 20 is also the TrimGalore default
 single_end=false           # => paired-end by default
@@ -161,14 +163,13 @@ slurm=true
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-## Placeholder defaults
+# Placeholder defaults
 R1_in=""
 outdir=""
 more_args=""
 
-## Parse command-line args
+# Parse command-line args
 all_args="$*"
-
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --R1 )             shift && R1_in=$1 ;;
@@ -193,30 +194,30 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-## In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
-
-## Check if this is a SLURM job
-[[ -z "$SLURM_JOB_ID" ]] && slurm=false
-
-## Bash strict settings
+# Bash strict settings
 set -euo pipefail
 
-## Load software and set nr of threads
+# In debugging mode, print all commands
+[[ "$debug" = true ]] && set -o xtrace
+
+# Check if this is a SLURM job
+[[ -z "$SLURM_JOB_ID" ]] && slurm=false
+
+# Load software and set nr of threads
 [[ "$dryrun" = false ]] && Load_software
 Set_threads
 
-## Check input
+# Check input
 [[ "$outdir" = "" ]] && Die "Please specify an outdir with -o"
 [[ "$R1_in" = "" ]] && Die "Please specify an input R1 FASTQ file with -i"
 [[ ! -f "$R1_in" ]] && Die "Input R1 FASTQ file $R1_in does not exist"
 
-## Output dir for TrimGalore logs
+# Output dir for TrimGalore logs
 outdir_trim="$outdir"/trimmed
 outdir_fastqc="$outdir"/fastqc
 outdir_logs="$outdir"/logs
 
-## FastQC arg
+# FastQC arg
 if [[ "$run_fastqc" = true ]]; then
     fastqc_arg1="--fastqc --fastqc_args"
     fastqc_arg2="-t $threads --outdir $outdir_fastqc"
@@ -225,17 +226,17 @@ else
     fastqc_arg2=""
 fi
 
-## NextSeq arg
+# NextSeq arg
 if [[ "$nextseq" = true ]]; then
     quality_arg="--nextseq $quality"
 else
     quality_arg="--quality $quality"
 fi
 
-## Get file extension (.fastq.gz or .fq.gz)
+# Get file extension (.fastq.gz or .fq.gz)
 extension=$(echo "$R1_in" | sed -E 's/.*(\.fa?s?t?q\.gz$)/\1/')
 
-## Get R2 file, create input argument, define output files
+# Get R2 file, create input argument, define output files
 if [ "$single_end" != "true" ]; then
 
     # Paired-end sequences
@@ -260,7 +261,7 @@ else
     R1_out="$outdir_trim"/"$sample_id".fastq.gz
 fi
 
-## Report
+# Report
 echo
 echo "=========================================================================="
 echo "               STARTING SCRIPT TRIMGALORE.SH"
@@ -283,17 +284,17 @@ echo "R1 output file:                   $R1_out"
 [[ "$single_end" != "true" ]] && echo "R2 output file:                    $R2_out"
 echo "=========================================================================="
 
-## Print reserved resources
+# Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
 
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-## Make output dirs
+# Make output dirs
 ${e}mkdir -p "$outdir_trim" "$outdir_fastqc" "$outdir_logs"
 
-## Run Trim-Galore
+# Run Trim-Galore
 ${e}Time \
     trim_galore \
         --output_dir "$outdir_trim" \
@@ -304,7 +305,7 @@ ${e}Time \
         $more_args \
         $fastqc_arg1 "$fastqc_arg2" $input_arg
     
-## Move output files
+# Move output files
 echo -e "\n# Moving output files..."
 ${e}mv -v "$outdir_trim"/"$(basename "$R1_in")"_trimming_report.txt "$outdir_logs"
 
