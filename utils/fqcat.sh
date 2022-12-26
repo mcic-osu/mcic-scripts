@@ -131,7 +131,7 @@ while [ "$1" != "" ]; do
         -h )                    Print_help; exit 0;;
         --dryrun )              dryrun=true && e="echo ";;
         --debug )               debug=true ;;
-        * )                     infiles[$count]=$1 && count=$(( count + 1 )) ;;
+        * )                     infiles[count]=$1 && count=$(( count + 1 )) ;;
     esac
     shift
 done

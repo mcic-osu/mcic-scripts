@@ -6,13 +6,13 @@
 #SBATCH --mem=32G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --job-name=krone
+#SBATCH --job-name=krona
 #SBATCH --output=slurm-krona-%j.out
 
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-## Help function
+# Help function
 Print_help() {
     echo
     echo "======================================================================"
@@ -40,34 +40,29 @@ Print_help() {
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 -i results/kraken/sampleA_main.txt -o results/krona/sampleA.html"
     echo
-    echo "SOFTWARE DOCUMENTATION:"
-    echo "  - Docs: "
-    echo "  - Paper: "
-    echo
 }
 
-## Load software
+# Load software
 Load_software() {
     module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /fs/ess/PAS0471/jelmer/conda/krona
 }
 
-## Print help for the focal program
+# Print help for the focal program
 Print_help_program() {
     Load_software
     ktImportTaxonomy
 }
 
-## Print SLURM job resource usage info
+# Print SLURM job resource usage info
 Resource_usage() {
     echo
-    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
-        grep -Ev "ba|ex"
+    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
     echo
 }
 
-## Print SLURM job requested resources
+# Print SLURM job requested resources
 Print_resources() {
     set +u
     echo "# SLURM job information:"
@@ -83,14 +78,14 @@ Print_resources() {
     set -u
 }
 
-## Resource usage information
+# Resource usage information
 Time() {
     /usr/bin/time -f \
         '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
         "$@"
 }   
 
-## Exit upon error with a message
+# Exit upon error with a message
 Die() {
     error_message=${1}
     error_args=${2-none}
@@ -113,7 +108,7 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-## Option defaults
+# Option defaults
 debug=false
 dryrun=false && e=""
 slurm=true
@@ -122,14 +117,13 @@ slurm=true
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-## Placeholder defaults
+# Placeholder defaults
 infile=""
 outfile=""
 more_args=""
 
-## Parse command-line args
+# Parse command-line args
 all_args="$*"
-
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
@@ -149,19 +143,19 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-## In debugging mode, print all commands
+# In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
-## Check if this is a SLURM job
+# Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Load software
+# Load software
 [[ "$dryrun" = false ]] && Load_software
 
-## Bash script settings
+# Bash script settings
 set -euo pipefail
 
-## Report
+# Report
 echo
 echo "=========================================================================="
 echo "                    STARTING SCRIPT KRONA.SH"
@@ -173,14 +167,14 @@ echo "Output file:                      $outfile"
 [[ $more_args != "" ]] && echo "Other arguments for Krona:        $more_args"
 echo
 echo "Listing the input file(s):"
-#ls -lh "$infile" #TODO
+ls -lh "$infile"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
-## Print reserved resources
+# Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
 
-## Check input
+# Check input
 [[ "$infile" = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
 [[ "$outfile" = "" ]] && Die "Please specify an output file with -o/--outfile" "$all_args"
 [[ ! -f "$infile" ]] && Die "Input file $infile does not exist"
@@ -189,7 +183,7 @@ echo "==========================================================================
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-## Make outdir only if outfile is not in current dir (contains a "/")
+# Make outdir only if outfile is not in current dir (contains a "/")
 if echo "$outfile" | grep -q "/"; then
     outdir=$(dirname "$outfile")
     ${e}mkdir -p "$outdir"/logs
@@ -197,7 +191,7 @@ else
     ${e}mkdir -p logs
 fi
 
-## Run Krona
+# Run Krona
 ${e}Time ktImportTaxonomy \
     -q 2 \
     -t 3 \
