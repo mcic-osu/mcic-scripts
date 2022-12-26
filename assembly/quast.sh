@@ -1,16 +1,18 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --cpus-per-task=16
-#SBATCH --time=12:00:00
+#SBATCH --time=16:00:00
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=40G
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
 #SBATCH --job-name=quast
 #SBATCH --output=slurm-quast-%j.out
-
 
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-## Help function
+# Help function
 Print_help() {
     echo
     echo "======================================================================"
@@ -18,27 +20,34 @@ Print_help() {
     echo "         Run QUAST to check the quality of a genome assembly"
     echo "======================================================================"
     echo "USAGE:"
-    echo "sbatch $0 [ -i <input-file> / -d <input-dir> ] -o <output-dir> ..."
+    echo "  sbatch $0 -o <output-dir> [ --assembly <assembly> | --indir <input-dir> | assembly1 assembly2 ... ]  [...]"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  Specify the input with EITHER '-i' (single file) or '-d' (all files in a dir)"
-    echo "  -i <file>         Input file (genome assembly nucleotide FASTA)"
-    echo "  -d <dir>          Input dir (Only files with the extension '.fasta' will be included)"
-    echo "  -o <dir>          Output dir"
+    echo "  -o/--outdir     <dir>   Output dir"
+    echo "  To specify input, use one of:"
+    echo "    --assembly    <file> Input assembly FASTA file"
+    echo "    --indir       <dir>  Input dir with assembly FASTA files (extension '.fasta')"
+    echo "    Pass assembly FASTA files(s) as positional arguments at the end of the command."
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  -r <file>         Reference genome nucleotide FASTA file    [default: no reference genome]"
-    echo "  -g <file>         Reference genome GFF file                 [default: no reference genome]"
-    echo "  -1 <file>         FASTQ file with forward reads             [default: no reads]"
-    echo "  -2 <file>         FASTQ file with reverse reads             [default: no reads]"
-    echo "  -a <string>       Quoted string with additional argument(s) to pass to QUAST"
+    echo "  --ref_fa        <file>  Reference genome nucleotide FASTA file      [default: no reference genome]"
+    echo "  --ref_annot     <file>  Reference genome annotation (GFF/GTF) file  [default: no reference genome]"
+    echo "  --R1            <file>  FASTQ file with forward (R1) Illumina reads [default: no reads]"
+    echo "                          (The R2 filename will be inferred)"
+    echo "  --reads         <file>  FASTQ file with single-end Illumina reads"
+    echo "  --fragmented            Use this flag if the assembly is fragmented"
+    echo "  --run_busco             Use this flag to run BUSCO within QUAST"
+    echo "                          BUSCO is not run by default, because at least for eukaryotes it fails to download the database"
+    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to QUAST"
     echo
     echo "UTILITY OPTIONS:"
-    echo "    -h              Print this help message and exit"
+    echo "    -h                    Print this help message and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i results/assembly/my.fasta -o results/quast"
-    echo "  sbatch $0 -d results/assemblies -o results/quast"
+    echo "  sbatch $0 --assembly results/assembly/my.fasta -o results/quast"
+    echo "  sbatch $0 --indir results/assemblies -o results/quast"
+    echo "  sbatch $0 -o results/quast results/racon/assembly.fasta results/smartdenovo/assembly.fasta"
+    echo "  sbatch $0 --indir results/assemblies -o results/quast --more_args '--eukaryote'"
     echo
     echo "SOFTWARE DOCUMENTATION:"
     echo "  - GitHub repo: https://github.com/ablab/quast"
@@ -47,22 +56,94 @@ Print_help() {
     echo
 }
 
-## Load software
+# Load software
 Load_software() {
-    module load python/3.6-conda5.2
+    set +u
+    module load miniconda3/4.12.0-py39
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /fs/ess/PAS0471/jelmer/conda/quast-5.0.2
+    set -u
 }
 
-## Print version
+# Print version
 Print_version() {
+    set +e
     Load_software
     quast.py --version
+    set -e
 }
 
-## Exit upon error with a message
+# Print help for the focal program
+Print_help_program() {
+    Load_software
+    quast.py --help
+}
+
+# Print SLURM job resource usage info
+Resource_usage() {
+    echo
+    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
+    echo
+}
+
+# Print SLURM job requested resources
+Print_resources() {
+    set +u
+    echo "# SLURM job information:"
+    echo "Account (project):    $SLURM_JOB_ACCOUNT"
+    echo "Job ID:               $SLURM_JOB_ID"
+    echo "Job name:             $SLURM_JOB_NAME"
+    echo "Memory (per node):    $SLURM_MEM_PER_NODE"
+    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
+    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
+    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
+    echo "======================================================================"
+    echo
+    set -u
+}
+
+# Set the number of threads/CPUs
+Set_threads() {
+    set +u
+    if [[ "$slurm" = true ]]; then
+        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
+            threads="$SLURM_CPUS_PER_TASK"
+        elif [[ -n "$SLURM_NTASKS" ]]; then
+            threads="$SLURM_NTASKS"
+        else 
+            echo "WARNING: Can't detect nr of threads, setting to 1"
+            threads=1
+        fi
+    else
+        threads=1
+    fi
+    set -u
+}
+
+# Resource usage information
+Time() {
+    /usr/bin/time -f \
+        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
+        "$@"
+}   
+
+# Exit upon error with a message
 Die() {
-    printf "\n$0: ERROR: %s\n" "$1" >&2
-    echo -e "Exiting\n" >&2
+    error_message=${1}
+    error_args=${2-none}
+    
+    echo >&2
+    echo "=====================================================================" >&2
+    printf "$0: ERROR: %s\n" "$error_message" >&2
+    echo -e "\nFor help, run this script with the '-h' option" >&2
+    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
+    if [[ "$error_args" != "none" ]]; then
+        echo -e "\nArguments passed to the script:" >&2
+        echo "$error_args" >&2
+    fi
+    echo -e "\nEXITING..." >&2
+    echo "=====================================================================" >&2
+    echo >&2
     exit 1
 }
 
@@ -70,127 +151,172 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-dryrun=false
+# Option defaults
+is_fragmented=false && fragmented_arg=""
+run_busco=false        # Not run by default -- at least for eukaryotes, it fails to download the database file
+
 debug=false
+dryrun=false && e=""
+slurm=true
+
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-## Placeholder defaults
-infile=""
+# Placeholder defaults
+assembly=""
 indir=""
+declare -a infiles
 outdir=""
-ref_fna="" && ref_fna_arg=""
-ref_gff="" && ref_gff_arg=""
-R1="" && R1_arg=""
-R2="" && R2_arg=""
+ref_fa="" && ref_fa_arg=""
+ref_annot="" && ref_annot_arg=""
+R1=""
+R2=""
+reads=""
+illumina_reads_arg=""
+busco_arg=""
 more_args=""
 
-## Parse command-line options
-while getopts '1:2:i:d:o:r:g:a:h' flag; do
-    case "${flag}" in
-        i) infile="$OPTARG" ;;
-        d) indir="$OPTARG" ;;
-        o) outdir="$OPTARG" ;;
-        1) R1="$OPTARG" ;;
-        2) R2="$OPTARG" ;;
-        r) ref_fna="$OPTARG" ;;
-        g) ref_gff="$OPTARG" ;;
-        a) more_args="$OPTARG" ;;
-        h) Print_help; exit 0 ;;
-        \?) Die "Invalid option -$OPTARG" ;;
-        :) Die "Option -$OPTARG requires an argument" ;;
+# Parse command-line args
+all_args="$*"
+count=0
+while [ "$1" != "" ]; do
+    case "$1" in
+        --assembly )        shift && assembly=$1 ;;
+        --indir )           shift && indir=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        --ref_fa )          shift && ref_fa=$1 ;;
+        --ref_annot )       shift && ref_annot=$1 ;;
+        --R1 )              shift && R1=$1 ;;
+        --reads )           shift && reads=$1 ;;
+        --fragmented )      is_fragmented=true ;;
+        --run_busco )       run_busco=true ;;
+        --more_args )       shift && more_args=$1 ;;
+        -v | --version )    Print_version; exit 0 ;;
+        -h )                Print_help; exit 0 ;;
+        --help )            Print_help_program; exit 0;;
+        --dryrun )          dryrun=true && e="echo ";;
+        --debug )           debug=true ;;
+        * )                 infiles[count]=$1 && count=$(( count + 1 )) ;;
     esac
+    shift
 done
 
 
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-## Load the software
-Load_software
-
-## Bash strict settings
+# Bash script settings
 set -euo pipefail
 
-## Check input
-[[ "$indir" = "" && "$infile" = "" ]] && Die "Please specify either an input file with -i, or an input dir with -d"
-[[ "$indir" != "" && "$infile" != "" ]] && Die "Please specify either an input file with -i, or an input dir with -d, and not both!"
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o"
-[[ "$R2" != "" && "$R1" = "" ]] && Die "When specifying a FASTQ file with reverse reads ('-2'), please also specify a FASTQ file with forward reads ('-1')"
-[[ "$infile" != "" && ! -f "$infile" ]] && Die "Input file (-i) $infile does not exist or is not a regular file"
+# In debugging mode, print all commands
+[[ "$debug" = true ]] && set -o xtrace
+
+# Check if this is a SLURM job
+[[ -z "$SLURM_JOB_ID" ]] && slurm=false
+
+# Load software and set nr of threads
+[[ "$dryrun" = false ]] && Load_software
+Set_threads
+
+# Check input
+[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir"
+[[ "$assembly" != "" && ! -f "$assembly" ]] && Die "Input file (--assembly) $assembly does not exist or is not a regular file"
 [[ "$indir" != "" && ! -d "$indir" ]] && Die "Input dir (-d) $indir does not exist or is not a directory"
 
-## Build argument for assembly input
+# Build argument for assembly input
 if [[ $indir != "" ]]; then
-    infile_arg="$indir/*.fasta"
-else
-    infile_arg="$infile"
+    mapfile -t infiles < <(find "$indir" -name "*.fasta")
+elif [[ $assembly != "" ]]; then
+    infiles=("$assembly")
+elif [[ ${#infiles[@]} -eq 0 ]]; then
+    Die "Please specify input with --indir, --assembly or positional arguments"
 fi
 
-## If the input is a single file, make a separate output dir
-if [[ $infile != "" ]]; then
-    sampleID=$(basename "$infile" | sed -E 's/.fn?as?t?a?//')
+# If the input is a single file, make a separate output dir
+if [[ $assembly != "" ]]; then
+    sampleID=$(basename "$assembly" | sed -E 's/.fn?as?t?a?//')
     outdir=$outdir/"$sampleID"
 fi
 
-## Build arguments
-[[ $R1 != "" ]] && R1_arg="-1 $R1"
-[[ $R2 != "" ]] && R2_arg="-2 $R2"
-[[ $ref_fna != "" ]] && ref_fna_arg="-r $ref_fna"
-[[ $ref_gff != "" ]] && ref_gff_arg="-g $ref_gff"
-
-## Get number of threads
-if [[ "$dryrun" = false ]]; then
-    if [[ -z "$SLURM_CPUS_PER_TASK" ]]; then
-        n_threads="$SLURM_NTASKS"
-    else
-        n_threads="$SLURM_CPUS_PER_TASK"
-    fi
+# Build input reads arg
+if [[ $R1 != "" ]]; then
+    file_ext=$(basename "$R1" | sed -E 's/.*(.fastq.gz|.fq.gz)$/\1/')
+    R1_suffix=$(basename "$R1" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
+    R2_suffix=${R1_suffix/1/2}
+    R2=${R1/$R1_suffix/$R2_suffix}
+    illumina_reads_arg="-1 $R1 -2 $R2"
+    [[ ! -f "$R1" ]] && Die "Input file R1 $R1 does not exist"
+    [[ ! -f "$R2" ]] && Die "Input file R2 $R2 does not exist"
+    [[ "$R1" = "$R2" ]] && Die "R1 and R2 FASTQ files are the same file: $R1"
+elif [[ $reads != "" ]]; then
+    illumina_reads_arg="--single $reads"
+    [[ ! -f "$reads" ]] && Die "Input file $reads does not exist"
 fi
 
-## Report
+# Build other arguments
+[[ "$ref_fa" != "" ]] && ref_fa_arg="-r $ref_fa"
+[[ "$ref_annot" != "" ]] && ref_annot_arg="--features $ref_annot"
+[[ "$is_fragmented" != "" ]] && fragmented_arg="--fragmented"
+[[ "$run_busco" = true ]] && busco_arg="--conserved-genes-finding"
+
+# Report
 echo
 echo "=========================================================================="
 echo "               STARTING SCRIPT QUAST.SH"
 date
 echo "=========================================================================="
-[[ $infile != "" ]] && echo "Input file:                           $infile"
-[[ $indir != "" ]] && echo "Input dir:                            $indir"
+echo "All arguments to this script:         $all_args"
 echo "Output dir:                           $outdir"
-[[ $ref_fna != "" ]] && echo "Reference FASTA file:                 $ref_fna"
-[[ $ref_gff != "" ]] && echo "Reference GFF file:                   $ref_gff"
+[[ $assembly != "" ]] && echo "Input assembly FASTA:                 $assembly"
+[[ $indir != "" ]] && echo "Input dir:                            $indir"
+[[ $ref_fa != "" ]] && echo "Reference FASTA file:                 $ref_fa"
+[[ $ref_annot != "" ]] && echo "Reference annotation file:            $ref_annot"
 [[ $R1 != "" ]] && echo "R1 FASTQ file:                        $R1"
 [[ $R2 != "" ]] && echo "R2 FASTQ file:                        $R2"
+[[ $reads != "" ]] && echo "Single-end FASTQ file:                $reads"
 [[ $more_args != "" ]] && echo "Other arguments to pass to QUAST:     $more_args"
-if [[ $indir != "" ]]; then
-    echo -e "\nListing input FASTA files:"
-    ls -lh "$indir"/*.fasta
-fi
+echo "Fragmented assembly:                  $is_fragmented"
+echo -e "\n# Listing the input files:"
+[[ $assembly != "" ]] && ls -lh "$assembly"
+[[ $indir != "" ]] && ls -lh "$indir"/*.fasta
+[[ $R1 != "" ]] && ls -lh "$R1" "$R2"
+[[ $reads != "" ]] && ls -lh "$reads" 
+[[ $ref_fa != "" ]] && ls -lh "$ref_fa"
+[[ $ref_annot != "" ]] && ls -lh "$ref_annot"
 echo "=========================================================================="
-echo
+
+# Print reserved resources
+[[ "$slurm" = true ]] && Print_resources
 
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-## Make output dir
-mkdir -p "$outdir"/logs
+# Create the output directory
+${e}mkdir -pv "$outdir"/logs
 
-[[ "$debug" = false ]] && set -o xtrace
-
-quast.py \
-    --conserved-genes-finding \
-    -o "$outdir" \
-    -t "$n_threads" \
-    $ref_fna_arg \
-    $ref_gff_arg \
-    $R1_arg \
-    $R2_arg \
+# Run
+echo -e "\n# Now running QUAST..."
+${e}Time quast.py \
+    --threads "$threads" \
+    --output-dir "$outdir" \
+    --glimmer \
+    --circos \
+    --no-snps \
+    $busco_arg \
+    $ref_fa_arg \
+    $ref_annot_arg \
+    $illumina_reads_arg \
+    $fragmented_arg \
     $more_args \
-    $infile_arg
+    "${infiles[@]}"
 
-[[ "$debug" = false ]] && set +o xtrace
+#? - glimmer: Acticate gene-finding, use Glimmer instead of GeneMark tools (trouble running those due to licensing issues)
+#? - conserved-genes-finding => runs Busco
+
+#? -k  --k-mer-stats   Compute k-mer-based quality metrics (recommended for large genomes)
+#?                     This may significantly increase memory and time consumption on large genomes
 
 
 # ==============================================================================
@@ -199,13 +325,12 @@ quast.py \
 echo
 echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
-    echo "## Version used:"
+    echo "# Version used:"
     Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n## Listing files in the output dir:"
-    ls -lh "$outdir"
-    echo
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
+    echo -e "\n# Listing files in the output dir:"
+    ls -lhd "$PWD"/"$outdir"/*
+    [[ "$slurm" = true ]] && Resource_usage
 fi
 echo
-echo "## Done with script"
+echo "# Done with script"
 date
