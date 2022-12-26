@@ -30,15 +30,15 @@ Print_help() {
     echo "                              Or optionally multiple files, quoted and space-separated"
     echo "  -I/--fofn           <file>  Text file with list of input FASTQ files one per line (fofn)"
     echo "  -o/--outfile        <str>   Output assembly FASTA file (extension '.fa' or '.fasta')"
-    echo "  --genome_size       <str>   Genome size estimate, e.g '4.6m' or '1g'"
+    echo "  --genome-size       <str>   Genome size estimate, e.g '4.6m' or '1g'"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --kmer-subsampling  <int>   K-mer subsampling rate, lower nr is less subsampling  [default: 4]"
     echo "                                Less subsampling may improve the assembly for low cov sequencing, but will take longer"
     echo "  --aln-noskip                Even if a read was contained in previous alignment, still align it against other reads"
     echo "                                May improve the assembly for low cov sequencing, but will take longer"
-    echo "  --lowcov_edge               For low cov. sequencing: set min edge depth to 2 and use --rescue-low-cov-edges"
-    echo "  --more_args         <str>   Quoted string with additional argument(s) to pass to Redbean"
+    echo "  --lowcov-edge               For low cov. sequencing: set min edge depth to 2 and use --rescue-low-cov-edges"
+    echo "  --more-args         <str>   Quoted string with additional argument(s) to pass to Redbean"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                    Dry run: don't execute commands, only parse arguments and report"
@@ -59,7 +59,7 @@ Print_help() {
 ## Load software
 Load_software() {
     module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /fs/project/PAS0471/jelmer/conda/wtdbg-2.5
 }
 
@@ -173,14 +173,14 @@ infile_arg=""
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infiles )        shift && infiles=($1) ;;
+        -i | --infiles )        shift && IFS=" " read -r -a infiles <<< "$1" ;;
         -I | --fofn )           shift && fofn=$1 ;;
         -o | --outfile )        shift && outfile=$1 ;;
-        --genome_size )         shift && genome_size=$1 ;;
-        --more_args )           shift && more_args=$1 ;;
+        --genome-size )         shift && genome_size=$1 ;;
+        --more-args )           shift && more_args=$1 ;;
         --kmer-subsampling )    shift && kmer_subsampling=$1 ;;
         --aln-noskip )          aln_noskip=true ;;
-        --lowcov_edge )         lowcov_edge=true ;;
+        --lowcov-edge )         lowcov_edge=true ;;
         --debug )               debug=true ;;
         --dryrun )              dryrun=true ;;
         -v | --version )        Print_version; exit ;;
@@ -237,17 +237,15 @@ echo "               STARTING SCRIPT REDBEAN.SH"
 date
 echo "=========================================================================="
 echo "All arguments to this script:     $all_args"
-echo
 [[ "$fofn" != "" ]] && echo "File with list of FASTQs (fofn):  $fofn"
 echo "Input files:                      ${infiles[*]}"
 echo "Number of input files:            ${#infiles[*]}"
 echo "Input file argument:              $infile_arg"
-echo
 echo "Output file:                      $outfile"
 echo "Genome size:                      $genome_size"
 [[ $more_args != "" ]] && echo "Other arguments for Redbean:      $more_args"
 echo
-echo "Listing input files:"
+echo "Listing the input files:"
 for infile in "${infiles[@]}"; do
     [[ ! -f $infile ]] && Die "Input file $infile does not exist!"
     ls -lh "$infile"

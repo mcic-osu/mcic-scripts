@@ -21,18 +21,18 @@ Print_help() {
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 -i <input FASTQ> -o <output-dir> [...]"
+    echo "  sbatch $0 -i <input FASTQ(s)> -o <output-dir> [...]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infiles   <file>   Input FASTQ file(s)"
-    echo "  -o/--outfile   <dir>    Output dir (will be created if needed)"
+    echo "  -i/--infiles    <file>  Input FASTQ file(s)"
+    echo "  -o/--outfile    <file>  Output assembly FASTA file (extension '.fa' or '.fasta')"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --genome_size <str>     Genome size estimate, e.g '4.6m' or '1g'    [default: no estimate]"
-    echo "  --iterations  <int>     Number of polishing iterations              [default: 1]"
-    echo "  --more_args   <str>     Quoted string with additional argument(s) to pass to Flye"
+    echo "  --genome-size   <str>   Genome size estimate, e.g '4.6m' or '1g'    [default: no estimate]"
+    echo "  --iterations    <int>   Number of polishing iterations              [default: 1]"
     echo "  --resume                Resume previous run"
+    echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to Flye"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
@@ -51,7 +51,7 @@ Print_help() {
 ## Load software
 Load_software() {
     module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /fs/project/PAS0471/jelmer/conda/flye-2.9.1
 }
 
@@ -162,13 +162,13 @@ more_args=""
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infiles )    shift && infiles=($1) ;;
+        -i | --infiles )    shift && IFS=" " read -r -a infiles <<< "$1" ;;
         -I | --fofn )       shift && fofn=$1 ;;
         -o | --outfile )    shift && outfile=$1 ;;
-        --genome_size )     shift && genome_size=$1 ;;
+        --genome-size )     shift && genome_size=$1 ;;
         --iterations )      shift && iterations=$1 ;;
-        --more_args )       shift && more_args=$1 ;;
         --resume )          resume=true ;;
+        --more-args )       shift && more_args=$1 ;;
         -v | --version )    Print_version; exit ;;
         -h )                Print_help; exit 0;;
         --help )            Print_help_program; exit 0;;
@@ -227,14 +227,13 @@ echo "Nr of polishing iterations:           $iterations"
 echo "Resume previous run:                  $resume"
 [[ $more_args != "" ]] && echo "Other arguments for Flye:             $more_args"
 echo
-echo "Listing input files:"
+echo "Listing the input files:"
 for infile in "${infiles[@]}"; do
     [[ ! -f $infile ]] && Die "Input file $infile does not exist!"
     ls -lh "$infile"
 done
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
-echo
 
 ## Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
