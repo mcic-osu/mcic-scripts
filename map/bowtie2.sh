@@ -13,7 +13,7 @@
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-## Help function
+# Help function
 Print_help() {
     echo
     echo "======================================================================"
@@ -22,12 +22,12 @@ Print_help() {
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 -i <input assembly> -I <input-FASTQ-dir> -o <output-dir> ...[...]"
+    echo "  sbatch $0 -i <input assembly> [ --fq_dir <dir> --fq_fofn <fofn> ] -o <output BAM> [...]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--assembly   <file>  Input transcriptome assembly FASTA file"
-    echo "  -I/--fq-dir     <dir>   Input dir with FASTQ files"
+    echo "  --fq_dir <dir> OR --fq_fofn <file>  Input dir or FOFN (File Of File Names) with FASTQ files"
     echo "  -o/--bam        <file>  Output BAM file"
     echo
     echo "OTHER KEY OPTIONS:"
@@ -41,7 +41,7 @@ Print_help() {
     echo "  -v/--version            Print the version of Bowtie2 and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i results/assembly.fa -I data/fastq/ -o results/bowtie2"
+    echo "  sbatch $0 -i results/assembly.fa --fq_dir data/fastq/ -o results/bowtie2"
     echo
     echo "HARDCODED PARAMETERS:"
     echo "  - The script assumes that the FASTQ reads are paired-end"
@@ -51,7 +51,7 @@ Print_help() {
     echo
 }
 
-## Load software
+# Load software
 Load_software() {
     set +u
     module load miniconda3/4.12.0-py39
@@ -60,26 +60,26 @@ Load_software() {
     set -u
 }
 
-## Print version
+# Print version
 Print_version() {
     Load_software
     bowtie2 --version
 }
 
-## Print help for the focal program
+# Print help for the focal program
 Print_help_program() {
     Load_software
     bowtie2 --help
 }
 
-## Print SLURM job resource usage info
+# Print SLURM job resource usage info
 Resource_usage() {
     echo
     sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
     echo
 }
 
-## Print SLURM job requested resources
+# Print SLURM job requested resources
 Print_resources() {
     set +u
     echo "# SLURM job information:"
@@ -95,7 +95,7 @@ Print_resources() {
     set -u
 }
 
-## Set the number of threads/CPUs
+# Set the number of threads/CPUs
 Set_threads() {
     set +u
     if [[ "$slurm" = true ]]; then
@@ -113,14 +113,14 @@ Set_threads() {
     set -u
 }
 
-## Resource usage information
+# Resource usage information
 Time() {
     /usr/bin/time -f \
         '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
         "$@"
 }   
 
-## Exit upon error with a message
+# Exit upon error with a message
 Die() {
     error_message=${1}
     error_args=${2-none}
@@ -144,7 +144,7 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-## Option defaults
+# Option defaults
 debug=false
 dryrun=false && e=""
 slurm=true
@@ -153,19 +153,21 @@ slurm=true
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-## Placeholder defaults
+# Placeholder defaults
 assembly=""
-fqdir=""
+fq_dir=""
+fq_fofn=""
 bam=""
 more_args=""
 
-## Parse command-line args
+# Parse command-line args
 all_args="$*"
 
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --assembly )   shift && assembly=$1 ;;
-        -I | --fq-dir )     shift && fqdir=$1 ;;
+        --fq_dir )          shift && fq_dir=$1 ;;
+        --fq_fofn )         shift && fq_fofn=$1 ;;
         -o | --bam )        shift && bam=$1 ;;
         --more-args )       shift && more_args=$1 ;;
         -v | --version )    Print_version; exit 0 ;;
@@ -181,34 +183,47 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-## In debugging mode, print all commands
+# In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
-## Check if this is a SLURM job
+# Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Load software and set nr of threads
+# Bash script settings
+set -euo pipefail
+
+# Load software and set nr of threads
 [[ "$dryrun" = false ]] && Load_software
 Set_threads
 
-## Bash script settings
-set -euo pipefail
-
-## Other parameters
+# Other parameters
 outdir=$(dirname "$bam")
-R1_list=$(echo "$fqdir"/*R1*fastq.gz | sed 's/ /,/g')
-R2_list=$(echo "$fqdir"/*R2*fastq.gz | sed 's/ /,/g')
 file_ext=$(basename "$assembly" | sed -E 's/.*(.fasta|.fa|.fna)$/\1/')
 assembly_id="$outdir"/$(basename "$assembly" "$file_ext")
 
-## Check input
+# Create lists with input files
+if [[ "$fq_dir" != "" ]]; then
+    [[ ! -d "$fq_dir" ]] && Die "Input FASTQ dir $fq_dir does not exist"
+    R1_list=$(echo "$fq_dir"/*R1*fastq.gz | sed 's/ /,/g')
+    R2_list=$(echo "$fq_dir"/*R2*fastq.gz | sed 's/ /,/g')
+elif [[ "$fq_fofn" != "" ]]; then
+    [[ ! -f "$fq_fofn" ]] && Die "Input FOFN $fq_fofn does not exist"
+    R1_list=$(grep "_R1" "$fq_fofn" | tr "\n" "," | sed 's/,$/\n/')
+    R2_list=$(grep "_R2" "$fq_fofn" | tr "\n" "," | sed 's/,$/\n/')
+else
+    Die "Please specify FASTQ input with --fq_dir or --fq_fofn"
+fi
+
+# Input files
+[[ "$fq_fofn" != "" ]] && mapfile -t fq_files <"$fq_fofn"
+[[ "$fq_dir" != "" ]] && mapfile -t fq_files < <(find "$fq_dir" -type f -name "*fastq.gz")
+
+# Check input
 [[ "$assembly" = "" ]] && Die "Please specify an input assembly with -i/--assembly"
-[[ "$fqdir" = "" ]] && Die "Please specify a FASTQ input dir with -I/--fqdir"
 [[ "$bam" = "" ]] && Die "Please specify an output BAM file with -o/--bam"
 [[ ! -f "$assembly" ]] && Die "Input assembly file $assembly does not exist"
-[[ ! -d "$fqdir" ]] && Die "Input FASTQ dir $fqdir does not exist"
 
-## Report
+# Report
 echo
 echo "=========================================================================="
 echo "                    STARTING SCRIPT BOWTIE2.SH"
@@ -216,7 +231,7 @@ date
 echo "=========================================================================="
 echo "All arguments to this script:     $all_args"
 echo "Input assembly:                   $assembly"
-echo "Input FASTQ dir:                  $fqdir"
+echo "Input FASTQ dir:                  $fq_dir"
 echo "Output BAM file:                  $bam"
 [[ $more_args != "" ]] && echo "Other arguments for Bowtie:     $more_args"
 echo "Number of threads/cores:          $threads"
@@ -224,18 +239,18 @@ echo
 echo "List of R1 files:                 $R1_list"
 echo "List of R2 files:                 $R2_list"
 echo "Listing the input FASTQ file(s):"
-ls -lh "$fqdir"
+ls -lh "${fq_files[@]}"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
-## Print reserved resources
+# Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
 
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-## Create the output directory
+# Create the output directory
 ${e}mkdir -p "$outdir"/logs
 
 echo -e "\nIndexing the transcriptome..."
@@ -245,16 +260,16 @@ bowtie2-build \
     "$outdir"/"$assembly_id"
 
 # MAP READS --------------------------------------------------------------------
-echo -e "\n## Starting Bowtie2 mapping..."
+echo -e "\n# Starting Bowtie2 mapping..."
 bowtie2 \
-    -p $threads \
+    -p "$threads" \
     --no-unal \
     -k 20 \
     -x "$outdir"/"$assembly_id" \
     -1 "$R1_list" \
     -2 "$R2_list" \
     $more_args |
-    samtools view -@$threads -Sb -o "$bam"
+    samtools view -@"$threads" -Sb -o "$bam"
 
 #? Parameter settings from https://github.com/trinityrnaseq/trinityrnaseq/wiki/RNA-Seq-Read-Representation-by-Trinity-Assembly
 
