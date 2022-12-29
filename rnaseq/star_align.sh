@@ -34,6 +34,7 @@ Print_help() {
     echo "  --single_end            FASTQ files are single-end, not paired-end  [default: paired-end]"
     echo "  --no_sort               Don't sort the output BAM file              [default: position-sort the BAM file]"
     echo "  --samtools_sort         Use samtools to sort the output BAM file    [default: Use STAR to sort the BAM file]"
+    echo "  --index_bam             Index the output BAM file with samtools     [default: don't index]"
     echo "  --count                 Count reads per gene                        [default: don't perform counting]"
     echo "                          NOTE: When using this flag, provide a GTF and not a GFF/GFF3 file"
     echo "  --max_map       <int>   Max. nr. of locations a read can map to     [default: 10]"
@@ -158,8 +159,9 @@ max_map=10                # If this nr is exceeded, read is considered unmapped
 intron_min=21             # STAR default, too
 intron_max=0              # => auto-determined; STAR default, too
 count=false
-sort=true
+sort_bam=true
 samtools_sort=false
+index_bam=false
 output_unmapped=false && unmapped_arg=""
 paired_end=true
 
@@ -191,7 +193,8 @@ while [ "$1" != "" ]; do
         --intron_max )          shift && intron_max=$1 ;;
         --output_unmapped )     shift && output_unmapped=$1 ;;
         --count )               count=true ;;
-        --no_sort )             sort=false ;;
+        --index_bam )           index_bam=true ;;
+        --no_sort )             sort_bam=false ;;
         --samtools_sort )       samtools_sort=true ;;
         --single_end )          paired_end=false ;;
         --more_args )           shift && more_args=$1 ;;
@@ -253,6 +256,7 @@ fi
 # Define other outputs
 outfile_prefix="$outdir/$sampleID"_
 starlog_dir="$outdir"/star_logs
+final_bam="$outdir"/bam/"$sampleID".bam
 
 # If a GFF/GTF file is provided, build the appropriate argument for STAR
 if [ "$annot" != "" ]; then
@@ -281,7 +285,7 @@ if [ "$annot" != "" ]; then
 fi
 
 # Sorted output or not
-if [[ "$sort" = true && "$samtools_sort" = false ]]; then
+if [[ "$sort_bam" = true && "$samtools_sort" = false ]]; then
     output_arg="--outSAMtype BAM SortedByCoordinate --outBAMsortingBinsN 100"
 else
     output_arg="--outSAMtype BAM Unsorted"
@@ -300,27 +304,25 @@ echo "==========================================================================
 echo "               STARTING SCRIPT STAR_ALIGN.SH"
 date
 echo "=========================================================================="
+echo "Output BAM dir:                               $outdir"
 echo "Input (R1) FASTQ file:                        $R1_in"
 echo "Input STAR genome index dir:                  $index_dir"
 [[ "$annot" != "" ]] && echo "Input annotation file:                        $annot"
-echo "Output BAM dir:                               $outdir"
-echo
 echo "Output unmapped reads as FASTQ:               $output_unmapped"
 echo "Also perform read counting:                   $count"
 echo "Max nr of alignments for a read:              $max_map"
 echo "Minimum intron size:                          $intron_min"
 echo "Maximum intron size (0 => STAR default):      $intron_max"
-echo "Sort the BAM file:                            $sort"
-echo "Sort the BAM file with samtools:              $samtools_sort"
+echo "Sort the output BAM file:                     $sort_bam"
+echo "Sort the output BAM file with samtools:       $samtools_sort"
+echo "Index the output BAM file:                    $index_bam"
 echo "Are FASTQ reads paired-end?                   $paired_end"
-[[ "$more_args" != "" ]] && echo "Additional args to pass to STAR:              $more_args"
-echo
 echo "Sample ID (as inferred by the script):        $sampleID"
+echo "Output arg for STAR:                          $output_arg"
+[[ "$more_args" != "" ]] && echo "Additional args to pass to STAR:              $more_args"
 [[ "$paired_end" = true ]] && echo "R2 FASTQ file (as inferred by the script):    $R2_in"
 [[ "$annot" != "" ]] && echo "Annotation arg for STAR:                      $annot_arg"
-echo "Output arg for STAR:                          $output_arg"
-
-echo "Listing the input file(s):"
+echo "# Listing the input file(s):"
 ls -lh "$R1_in"
 [[ "$paired_end" = true ]] && "$R2_in"
 [[ "$annot" != "" ]] && ls -lh "$annot"
@@ -334,10 +336,10 @@ echo "==========================================================================
 #                               RUN
 # ==============================================================================
 # Create the output directory
-mkdir -p "$outdir"/logs "$outdir"/bam "$starlog_dir"
+mkdir -pv "$outdir"/logs "$outdir"/bam "$starlog_dir"
 
 # Run STAR
-echo "# Now aligning reads with STAR...."
+echo -e "\n# Now aligning reads with STAR...."
 STAR --runThreadN "$threads" \
     --genomeDir "$index_dir" \
     --readFilesIn "$R1_in" "$R2_in" \
@@ -358,30 +360,32 @@ STAR --runThreadN "$threads" \
 #? --twopassMode Basic => Using this following the nf-core RNAseq workflow
 #? --outSAMstrandField intronMotif => Using this following the nf-core RNAseq workflow
 #? --outSAMattributes NH HI AS NM MD => Using this following the nf-core RNAseq workflow
-
 #TODO
 # - Consider using --quantTranscriptomeBan "Singleend", see https://github.com/nf-core/dualrnaseq/blob/master/docs/parameters.md#--quantTranscriptomeBan-Singleend
-
 
 # Sort with samtools sort
 # STAR may fail to sort on some large BAM files, or BAM files with a lot of
 # reads mapping to similar positions. In that case, could use samtools sort. 
-if [[ "$sort" = true && "$samtools_sort" = "true" ]]; then
-
+if [[ "$sort_bam" = true && "$samtools_sort" = "true" ]]; then
     echo -e "\n# Sorting the BAM file with samtools sort..."
-    
     bam_unsorted="$outfile_prefix"Aligned.out.bam
     bam_sorted="$outfile_prefix"Aligned.sortedByCoord.out.bam
     
     samtools sort "$bam_unsorted" > "$bam_sorted"
 fi
 
-# Move BAM files
+# Move BAM file
 echo -e "\n# Moving the BAM file..."
-if [[ "$sort" = true ]]; then
-    mv -v "$outfile_prefix"Aligned.sortedByCoord.out.bam "$outdir"/bam/"$sampleID".bam
+if [[ "$sort_bam" = true ]]; then
+    mv -v "$outfile_prefix"Aligned.sortedByCoord.out.bam "$final_bam"
 else
-    mv -v "$outfile_prefix"Aligned.out.bam "$outdir"/bam/"$sampleID"_sort.bam
+    mv -v "$outfile_prefix"Aligned.out.bam "$final_bam"
+fi
+
+# Index BAM file
+if [[ "$index_bam" = true ]]; then
+    echo -e "\n# Indexing the BAM file..."
+    samtools index "$final_bam"
 fi
 
 # Organize STAR output

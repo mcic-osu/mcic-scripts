@@ -18,7 +18,7 @@ Print_help() {
     echo "==============================================================================="
     echo
     echo "USAGE:"
-    echo "  sbatch $0 -i <FASTQ-file> -o <output-dir> -p <prefix> -s <genome-size> ..."
+    echo "  sbatch $0 -i <FASTQ-file(s)> -o <output-dir> -p <prefix> -s <genome-size> ..."
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
@@ -26,20 +26,20 @@ Print_help() {
     echo "  -i/--infiles    <file>  An input FASTQ file"
     echo "                            Or optionally multiple files, quoted and space-separated"
     echo "  -I/--fofn       <file>  Text file with list of input FASTQ files one per line (fofn)"
-    echo "  -o/--outdir     <dir>   Output dir - a scratch dir is recommended,"
+    echo "  -o/--work-dir     <dir>   Output dir - a scratch dir is recommended,"
     echo "                             since there can be a lot of output, most of which is not useful."
-    echo "  -p/--out_prefix <str>   Prefix for output files (e.g. genome ID)"
-    echo "  --genome_size   <str>   Genome size estimate, e.g '4.6m' or '1g'"
+    echo "  -p/--out-prefix <str>   Prefix for output files (e.g. genome ID)"
+    echo "  --genome-size   <str>   Genome size estimate, e.g '4.6m' or '1g'"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --mhap_sensitivity <str> 'low', 'normal', or 'high'                 [default: 'normal']"
+    echo "  --mhap-sensitivity <str> 'low', 'normal', or 'high'                 [default: 'normal']"
     echo "                          Based on read coverage:"
     echo "                            - 'low' sensitivity is used if coverage is more than 60"
     echo "                            - 'normal' is used if coverage is between 60 and 30"
     echo "                            - 'high' is used for coverages less than 30."
     echo "  --fast                  Turn on 'fast' mode, should work for genomes <1GB [default: off]"
     echo "  --time          <str>   Time limit for Canu jobs: specify as HH:MM:SS     [default: 12:00:00]"
-    echo "  --more_args     <str>   Other argument(s) to pass to Canu as a quoted string"
+    echo "  --more-args     <str>   Other argument(s) to pass to Canu as a quoted string"
     echo
     echo "UTILITY OPTIONS"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
@@ -67,7 +67,7 @@ Print_help() {
 ## Load software
 Load_software() {
     module load python/3.6-conda5.2
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /users/PAS0471/jelmer/miniconda3/envs/canu-env
 }
 
@@ -166,15 +166,15 @@ infile_arg=""
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infiles )        shift && infiles=($1) ;;
+        -i | --infiles )        shift && IFS=" " read -r -a infiles <<< "$1" ;;
         -I | --fofn )           shift && fofn=$1 ;;
-        -o | --outdir )         shift && outdir=$1 ;;
-        -p | --out_prefix )     shift && out_prefix=$1 ;;
+        -o | --work-dir )       shift && outdir=$1 ;;
+        -p | --out-prefix )     shift && out_prefix=$1 ;;
         --time )                shift && time_limit=$1 ;;
-        --genome_size )         shift && genome_size=$1 ;;
-        --mhap_sensitivity )    shift && mhap_sensitivity=$1 ;;
+        --genome-size )         shift && genome_size=$1 ;;
+        --mhap-sensitivity )    shift && mhap_sensitivity=$1 ;;
         --fast )                fast=true ;;
-        --more_args )           shift && more_args=$1 ;;
+        --more-args )           shift && more_args=$1 ;;
         -v | --version )        Print_version; exit 0 ;;
         -h )                    Print_help; exit 0 ;;
         --help )                Print_help_program; exit 0 ;;
@@ -243,7 +243,7 @@ echo "Output file prefix:                   $out_prefix"
 echo "Full SLURM options for Canu jobs:     $slurm_arg"
 [[ $more_args != "" ]] && echo "Other arguments for Canu:      $more_args"
 echo
-echo "Listing input files:"
+echo "Listing the input files:"
 for infile in "${infiles[@]}"; do
     [[ ! -f $infile ]] && Die "Input file $infile does not exist!"
     ls -lh "$infile"

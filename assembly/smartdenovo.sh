@@ -32,7 +32,7 @@ function Print_help() {
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --readlen       <int>   Minimum read length, shorter reads will be removed     [default: 5000]"
-    echo "  --more_args     <str>   Other argument(s) to pass to SmartDenovo"
+    echo "  --more-args     <str>   Other argument(s) to pass to SmartDenovo"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
@@ -52,7 +52,7 @@ function Print_help() {
 ## Load software
 Load_software() {
     module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /fs/project/PAS0471/jelmer/conda/smartdenovo-env
 }
 
@@ -160,11 +160,11 @@ more_args=""
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infiles )        shift && infiles=($1) ;;
+        -i | --infiles )        shift && IFS=" " read -r -a infiles <<< "$1" ;;
         -I | --fofn )           shift && fofn=$1 ;;
         -o | --outfile )        shift && outfile=$1 ;;
         --readlen )             shift && min_readlen=$1 ;;
-        --more_args )           shift && more_args=$1 ;;
+        --more-args )           shift && more_args=$1 ;;
         -v | --version )        Print_version; exit 0;;
         -h )                    Print_help; exit 0;;
         --help )                Print_help_program; exit 0;;
@@ -218,7 +218,7 @@ echo "Output file:                          $outfile"
 echo "Minimum read length:                  $min_readlen"
 [[ $more_args != "" ]] && echo "Other arguments for Smartdenovo:      $more_args"
 echo
-echo "Listing input files:"
+echo "Listing the input files:"
 for infile in "${infiles[@]}"; do
     [[ ! -f $infile ]] && Die "Input file $infile does not exist!"
     ls -lh "$infile"
@@ -274,7 +274,7 @@ if [[ "$dryrun" = false ]]; then
 
     ## Copy assembly FASTA
     echo -e "\n# Copying the assembly FASTA file:"
-    cp -v "$out_prefix".dmo.cns.fasta "$outfile"
+    cp -v "$out_prefix".dmo.cns "$outfile"
 
 fi
 
