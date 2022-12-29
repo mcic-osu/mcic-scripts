@@ -2,15 +2,17 @@
 
 #SBATCH --account=PAS0471
 #SBATCH --time=60
-#SBATCH --mem=100G
 #SBATCH --cpus-per-task=30
+#SBATCH --mem=100G
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
 #SBATCH --job-name=kraken
 #SBATCH --output=slurm-kraken-%j.out
 
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-## Help function
+# Help function
 Print_help() {
     echo
     echo "===================================================================================="
@@ -54,28 +56,31 @@ Print_help() {
     echo
 }
 
-## Load software
+# Load software
 Load_software() {
+    set +u
     module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /fs/ess/PAS0471/jelmer/conda/kraken2-2.1.2
+    set -u
 }
 
-## Print version
+# Print version
 Print_version() {
+    set +e
     Load_software
     kraken2 --version
+    set -e
 }
 
-## Print SLURM job resource usage info
+# Print SLURM job resource usage info
 Resource_usage() {
     echo
-    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
-        grep -Ev "ba|ex"
+    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
     echo
 }
 
-## Print SLURM job requested resources
+# Print SLURM job requested resources
 Print_resources() {
     set +u
     echo "# SLURM job information:"
@@ -91,7 +96,7 @@ Print_resources() {
     set -u
 }
 
-## Set the number of threads/CPUs
+# Set the number of threads/CPUs
 Set_threads() {
     set +u
     if [[ "$slurm" = true ]]; then
@@ -109,14 +114,14 @@ Set_threads() {
     set -u
 }
 
-## Resource usage information
+# Resource usage information
 Time() {
     /usr/bin/time -f \
         '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
         "$@"
 }   
 
-## Exit upon error with a message
+# Exit upon error with a message
 Die() {
     error_message=${1}
     error_args=${2-none}
@@ -140,7 +145,7 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-## Option defaults
+# Option defaults
 min_conf=0.5
 min_q=0
 add_names=false && names_arg=""
@@ -155,7 +160,7 @@ slurm=true
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-## Placeholder variables
+# Placeholder variables
 infile=""
 outdir=""
 db_dir=""
@@ -163,9 +168,8 @@ write_classif="" && class_out_arg=""
 write_unclassif="" && unclass_out_arg=""
 more_args=""
 
-## Parse command-line args
+# Parse command-line args
 all_args="$*"
-
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )             shift && infile=$1 ;;
@@ -193,20 +197,29 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-## In debugging mode, print all commands
+# Bash script settings
+set -euo pipefail
+
+# In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
-## Check if this is a SLURM job
+# Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Load software and set nr of threads
+# Load software and set nr of threads
 [[ "$dryrun" = false ]] && Load_software
 Set_threads
 
-## Bash script settings
-set -euo pipefail
+# Check input
+[[ "$infile" = "" ]] && Die "Must specify input file with -i" "$all_args" 
+[[ "$db_dir" = "" ]] && Die "Must specify a Kraken DB dir with -d" "$all_args"
+[[ "$outdir" = "" ]] && Die "Must specify an output dir with -o" "$all_args"
+[[ "$min_conf" = "" ]] && Die "Min confidence is not set" "$all_args"
+[[ "$min_q" = "" ]] && Die "Min quality is not set" "$all_args"
+[[ ! -f "$infile" ]] && Die "Input file $infile does note exist"
+[[ ! -d "$db_dir" ]] && Die "Kraken DB dir $db_dir does note exist"
 
-## Report
+# Report - part 1
 echo
 echo "=========================================================================="
 echo "                     STARTING SCRIPT KRAKEN.SH"
@@ -222,22 +235,13 @@ echo "Min. confidence:                $min_conf"
 echo "Use RAM to load database:       $use_ram"
 echo
 
-## Check input
-[[ "$infile" = "" ]] && Die "Must specify input file with -i" "$all_args" 
-[[ "$db_dir" = "" ]] && Die "Must specify a Kraken DB dir with -d" "$all_args"
-[[ "$outdir" = "" ]] && Die "Must specify an output dir with -o" "$all_args"
-[[ "$min_conf" = "" ]] && Die "Min confidence is not set" "$all_args"
-[[ "$min_q" = "" ]] && Die "Min quality is not set" "$all_args"
-[[ ! -f "$infile" ]] && Die "Input file $infile does note exist"
-[[ ! -d "$db_dir" ]] && Die "Kraken DB dir $db_dir does note exist"
-
-## Build Kraken args (leave space after!)
+# Build Kraken args (leave space after!)
 # RAM
 [[ "$use_ram" = false ]] && mem_map_arg="--memory-mapping "
 # Add tax. names or not -- when adding names, can't use the output for Krona plotting  
 [[ "$add_names" = true ]] && names_arg="--use-names "
 
-## Make sure input file argument is correct based on file type 
+# Make sure input file argument is correct based on file type 
 if [[ "$infile" =~ \.fa?s?t?q.gz$ ]]; then
 
     R1_in="$infile"
@@ -298,11 +302,11 @@ else
     Die "Unknown input file type"
 fi
 
-## Define output text files
+# Define output text files
 outfile_main="$outdir"/"$sample_ID".main.txt
 outfile_report="$outdir"/"$sample_ID".report.txt
 
-## Report
+# Report
 echo "Number of threads/cores:        $threads"
 echo "Sample ID (inferred):           $sample_ID"
 echo "Output file - main:             $outfile_main"
@@ -315,7 +319,7 @@ ls -lh "$infile"
 echo "=========================================================================="
 echo
 
-## Print reserved resources
+# Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
 
 
@@ -324,13 +328,13 @@ echo
 # ==============================================================================
 if [[ "$dryrun" = false ]]; then
 
-    ## Create output dirs
-    [[ "$write_classif" = true ]] && mkdir -p "$outdir"/classified
-    [[ "$write_unclassif" = true ]] && mkdir -p "$outdir"/unclassified
-    mkdir -p "$outdir"/logs
+    # Create output dirs
+    [[ "$write_classif" = true ]] && mkdir -pv "$outdir"/classified
+    [[ "$write_unclassif" = true ]] && mkdir -pv "$outdir"/unclassified
+    mkdir -pv "$outdir"/logs
 
-    ## Run Kraken
-    echo "## Starting Kraken2 run..."
+    # Run Kraken
+    echo -e "\n# Starting Kraken2 run..."
     Time kraken2 ${more_args}${names_arg}--threads "$threads" \
         ${mem_map_arg}--minimum-base-quality "$min_q" \
         --confidence "$min_conf" \
@@ -341,8 +345,9 @@ if [[ "$dryrun" = false ]]; then
 
     #? report-minimizer-data: see https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#distinct-minimizer-count-information
 
-    ## Rename and zip FASTQ files
+    # Rename and zip FASTQ files
     if [[ "$write_classif" = true ]]; then
+        echo -e "\n# Zipping FASTQ files with classified reads..."
         mv "$outdir"/classified/"$sample_ID"_1.fastq "$outdir"/classified/"$sample_ID"_R1.fastq
         gzip -f "$outdir"/classified/"$sample_ID"_R1.fastq
 
@@ -351,6 +356,7 @@ if [[ "$dryrun" = false ]]; then
     fi
 
     if [[ "$write_unclassif" = true ]]; then
+        echo -e "\n# Zipping FASTQ files with unclassified reads..."
         mv "$outdir"/unclassified/"$sample_ID"_1.fastq "$outdir"/unclassified/"$sample_ID"_R1.fastq
         gzip -f "$outdir"/unclassified/"$sample_ID"_R1.fastq
 
@@ -374,5 +380,5 @@ if [[ "$dryrun" = false ]]; then
     [[ "$write_unclassif" = true ]] && ls -lh "$outdir"/unclassified/"$sample_ID"*
     [[ "$slurm" = true ]] && Resource_usage
 fi
-echo "## Done with script"
+echo "# Done with script"
 date
