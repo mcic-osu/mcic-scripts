@@ -26,6 +26,7 @@ Help() {
     echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
     echo
     echo "Mob-suite documentation: https://github.com/phac-nml/mob-suite"
+    echo "Paper: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6159552/"
     echo
 }
 
@@ -61,7 +62,6 @@ set -euo pipefail
 ## Report
 echo "## Starting script mob-suite.sh"
 date
-echo
 echo
 echo "## Genome FASTA file:                    $genome_fa"
 echo "## Output dir:                           $outdir"
