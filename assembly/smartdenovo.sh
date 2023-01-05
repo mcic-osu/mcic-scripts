@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=36:00:00
+#SBATCH --time=72:00:00
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64G
 #SBATCH --nodes=1
@@ -12,7 +12,7 @@
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-## Help function
+# Help function
 function Print_help() {
     echo
     echo "==========================================================================="
@@ -49,32 +49,31 @@ function Print_help() {
     echo
 }
 
-## Load software
+# Load software
 Load_software() {
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /fs/project/PAS0471/jelmer/conda/smartdenovo-env
 }
 
-## Print version
+# Print version
 Print_version() {
     Load_software
     smartdenovo.pl --version
 }
 
-## Print help for the focal program
+# Print help for the focal program
 Print_help_program() {
     Load_software
     smartdenovo.pl --help
 }
 
-## Print SLURM job resource usage info
+# Print SLURM job resource usage info
 Resource_usage() {
-    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
-        grep -Ev "ba|ex"
+    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
 }
 
-## Print SLURM job requested resources
+# Print SLURM job requested resources
 Print_resources() {
     set +u
     echo "# SLURM job information:"
@@ -90,7 +89,7 @@ Print_resources() {
     set -u
 }
 
-## Set the number of threads/CPUs
+# Set the number of threads/CPUs
 Set_threads() {
     set +u
     if [[ "$slurm" = true ]]; then
@@ -108,14 +107,14 @@ Set_threads() {
     set -u
 }
 
-## Resource usage information
+# Resource usage information
 Time() {
     /usr/bin/time -f \
         '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
         "$@"
 }   
 
-## Exit upon error with a message
+# Exit upon error with a message
 Die() {
     error_message=${1}
     error_args=${2-none}
@@ -139,7 +138,7 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-## Option defaults
+# Option defaults
 min_readlen=5000
 
 debug=false
@@ -150,13 +149,13 @@ slurm=true
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-## Placeholder defaults
+# Placeholder defaults
 declare -a infiles
 fofn=""
 outfile=""
 more_args=""
 
-## Parse command-line args
+# Parse command-line args
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
@@ -179,38 +178,37 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-## In debugging mode, print all commands
+# In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
-## Check if this is a SLURM job
+# Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Load software and set nr of threads
+# Load software and set nr of threads
 [[ "$dryrun" = false ]] && Load_software
 Set_threads
 
-## Bash strict settings
+# Bash strict settings
 set -euo pipefail
 
-## Check input
+# Check input
 [[ ${#infiles[@]} = 0 && "$fofn" = "" ]] && Die "Please specify input files with -i or -I" "$all_args"
 [[ $outfile = "" ]] && Die "Please specify an output prefix with -o" "$all_args"
 
-## Define prefix and output dir
+# Define prefix and output dir
 outdir=$(dirname "$outfile")
 file_ext=$(echo "$outfile" | sed -E 's/.*(.fasta|.fna|.fa)$/\1/')
 out_prefix=${outfile/"$file_ext"/}
 
-## If a FOFN was provided, read file list into an array
+# If a FOFN was provided, read file list into an array
 [[ "$fofn" != "" ]] && mapfile -t infiles <"$fofn"
 
-## Report
+# Report
 echo "=========================================================================="
 echo "                    STARTING SCRIPT SMARTDENOVO.SH"
 date
 echo "=========================================================================="
-echo "All arguments to this script:     $all_args"
-echo
+echo "All arguments to this script:         $all_args"
 [[ "$fofn" != "" ]] && echo "File with list of FASTQs (fofn):      $fofn"
 echo "Input files:                          ${infiles[*]}"
 echo "Number of input files:                ${#infiles[*]}"
@@ -218,7 +216,7 @@ echo "Output file:                          $outfile"
 echo "Minimum read length:                  $min_readlen"
 [[ $more_args != "" ]] && echo "Other arguments for Smartdenovo:      $more_args"
 echo
-echo "Listing the input files:"
+echo "# Listing the input files:"
 for infile in "${infiles[@]}"; do
     [[ ! -f $infile ]] && Die "Input file $infile does not exist!"
     ls -lh "$infile"
@@ -226,7 +224,7 @@ done
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
-## Print reserved resources
+# Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
 
 
@@ -235,20 +233,22 @@ echo "==========================================================================
 # ==============================================================================
 if [[ "$dryrun" = false ]]; then
 
-    ## Create output dir
-    mkdir -p "$outdir"/logs
+    # Create output dir
+    echo -e "\n# Creating the output directories..."
+    mkdir -pv "$outdir"/logs
 
-    ## Concatenate FASTQ files
+    # Concatenate FASTQ files if needed
     if [[ ${#infiles[*]} -gt 1 ]]; then
         infile_final="$outdir"/concat_input.fastq.gz
         echo -e "\n# Concatenating input files..."
         cat "${infiles[@]}" > "$infile_final"
         ls -lh "$infile_final"
     else
-        infile_final=${#infiles[0]}
+        infile_final=${infiles[0]}
     fi
+    echo "Final input file:                     $infile_final"
 
-    ## Generate a Makefile for smartdenovo to run
+    # Generate a Makefile for smartdenovo to run
     echo -e "\n# Generating a Makefile for Smartdenovo..."
     Time smartdenovo.pl \
         -p "$out_prefix" \
@@ -268,11 +268,11 @@ if [[ "$dryrun" = false ]]; then
     #? -c 1 => make consensus
     #? -J = min read length -- default = 5,000
 
-    ## Run SmartDenovo by running the Makefile
+    # Run SmartDenovo by running the Makefile
     echo -e "\n# Running Smartdenovo..."
     Time make -f "$out_prefix".mak
 
-    ## Copy assembly FASTA
+    # Copy assembly FASTA
     echo -e "\n# Copying the assembly FASTA file:"
     cp -v "$out_prefix".dmo.cns "$outfile"
 
