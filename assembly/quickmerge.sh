@@ -1,13 +1,15 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=6:00:00
+#SBATCH --time=30:00:00
 #SBATCH --cpus-per-task=10
 #SBATCH --mem=40G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --job-name=quickmerge
 #SBATCH --output=slurm-quickmerge-%j.out
+
+#TODO - Manually use newer Mummer version first? See https://onlinelibrary.wiley.com/doi/full/10.1111/tpj.15690
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -149,7 +151,6 @@ while [ "$1" != "" ]; do
         --minlen_merge )    shift && minlen_merge=$1 ;;
         --minlen_anchor )   shift && minlen_anchor=$1 ;;
         --more_args )       shift && more_args=$1 ;;
-        -v | --version )    Print_version; exit 0 ;;
         -h )                Print_help; exit 0 ;;
         --help )            Print_help_program; exit 0;;
         --dryrun )          dryrun=true && e="echo ";;
@@ -230,8 +231,10 @@ ${e}Time \
         -l "$minlen_anchor" \
         $more_args \
         "$query" \
-        "$ref" \
-        > "$merged"
+        "$ref"
+
+echo -e "\nRenaming the output file..."
+mv -v merged_out.fasta "$merged"
 
 #? -l: controls the length cutoff for anchor contigs.
 #? A good rule of thumb is to start with the N50 of the self assembly.
@@ -248,10 +251,8 @@ ${e}Time \
 echo
 echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
-    echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/*
+    echo -e "\n# Listing the output assembly:"
+    ls -lh "$merged"
     [[ "$slurm" = true ]] && Resource_usage
 fi
 echo "# Done with script"
