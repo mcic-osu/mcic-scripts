@@ -1,9 +1,9 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=16:00:00
-#SBATCH --cpus-per-task=10
-#SBATCH --mem=40G
+#SBATCH --time=24:00:00
+#SBATCH --cpus-per-task=20
+#SBATCH --mem=80G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --job-name=quast
@@ -17,37 +17,40 @@ Print_help() {
     echo
     echo "======================================================================"
     echo "                            $0"
-    echo "         Run QUAST to check the quality of a genome assembly"
+    echo "   Run QUAST to check the quality of one or more genome assemblies"
     echo "======================================================================"
     echo "USAGE:"
-    echo "  sbatch $0 -o <output-dir> [ --assembly <assembly> | --indir <input-dir> | assembly1 assembly2 ... ]  [...]"
+    echo "  sbatch $0 -o <output-dir> [...] [ --assembly <assembly> | --assembly_dir <input-dir> | assembly1 assembly2 ... ]"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -o/--outdir     <dir>   Output dir"
-    echo "  To specify input, use one of:"
-    echo "    --assembly    <file> Input assembly FASTA file"
-    echo "    --indir       <dir>  Input dir with assembly FASTA files (extension '.fasta')"
-    echo "    Pass assembly FASTA files(s) as positional arguments at the end of the command."
+    echo "  -o/--outdir         <dir>   Output dir"
+    echo "  To specify the input assembly/assemblies, use one of the following options:"
+    echo "    A) --assembly     <file>  Input assembly FASTA file"
+    echo "    B) --assembly_dir <dir>   Input dir with assembly FASTA files (extension '.fasta')"
+    echo "    C) Pass assembly FASTA files(s) as positional arguments at the end of the command."
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --ref_fa        <file>  Reference genome nucleotide FASTA file      [default: no reference genome]"
-    echo "  --ref_annot     <file>  Reference genome annotation (GFF/GTF) file  [default: no reference genome]"
-    echo "  --R1            <file>  FASTQ file with forward (R1) Illumina reads [default: no reads]"
-    echo "                          (The R2 filename will be inferred)"
-    echo "  --reads         <file>  FASTQ file with single-end Illumina reads"
-    echo "  --fragmented            Use this flag if the assembly is fragmented"
-    echo "  --run_busco             Use this flag to run BUSCO within QUAST"
-    echo "                          BUSCO is not run by default, because at least for eukaryotes it fails to download the database"
-    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to QUAST"
+    echo "  --ref_fa            <file>  Reference genome nucleotide FASTA file      [default: no reference genome]"
+    echo "  --ref_annot         <file>  Reference genome annotation (GFF/GTF) file  [default: no reference genome]"
+    echo "  --R1                <file>  FASTQ file with forward (R1) Illumina reads [default: no reads]"
+    echo "                              (The R2 filename will be inferred)"
+    echo "  --reads             <file>  FASTQ file with single-end Illumina reads"
+    echo "  --nanopore          <file>  FASTQ files with ONT reads"
+    echo "  --fragmented                QUAST's '--fragmented' option, use for fragmented assemblies"
+    echo "  --large                     QUAST's '--large' option, recommended for genomes >100 Mbp"
+    echo "  --kmer_stats                QUAST's '--k-mer-stats' option, recommended for genomes >100 Mbp"
+    echo "  --run_busco                 Use this flag to run BUSCO within QUAST"
+    echo "                              BUSCO is not run by default, because at least for eukaryotes it fails to download the database"
+    echo "  --more_args         <str>   Quoted string with additional argument(s) to pass to QUAST"
     echo
     echo "UTILITY OPTIONS:"
     echo "    -h                    Print this help message and exit"
     echo
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 --assembly results/assembly/my.fasta -o results/quast"
-    echo "  sbatch $0 --indir results/assemblies -o results/quast"
+    echo "  sbatch $0 --assembly_dir results/assemblies -o results/quast"
     echo "  sbatch $0 -o results/quast results/racon/assembly.fasta results/smartdenovo/assembly.fasta"
-    echo "  sbatch $0 --indir results/assemblies -o results/quast --more_args '--eukaryote'"
+    echo "  sbatch $0 --assembly_dir results/assemblies -o results/quast --more_args '--eukaryote'"
     echo
     echo "SOFTWARE DOCUMENTATION:"
     echo "  - GitHub repo: https://github.com/ablab/quast"
@@ -152,7 +155,9 @@ Die() {
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Option defaults
-is_fragmented=false && fragmented_arg=""
+kmer_stats=false && kmer_stats_arg=""
+is_large=false && is_large_arg=""
+is_fragmented=false && is_fragmented_arg=""
 run_busco=false        # Not run by default -- at least for eukaryotes, it fails to download the database file
 
 debug=false
@@ -165,15 +170,16 @@ slurm=true
 # ==============================================================================
 # Placeholder defaults
 assembly=""
-indir=""
-declare -a infiles
+assembly_dir=""
+declare -a assemblies
 outdir=""
 ref_fa="" && ref_fa_arg=""
 ref_annot="" && ref_annot_arg=""
 R1=""
 R2=""
-reads=""
-illumina_reads_arg=""
+reads="" && illumina_reads_arg=""
+nanopore="" && nanopore_arg=""
+
 busco_arg=""
 more_args=""
 
@@ -183,13 +189,16 @@ count=0
 while [ "$1" != "" ]; do
     case "$1" in
         --assembly )        shift && assembly=$1 ;;
-        --indir )           shift && indir=$1 ;;
+        --assembly_dir )    shift && assembly_dir=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
         --ref_fa )          shift && ref_fa=$1 ;;
         --ref_annot )       shift && ref_annot=$1 ;;
         --R1 )              shift && R1=$1 ;;
         --reads )           shift && reads=$1 ;;
+        --nanopore )        shift && nanopore=$1 ;;
         --fragmented )      is_fragmented=true ;;
+        --large )           is_large=true ;;
+        --kmer_stats )      kmer_stats=true ;;
         --run_busco )       run_busco=true ;;
         --more_args )       shift && more_args=$1 ;;
         -v | --version )    Print_version; exit 0 ;;
@@ -197,7 +206,7 @@ while [ "$1" != "" ]; do
         --help )            Print_help_program; exit 0;;
         --dryrun )          dryrun=true && e="echo ";;
         --debug )           debug=true ;;
-        * )                 infiles[count]=$1 && count=$(( count + 1 )) ;;
+        * )                 assemblies[count]=$1 && count=$(( count + 1 )) ;;
     esac
     shift
 done
@@ -206,14 +215,14 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-# Bash script settings
-set -euo pipefail
+# Check if this is a SLURM job
+[[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
 # In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
-# Check if this is a SLURM job
-[[ -z "$SLURM_JOB_ID" ]] && slurm=false
+# Bash script settings
+set -euo pipefail
 
 # Load software and set nr of threads
 [[ "$dryrun" = false ]] && Load_software
@@ -222,15 +231,15 @@ Set_threads
 # Check input
 [[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir"
 [[ "$assembly" != "" && ! -f "$assembly" ]] && Die "Input file (--assembly) $assembly does not exist or is not a regular file"
-[[ "$indir" != "" && ! -d "$indir" ]] && Die "Input dir (-d) $indir does not exist or is not a directory"
+[[ "$assembly_dir" != "" && ! -d "$assembly_dir" ]] && Die "Input dir (--assembly_dir) $assembly_dir does not exist or is not a directory"
 
 # Build argument for assembly input
-if [[ $indir != "" ]]; then
-    mapfile -t infiles < <(find "$indir" -name "*.fasta")
+if [[ $assembly_dir != "" ]]; then
+    mapfile -t assemblies < <(find "$assembly_dir" -name "*.fasta")
 elif [[ $assembly != "" ]]; then
-    infiles=("$assembly")
-elif [[ ${#infiles[@]} -eq 0 ]]; then
-    Die "Please specify input with --indir, --assembly or positional arguments"
+    assemblies=("$assembly")
+elif [[ ${#assemblies[@]} -eq 0 ]]; then
+    Die "Please specify input with --assembly_dir, --assembly or positional arguments"
 fi
 
 # If the input is a single file, make a separate output dir
@@ -239,25 +248,32 @@ if [[ $assembly != "" ]]; then
     outdir=$outdir/"$sampleID"
 fi
 
-# Build input reads arg
+# Build input reads arg(s)
 if [[ $R1 != "" ]]; then
     file_ext=$(basename "$R1" | sed -E 's/.*(.fastq.gz|.fq.gz)$/\1/')
     R1_suffix=$(basename "$R1" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
     R2_suffix=${R1_suffix/1/2}
     R2=${R1/$R1_suffix/$R2_suffix}
     illumina_reads_arg="-1 $R1 -2 $R2"
-    [[ ! -f "$R1" ]] && Die "Input file R1 $R1 does not exist"
-    [[ ! -f "$R2" ]] && Die "Input file R2 $R2 does not exist"
+    [[ ! -f "$R1" ]] && Die "Input R1 reads file $R1 does not exist"
+    [[ ! -f "$R2" ]] && Die "Input R2 reads file $R2 does not exist"
     [[ "$R1" = "$R2" ]] && Die "R1 and R2 FASTQ files are the same file: $R1"
 elif [[ $reads != "" ]]; then
     illumina_reads_arg="--single $reads"
-    [[ ! -f "$reads" ]] && Die "Input file $reads does not exist"
+    [[ ! -f "$reads" ]] && Die "Input single-end reads file $reads does not exist"
+fi
+
+if [[ $nanopore != "" ]]; then
+    nanopore_arg="--nanopore $nanopore"
+    [[ ! -f "$nanopore" ]] && Die "Input Nanopore reads file $nanopore does not exist"
 fi
 
 # Build other arguments
 [[ "$ref_fa" != "" ]] && ref_fa_arg="-r $ref_fa"
 [[ "$ref_annot" != "" ]] && ref_annot_arg="--features $ref_annot"
-[[ "$is_fragmented" != "" ]] && fragmented_arg="--fragmented"
+[[ "$is_fragmented" = true ]] && is_fragmented_arg="--fragmented"
+[[ "$is_large" = true ]] && is_large_arg="--large"
+[[ "$kmer_stats" = true ]] && kmer_stats_arg="--k-mer-stats"
 [[ "$run_busco" = true ]] && busco_arg="--conserved-genes-finding"
 
 # Report
@@ -269,21 +285,25 @@ echo "==========================================================================
 echo "All arguments to this script:         $all_args"
 echo "Output dir:                           $outdir"
 [[ $assembly != "" ]] && echo "Input assembly FASTA:                 $assembly"
-[[ $indir != "" ]] && echo "Input dir:                            $indir"
+[[ $assembly_dir != "" ]] && echo "Input dir with assemblies:            $assembly_dir"
 [[ $ref_fa != "" ]] && echo "Reference FASTA file:                 $ref_fa"
 [[ $ref_annot != "" ]] && echo "Reference annotation file:            $ref_annot"
 [[ $R1 != "" ]] && echo "R1 FASTQ file:                        $R1"
 [[ $R2 != "" ]] && echo "R2 FASTQ file:                        $R2"
 [[ $reads != "" ]] && echo "Single-end FASTQ file:                $reads"
+[[ $nanopore != "" ]] && echo "Nanopore FASTQ file:                  $nanopore"
 [[ $more_args != "" ]] && echo "Other arguments to pass to QUAST:     $more_args"
 echo "Fragmented assembly:                  $is_fragmented"
+echo "Large assembly (>100 Mbp):            $is_large"
+echo "Use kmer stats:                       $kmer_stats"
 echo -e "\n# Listing the input files:"
-[[ $assembly != "" ]] && ls -lh "$assembly"
-[[ $indir != "" ]] && ls -lh "$indir"/*.fasta
-[[ $R1 != "" ]] && ls -lh "$R1" "$R2"
-[[ $reads != "" ]] && ls -lh "$reads" 
-[[ $ref_fa != "" ]] && ls -lh "$ref_fa"
-[[ $ref_annot != "" ]] && ls -lh "$ref_annot"
+[[ "$assembly" != "" ]] && ls -lh "$assembly"
+[[ "$ref_fa" != "" ]] && ls -lh "$ref_fa"
+[[ "$ref_annot" != "" ]] && ls -lh "$ref_annot"
+[[ "$R1" != "" ]] && ls -lh "$R1" "$R2"
+[[ "$reads" != "" ]] && ls -lh "$reads" 
+[[ "$nanopore" != "" ]] && ls -lh "$nanopore"
+ls -lh "${assemblies[@]}"
 echo "=========================================================================="
 
 # Print reserved resources
@@ -308,9 +328,12 @@ ${e}Time quast.py \
     $ref_fa_arg \
     $ref_annot_arg \
     $illumina_reads_arg \
-    $fragmented_arg \
+    $nanopore_arg \
+    $is_fragmented_arg \
+    $is_large_arg \
+    $kmer_stats_arg \
     $more_args \
-    "${infiles[@]}"
+    "${assemblies[@]}"
 
 #? - glimmer: Acticate gene-finding, use Glimmer instead of GeneMark tools (trouble running those due to licensing issues)
 #? - conserved-genes-finding => runs Busco
