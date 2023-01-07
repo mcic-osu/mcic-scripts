@@ -217,6 +217,8 @@ Set_threads
 [[ "$infile" = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
 [[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
 [[ ! -f "$infile" ]] && Die "Input file $infile does not exist"
+#[[ ! -f $R2 ]] && Die "Input file R1_in ($R2_in) does not exist"
+#[[ "$R1" = "$R2" ]] && echo "Input R1 and R2 FASTQ files are the same file: $R1"
 
 # Report
 echo
@@ -243,6 +245,7 @@ echo "==========================================================================
 #                               RUN
 # ==============================================================================
 # Create the output directory
+echo -e "\n# Creating the output directories..."
 ${e}mkdir -pv "$outdir"/logs
 
 # Run
@@ -272,3 +275,4 @@ if [[ "$dryrun" = false ]]; then
 fi
 echo "# Done with script"
 date
+echo
