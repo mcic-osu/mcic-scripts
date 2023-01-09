@@ -39,7 +39,6 @@ function Print_help() {
     echo "  --debug                 Run the script in debug mode (print all code)"
     echo "  -h                      Print this help message and exit"
     echo "  --help                  Print the help for Smartdenovo and exit"
-    echo "  -v/--version            Print the version of Smartdenovo and exit"
     echo
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 -i \"data/fastq/A.fq.gz data/fastq/B.fq.gz\" -o results/smartdenovo/sus_scrofa.fasta"
@@ -54,12 +53,6 @@ Load_software() {
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /fs/project/PAS0471/jelmer/conda/smartdenovo-env
-}
-
-# Print version
-Print_version() {
-    Load_software
-    smartdenovo.pl --version
 }
 
 # Print help for the focal program
@@ -164,7 +157,6 @@ while [ "$1" != "" ]; do
         -o | --outfile )        shift && outfile=$1 ;;
         --readlen )             shift && min_readlen=$1 ;;
         --more-args )           shift && more_args=$1 ;;
-        -v | --version )        Print_version; exit 0;;
         -h )                    Print_help; exit 0;;
         --help )                Print_help_program; exit 0;;
         --dryrun )              dryrun=true && e="echo ";;
@@ -284,8 +276,6 @@ fi
 echo
 echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
-    echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
     echo -e "\n# Listing the final assembly file:"
     ls -lhd "$PWD"/"$outfile"
     echo
