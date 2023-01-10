@@ -1,10 +1,10 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=12:00:00
+#SBATCH --time=4:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=30G
+#SBATCH --mem=32G
 #SBATCH --job-name=busco
 #SBATCH --output=slurm-busco-%j.out
 

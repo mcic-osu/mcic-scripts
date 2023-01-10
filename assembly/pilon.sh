@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=3:00:00
+#SBATCH --time=5:00:00
 #SBATCH --mem=172G
-#SBATCH --cpus-per-task=25
+#SBATCH --cpus-per-task=1
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --job-name=pilon
@@ -25,10 +25,9 @@ Print_help() {
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  --genome        <file>  Genome assembly FASTA file"
+    echo "  --assembly      <file>  Genome assembly FASTA file"
     echo "  --bam_dir       <dir>   Directory with BAM files of Illumina reads mapped to the assembly"
-    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
-    echo "  --out_prefix    <str>   Prefix for output files"
+    echo "  --outfile       <file>  Output assembly file (dir will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --fix           <str>   What to fix: 'snps'/'indels'/'gaps'/'local'/'all'/'bases'   [default: 'bases']"
@@ -56,6 +55,7 @@ Load_software() {
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /fs/ess/PAS0471/jelmer/conda/pilon-1.24
+    PILON_JAR=/fs/ess/PAS0471/jelmer/conda/pilon-1.24/share/pilon-1.24-0/pilon.jar
     set -u
 }
 
@@ -93,24 +93,6 @@ Print_resources() {
     [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
     echo "======================================================================"
     echo
-    set -u
-}
-
-# Set the number of threads/CPUs
-Set_threads() {
-    set +u
-    if [[ "$slurm" = true ]]; then
-        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-            threads="$SLURM_CPUS_PER_TASK"
-        elif [[ -n "$SLURM_NTASKS" ]]; then
-            threads="$SLURM_NTASKS"
-        else 
-            echo "WARNING: Can't detect nr of threads, setting to 1"
-            threads=1
-        fi
-    else
-        threads=1
-    fi
     set -u
 }
 
@@ -159,9 +141,8 @@ slurm=true
 # Placeholder defaults
 genome=""
 bam_dir="" && bam_arg=""
-outdir=""
+outfile=""
 more_args=""
-
 
 # Parse command-line args
 all_args="$*"
@@ -169,7 +150,7 @@ while [ "$1" != "" ]; do
     case "$1" in
         --genome )         shift && genome=$1 ;;
         --bam_dir )        shift && bam_dir=$1 ;;
-        -o | --outdir )    shift && outdir=$1 ;;
+        -o | --outfile )   shift && outfile=$1 ;;
         --out_prefix )     shift && out_prefix=$1 ;;
         --fix )            shift && fix=$1 ;;
         --more_args )      shift && more_args=$1 ;;
@@ -187,28 +168,35 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-# Bash script settings
-set -euo pipefail
-
 # In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
 # Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
+# Bash script settings
+set -euo pipefail
+
 # Load software
 [[ "$dryrun" = false ]] && Load_software
 
 # Build BAM arg
-for bam in "$bam_dir "/*bam; do
+for bam in "$bam_dir"/*bam; do
     bam_arg="$bam_arg --frags $bam"
 done
+
+# Get amount of RAM in right format
+mem=$(( $SLURM_MEM_PER_NODE / 1000 ))G
+
+# Determine the output dir
+outdir=$(dirname "$outfile")
+file_ext="${outfile##*.}"
+out_prefix=$(basename "$outfile" ."$file_ext")
 
 # Check input
 [[ $genome = "" ]] && Die "Please specify an input genome FASTA file with -i/--genome"
 [[ $bam_dir  = "" ]] && Die "Please specify an input BAM dir with -I/--bam"
-[[ $outdir = "" ]] && Die "Please specify an output dir with -o/--outdir"
-[[ $out_prefix = "" ]] && Die "Please specify an output prefix with -p/--out_prefix"
+[[ $outfile = "" ]] && Die "Please specify an output file with -o/--outfile"
 [[ ! -f $genome ]] && Die "Genome FASTA $genome does not exist"
 [[ ! -d $bam_dir  ]] && Die "BAM dir $bam_dir  does not exist"
 
@@ -221,16 +209,16 @@ echo "==========================================================================
 echo "All arguments to this script: $all_args"
 echo "Input genome assembly FASTA:  $genome"
 echo "Input BAM:                    $bam"
-echo "Output dir:                   $outdir"
-echo "Output prefix:                $out_prefix"
+echo "Output file:                  $outfile"
 echo "What to fix (--fix):          $fix"
+echo "Memory for Java:              $mem"
 [[ $more_args != "" ]] && echo "Other arguments for Pilon:    $more_args"
 echo
-echo "# Listing the input genome FASTA:"
+echo "# Listing the input genome FASTA file:"
 ls -lh "$genome"
 echo
-echo "# BAM file argument:"
-echo "$bam_arg"
+echo "# Listing the input BAM files:"
+ls -lh "$bam_dir"/*bam
 [[ $dryrun = true ]] && echo "THIS IS A DRY-RUN"
 echo "=========================================================================="
 
@@ -242,10 +230,13 @@ echo "==========================================================================
 #                               RUN
 # ==============================================================================
 # Create the output directory
+echo "Creating the output directories..."
 ${e}mkdir -pv "$outdir"/logs
 
+# Run Pilon
 echo -e "\n# Now running Pilon..."
-${e}Time pilon \
+${e}Time \
+    java -Xmx"$mem" -jar "$PILON_JAR" \
     --genome "$genome" \
     $bam_arg \
     --outdir "$outdir" \
@@ -253,7 +244,13 @@ ${e}Time pilon \
     --fix "$fix" \
     $more_args
 
-# No --threads: running with v 1.24, got: "--threads argument no longer supported; ignoring!"
+#? No --threads: running with v 1.24, got: "--threads argument no longer supported; ignoring!"
+
+# Rename the output file if needed
+if [[ "$outfile" != "$outdir"/"$out_prefix".fasta ]]; then
+    echo -e "\n Renaming the output file"
+    mv -v "$outdir"/"$out_prefix".fasta "$outfile"
+fi
 
 
 # ==============================================================================
@@ -265,7 +262,7 @@ if [[ "$dryrun" = false ]]; then
     echo "# Version used:"
     Print_version | tee "$outdir"/logs/version.txt
     echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
+    ls -lhd "$PWD"/"$outfile"
     [[ "$slurm" = true ]] && Resource_usage
 fi
 echo
