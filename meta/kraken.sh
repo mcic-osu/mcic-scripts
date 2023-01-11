@@ -251,16 +251,15 @@ if [[ "$infile" =~ \.fa?s?t?q.gz$ ]]; then
     R1_suffix=$(echo "$R1_basename" | sed -E 's/.*(_R?[12]).*/\1/')
     
     if [[ "$single_end" = false ]]; then
-
-        echo "Input type is:                  paired-end FASTQ files"
-        
+        echo "Input type is:                    paired-end FASTQ"
+        file_type=pe
         R2_suffix=${R1_suffix/1/2}
         R2_in=${R1_in/$R1_suffix/$R2_suffix}
         sample_ID=${R1_basename/"$R1_suffix"/}
         infile_arg="--gzip-compressed --paired $R1_in $R2_in"
 
-        echo "Input FASTQ file - R1:          $R1_in"
-        echo "Input FASTQ file - R2:          $R2_in"
+        echo "Input FASTQ file - R1:            $R1_in"
+        echo "Input FASTQ file - R2:            $R2_in"
 
         [[ ! -f "$R2_in" ]] && Die "R2 file $R2_in does not exist"
         [[ "$R1_in" = "$R2_in" ]] && Die "R1 file $R1_in is the same as R2 file $R2_in"
@@ -273,8 +272,8 @@ if [[ "$infile" =~ \.fa?s?t?q.gz$ ]]; then
         fi
 
     else
-
-        echo "Input type is:                  single-end FASTQ file"
+        echo "Input type is:                    single-end FASTQ"
+        file_type=se
         sample_ID=$(basename "$R1_in" .fastq.gz)
         infile_arg="--gzip-compressed $R1_in"
 
@@ -288,7 +287,8 @@ if [[ "$infile" =~ \.fa?s?t?q.gz$ ]]; then
     fi
 
 elif [[ "$infile" =~ \.fn?a?s?t?a$ ]]; then
-    echo -e "Input type is:                   FASTA file"
+    echo -e "Input type is:                 FASTA"
+    file_type=fasta
     infile_basename=$(basename "$infile")
     sample_ID=${infile_basename%%.*}
     infile_arg="$infile"
@@ -329,8 +329,8 @@ echo
 #                               RUN
 # ==============================================================================
 if [[ "$dryrun" = false ]]; then
-
     # Create output dirs
+    echo -e "\n# Creating the output directories..."
     [[ "$write_classif" = true ]] && mkdir -pv "$outdir"/classified
     [[ "$write_unclassif" = true ]] && mkdir -pv "$outdir"/unclassified
     mkdir -pv "$outdir"/logs
@@ -347,23 +347,25 @@ if [[ "$dryrun" = false ]]; then
 
     #? report-minimizer-data: see https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#distinct-minimizer-count-information
 
-    # Rename and zip FASTQ files
-    if [[ "$write_classif" = true ]]; then
-        echo -e "\n# Zipping FASTQ files with classified reads..."
-        mv "$outdir"/classified/"$sample_ID"_1.fastq "$outdir"/classified/"$sample_ID"_R1.fastq
-        gzip -f "$outdir"/classified/"$sample_ID"_R1.fastq
+    # Rename and zip FASTQ files - only implemented for PE FASTQ
+    if  [[ "$file_type" = "pe" ]]; then
+        if [[ "$write_classif" = true ]]; then
+            echo -e "\n# Zipping FASTQ files with classified reads..."
+            mv "$outdir"/classified/"$sample_ID"_1.fastq "$outdir"/classified/"$sample_ID"_R1.fastq
+            gzip -f "$outdir"/classified/"$sample_ID"_R1.fastq
 
-        mv "$outdir"/classified/"$sample_ID"_2.fastq "$outdir"/classified/"$sample_ID"_R2.fastq
-        gzip -f "$outdir"/classified/"$sample_ID"_R2.fastq
-    fi
+            mv "$outdir"/classified/"$sample_ID"_2.fastq "$outdir"/classified/"$sample_ID"_R2.fastq
+            gzip -f "$outdir"/classified/"$sample_ID"_R2.fastq
+        fi
 
-    if [[ "$write_unclassif" = true ]]; then
-        echo -e "\n# Zipping FASTQ files with unclassified reads..."
-        mv "$outdir"/unclassified/"$sample_ID"_1.fastq "$outdir"/unclassified/"$sample_ID"_R1.fastq
-        gzip -f "$outdir"/unclassified/"$sample_ID"_R1.fastq
+        if [[ "$write_unclassif" = true ]]; then
+            echo -e "\n# Zipping FASTQ files with unclassified reads..."
+            mv "$outdir"/unclassified/"$sample_ID"_1.fastq "$outdir"/unclassified/"$sample_ID"_R1.fastq
+            gzip -f "$outdir"/unclassified/"$sample_ID"_R1.fastq
 
-        mv "$outdir"/unclassified/"$sample_ID"_2.fastq "$outdir"/unclassified/"$sample_ID"_R2.fastq
-        gzip -f "$outdir"/unclassified/"$sample_ID"_R2.fastq
+            mv "$outdir"/unclassified/"$sample_ID"_2.fastq "$outdir"/unclassified/"$sample_ID"_R2.fastq
+            gzip -f "$outdir"/unclassified/"$sample_ID"_R2.fastq
+        fi
     fi
 fi
 
