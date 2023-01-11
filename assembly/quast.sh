@@ -287,6 +287,8 @@ date
 echo "=========================================================================="
 echo "All arguments to this script:         $all_args"
 echo "Output dir:                           $outdir"
+echo "Assemblies:                           ${assemblies[*]}"
+echo "Number of assemblies:                 ${#assemblies[@]}"
 [[ $assembly != "" ]] && echo "Input assembly FASTA:                 $assembly"
 [[ $assembly_dir != "" ]] && echo "Input dir with assemblies:            $assembly_dir"
 [[ $ref_fa != "" ]] && echo "Reference FASTA file:                 $ref_fa"
@@ -300,7 +302,6 @@ echo "Fragmented assembly:                  $is_fragmented"
 echo "Large assembly (>100 Mbp):            $is_large"
 echo "Use kmer stats:                       $kmer_stats"
 echo -e "\n# Listing the input files:"
-[[ "$assembly" != "" ]] && ls -lh "$assembly"
 [[ "$ref_fa" != "" ]] && ls -lh "$ref_fa"
 [[ "$ref_annot" != "" ]] && ls -lh "$ref_annot"
 [[ "$R1" != "" ]] && ls -lh "$R1" "$R2"
@@ -317,6 +318,7 @@ echo "==========================================================================
 #                               RUN
 # ==============================================================================
 # Create the output directory
+echo -e "\n# Now creating the output directories..."
 ${e}mkdir -pv "$outdir"/logs
 
 # Run
