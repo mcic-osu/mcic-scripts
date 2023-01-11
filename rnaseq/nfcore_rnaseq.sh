@@ -304,7 +304,7 @@ Time nextflow run \
 echo
 echo "========================================================================="
 echo -e "\n# Listing files in the output dir:"
-ls -lhd "$PWD"/"$outdir"/*
+ls -lhd "$outdir"/*
 Resource_usage
 echo "# Done with script"
 date
