@@ -203,10 +203,6 @@ Set_threads
 [[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir"
 [[ ! -f "$assembly" ]] && Die "Input file (--assembly) $assembly does not exist"
 
-# Final output dir contains assembly basename:
-sampleID=$(basename "$assembly" | sed -E 's/.fn?as?t?a?//')
-outdir_final=$outdir/"$sampleID"
-
 # Build other arguments
 [[ "$ref_fa" != "" ]] && ref_fa_arg="--ref $ref_fa"
 
@@ -238,7 +234,7 @@ echo "==========================================================================
 # ==============================================================================
 # Create the output directory
 echo -e "\n# Now creating the output directories..."
-${e}mkdir -pv "$outdir_final"/logs
+${e}mkdir -pv "$outdir"/logs
 
 # Run
 echo -e "\n# Now running Inspector..."
@@ -246,7 +242,7 @@ ${e}Time inspector.py \
     --contig "$assembly" \
     --read "$reads" \
     $ref_fa_arg \
-    -o "$outdir_final" \
+    -o "$outdir" \
     --datatype "$datatype" \
     --thread "$threads" \
     $more_args
@@ -259,9 +255,9 @@ echo
 echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
     echo "# Version used:"
-    Print_version | tee "$outdir_final"/logs/version.txt
+    Print_version | tee "$outdir"/logs/version.txt
     echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir_final"/*
+    ls -lhd "$PWD"/"$outdir"/*
     [[ "$slurm" = true ]] && Resource_usage
 fi
 echo
