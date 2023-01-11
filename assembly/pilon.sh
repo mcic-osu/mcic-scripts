@@ -17,7 +17,7 @@ Print_help() {
     echo
     echo "======================================================================"
     echo "                            $0"
-    echo "                  RUN PILON TO POLISH A GENOME"
+    echo "        RUN PILON TO POLISH A GENOME ASSEMBLY WITH SHORT READS"
     echo "======================================================================"
     echo
     echo "USAGE:"
@@ -25,7 +25,7 @@ Print_help() {
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  --assembly      <file>  Genome assembly FASTA file"
+    echo "  --assembly/--genome <file>  Genome assembly FASTA file"
     echo "  --bam_dir       <dir>   Directory with BAM files of Illumina reads mapped to the assembly"
     echo "  --outfile       <file>  Output assembly file (dir will be created if needed)"
     echo
@@ -139,7 +139,7 @@ slurm=true
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Placeholder defaults
-genome=""
+assembly=""
 bam_dir="" && bam_arg=""
 outfile=""
 more_args=""
@@ -148,18 +148,18 @@ more_args=""
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        --genome )         shift && genome=$1 ;;
-        --bam_dir )        shift && bam_dir=$1 ;;
-        -o | --outfile )   shift && outfile=$1 ;;
-        --out_prefix )     shift && out_prefix=$1 ;;
-        --fix )            shift && fix=$1 ;;
-        --more_args )      shift && more_args=$1 ;;
-        --debug )          debug=true ;;
-        --dryrun )         dryrun=true ;;
-        -v | --version )   Print_version; exit ;;
-        -h )               Print_help; exit 0 ;;
-        --help )           Print_help_program; exit 0;;
-        * )                Die "Invalid option $1" "$all_args" ;;
+        -o | --outfile )        shift && outfile=$1 ;;
+        --assembly | --genome ) shift && assembly=$1 ;;
+        --bam_dir )             shift && bam_dir=$1 ;;
+        --out_prefix )          shift && out_prefix=$1 ;;
+        --fix )                 shift && fix=$1 ;;
+        --more_args )           shift && more_args=$1 ;;
+        --debug )               debug=true ;;
+        --dryrun )              dryrun=true ;;
+        -v | --version )        Print_version; exit ;;
+        -h )                    Print_help; exit 0 ;;
+        --help )                Print_help_program; exit 0;;
+        * )                     Die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
@@ -194,10 +194,10 @@ file_ext="${outfile##*.}"
 out_prefix=$(basename "$outfile" ."$file_ext")
 
 # Check input
-[[ $genome = "" ]] && Die "Please specify an input genome FASTA file with -i/--genome"
+[[ $assembly = "" ]] && Die "Please specify an input genome FASTA file with --assembly/--genome"
 [[ $bam_dir  = "" ]] && Die "Please specify an input BAM dir with -I/--bam"
 [[ $outfile = "" ]] && Die "Please specify an output file with -o/--outfile"
-[[ ! -f $genome ]] && Die "Genome FASTA $genome does not exist"
+[[ ! -f $assembly ]] && Die "Genome FASTA $assembly does not exist"
 [[ ! -d $bam_dir  ]] && Die "BAM dir $bam_dir  does not exist"
 
 # Report
@@ -207,7 +207,7 @@ echo "               STARTING SCRIPT PILON.SH"
 date
 echo "=========================================================================="
 echo "All arguments to this script: $all_args"
-echo "Input genome assembly FASTA:  $genome"
+echo "Input genome assembly FASTA:  $assembly"
 echo "Input BAM:                    $bam"
 echo "Output file:                  $outfile"
 echo "What to fix (--fix):          $fix"
@@ -215,7 +215,7 @@ echo "Memory for Java:              $mem"
 [[ $more_args != "" ]] && echo "Other arguments for Pilon:    $more_args"
 echo
 echo "# Listing the input genome FASTA file:"
-ls -lh "$genome"
+ls -lh "$assembly"
 echo
 echo "# Listing the input BAM files:"
 ls -lh "$bam_dir"/*bam
@@ -237,7 +237,7 @@ ${e}mkdir -pv "$outdir"/logs
 echo -e "\n# Now running Pilon..."
 ${e}Time \
     java -Xmx"$mem" -jar "$PILON_JAR" \
-    --genome "$genome" \
+    --genome "$assembly" \
     $bam_arg \
     --outdir "$outdir" \
     --output "$out_prefix" \
