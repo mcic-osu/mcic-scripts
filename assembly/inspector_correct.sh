@@ -25,19 +25,20 @@ Print_help() {
     echo "  sbatch $0 --assembly <assembly> --reads <FASTQ> -o <output-dir> [...]"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  --i/--inspector_resdir  <dir>   Dir with Inspector results"
-    echo "  -o/--outdir    <dir>    Output dir"
+    echo "  -i/--inspector_dir  <dir>   Dir with Inspector results"
+    echo "  -o/--assembly_out   <dir>   Output dir"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --datatype      <str>   Input read type: pacbio-raw, pacbio-hifi, pacbio-corr, nano-raw, nano-corr [default: 'nano-raw']"
-    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to Inspector"
+    echo "  --datatype          <str>   Input read type: pacbio-raw, pacbio-hifi, pacbio-corr, nano-raw, nano-corr [default: 'nano-raw']"
+    echo "  --base_error                Also correct base-errors                [default: don't correct]"
+    echo "  --more_args         <str>   Quoted string with additional argument(s) to pass to Inspector"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                 Run the script in debug mode (print all code)"
-    echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for Inspector and exit"
-    echo "  -v/--version            Print the version of Inspector and exit"
+    echo "  --dryrun                    Dry run: don't execute commands, only parse arguments and report"
+    echo "  --debug                     Run the script in debug mode (print all code)"
+    echo "  -h                          Print this help message and exit"
+    echo "  --help                      Print the help for Inspector and exit"
+    echo "  -v/--version                Print the version of Inspector and exit"
     echo
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 --assembly results/assembly/my.fasta -o results/inspector"
@@ -145,7 +146,8 @@ Die() {
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Option defaults
-datatype=nano-raw
+datatype="nano-raw"
+base_error=false && base_error_arg="--skip_baseerror"
 
 debug=false
 dryrun=false && e=""
@@ -156,7 +158,7 @@ slurm=true
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Placeholder defaults
-inspector_resdir=""
+inspector_dir=""
 outdir=""
 more_args=""
 
@@ -164,16 +166,16 @@ more_args=""
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --inspector_resdir )   shift && inspector_resdir=$1 ;;
-        --reads )                   shift && reads=$1 ;;
-        -o | --outdir )             shift && outdir=$1 ;;
-        --datatype )                shift && datatype=$1 ;;
-        --more_args )               shift && more_args=$1 ;;
-        -v | --version )            Print_version; exit 0 ;;
-        -h )                        Print_help; exit 0 ;;
-        --help )                    Print_help_program; exit 0;;
-        --dryrun )                  dryrun=true && e="echo ";;
-        --debug )                   debug=true ;;
+        -i | --inspector_dir )   shift && inspector_dir=$1 ;;
+        -o | --assembly_out )    shift && assembly_out=$1 ;;
+        --datatype )             shift && datatype=$1 ;;
+        --more_args )            shift && more_args=$1 ;;
+        --base_error )           base_error=true ;;
+        -v | --version )         Print_version; exit 0 ;;
+        -h )                     Print_help; exit 0 ;;
+        --help )                 Print_help_program; exit 0;;
+        --dryrun )               dryrun=true && e="echo ";;
+        --debug )                debug=true ;;
     esac
     shift
 done
@@ -196,13 +198,15 @@ set -euo pipefail
 Set_threads
 
 # Check input
-[[ "$inspector_resdir" = "" ]] && Die "Please specify an assembly -i/--inspector_resdir"
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir"
-[[ ! -d "$inspector_resdir" ]] && Die "Input dir (--inspector_resdir) $inspector_resdir does not exist"
+[[ "$inspector_dir" = "" ]] && Die "Please specify an assembly -i/--inspector_dir"
+[[ "$assembly_out" = "" ]] && Die "Please specify an output assembly file with -o/--assembly_out"
+[[ ! -d "$inspector_dir" ]] && Die "Input dir (--inspector_dir) $inspector_dir does not exist"
 
-# Final output dir contains assembly basename:
-#sampleID=$(basename "$assembly" | sed -E 's/.fn?as?t?a?//')
-#outdir_final=$outdir/"$sampleID"
+# Determine output dir
+outdir=$(dirname "$assembly_out")
+
+# Build other args
+[[ "$base_error" = true ]] && base_error_arg=""
 
 # Report
 echo
@@ -211,9 +215,10 @@ echo "          STARTING SCRIPT INSPECTOR_CORRECT.SH"
 date
 echo "=========================================================================="
 echo "All arguments to this script:         $all_args"
-echo "Input Inspector results dir:          $inspector_resdir"
-echo "Output dir:                           $outdir"
+echo "Input Inspector results dir:          $inspector_dir"
+echo "Output assembly:                      $assembly_out"
 echo "Data type:                            $datatype"
+echo "Correct base-errors, too:             $base_error"
 [[ $more_args != "" ]] && echo "Other arguments to pass to Inspector:     $more_args"
 echo "=========================================================================="
 
@@ -228,15 +233,22 @@ echo "==========================================================================
 echo -e "\n# Now creating the output directories..."
 ${e}mkdir -pv "$outdir"/logs
 
+# Move to the outdir or some files will go to the working dir
+cd "$outdir" || exit 1
+
 # Run
 echo -e "\n# Now running Inspector-correct..."
 ${e}Time inspector-correct.py \
-    --inspector "$inspector_resdir" \
-    --skip_baseerror \
-    -o "$outdir" \
+    --inspector "$inspector_dir" \
+    "$base_error_arg" \
+    -o . \
     --datatype "$datatype" \
     --thread "$threads" \
     $more_args
+
+# Run
+echo -e "\n# Renaming the output file..."
+${e}mv -v contig_corrected.fa "$assembly_out"
 
 
 # ==============================================================================
@@ -247,8 +259,8 @@ echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
     echo "# Version used:"
     Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
+    echo -e "\n# Listing the output assembly:"
+    ls -lh "$assembly_out"
     [[ "$slurm" = true ]] && Resource_usage
 fi
 echo
