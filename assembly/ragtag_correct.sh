@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=5:00:00
-#SBATCH --mem=172G
-#SBATCH --cpus-per-task=1
+#SBATCH --time=4:00:00
+#SBATCH --cpus-per-task=20
+#SBATCH --mem=80G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --job-name=pilon
-#SBATCH --output=slurm-pilon-%j.out
+#SBATCH --job-name=ragtag_correct
+#SBATCH --output=slurm-ragtag_correct-%j.out
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -17,35 +17,35 @@ Print_help() {
     echo
     echo "======================================================================"
     echo "                            $0"
-    echo "                  RUN PILON TO POLISH A GENOME"
+    echo "      RUN RAGTAG FOR REFERENCE-GUIDED ASSEMBLY CORRECTION"
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 --genome <FASTA> --bam_dir <dir with BAMs> --out_prefix <output prefix> -o <output dir> [...]"
+    echo "  sbatch $0 --assembly <assembly FASTA> --fastq <FASTQ file> --genome_size <genome size> -o <output file> [...]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  --assembly      <file>  Genome assembly FASTA file"
-    echo "  --bam_dir       <dir>   Directory with BAM files of Illumina reads mapped to the assembly"
-    echo "  --outfile       <file>  Output assembly file (dir will be created if needed)"
+    echo "  --assembly      <file>  Input assembly FASTA file"
+    echo "  --reference     <file>  Input reference genome FASTA file"
+    echo "  --reads         <file>  Input FASTQ file with long reads"
+    echo "  -o/--outfile       <dir>   Output assembly FASTA file (dir will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --fix           <str>   What to fix: 'snps'/'indels'/'gaps'/'local'/'all'/'bases'   [default: 'bases']"
-    echo "                          See the Pilon documentation for details"
-    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to Pilon"
+    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to Ragtag"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
     echo "  --debug                 Run the script in debug mode (print all code)"
     echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for Pilon and exit"
-    echo "  -v/--version            Print the version of Pilon and exit"
+    echo "  --help                  Print the help for Ragtag and exit"
+    echo "  -v/--version            Print the version of Ragtag and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 --genome results/cany/assemblyA.fasta --bam_dir results/star --out_prefix assemblyA -o results/pilon"
+    echo "  sbatch $0 -i TODO -o results/TODO"
     echo
     echo "SOFTWARE DOCUMENTATION:"
-    echo "    - https://github.com/broadinstitute/pilon/wiki"
+    echo "  - Docs: https://github.com/malonge/RagTag/wiki/correct"
+    echo "  - Paper: https://genomebiology.biomedcentral.com/articles/10.1186/s13059-022-02823-7"
     echo
 }
 
@@ -54,8 +54,7 @@ Load_software() {
     set +u
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /fs/ess/PAS0471/jelmer/conda/pilon-1.24
-    PILON_JAR=/fs/ess/PAS0471/jelmer/conda/pilon-1.24/share/pilon-1.24-0/pilon.jar
+    source activate /fs/ess/PAS0471/jelmer/conda/ragtag-2.1.0
     set -u
 }
 
@@ -63,14 +62,14 @@ Load_software() {
 Print_version() {
     set +e
     Load_software
-    pilon --version
+    ragtag.py --version
     set -e
 }
 
 # Print help for the focal program
 Print_help_program() {
     Load_software
-    pilon --help
+    ragtag.py --help
 }
 
 # Print SLURM job resource usage info
@@ -87,12 +86,30 @@ Print_resources() {
     echo "Account (project):    $SLURM_JOB_ACCOUNT"
     echo "Job ID:               $SLURM_JOB_ID"
     echo "Job name:             $SLURM_JOB_NAME"
-    echo "Memory (per node):    $SLURM_MEM_PER_NODE"
-    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
+    echo "Memory (MB per node): $SLURM_MEM_PER_NODE"
+    echo "CPUs (per task):      $SLURM_CPUS_PER_TASK"
     [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
     [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
     echo "======================================================================"
     echo
+    set -u
+}
+
+# Set the number of threads/CPUs
+Set_threads() {
+    set +u
+    if [[ "$slurm" = true ]]; then
+        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
+            threads="$SLURM_CPUS_PER_TASK"
+        elif [[ -n "$SLURM_NTASKS" ]]; then
+            threads="$SLURM_NTASKS"
+        else 
+            echo "WARNING: Can't detect nr of threads, setting to 1"
+            threads=1
+        fi
+    else
+        threads=1
+    fi
     set -u
 }
 
@@ -128,7 +145,7 @@ Die() {
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Option defaults
-fix=bases
+read_type="ont"
 
 debug=false
 dryrun=false && e=""
@@ -139,8 +156,9 @@ slurm=true
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Placeholder defaults
-genome=""
-bam_dir="" && bam_arg=""
+assembly=""
+reference=""
+reads="" && reads_arg=""
 outfile=""
 more_args=""
 
@@ -148,18 +166,17 @@ more_args=""
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        --genome )         shift && genome=$1 ;;
-        --bam_dir )        shift && bam_dir=$1 ;;
-        -o | --outfile )   shift && outfile=$1 ;;
-        --out_prefix )     shift && out_prefix=$1 ;;
-        --fix )            shift && fix=$1 ;;
-        --more_args )      shift && more_args=$1 ;;
-        --debug )          debug=true ;;
-        --dryrun )         dryrun=true ;;
-        -v | --version )   Print_version; exit ;;
-        -h )               Print_help; exit 0 ;;
-        --help )           Print_help_program; exit 0;;
-        * )                Die "Invalid option $1" "$all_args" ;;
+        --assembly )        shift && assembly=$1 ;;
+        --reference )       shift && reference=$1 ;;
+        --reads )           shift && reads=$1 ;;
+        -o | --outfile )    shift && outfile=$1 ;;
+        --more_args )       shift && more_args=$1 ;;
+        -v | --version )    Print_version; exit 0 ;;
+        -h )                Print_help; exit 0 ;;
+        --help )            Print_help_program; exit 0;;
+        --dryrun )          dryrun=true && e="echo ";;
+        --debug )           debug=true ;;
+        * )                 Die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
@@ -177,49 +194,42 @@ done
 # Bash script settings
 set -euo pipefail
 
-# Load software
+# Load software and set nr of threads
 [[ "$dryrun" = false ]] && Load_software
+Set_threads
 
-# Build BAM arg
-for bam in "$bam_dir"/*bam; do
-    bam_arg="$bam_arg --frags $bam"
-done
-
-# Get amount of RAM in right format
-mem=$(( $SLURM_MEM_PER_NODE / 1000 ))G
+# Check input
+[[ "$assembly" = "" ]] && Die "Please specify an input assembly FASTA with --assembly" "$all_args"
+[[ "$reference" = "" ]] && Die "Please specify an input reference FASTA with --reference" "$all_args"
+[[ "$reads" = "" ]] && Die "Please specify an input FASTQ file with --reads" "$all_args"
+[[ "$outfile" = "" ]] && Die "Please specify an output file with -o/--outfile" "$all_args"
+[[ ! -f "$assembly" ]] && Die "Input assembly file $assembly does not exist"
+[[ ! -f "$reference" ]] && Die "Input reference file $reference does not exist"
+[[ ! -f "$reads" ]] && Die "Input FASTQ file $reads does not exist"
 
 # Determine the output dir
 outdir=$(dirname "$outfile")
-file_ext="${outfile##*.}"
-out_prefix=$(basename "$outfile" ."$file_ext")
 
-# Check input
-[[ $genome = "" ]] && Die "Please specify an input genome FASTA file with -i/--genome"
-[[ $bam_dir  = "" ]] && Die "Please specify an input BAM dir with -I/--bam"
-[[ $outfile = "" ]] && Die "Please specify an output file with -o/--outfile"
-[[ ! -f $genome ]] && Die "Genome FASTA $genome does not exist"
-[[ ! -d $bam_dir  ]] && Die "BAM dir $bam_dir  does not exist"
+# Make reads argument
+[[ "$reads" != "" ]] && reads_arg="-R $reads -T $read_type"
 
 # Report
 echo
 echo "=========================================================================="
-echo "               STARTING SCRIPT PILON.SH"
+echo "                STARTING SCRIPT RAGTAG-CORRECT.SH"
 date
 echo "=========================================================================="
-echo "All arguments to this script: $all_args"
-echo "Input genome assembly FASTA:  $genome"
-echo "Input BAM:                    $bam"
-echo "Output file:                  $outfile"
-echo "What to fix (--fix):          $fix"
-echo "Memory for Java:              $mem"
-[[ $more_args != "" ]] && echo "Other arguments for Pilon:    $more_args"
+echo "All arguments to this script:     $all_args"
+echo "Input assembly FASTA file:        $assembly"
+echo "Input reference FASTA file:       $reference"
+echo "Input FASTQ file:                 $reads"
+echo "Output file:                      $outfile"
+[[ $more_args != "" ]] && echo "Other arguments for Ragtag:   $more_args"
+echo "Number of threads/cores:          $threads"
 echo
-echo "# Listing the input genome FASTA file:"
-ls -lh "$genome"
-echo
-echo "# Listing the input BAM files:"
-ls -lh "$bam_dir"/*bam
-[[ $dryrun = true ]] && echo "THIS IS A DRY-RUN"
+echo "Listing the input file(s):"
+ls -lh "$assembly" "$reference" "$reads"
+[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
 # Print reserved resources
@@ -230,28 +240,24 @@ echo "==========================================================================
 #                               RUN
 # ==============================================================================
 # Create the output directory
-echo "Creating the output directories..."
+echo -e "\n# Now creating the output directories..."
 ${e}mkdir -pv "$outdir"/logs
 
-# Run Pilon
-echo -e "\n# Now running Pilon..."
+# Run
+echo -e "\n# Now running Ragtag..."
 ${e}Time \
-    java -Xmx"$mem" -jar "$PILON_JAR" \
-    --genome "$genome" \
-    $bam_arg \
-    --outdir "$outdir" \
-    --output "$out_prefix" \
-    --fix "$fix" \
-    $more_args
+    ragtag.py correct \
+        -o "$outdir" \
+        $reads_arg \
+        -u \
+        -t "$threads" \
+        "$reference" \
+        "$assembly"
 
-#? No --threads: running with v 1.24, got: "--threads argument no longer supported; ignoring!"
+#? WARNING: Without '-u' invoked, some component/object AGP pairs might share the same ID. Some external programs/databases don't like this. To ensure valid AGP format, use '-u'.
 
-# Rename the output file if needed
-if [[ "$outfile" != "$outdir"/"$out_prefix".fasta ]]; then
-    echo -e "\n Renaming the output file"
-    mv -v "$outdir"/"$out_prefix".fasta "$outfile"
-fi
-
+echo -e "\n# Now renaming the output file..."
+mv -v "$outdir"/ragtag.correct.fasta "$outfile"
 
 # ==============================================================================
 #                               WRAP-UP
@@ -261,10 +267,9 @@ echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
     echo "# Version used:"
     Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing files in the output dir:"
+    echo -e "\n# Listing the output file:"
     ls -lhd "$PWD"/"$outfile"
     [[ "$slurm" = true ]] && Resource_usage
 fi
-echo
 echo "# Done with script"
 date

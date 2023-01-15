@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=5:00:00
-#SBATCH --mem=172G
-#SBATCH --cpus-per-task=1
+#SBATCH --time=12:00:00
+#SBATCH --cpus-per-task=12
+#SBATCH --mem=48G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --job-name=pilon
-#SBATCH --output=slurm-pilon-%j.out
+#SBATCH --job-name=purge_dups
+#SBATCH --output=slurm-purge_dups-%j.out
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -17,35 +17,34 @@ Print_help() {
     echo
     echo "======================================================================"
     echo "                            $0"
-    echo "                  RUN PILON TO POLISH A GENOME"
+    echo "   RUN PURGE_DUPS TO REMOVE VERY SIMILAR CONTIGS IN A GENOME ASSEMBLY"
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 --genome <FASTA> --bam_dir <dir with BAMs> --out_prefix <output prefix> -o <output dir> [...]"
+    echo "  sbatch $0 --assembly <FASTA> --reads <FASTQ> -o <output dir> [...]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  --assembly      <file>  Genome assembly FASTA file"
-    echo "  --bam_dir       <dir>   Directory with BAM files of Illumina reads mapped to the assembly"
-    echo "  --outfile       <file>  Output assembly file (dir will be created if needed)"
+    echo "  --assembly      <file>  Input assembly FASTA file"
+    echo "  --reads         <file>  Input long-read FASTQ file"
+    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --fix           <str>   What to fix: 'snps'/'indels'/'gaps'/'local'/'all'/'bases'   [default: 'bases']"
-    echo "                          See the Pilon documentation for details"
-    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to Pilon"
+    echo "  --config        <file>  Input config file"
+    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to purge_dups"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
     echo "  --debug                 Run the script in debug mode (print all code)"
     echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for Pilon and exit"
-    echo "  -v/--version            Print the version of Pilon and exit"
+    echo "  --help                  Print the help for purge_dups and exit"
+    echo "  -v/--version            Print the version of purge_dups and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 --genome results/cany/assemblyA.fasta --bam_dir results/star --out_prefix assemblyA -o results/pilon"
+    echo "  sbatch $0 -i TODO -o results/TODO"
     echo
     echo "SOFTWARE DOCUMENTATION:"
-    echo "    - https://github.com/broadinstitute/pilon/wiki"
+    echo "  - Docs: https://github.com/dfguan/purge_dups"
     echo
 }
 
@@ -54,8 +53,7 @@ Load_software() {
     set +u
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /fs/ess/PAS0471/jelmer/conda/pilon-1.24
-    PILON_JAR=/fs/ess/PAS0471/jelmer/conda/pilon-1.24/share/pilon-1.24-0/pilon.jar
+    source activate /fs/project/PAS0471/jelmer/conda/purge_dups-1.2.6
     set -u
 }
 
@@ -63,14 +61,14 @@ Load_software() {
 Print_version() {
     set +e
     Load_software
-    pilon --version
+    run_purge_dups.py --version
     set -e
 }
 
 # Print help for the focal program
 Print_help_program() {
     Load_software
-    pilon --help
+    run_purge_dups.py --help
 }
 
 # Print SLURM job resource usage info
@@ -87,12 +85,30 @@ Print_resources() {
     echo "Account (project):    $SLURM_JOB_ACCOUNT"
     echo "Job ID:               $SLURM_JOB_ID"
     echo "Job name:             $SLURM_JOB_NAME"
-    echo "Memory (per node):    $SLURM_MEM_PER_NODE"
-    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
+    echo "Memory (MB per node): $SLURM_MEM_PER_NODE"
+    echo "CPUs (per task):      $SLURM_CPUS_PER_TASK"
     [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
     [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
     echo "======================================================================"
     echo
+    set -u
+}
+
+# Set the number of threads/CPUs
+Set_threads() {
+    set +u
+    if [[ "$slurm" = true ]]; then
+        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
+            threads="$SLURM_CPUS_PER_TASK"
+        elif [[ -n "$SLURM_NTASKS" ]]; then
+            threads="$SLURM_NTASKS"
+        else 
+            echo "WARNING: Can't detect nr of threads, setting to 1"
+            threads=1
+        fi
+    else
+        threads=1
+    fi
     set -u
 }
 
@@ -127,9 +143,10 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-# Option defaults
-fix=bases
+# Constants
+BIN_DIR=/fs/project/PAS0471/jelmer/conda/purge_dups-1.2.6/bin
 
+# Option defaults
 debug=false
 dryrun=false && e=""
 slurm=true
@@ -139,27 +156,28 @@ slurm=true
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Placeholder defaults
-genome=""
-bam_dir="" && bam_arg=""
-outfile=""
+outdir=""
+assembly=""
+reads=""
+config=""
+genome_id=""
 more_args=""
 
 # Parse command-line args
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        --genome )         shift && genome=$1 ;;
-        --bam_dir )        shift && bam_dir=$1 ;;
-        -o | --outfile )   shift && outfile=$1 ;;
-        --out_prefix )     shift && out_prefix=$1 ;;
-        --fix )            shift && fix=$1 ;;
-        --more_args )      shift && more_args=$1 ;;
-        --debug )          debug=true ;;
-        --dryrun )         dryrun=true ;;
-        -v | --version )   Print_version; exit ;;
-        -h )               Print_help; exit 0 ;;
-        --help )           Print_help_program; exit 0;;
-        * )                Die "Invalid option $1" "$all_args" ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        --assembly )        shift && assembly=$1 ;;
+        --reads )           shift && reads=$1 ;;
+        --config )          shift && config=$1 ;;
+        --more_args )       shift && more_args=$1 ;;
+        -v | --version )    Print_version; exit 0 ;;
+        -h )                Print_help; exit 0 ;;
+        --help )            Print_help_program; exit 0;;
+        --dryrun )          dryrun=true && e="echo ";;
+        --debug )           debug=true ;;
+        * )                 Die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
@@ -168,58 +186,49 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
+# Bash script settings
+set -euo pipefail
+
 # In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
 # Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-# Bash script settings
-set -euo pipefail
-
-# Load software
+# Load software and set nr of threads
 [[ "$dryrun" = false ]] && Load_software
-
-# Build BAM arg
-for bam in "$bam_dir"/*bam; do
-    bam_arg="$bam_arg --frags $bam"
-done
-
-# Get amount of RAM in right format
-mem=$(( $SLURM_MEM_PER_NODE / 1000 ))G
-
-# Determine the output dir
-outdir=$(dirname "$outfile")
-file_ext="${outfile##*.}"
-out_prefix=$(basename "$outfile" ."$file_ext")
+Set_threads
 
 # Check input
-[[ $genome = "" ]] && Die "Please specify an input genome FASTA file with -i/--genome"
-[[ $bam_dir  = "" ]] && Die "Please specify an input BAM dir with -I/--bam"
-[[ $outfile = "" ]] && Die "Please specify an output file with -o/--outfile"
-[[ ! -f $genome ]] && Die "Genome FASTA $genome does not exist"
-[[ ! -d $bam_dir  ]] && Die "BAM dir $bam_dir  does not exist"
+[[ "$assembly" = "" ]] && Die "Please specify an input assembly file with --assembly" "$all_args"
+[[ "$reads" = "" ]] && Die "Please specify an input reads file with --reads" "$all_args"
+[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
+[[ ! -f "$assembly" ]] && Die "Input file $assembly does not exist"
+[[ ! -f "$reads" ]] && Die "Input file $reads does not exist"
+[[ "$config" != "" && ! -f "$config" ]] && Die "Input file $config does not exist"
+
+# Get genome ID
+file_ext=$(basename "$assembly" | sed -E 's/.*(.fasta|.fa|.fna)$/\1/')
+genome_id=$(basename "$assembly" "$file_ext")
 
 # Report
 echo
 echo "=========================================================================="
-echo "               STARTING SCRIPT PILON.SH"
+echo "                    STARTING SCRIPT PURGE_DUPS.SH"
 date
 echo "=========================================================================="
-echo "All arguments to this script: $all_args"
-echo "Input genome assembly FASTA:  $genome"
-echo "Input BAM:                    $bam"
-echo "Output file:                  $outfile"
-echo "What to fix (--fix):          $fix"
-echo "Memory for Java:              $mem"
-[[ $more_args != "" ]] && echo "Other arguments for Pilon:    $more_args"
+echo "All arguments to this script:     $all_args"
+echo "Input assembly FASTA:             $assembly"
+echo "Input long reads FASTQ:           $reads"
+echo "Output dir:                       $outdir"
+echo "Genome ID:                        $genome_id"
+[[ $config != "" ]] && echo "Config file:                      $config"
+[[ $more_args != "" ]] && echo "Other arguments for purge_dups:   $more_args"
+echo "Number of threads/cores:          $threads"
 echo
-echo "# Listing the input genome FASTA file:"
-ls -lh "$genome"
-echo
-echo "# Listing the input BAM files:"
-ls -lh "$bam_dir"/*bam
-[[ $dryrun = true ]] && echo "THIS IS A DRY-RUN"
+echo "Listing the input file(s):"
+ls -lh "$assembly" "$reads"
+[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
 # Print reserved resources
@@ -230,28 +239,45 @@ echo "==========================================================================
 #                               RUN
 # ==============================================================================
 # Create the output directory
-echo "Creating the output directories..."
+echo -e "\n# Creating the output directories..."
 ${e}mkdir -pv "$outdir"/logs
 
-# Run Pilon
-echo -e "\n# Now running Pilon..."
-${e}Time \
-    java -Xmx"$mem" -jar "$PILON_JAR" \
-    --genome "$genome" \
-    $bam_arg \
-    --outdir "$outdir" \
-    --output "$out_prefix" \
-    --fix "$fix" \
-    $more_args
+# Create a reads fofn
+ls -1 "$PWD"/"$reads" > "$outdir"/reads.fofn
 
-#? No --threads: running with v 1.24, got: "--threads argument no longer supported; ignoring!"
+# Prepare the config file
+if [[ "$config" != "" ]]; then
+    echo -e "\n# Now Preparing the config file..."
 
-# Rename the output file if needed
-if [[ "$outfile" != "$outdir"/"$out_prefix".fasta ]]; then
-    echo -e "\n Renaming the output file"
-    mv -v "$outdir"/"$out_prefix".fasta "$outfile"
+    cd "$outdir" || exit 1
+
+    config="$outdir"/config.json
+
+    ${e}Time \
+        pd_config.py \
+        --name "$config" \
+        "$assembly" \
+        "$outdir"/reads.fofn
+
+    # Remove BUSCO lines, don't want to run that
+    #sed -e '/pattern/,+5d' file.txt
 fi
 
+echo -e "\n# Showing the contents of the config file..."
+cat "$config"
+
+# Run
+echo -e "\n\n# Now running purge_dups..."
+${e}Time \
+    run_purge_dups.py \
+    --platform bash \
+    $more_args \
+    $config \
+    $BIN_DIR \
+    "$genome_id"
+
+#TODO Use short reads too?
+#TODO Use --platform to have it submit slurm jobs?
 
 # ==============================================================================
 #                               WRAP-UP
@@ -262,9 +288,9 @@ if [[ "$dryrun" = false ]]; then
     echo "# Version used:"
     Print_version | tee "$outdir"/logs/version.txt
     echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outfile"
+    ls -lhd "$PWD"/"$outdir"/*
     [[ "$slurm" = true ]] && Resource_usage
 fi
-echo
 echo "# Done with script"
 date
+echo

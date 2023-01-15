@@ -30,7 +30,9 @@ Print_help() {
     echo "                            - FASTA files should be unzipped; FASTQ files should be gzipped"
     echo "  -o/--outdir     <dir>   Output directory"
     echo "  -d/--db-dir     <dir>   Directory with an existing Kraken database"
-    echo "                            (Use one of the scripts 'kraken-build-custom-db.sh' or 'kraken-build-std-db.sh' to create a Kraken database)"
+    echo "                            - A few databases are available at: /fs/ess/PAS0471/jelmer/refdata/kraken/std-plus-fungi"
+    echo "                            - Kraken databases can be downloaded from: https://benlangmead.github.io/aws-indexes/k2"
+    echo "                            - Finally, you can use 'kraken-build-custom-db.sh' or 'kraken-build-std-db.sh' to create a database"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --confidence    <num>   Confidence required for assignment: number between 0 and 1            [default: 0.5]"

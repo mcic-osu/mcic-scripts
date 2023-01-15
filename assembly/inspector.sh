@@ -1,13 +1,13 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=5:00:00
-#SBATCH --mem=172G
-#SBATCH --cpus-per-task=1
+#SBATCH --time=4:00:00
+#SBATCH --cpus-per-task=20
+#SBATCH --mem=80G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --job-name=pilon
-#SBATCH --output=slurm-pilon-%j.out
+#SBATCH --job-name=inspector
+#SBATCH --output=slurm-inspector-%j.out
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -17,35 +17,34 @@ Print_help() {
     echo
     echo "======================================================================"
     echo "                            $0"
-    echo "                  RUN PILON TO POLISH A GENOME"
+    echo "   Run Inspector to check the quality of a genome assembly"
     echo "======================================================================"
-    echo
     echo "USAGE:"
-    echo "  sbatch $0 --genome <FASTA> --bam_dir <dir with BAMs> --out_prefix <output prefix> -o <output dir> [...]"
-    echo "  bash $0 -h"
+    echo "  sbatch $0 --assembly <assembly> --reads <FASTQ> -o <output-dir> [...]"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  --assembly      <file>  Genome assembly FASTA file"
-    echo "  --bam_dir       <dir>   Directory with BAM files of Illumina reads mapped to the assembly"
-    echo "  --outfile       <file>  Output assembly file (dir will be created if needed)"
+    echo "  --assembly     <file>   Input assembly FASTA file"
+    echo "  --reads        <file>   Input FASTQ file with long (PacBio/ONT) reads"
+    echo "  -o/--outdir    <dir>    Output dir"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --fix           <str>   What to fix: 'snps'/'indels'/'gaps'/'local'/'all'/'bases'   [default: 'bases']"
-    echo "                          See the Pilon documentation for details"
-    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to Pilon"
+    echo "  --datatype      <str>   Input read type: 'nanopore' / 'clr' / 'hifi' / 'mixed' [default: 'nanopore']"
+    echo "  --ref_fa        <file>  Reference genome nucleotide FASTA file      [default: no reference genome]"
+    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to Inspector"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
     echo "  --debug                 Run the script in debug mode (print all code)"
     echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for Pilon and exit"
-    echo "  -v/--version            Print the version of Pilon and exit"
+    echo "  --help                  Print the help for Inspector and exit"
+    echo "  -v/--version            Print the version of Inspector and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 --genome results/cany/assemblyA.fasta --bam_dir results/star --out_prefix assemblyA -o results/pilon"
+    echo "  sbatch $0 --assembly results/assembly/my.fasta -o results/inspector"
     echo
     echo "SOFTWARE DOCUMENTATION:"
-    echo "    - https://github.com/broadinstitute/pilon/wiki"
+    echo "  - GitHub repo: https://github.com/ChongLab/Inspector / https://github.com/Maggi-Chen/Inspector"
+    echo "  - Paper: https://genomebiology.biomedcentral.com/articles/10.1186/s13059-021-02527-4"
     echo
 }
 
@@ -54,8 +53,8 @@ Load_software() {
     set +u
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /fs/ess/PAS0471/jelmer/conda/pilon-1.24
-    PILON_JAR=/fs/ess/PAS0471/jelmer/conda/pilon-1.24/share/pilon-1.24-0/pilon.jar
+    #source activate /fs/ess/PAS0471/jelmer/conda/inspector-1.2.0
+    source activate /fs/ess/PAS0471/jelmer/conda/inspector-1.0.2
     set -u
 }
 
@@ -63,14 +62,14 @@ Load_software() {
 Print_version() {
     set +e
     Load_software
-    pilon --version
+    inspector.py --version
     set -e
 }
 
 # Print help for the focal program
 Print_help_program() {
     Load_software
-    pilon --help
+    inspector.py --help
 }
 
 # Print SLURM job resource usage info
@@ -93,6 +92,24 @@ Print_resources() {
     [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
     echo "======================================================================"
     echo
+    set -u
+}
+
+# Set the number of threads/CPUs
+Set_threads() {
+    set +u
+    if [[ "$slurm" = true ]]; then
+        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
+            threads="$SLURM_CPUS_PER_TASK"
+        elif [[ -n "$SLURM_NTASKS" ]]; then
+            threads="$SLURM_NTASKS"
+        else 
+            echo "WARNING: Can't detect nr of threads, setting to 1"
+            threads=1
+        fi
+    else
+        threads=1
+    fi
     set -u
 }
 
@@ -128,7 +145,7 @@ Die() {
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Option defaults
-fix=bases
+datatype=nanopore
 
 debug=false
 dryrun=false && e=""
@@ -139,27 +156,27 @@ slurm=true
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Placeholder defaults
-genome=""
-bam_dir="" && bam_arg=""
-outfile=""
+assembly=""
+reads=""
+outdir=""
+ref_fa="" && ref_fa_arg=""
 more_args=""
 
 # Parse command-line args
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        --genome )         shift && genome=$1 ;;
-        --bam_dir )        shift && bam_dir=$1 ;;
-        -o | --outfile )   shift && outfile=$1 ;;
-        --out_prefix )     shift && out_prefix=$1 ;;
-        --fix )            shift && fix=$1 ;;
-        --more_args )      shift && more_args=$1 ;;
-        --debug )          debug=true ;;
-        --dryrun )         dryrun=true ;;
-        -v | --version )   Print_version; exit ;;
-        -h )               Print_help; exit 0 ;;
-        --help )           Print_help_program; exit 0;;
-        * )                Die "Invalid option $1" "$all_args" ;;
+        --assembly )        shift && assembly=$1 ;;
+        --reads )           shift && reads=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        --ref_fa )          shift && ref_fa=$1 ;;
+        --datatype )        shift && datatype=$1 ;;
+        --more_args )       shift && more_args=$1 ;;
+        -v | --version )    Print_version; exit 0 ;;
+        -h )                Print_help; exit 0 ;;
+        --help )            Print_help_program; exit 0;;
+        --dryrun )          dryrun=true && e="echo ";;
+        --debug )           debug=true ;;
     esac
     shift
 done
@@ -168,58 +185,48 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-# In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
-
 # Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
+
+# In debugging mode, print all commands
+[[ "$debug" = true ]] && set -o xtrace
 
 # Bash script settings
 set -euo pipefail
 
-# Load software
+# Load software and set nr of threads
 [[ "$dryrun" = false ]] && Load_software
-
-# Build BAM arg
-for bam in "$bam_dir"/*bam; do
-    bam_arg="$bam_arg --frags $bam"
-done
-
-# Get amount of RAM in right format
-mem=$(( $SLURM_MEM_PER_NODE / 1000 ))G
-
-# Determine the output dir
-outdir=$(dirname "$outfile")
-file_ext="${outfile##*.}"
-out_prefix=$(basename "$outfile" ."$file_ext")
+Set_threads
 
 # Check input
-[[ $genome = "" ]] && Die "Please specify an input genome FASTA file with -i/--genome"
-[[ $bam_dir  = "" ]] && Die "Please specify an input BAM dir with -I/--bam"
-[[ $outfile = "" ]] && Die "Please specify an output file with -o/--outfile"
-[[ ! -f $genome ]] && Die "Genome FASTA $genome does not exist"
-[[ ! -d $bam_dir  ]] && Die "BAM dir $bam_dir  does not exist"
+[[ "$assembly" = "" ]] && Die "Please specify an assembly -i/--assembly"
+[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir"
+[[ ! -f "$assembly" ]] && Die "Input file (--assembly) $assembly does not exist"
+
+# Final output dir contains assembly basename:
+sampleID=$(basename "$assembly" | sed -E 's/.fn?as?t?a?//')
+outdir_final=$outdir/"$sampleID"
+
+# Build other arguments
+[[ "$ref_fa" != "" ]] && ref_fa_arg="--ref $ref_fa"
 
 # Report
 echo
 echo "=========================================================================="
-echo "               STARTING SCRIPT PILON.SH"
+echo "               STARTING SCRIPT INSPECTOR.SH"
 date
 echo "=========================================================================="
-echo "All arguments to this script: $all_args"
-echo "Input genome assembly FASTA:  $genome"
-echo "Input BAM:                    $bam"
-echo "Output file:                  $outfile"
-echo "What to fix (--fix):          $fix"
-echo "Memory for Java:              $mem"
-[[ $more_args != "" ]] && echo "Other arguments for Pilon:    $more_args"
-echo
-echo "# Listing the input genome FASTA file:"
-ls -lh "$genome"
-echo
-echo "# Listing the input BAM files:"
-ls -lh "$bam_dir"/*bam
-[[ $dryrun = true ]] && echo "THIS IS A DRY-RUN"
+echo "All arguments to this script:         $all_args"
+echo "Input assembly FASTA:                 $assembly"
+echo "Output dir:                           $outdir"
+echo "Data type:                            $datatype"
+[[ $reads != "" ]] && echo "Long-read FASTQ file:                 $reads"
+[[ $ref_fa != "" ]] && echo "Reference FASTA file:                 $ref_fa"
+[[ $more_args != "" ]] && echo "Other arguments to pass to Inspector:     $more_args"
+echo -e "\n# Listing the input files:"
+ls -lh "$assembly"
+ls -lh "$reads"
+[[ "$ref_fa" != "" ]] && ls -lh "$ref_fa"
 echo "=========================================================================="
 
 # Print reserved resources
@@ -230,27 +237,19 @@ echo "==========================================================================
 #                               RUN
 # ==============================================================================
 # Create the output directory
-echo "Creating the output directories..."
-${e}mkdir -pv "$outdir"/logs
+echo -e "\n# Now creating the output directories..."
+${e}mkdir -pv "$outdir_final"/logs
 
-# Run Pilon
-echo -e "\n# Now running Pilon..."
-${e}Time \
-    java -Xmx"$mem" -jar "$PILON_JAR" \
-    --genome "$genome" \
-    $bam_arg \
-    --outdir "$outdir" \
-    --output "$out_prefix" \
-    --fix "$fix" \
+# Run
+echo -e "\n# Now running Inspector..."
+${e}Time inspector.py \
+    --contig "$assembly" \
+    --read "$reads" \
+    $ref_fa_arg \
+    -o "$outdir_final" \
+    --datatype "$datatype" \
+    --thread "$threads" \
     $more_args
-
-#? No --threads: running with v 1.24, got: "--threads argument no longer supported; ignoring!"
-
-# Rename the output file if needed
-if [[ "$outfile" != "$outdir"/"$out_prefix".fasta ]]; then
-    echo -e "\n Renaming the output file"
-    mv -v "$outdir"/"$out_prefix".fasta "$outfile"
-fi
 
 
 # ==============================================================================
@@ -260,9 +259,9 @@ echo
 echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
     echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
+    Print_version | tee "$outdir_final"/logs/version.txt
     echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outfile"
+    ls -lhd "$PWD"/"$outdir_final"/*
     [[ "$slurm" = true ]] && Resource_usage
 fi
 echo

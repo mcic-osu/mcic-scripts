@@ -35,7 +35,6 @@ Print_help() {
     echo "  --R1                <file>  FASTQ file with forward (R1) Illumina reads [default: no reads]"
     echo "                              (The R2 filename will be inferred)"
     echo "  --reads             <file>  FASTQ file with single-end Illumina reads"
-    echo "  --nanopore          <file>  FASTQ files with ONT reads"
     echo "  --fragmented                QUAST's '--fragmented' option, use for fragmented assemblies"
     echo "  --large                     QUAST's '--large' option, recommended for genomes >100 Mbp"
     echo "  --kmer_stats                QUAST's '--k-mer-stats' option, recommended for genomes >100 Mbp"
@@ -44,7 +43,11 @@ Print_help() {
     echo "  --more_args         <str>   Quoted string with additional argument(s) to pass to QUAST"
     echo
     echo "UTILITY OPTIONS:"
-    echo "    -h                    Print this help message and exit"
+    echo "  --dryrun                    Dry run: don't execute commands, only parse arguments and report"
+    echo "  --debug                     Run the script in debug mode (print all code)"
+    echo "  -h                          Print this help message and exit"
+    echo "  --help                      Print the help for Quast and exit"
+    echo "  -v/--version                Print the version of Quast and exit"
     echo
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 --assembly results/assembly/my.fasta -o results/quast"
