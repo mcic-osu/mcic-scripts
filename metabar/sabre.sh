@@ -25,11 +25,12 @@ Print_help() {
     echo "REQUIRED OPTIONS:"
     echo "  -f/--R1             <file>  Input R1 FASTQ file (can be gzipped)."
     echo "                              By default, the name of the R2 file will be inferred"
-    echo "  -b/--barcode-file   <file>  Input TSV file with 1 line per barcode and 3 columns: barcode, forward output FASTQ, reverse output FASTQ"
+    echo "  -b/--barcode_file   <file>  Input TSV file with 1 line per barcode and 3 columns: barcode, forward output FASTQ, reverse output FASTQ"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  -r/--R2             <file>  Input R2 FASTQ file (can be gzipped)    [default: will be inferred from R1 name]"
+    echo "  --more_args                 More arguments for Sabre"
     echo
     echo "UTILITY OPTIONS:"
     echo "  -h/--help                   Print this help message and exit"
@@ -37,7 +38,11 @@ Print_help() {
     echo "OUTPUT:"
     echo "  - Demultiplexed, gzipped R1 and R2 FASTQ files for each in a directory 'assigned' with the output dir"
     echo "  - R1 and R2 files with unassigned reads in a directory 'unassigned' within the output dir"
-    echo 
+    echo
+    echo "NOTES:"
+    echo "  - The script assumes that the barcode is only found in R1."
+    echo "    If there are also barcodes in R2, use '--more_args --both-barcodes'"
+    echo
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 --R1 data/A_R1.fastq.gz --R2 data/A_R2.fastq.gz --barcode_file barcodes.tsv -o results/sabre"
     echo
@@ -77,17 +82,19 @@ R2=""                       # Will be inferred from the R1 filename
 R1=""
 barcode_file=""
 outdir=""
+more_args=""
 
 # Parse command-line args
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -f | --R1 )             shift && R1=$1 ;;
-        -r | --R2 )             shift && R2=$1 ;;
-        -b | --barcode-file )   shift && barcode_file=$1 ;;
-        -o | --outdir )         shift && outdir=$1 ;;
-        -h | --help )           Print_help; exit 0 ;;
-        * )                     Die "Invalid option $1" "$all_args" ;;
+        -f | --R1 )         shift && R1=$1 ;;
+        -r | --R2 )         shift && R2=$1 ;;
+        --barcode_file )    shift && barcode_file=$1 ;;
+        --more_args )       shift && more_args=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        -h | --help )       Print_help; exit 0 ;;
+        * )                 Die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
@@ -164,7 +171,7 @@ sabre pe \
     --barcode-file "$barcode_file" \
     --unknown-output1 "$R1_unassigned_out" \
     --unknown-output2 "$R2_unassigned_out" \
-    --both-barcodes
+    $more_args
 
 #? --both-barcodes, Optional flag that indicates that both fastq files have barcodes.
 
