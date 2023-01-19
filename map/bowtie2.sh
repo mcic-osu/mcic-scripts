@@ -269,7 +269,7 @@ bowtie2 \
     -1 "$R1_list" \
     -2 "$R2_list" \
     $more_args |
-    samtools view -@"$threads" -Sb -o "$bam"
+    samtools view -@"$threads" --bam --output "$bam"
 
 #? Parameter settings from https://github.com/trinityrnaseq/trinityrnaseq/wiki/RNA-Seq-Read-Representation-by-Trinity-Assembly
 
