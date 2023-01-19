@@ -1,46 +1,51 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=5:00:00
-#SBATCH --cpus-per-task=8
-#SBATCH --job-name=snippy
-#SBATCH --output=slurm-snippy-%j.out
+#SBATCH --time=1:00:00
+#SBATCH --cpus-per-task=12
+#SBATCH --mem=4G
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --job-name=prokka
+#SBATCH --output=slurm-prokka-%j.out
 
-# FUNCTIONS --------------------------------------------------------------------
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
 # Help function
-print_help() {
+Print_help() {
     echo
     echo "======================================================================"
-    echo                         "$0"
-    echo     "Run snippy-multi to align FASTQ files for multiple samples"
-    echo "                to a reference genome and find SNPs"
+    echo "                            $0"
+    echo "         ANNOTATE A PROKARYOTIC GENOME ASSEMBLY WITH PROKKA"
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 -i <input-table> -r <reference> -o <output-dir> [...]"
+    echo "  sbatch $0 -i <assembly-FASTA> -o <output-dir> [...]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile     <file>  Input TSV with paths to FASTQ files"
-    echo "                          Should have 3 columns (no header): genome ID, forward reads FASTQ, reverse reads FASTQ"
-    echo "  -r/--ref        <file>  Input reference genome FASTA or Genbank file"
+    echo "  -i/--assembly   <file>  Input genome assembly FASTA file"
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to TODO_THIS_SOFTWARE"
+    echo "  --genus         <str>   Genus name of the focal organism"
+    echo "  --species       <str>   Quoted string with additional argument(s) to pass to Prokka"
+    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to Prokka"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
     echo "  --debug                 Run the script in debug mode (print all code)"
     echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for TODO_THIS_SOFTWARE and exit"
-    echo "  -v/--version            Print the version of TODO_THIS_SOFTWARE and exit"
+    echo "  --help                  Print the help for Prokka and exit"
+    echo "  -v/--version            Print the version of Prokka and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i snippy-input.tsv -r results/assembly/genome.fa -o results/snippy"
+    echo "  sbatch $0 -i results/spades/assembly.fasta -o results/prokka"
     echo
-    echo "DOCUMENTATION:"
-    echo "  - Repo/documentation:   https://github.com/tseemann/snippy"
+    echo "SOFTWARE DOCUMENTATION:"
+    echo "  - Docs: https://github.com/tseemann/prokka"
+    echo "  - Paper: https://pubmed.ncbi.nlm.nih.gov/24642063/"
     echo
 }
 
@@ -49,7 +54,7 @@ Load_software() {
     set +u
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /fs/project/PAS0471/jelmer/conda/snippy-4.6.0
+    source activate /fs/project/PAS0471/jelmer/conda/prokka-1.14.6
     set -u
 }
 
@@ -57,14 +62,14 @@ Load_software() {
 Print_version() {
     set +e
     Load_software
-    snippy --version
+    #TODO_THIS_SOFTWARE --version
     set -e
 }
 
 # Print help for the focal program
 Print_help_program() {
     Load_software
-    snippy-multi --help
+    #TODO_THIS_SOFTWARE --help
 }
 
 # Print SLURM job resource usage info
@@ -141,6 +146,7 @@ Die() {
 # ==============================================================================
 # Option defaults
 debug=false
+dryrun=false && e=""
 slurm=true
 
 
@@ -148,27 +154,31 @@ slurm=true
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Placeholder defaults
-input_table=""
-ref=""
+assembly=""
 outdir=""
+genus="" && species_arg=""
+species="" && genus_arg=""
 more_args=""
 
 # Parse command-line args
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --input_table )    shift && input_table=$1 ;;
-        -r | --ref )            shift && ref=$1 ;;
-        -o | --outdir )         shift && outdir=$1 ;;
-        --more_args )           shift && more_args=$1 ;;
-        -v | --version )        Print_version; exit 0 ;;
-        -h )                    Print_help; exit 0 ;;
-        --help )                Print_help_program; exit 0;;
-        --debug )               debug=true ;;
-        * )                     Die "Invalid option $1" "$all_args" ;;
+        -i | --assembly )   shift && assembly=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        --genus )           shift && genus=$1 ;;
+        --species )         shift && species=$1 ;;
+        --more_args )       shift && more_args=$1 ;;
+        -v | --version )    Print_version; exit 0 ;;
+        -h )                Print_help; exit 0 ;;
+        --help )            Print_help_program; exit 0;;
+        --dryrun )          dryrun=true && e="echo ";;
+        --debug )           debug=true ;;
+        * )                 Die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
+
 
 # ==============================================================================
 #                          OTHER SETUP
@@ -183,36 +193,40 @@ done
 set -euo pipefail
 
 # Load software and set nr of threads
-Load_software
+[[ "$dryrun" = false ]] && Load_software
 Set_threads
 
-# Check input
-[[ "$input_table" = "" ]] && Die "Please specify an input table with -i/--input_table" "$all_args"
-[[ "$ref" = "" ]] && Die "Please specify an reference genome file -r/--ref" "$all_args"
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
-[[ ! -f "$input_table" ]] && Die "Input file $input_table does not exist"
-[[ ! -f "$ref" ]] && Die "Input file $ref does not exist"
+# Get the sample ID
+file_ext=$(basename "$assembly" | sed -E 's/.*(.fasta|.fa|.fna)$/\1/')
+sampleID=$(basename "$assembly" "$file_ext")
 
-# Make path to reference absolute
-[[ ! "$ref" =~ ^/ ]] && ref="$PWD"/"$ref"
+# Build the 'genus' and 'species' name arguments
+[[ "$genus" != "" ]] && genus_arg="--genus $genus"
+[[ "$species" != "" ]] && species_arg="--species $species"
+
+# Check input
+[[ "$assembly" = "" ]] && Die "Please specify an input file with -i/--assembly" "$all_args"
+[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
+[[ ! -f "$assembly" ]] && Die "Input file $assembly does not exist"
 
 # Report
 echo
 echo "=========================================================================="
-echo "                    STARTING SCRIPT TODO_SCRIPTNAME"
+echo "                    STARTING SCRIPT PROKKA.SH"
 date
 echo "=========================================================================="
-echo "All arguments to this script:         $all_args"
-echo "Input TSV with paths to FASTQ files:  $input_table"
-echo "Reference genome file:                $ref"
-echo "Output dir:                           $outdir"
-[[ $more_args != "" ]] && echo "Other arguments for Snippy:           $more_args"
-echo "Number of threads/cores:              $threads"
+echo "All arguments to this script:     $all_args"
+echo "Input assembly file:              $assembly"
+echo "Output dir:                       $outdir"
+echo "Genus:                            $genus"
+echo "Species:                          $species"
+echo "Sample ID:                        $sampleID"
+[[ $more_args != "" ]] && echo "Other arguments for Prokka:       $more_args"
+echo "Number of threads/cores:          $threads"
 echo
-echo "# Listing the input file(s):"
-ls -lh "$input_table" "$ref"
-echo "# Showing the contents of the input table file:"
-cat -n "$input_table"
+echo "Listing the input file(s):"
+ls -lh "$assembly"
+[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
 # Print reserved resources
@@ -224,35 +238,41 @@ echo "==========================================================================
 # ==============================================================================
 # Create the output directory
 echo -e "\n# Creating the output directories..."
-mkdir -pv "$outdir"/logs
+${e}mkdir -pv "$outdir"/logs
 
-echo -e "\n# Generating Snippy commands with snippy-multi..."
-Time snippy-multi \
-    "$input_table" \
-    --ref "$ref" \
-    --cpus "$threads" \
-    > "$outdir"/runme.sh
+# Run
+echo -e "\n# Now running Prokka..."
+${e}Time prokka \
+    --outdir "$outdir" \
+    --prefix "$sampleID" \
+    --cpus "$threads"  \
+    --force \
+    $genus_arg \
+    $species_arg \
+    $more_args \
+    "$infile"
 
-#? use `--prefix` option?
+#? --strain
+#? --usegenus  ?
+#? --addgenes
 
-echo -e "\n# Showing contents of the generated runme.sh file:"
-cat -n "$outdir"/runme.sh
-
-echo -e "\n# Now running Snippy..."
-cd "$outdir" || exit 1
-Time bash runme.sh
-
+## Remove DNA sequences from GFF file
+echo -e "\n# Now creating a copy of the GFF file without sequences..."
+${e}mv -v "$outdir"/"$sampleID".gff "$outdir"/"$sampleID"_withseqs.gff
+${e}sed '/^##FASTA/Q' "$outdir"/"$sampleID"_withseqs.gff > "$outdir"/"$sampleID".gff
 
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
 echo
 echo "========================================================================="
-echo "# Version used:"
-Print_version | tee "$outdir"/logs/version.txt
-echo -e "\n# Listing files in the output dir:"
-ls -lhd "$PWD"/*
-[[ "$slurm" = true ]] && Resource_usage
+if [[ "$dryrun" = false ]]; then
+    echo "# Version used:"
+    Print_version | tee "$outdir"/logs/version.txt
+    echo -e "\n# Listing files in the output dir:"
+    ls -lhd "$PWD"/"$outdir"/"$sampleID"*
+    [[ "$slurm" = true ]] && Resource_usage
+fi
 echo "# Done with script"
 date
 echo
