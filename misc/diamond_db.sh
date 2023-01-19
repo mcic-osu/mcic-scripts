@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=2:00:00
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=16G
+#SBATCH --time=3:00:00
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=40G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --job-name=diamond_db
@@ -180,14 +180,14 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-# Bash script settings
-set -euo pipefail
-
 # In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
 # Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
+
+# Bash script settings
+set -euo pipefail
 
 # Load software and set nr of threads
 [[ "$dryrun" = false ]] && Load_software
@@ -199,7 +199,8 @@ Set_threads
 [[ ! -f "$infile" ]] && Die "Input file $infile does not exist"
 
 # Define the output file name
-outfile="$outdir"/"$(basename "$infile")".dmnd
+infile_base=$(basename "$infile")
+outfile="$outdir"/${infile_base%.*}.dmnd
 
 # Report
 echo
@@ -211,7 +212,7 @@ echo "All arguments to this script:     $all_args"
 echo "Input file:                       $infile"
 echo "Output file:                      $outdir"
 echo "Number of threads/cores:          $threads"
-[[ $more_args != "" ]] && echo "Other arguments for DIAMOND:$more_args"
+[[ $more_args != "" ]] && echo "Other arguments for DIAMOND:      $more_args"
 echo "# Listing the input file(s):"
 ls -lh "$infile"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
@@ -225,11 +226,13 @@ echo "==========================================================================
 #                               RUN
 # ==============================================================================
 # Create the output directory
+echo -e "\n# Creating the output dirs..."
 ${e}mkdir -pv "$outdir"/logs
 
 # Run
-echo -e "\n# Now running diamond makedb..."
-${e}Time diamond makedb \
+echo -e "\n# Running DIAMOND makedb..."
+${e}Time \
+    diamond makedb \
         --threads "$threads" \
         --in "$infile" \
         --db "$outfile" \
@@ -244,8 +247,8 @@ echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
     echo "# Version used:"
     Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
+    echo -e "\n# Listing the output file:"
+    ls -lh "$outfile"
     [[ "$slurm" = true ]] && Resource_usage
 fi
 echo "# Done with script"
