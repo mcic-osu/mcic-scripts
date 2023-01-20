@@ -11,7 +11,7 @@
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-## Help function
+# Help function
 Print_help() {
     echo
     echo "======================================================================"
@@ -49,28 +49,27 @@ Print_help() {
     echo
 }
 
-## Print version
+# Print version
 Print_version() {
     set +e
     $GUPPY_BIN --version | head -1
     set -e
 }
 
-## Print help for the focal program
+# Print help for the focal program
 Print_help_program() {
     Load_software
     $GUPPY_BIN --help
 }
 
-## Print SLURM job resource usage info
+# Print SLURM job resource usage info
 Resource_usage() {
     echo
-    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
-        grep -Ev "ba|ex"
+    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
     echo
 }
 
-## Print SLURM job requested resources
+# Print SLURM job requested resources
 Print_resources() {
     set +u
     echo "# SLURM job information:"
@@ -86,7 +85,7 @@ Print_resources() {
     set -u
 }
 
-## Set the number of threads/CPUs
+# Set the number of threads/CPUs
 Set_threads() {
     set +u
     if [[ "$slurm" = true ]]; then
@@ -104,14 +103,14 @@ Set_threads() {
     set -u
 }
 
-## Resource usage information
+# Resource usage information
 Time() {
     /usr/bin/time -f \
         '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
         "$@"
 }   
 
-## Exit upon error with a message
+# Exit upon error with a message
 Die() {
     error_message=${1}
     error_args=${2-none}
@@ -135,15 +134,15 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-## Software
+# Software
 GUPPY_DIR=/fs/project/PAS0471/jelmer/software/guppy-6.4.2 # https://community.nanoporetech.com/downloads
 GUPPY_BIN="$GUPPY_DIR"/bin/guppy_basecaller
 module load cuda
 
-## Constants
+# Constants
 records_per_fastq=0
 
-## Option defaults
+# Option defaults
 min_qscore=9
 
 debug=false
@@ -154,14 +153,14 @@ slurm=true
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-## Placeholder defaults
+# Placeholder defaults
 infile=""
 outdir=""
 config=""
 barcode_kit="" && barcode_arg=""
 more_args=""
 
-## Parse command-line args
+# Parse command-line args
 all_args="$*"
 
 while [ "$1" != "" ]; do
@@ -186,33 +185,33 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-## Bash script settings
-set -euo pipefail
-
-## In debugging mode, print all commands
+# In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
-## Check if this is a SLURM job
+# Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Set nr of threads
+# Bash script settings
+set -euo pipefail
+
+# Set nr of threads
 Set_threads
 
-## Build input arg
+# Build input arg
 indir=$(dirname "$infile")
 infile_base=$(basename "$infile")
 fofn="$outdir"/tmp/"$infile_base".fofn
 infile_arg="--input_file_list $fofn"
 
-## Build barcode arg
+# Build barcode arg
 [[ $barcode_kit != "" ]] && barcode_arg="--barcode_kits $barcode_kit --trim_barcodes"
 
-## Check input
+# Check input
 [[ "$infile" = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
 [[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
 [[ ! -f "$infile" ]] && Die "Input file $infile does not exist"
 
-## Report
+# Report
 echo
 echo "=========================================================================="
 echo "                    STARTING SCRIPT GUPPY_GPU.SH"
@@ -232,20 +231,20 @@ ls -lh "$infile"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
-## Print reserved resources
+# Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
 
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-## Create the output directory if it doesn't already exist
+# Create the output directory if it doesn't already exist
 ${e}mkdir -p "$outdir"/tmp "$outdir"/logs
 
-## Create fofn
+# Create fofn
 echo "$infile_base" > "$fofn"
 
-## Run Guppy
+# Run Guppy
 echo "Now running Guppy..."
 ${e}Time $GUPPY_BIN \
     --input_path "$indir" \
@@ -263,7 +262,7 @@ ${e}Time $GUPPY_BIN \
 
 #? To print config names for flowcell + kit combs:
 #> guppy_basecaller --print_workflows
-## For kit LSK109 and flowcell FLO-MIN106, this is dna_r9.4.1_450bps_hac
+# For kit LSK109 and flowcell FLO-MIN106, this is dna_r9.4.1_450bps_hac
 
 
 # ==============================================================================

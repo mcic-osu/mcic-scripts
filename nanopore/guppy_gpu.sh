@@ -76,8 +76,7 @@ Print_help_program() {
 # Print SLURM job resource usage info
 Resource_usage() {
     echo
-    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
-        grep -Ev "ba|ex"
+    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
     echo
 }
 
@@ -194,14 +193,14 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-# Bash script settings
-set -euo pipefail
-
 # In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
 # Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
+
+# Bash script settings
+set -euo pipefail
 
 # Set nr of threads
 Set_threads
