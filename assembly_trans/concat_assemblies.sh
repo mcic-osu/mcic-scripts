@@ -12,7 +12,7 @@
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-## Help function
+# Help function
 Print_help() {
     echo
     echo "======================================================================"
@@ -41,7 +41,7 @@ Print_help() {
     echo
 }
 
-## Exit upon error with a message
+# Exit upon error with a message
 Die() {
     error_message=${1}
     error_args=${2-none}
@@ -65,7 +65,7 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-## Option defaults
+# Option defaults
 debug=false
 dryrun=false
 
@@ -73,14 +73,13 @@ dryrun=false
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-## Placeholder defaults
+# Placeholder defaults
 declare -a assemblies
-outdir=""
+outfile=""
 
-## Parse command-line args
+# Parse command-line args
 all_args="$*"
 count=0
-
 while [ "$1" != "" ]; do
     case "$1" in
         -o | --outfile )    shift && outfile=$1 ;;
@@ -88,7 +87,7 @@ while [ "$1" != "" ]; do
         -h | --help )       Print_help; exit 0 ;;
         --dryrun )          dryrun=true ;;
         --debug )           debug=true ;;
-        * )                 assemblies[$count]=$1 && count=$(( count + 1 )) ;;
+        * )                 assemblies[count]=$1 && count=$((count + 1)) ;;
     esac
     shift
 done
@@ -97,20 +96,20 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-## In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
-
-## Bash script settings
+# Bash script settings
 set -euo pipefail
 
-## Find the output dir
+# In debugging mode, print all commands
+[[ "$debug" = true ]] && set -o xtrace
+
+# Find the output dir
 outdir=$(dirname "$outfile")
 
-## Check input
-[[ ${#assemblies[@]} = 0 ]] && Die "Please specify one or more input assemblies" "$all_args"
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
+# Check the input
+[[ "$outfile" = "" ]] && Die "Please specify an output file with -o/--outfile" "$all_args"
+[[ ${#assemblies[@]} -eq 0 ]] && Die "Please specify one or more input assemblies" "$all_args"
 
-## Report
+# Report
 echo
 echo "=========================================================================="
 echo "               STARTING SCRIPT CONCAT_ASSEMBLIES.SH"
@@ -118,8 +117,9 @@ date
 echo "=========================================================================="
 echo "All arguments to this script:     $all_args"
 echo "Output file:                      $outfile"
+echo "Nr of input assemblies:           ${#assemblies[@]}"
 echo
-echo "Listing the input assemblies:"
+echo "# Listing the input assemblies:"
 for assembly in "${assemblies[@]}"; do
     [[ ! -f $assembly ]] && Die "Input assembly $assembly does not exist!"
     ls -lh "$assembly"
@@ -131,17 +131,19 @@ echo "==========================================================================
 #                               WRAP-UP
 # ==============================================================================
 if [[ "$dryrun" = false ]]; then
+    # Create the output dir
+    echo -e "\n# Creating the output directories..."
+    mkdir -pv "$outdir"/logs
 
-    ## Create the output dir
-    mkdir -p "$outdir"/logs
-
+    # Create an empty files, overwrite if exists
     true > "$outfile"
 
+    # Concatenate all assemblies & include an assembly ID in the contig name
+    echo -e "\n# Concatenating the assemblies..."
     for assembly in "${assemblies[@]}"; do
         asm_id=$(basename "$assembly" .fasta)
         sed "s/>/>${asm_id}_/" "$assembly" >> "$outfile"
     done
-
 fi
 
 
@@ -151,7 +153,7 @@ fi
 echo
 echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
-    echo -e "\n# Listing files in the output dir:"
+    echo "# Listing the output file:"
     ls -lhd "$PWD"/"$outfile"
 fi
 echo "# Done with script"
