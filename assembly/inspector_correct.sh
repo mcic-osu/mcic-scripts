@@ -205,6 +205,9 @@ Set_threads
 # Determine output dir
 outdir=$(dirname "$assembly_out")
 
+# Make output assembly path absolute
+[[ ! "$assembly_out" =~ ^/ ]] && assembly_out="$PWD"/"$assembly_out"
+
 # Build other args
 [[ "$base_error" = true ]] && base_error_arg=""
 
