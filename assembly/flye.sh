@@ -12,7 +12,7 @@
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-## Help function
+# Help function
 Print_help() {
     echo
     echo "======================================================================"
@@ -25,8 +25,11 @@ Print_help() {
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infiles    <file>  Input FASTQ file(s)"
-    echo "  -o/--outfile    <file>  Output assembly FASTA file (extension '.fa' or '.fasta')"
+    echo "  -o/--outfile    <str>   Output assembly FASTA file (use extension '.fa' or '.fasta')"
+    echo "To specify the input, use one of the two following options:"
+    echo "  -i/--reads      <file>  An input FASTQ file"
+    echo "                          Or optionally multiple files, quoted and space-separated"
+    echo "  --fofn          <file>  Text file with list of input FASTQ files one per line (fofn)"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --genome-size   <str>   Genome size estimate, e.g '4.6m' or '1g'    [default: no estimate]"
@@ -48,32 +51,32 @@ Print_help() {
     echo
 }
 
-## Load software
+# Load software
 Load_software() {
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /fs/project/PAS0471/jelmer/conda/flye-2.9.1
 }
 
-## Print version
+# Print version
 Print_version() {
     Load_software
     flye --version
 }
 
-## Print help for the focal program
+# Print help for the focal program
 Print_help_program() {
     Load_software
     flye --help
 }
 
-## Print SLURM job resource usage info
+# Print SLURM job resource usage info
 Resource_usage() {
     ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
         grep -Ev "ba|ex"
 }
 
-## Print SLURM job requested resources
+# Print SLURM job requested resources
 Print_resources() {
     set +u
     echo "# SLURM job information:"
@@ -89,7 +92,7 @@ Print_resources() {
     set -u
 }
 
-## Set the number of threads/CPUs
+# Set the number of threads/CPUs
 Set_threads() {
     set +u
     if [[ "$slurm" = true ]]; then
@@ -107,14 +110,14 @@ Set_threads() {
     set -u
 }
 
-## Resource usage information
+# Resource usage information
 Time() {
     /usr/bin/time -f \
         '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
         "$@"
 }   
 
-## Exit upon error with a message
+# Exit upon error with a message
 Die() {
     error_message=${1}
     error_args=${2-none}
@@ -138,7 +141,7 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-## Option defaults
+# Option defaults
 iterations=1
 resume=false && resume_arg=""
 
@@ -150,7 +153,7 @@ slurm=true
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-## Placeholder defaults
+# Placeholder defaults
 declare -a infiles
 fofn=""
 outfile=""
@@ -158,13 +161,13 @@ more_args=""
 genome_size="" && genome_size_arg=""
 more_args=""
 
-## Parse command-line args
+# Parse command-line args
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infiles )    shift && IFS=" " read -r -a infiles <<< "$1" ;;
-        -I | --fofn )       shift && fofn=$1 ;;
-        -o | --outfile )    shift && outfile=$1 ;;
+        -i | --reads )      shift && IFS=" " read -r -a infiles <<< "$1" ;;
+        --fofn )            shift && fofn=$1 ;;
+        -o | --assembly )   shift && outfile=$1 ;;
         --genome-size )     shift && genome_size=$1 ;;
         --iterations )      shift && iterations=$1 ;;
         --resume )          resume=true ;;
@@ -183,34 +186,34 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-## In debugging mode, print all commands
+# In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
-## Check if this is a SLURM job
+# Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Load software and set nr of threads
+# Bash script settings
+set -euo pipefail
+
+# Load software and set nr of threads
 [[ "$dryrun" = false ]] && Load_software
 Set_threads
 
-## Bash script settings
-set -euo pipefail
+# Check input
+[[ ${#infiles[@]} = 0 && "$fofn" = "" ]] && Die "Please specify input files with -i/--reads or --reads_fofn" "$all_args"
+[[ "$outfile" = "" ]] && Die "Please specify an output file with -o/--assembly" "$all_args"
 
-## Check input
-[[ ${#infiles[@]} = 0 && "$fofn" = "" ]] && Die "Please specify input files with -i or -I" "$all_args"
-[[ $outfile = "" ]] && Die "Please specify an output prefix with -o" "$all_args"
-
-## Define output dir
+# Define output dir
 outdir=$(dirname "$outfile")
 
-## Build other args
+# Build other args
 [[ "$genome_size" != "" ]] && genome_size_arg="--genome-size $genome_size"
 [[ "$resume" = true ]] && resume_arg="--resume"
 
-## If a FOFN was provided, read file list into an array
+# If a FOFN was provided, read file list into an array
 [[ "$fofn" != "" ]] && mapfile -t infiles <"$fofn"
 
-## Report
+# Report
 echo
 echo "=========================================================================="
 echo "               STARTING SCRIPT FLYE.SH"
@@ -219,15 +222,14 @@ echo "==========================================================================
 echo "All arguments to this script:     $all_args"
 echo
 [[ "$fofn" != "" ]] && echo "File with list of FASTQs (fofn):      $fofn"
-echo "Input files:                          ${infiles[*]}"
+echo "Input files with reads:               ${infiles[*]}"
 echo "Number of input files:                ${#infiles[*]}"
-echo "Output file:                          $outfile"
+echo "Output assembly file:                 $outfile"
 echo "Genome size:                          $genome_size"
 echo "Nr of polishing iterations:           $iterations"
 echo "Resume previous run:                  $resume"
 [[ $more_args != "" ]] && echo "Other arguments for Flye:             $more_args"
-echo
-echo "Listing the input files:"
+echo "# Listing the input files:"
 for infile in "${infiles[@]}"; do
     [[ ! -f $infile ]] && Die "Input file $infile does not exist!"
     ls -lh "$infile"
@@ -235,7 +237,7 @@ done
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
-## Print reserved resources
+# Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
 
 
@@ -243,11 +245,11 @@ echo "==========================================================================
 #                               RUN
 # ==============================================================================
 if [[ "$dryrun" = false ]]; then
-    
-    ## Create the output directory
-    mkdir -p "$outdir"/logs
+    # Create the output directory
+    echo -e "\n# Creating the output directories..."
+    mkdir -pv "$outdir"/logs
 
-    echo -e "\n# Now running Flye..."
+    echo -e "\n# Running Flye..."
     Time flye \
         --nano-raw "${infiles[@]}" \
         --out-dir "$outdir" \
@@ -257,7 +259,7 @@ if [[ "$dryrun" = false ]]; then
         $genome_size_arg \
         $more_args
 
-    ## Copy assembly FASTA
+    # Copy assembly FASTA
     echo -e "\n# Copying the assembly FASTA file:"
     cp -v "$outdir"/assembly.fasta "$outfile"
 fi
