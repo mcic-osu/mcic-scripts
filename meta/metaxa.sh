@@ -1,9 +1,9 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=8:00:00
-#SBATCH --mem=32G
-#SBATCH --cpus-per-task=8
+#SBATCH --time=32:00:00
+#SBATCH --mem=40G
+#SBATCH --cpus-per-task=10
 #SBATCH --job-name=metataxa
 #SBATCH --output=slurm-metaxa-%j.out
 
@@ -256,9 +256,9 @@ echo
 echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
     echo "# Version used:"
-    Print_version | tee "$outdir_full"/logs/version.txt
+    Print_version | tee logs/version.txt
     echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
+    ls -lhd "$PWD"/*
     echo
     [[ "$slurm" = true ]] && Resource_usage
     echo
