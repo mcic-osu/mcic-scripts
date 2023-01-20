@@ -25,11 +25,11 @@ Print_help() {
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  Note: Either -i/--R1, -I/--indir, or -f/--fofn has to be be used to specify the input"
-    echo "  -i/--R1         <file>  Input R1 (forward) FASTQ file (the name of the R2 file will be inferred)"
-    echo "  -I/--indir      <dir>   Dir with gzipped FASTQ files"
-    echo "  -f/--fofn       <file>  File of file names (fofn): one line per input R1 FASTQ file"
-    echo "  -o/--outdir     <dir>   Output directory"
+    echo "  -o/--outfile    <file>  Output assembly FASTA file"
+    echo "Either -i/--R1, -I/--indir, or -f/--fofn has to be be used to specify the input:"
+    echo "  --R1            <file>  Input R1 (forward) FASTQ file (the name of the R2 file will be inferred)"
+    echo "  --indir         <dir>   Dir with gzipped FASTQ files"
+    echo "  --fofn          <file>  File of file names (fofn): one line per input R1 FASTQ file"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --mode          <str>   Spades run mode                             [default: default Spades]"
@@ -39,12 +39,12 @@ Print_help() {
     echo "                          Options: 'rf'/'reverse', 'fr'/'forward', or 'unstranded'"
     echo "  --careful               Run in 'careful' mode (small genomes only)  [default: don't run in careful mode]"
     echo "  --continue              Resume an interrupted run                   [default: start anew]"
-    echo "  --use_scratch_tmpdir    Instead of '$TMPDIR', use the OSC project scratch dir as the temporary directory"
-    echo "                          Sometimes the 1TB on the '$TMPDIR' is not enough..."
+    echo "  --use_node_tmpdir       Instead of the OSC scratch temp dir '$PFSDIR', use the node temp dir '$TMPDIR'"
+    echo "                          This is for Spades' '--tmp-dir' argument."
+    echo "                          However, note that sometimes, there isn't enough space on the '$TMPDIR'..."
     echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to Spades"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
     echo "  --debug                 Run the script in debug mode (print all code)"
     echo "  -h                      Print this help message and exit"
     echo "  --help                  Print the help for Spades and exit"
@@ -60,15 +60,19 @@ Print_help() {
 
 # Load software
 Load_software() {
+    set +u
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /fs/ess/PAS0471/jelmer/conda/spades-3.15.5
+    set -u
 }
 
 # Print version
 Print_version() {
+    set +e
     Load_software
     spades.py --version
+    set -e
 }
 
 # Print help for the focal program
@@ -149,22 +153,19 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-# Constants
+# Constants - only used in SLURM jobs
 # In some cases, spades needs more than the alotted 1TB in $TMPDIR
-proj=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
-SCRATCH_TMPDIR=/fs/scratch/"$proj"/spades/"$RANDOM"
-TMPDIR_FINAL="$TMPDIR"
+SCRATCH_TMPDIR="$PFSDIR"
+NODE_TMPDIR="$TMPDIR"
 
 # Option defaults
-use_scratch_tmpdir=false
+use_node_tmpdir=false
 kmer_size="auto" && kmer_arg=""
 careful=false && careful_arg=""
 continue=false
 strandedness="rf"       # Only applies for mode 'rna'
-
 mem=4                   # Only applies when not running a SLURM job
 debug="false"
-dryrun="false" && e=""
 slurm=true
 
 
@@ -173,8 +174,9 @@ slurm=true
 # ==============================================================================
 # Placeholder defaults
 R1=""
+indir=""
 fofn=""
-outdir=""
+outfile=""
 mode=""
 mode_arg=""
 tmpdir_arg=""
@@ -183,24 +185,22 @@ more_args=""
 
 # Parse command-line args
 all_args="$*"
-
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --R1 )             shift && R1=$1 ;;
         -I | --indir )          shift && indir=$1 ;;
         -f | --fofn )           shift && fofn=$1 ;;
-        -o | --outdir )         shift && outdir=$1 ;;
+        -o | --outfile )        shift && outfile=$1 ;;
         --kmer_size )           shift && kmer_size=$1 ;;
         --ss | --strandedness)  shift && strandedness=$1 ;;
         --mode )                shift && mode=$1 ;;
         --careful )             careful=true ;;
         --continue )            continue=true ;;
-        --use_scratch_tmpdir )  use_scratch_tmpdir=true ;;  
+        --use_node_tmpdir )     use_node_tmpdir=true ;;  
         --more_args )           shift && more_args=$1 ;;
         -v | --version )        Print_version; exit 0 ;;
         -h )                    Print_help; exit 0 ;;
         --help )                Print_help_program; exit 0;;
-        --dryrun )              dryrun=true && e="echo ";;
         --debug )               debug=true ;;
         * )                     Die "Invalid option $1" "$all_args" ;;
     esac
@@ -217,20 +217,28 @@ done
 # Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-# Load software and set nr of threads
-[[ "$dryrun" = false ]] && Load_software
-Set_threads
-
 # Bash script settings
 set -euo pipefail
+
+# Load software and set nr of threads
+Load_software
+Set_threads
+
+# Infer outdir
+outdir=$(dirname "$outfile")
 
 # Additional variables
 if [[ "$slurm" = true ]]; then
     # Memory - convert MB memory to GB (and subtract 1)
-    mem=$(( (SLURM_MEM_PER_NODE / 1000) - 1))
+    #mem=$(( (SLURM_MEM_PER_NODE / 1000) - 1))
+    mem=$(( (SLURM_MEM_PER_NODE / 1000) + 1500)) #! Testing this, following https://github.com/ablab/spades/issues/494
     
     # Determine what to use as the temporary directory
-    [[ "$use_scratch_tmpdir" = true ]] && TMPDIR_FINAL="$SCRATCH_TMPDIR"
+    if [[ "$use_node_tmpdir" = true ]]; then
+        TMPDIR_FINAL="$NODE_TMPDIR"
+    else
+        TMPDIR_FINAL="$SCRATCH_TMPDIR"
+    fi
     tmpdir_arg="--tmp-dir=$TMPDIR_FINAL"
 fi
 
@@ -258,27 +266,18 @@ if [[ "$R1" != "" ]]; then
     R1_suffix=$(basename "$R1" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
     R2_suffix=${R1_suffix/1/2}
     R2=${R1/$R1_suffix/$R2_suffix}
+    infile_arg="--pe1-1 $R1 --pe1-2 $R2"
+
     [[ "$R1" = "$R2" ]] && Die "Input file R1 and R2 are the same: $R1"
     [[ ! -f "$R2" ]] && Die "Input file R2 ($R2) does not exist"
-
-    infile_arg="--pe1-1 $R1 --pe1-2 $R2"
 else
     yaml="$outdir"/input_filenames.yml
     infile_arg="--dataset $yaml"
 fi
 
-# Create the output directory
-${e}mkdir -p "$outdir"/logs
-
-# If an input dir was provided, create a FOFN
-if [[ "$indir" != "" ]]; then
-    fofn="$outdir"/input_filenames.txt
-    ls "$indir"/*_R1*q.gz > "$fofn"
-fi
-
 # Check input
 [[ "$R1" = "" ]] && [[ "$indir" = "" ]] && [[ "$fofn" = "" ]] && Die "Please specify either an R1 input file with -i, an input dir with -I, or an input FOFN with -f"
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o"
+[[ "$outfile" = "" ]] && Die "Please provide an output file with -o/--outfile"
 [[ "$R1" != "" ]] && [[ ! -f "$R1" ]] && Die "Input file R1 $R1 does note exist"
 [[ "$fofn" != "" ]] && [[ ! -f "$fofn" ]] && Die "Input FOFN $fofn does note exist"
 
@@ -289,25 +288,35 @@ echo "                   STARTING SCRIPT SPADES.SH"
 date
 echo "=========================================================================="
 echo "All arguments to this script:     $all_args"
-[[ "$R1" != "" ]] && echo "Input FASTQ file - R1:            $R1"
-echo "Output dir:                       $outdir"
-[[ "$mode" != "" ]] && echo "Running mode:                     $mode"
-[[ "$mode" = rna ]] && echo "Strandedness / strand argument:   $strandedness / $strand_arg"
+echo "Output assembly file:             $outfile"
 echo "Kmer size(s):                     $kmer_size"
 echo "Using 'careful' setting:          $careful"
 echo "Continuing a previous run:        $continue"
-[[ $more_args != "" ]] && echo "Other arguments for Spades:       $more_args"
 echo "Number of threads/cores:          $threads"
 echo "Memory in GB:                     $mem"
+[[ "$R1" != "" ]] && echo "Input FASTQ file - R1:            $R1"
+[[ "$mode" = rna ]] && echo "Strandedness / strand argument:   $strandedness / $strand_arg"
+[[ "$mode" != "" ]] && echo "Running mode:                     $mode"
+[[ $more_args != "" ]] && echo "Other arguments for Spades:       $more_args"
 [[ $tmpdir_arg != "" ]] && echo "Temp dir argument:                $tmpdir_arg"
-echo
 [[ "$R1" != "" ]] && echo "Input FASTQ file - R2:            $R2"
+
+# Create the output directory
+mkdir -p "$outdir"/logs
+
+# If an input dir was provided, create a FOFN
+if [[ "$indir" != "" ]]; then
+    echo -e "\nPreparing a FOFN from files in the input dir..."
+    fofn="$outdir"/input_filenames.txt
+    ls "$indir"/*_R1*q.gz > "$fofn"
+fi
+
+# Report part 2
 echo "Input file argument:              $infile_arg"
-echo
+echo "Number of input files:            $(grep -c "." "$fofn")"
 echo "Listing the input file(s):"
 [[ "$R1" != "" ]] && ls -lh "$R1" "$R2"
-[[ "$fofn" != "" ]] && cat -n "$fofn"
-[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
+[[ "$fofn" != "" ]] && cat "$fofn" | xargs -I{} ls -lh {}
 echo "=========================================================================="
 
 # Print reserved resources
@@ -318,6 +327,7 @@ echo "==========================================================================
 #                               PREPARE YAML
 # ==============================================================================
 if [[ "$fofn" != "" ]]; then
+    echo -e "\n # Now creating the input YAML file..."
 
 # Create template file
     cat > "$yaml".tmp1 <<'_EOF'
@@ -345,11 +355,12 @@ _EOF
     awk -v r="$R1" '{gsub(/R1_reads/,r)}1' "$yaml".tmp1 > "$yaml".tmp2
     awk -v r="$R2" '{gsub(/R2_reads/,r)}1' "$yaml".tmp2 > "$yaml"
 
-    # Remove temporay files
+    # Remove temporary files
     rm "$yaml".tmp1 "$yaml".tmp2 "$yaml".modlist
 
-    echo -e "\n # Printing the contents of the input YAML file:\n"
+    echo -e "\n # Printing the contents of the input YAML file:"
     cat "$yaml"
+    echo "=========================================================================="
 fi
 
 
@@ -358,28 +369,27 @@ fi
 # ==============================================================================
 # Run Spades
 if [ "$continue" = false ]; then
-
-    echo "# Now running SPAdes..."
-    [[ "$dryrun" = false ]] && set -o xtrace
-
-    ${e}Time spades.py \
+    echo -e "\n# Running SPAdes..."
+    Time spades.py \
         $infile_arg \
         -o "$outdir" \
-        -t "$threads" \
-        -m "$mem" \
+        --threads "$threads" \
+        --memory "$mem" \
         ${kmer_arg} \
         ${mode_arg} \
         ${strand_arg} \
         ${careful_arg} \
         ${tmpdir_arg} \
         ${more_args}
-
-    [[ "$debug" = false ]] && set +o xtrace
 else
-
-    echo "# Now resuming a previous SPAdes run..."
-    spades.py -o "$outdir" --continue
+    echo -e "\n# Resuming a previous SPAdes run..."
+    Time spades.py \
+        -o "$outdir" \
+        --continue
 fi
+
+echo -e "\n# Copying the SPAdes output assembly"
+cp -v "$outdir"/transcripts.fasta "$outfile"
 
 
 # ==============================================================================
@@ -387,12 +397,10 @@ fi
 # ==============================================================================
 echo
 echo "========================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
-    [[ "$slurm" = true ]] && Resource_usage
-fi
+echo "# Version used:"
+Print_version | tee "$outdir"/logs/version.txt
+echo -e "\n# Listing the output assembly file:"
+ls -lh "$PWD"/"$outfile"
+[[ "$slurm" = true ]] && Resource_usage
 echo "# Done with script"
 date
