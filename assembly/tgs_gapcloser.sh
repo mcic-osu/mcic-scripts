@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=12:00:00
+#SBATCH --time=120:00:00
 #SBATCH --partition=largemem
 #SBATCH --cpus-per-task=20
-#SBATCH --mem=370G
+#SBATCH --mem=740G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --job-name=tgs_gapcloser
@@ -28,7 +28,7 @@ Print_help() {
     echo "REQUIRED OPTIONS:"
     echo "  --assembly      <file>  Input assembly FASTA file"
     echo "  --reads         <file>  Input long-read FASTA file (Note: should be in FASTA, not FASTQ, format)"
-    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
+    echo "  -o/--outfile    <file>  Output assembly FASTA file (dir will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to tgs-gapcloser"
@@ -54,6 +54,9 @@ Load_software() {
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /fs/ess/PAS0471/jelmer/conda/tgsgapcloser
+
+    RACON=/fs/ess/PAS0471/jelmer/conda/racon-1.5.0/bin/racon
+    
     set -u
 }
 
@@ -143,9 +146,6 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-# Constants
-RACON=/fs/ess/PAS0471/jelmer/conda/racon-1.5.0/bin/racon
-
 # Option defaults
 debug=false
 dryrun=false && e=""
@@ -156,7 +156,7 @@ slurm=true
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Placeholder defaults
-outdir=""
+outfile=""
 assembly=""
 reads=""
 more_args=""
@@ -165,7 +165,7 @@ more_args=""
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -o | --outdir )     shift && outdir=$1 ;;
+        -o | --outfile )    shift && outfile=$1 ;;
         --assembly )        shift && assembly=$1 ;;
         --reads )           shift && reads=$1 ;;
         --more_args )       shift && more_args=$1 ;;
@@ -199,19 +199,21 @@ Set_threads
 # Check input
 [[ "$assembly" = "" ]] && Die "Please specify an input assembly file with --assembly" "$all_args"
 [[ "$reads" = "" ]] && Die "Please specify an input reads file with --reads" "$all_args"
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
+[[ "$outfile" = "" ]] && Die "Please specify an output file with -o/--outfile" "$all_args"
 [[ ! -f "$assembly" ]] && Die "Input file $assembly does not exist"
 [[ ! -f "$reads" ]] && Die "Input file $reads does not exist"
 
 # Make paths absolute
 [[ ! "$assembly" =~ ^/ ]] && assembly="$PWD"/"$assembly"
 [[ ! "$reads" =~ ^/ ]] && reads="$PWD"/"$reads"
-[[ ! "$outdir" =~ ^/ ]] && outdir="$PWD"/"$outdir"
+[[ ! "$outfile" =~ ^/ ]] && outdir="$PWD"/"$outfile"
+
+# Get the output dir
+outdir=$(dirname "$outfile")
 
 # Get genome ID
-file_ext=$(basename "$assembly" | sed -E 's/.*(.fasta|.fa|.fna)$/\1/')
-assembly_id=$(basename "$assembly" "$file_ext")
-out_prefix="$assembly_id"
+file_ext=$(basename "$outfile" | sed -E 's/.*(.fasta|.fa|.fna)$/\1/')
+out_prefix=$(basename "$outfile" "$file_ext")
 
 # Report
 echo
@@ -222,8 +224,7 @@ echo "==========================================================================
 echo "All arguments to this script:     $all_args"
 echo "Input assembly FASTA:             $assembly"
 echo "Input long reads FASTA:           $reads"
-echo "Output dir:                       $outdir"
-echo "Output prefix:                    $out_prefix"
+echo "Output assembly file:             $outfile"
 [[ $more_args != "" ]] && echo "Other arguments for tgs-gapcloser:   $more_args"
 echo "Number of threads/cores:          $threads"
 echo
@@ -256,6 +257,9 @@ ${e}Time tgsgapcloser \
     --thread "$threads" \
     $more_args
 
+# Run
+echo -e "\n# Now copying the final output file..."
+cp -v "$out_prefix".scaff.seqs "$outfile"
 
 # ==============================================================================
 #                               WRAP-UP
@@ -265,8 +269,8 @@ echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
     echo "# Version used:"
     Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/*
+    echo -e "\n# Listing the output assembly:"
+    ls -lh "$outfile"
     [[ "$slurm" = true ]] && Resource_usage
 fi
 echo "# Done with script"
