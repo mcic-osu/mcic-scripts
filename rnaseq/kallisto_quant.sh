@@ -261,11 +261,6 @@ ${e}Time kallisto quant \
     $strand_arg \
     "$R1" "$R2"
 
-## Rename output
-echo -e "\n# Moving and renaming the main output files..."
-mv -v "$outdir"/"$sample_id"/abundance.h5 "$outdir"/"$sample_id"_abundance.h5
-mv -v "$outdir"/"$sample_id"/abundance.tsv "$outdir"/"$sample_id"_abundance.tsv
-
 
 # ==============================================================================
 #                               WRAP-UP

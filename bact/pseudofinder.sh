@@ -1,14 +1,13 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=24:00:00
-#SBATCH --mem=48G
-#SBATCH --cpus-per-task=12
+#SBATCH --time=3:00:00
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=64G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --job-name=detonate
-#SBATCH --output=slurm-detonate-%j.out
-
+#SBATCH --job-name=pseudofinder
+#SBATCH --output=slurm-pseudofinder-%j.out
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -18,36 +17,36 @@ Print_help() {
     echo
     echo "======================================================================"
     echo "                            $0"
-    echo "      Run Bowtie2 to map FASTQ reads to a transcriptome assembly"
+    echo "       IDENTIFY PSEUDOGENES IN BACTERIAL GENOMES WITH PSEUDOFINDER"
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 -i <input assembly> [ --fq_dir <dir> --fq_fofn <fofn> ] -o <output BAM> [...]"
+    echo "  sbatch $0 -i <input file> -o <output dir> [...]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--assembly   <file>  Input transcriptome assembly FASTA file"
-    echo "  --fq_dir <dir> OR --fq_fofn <file>  Input dir or FOFN (File Of File Names) with FASTQ files"
-    echo "  -o/--bam        <file>  Output BAM file"
+    echo "  -i/--assembly   <file>  Input Genbank (.gbk extension) assembly + annotation"
+    echo "                          This should preferably be Prokka output, see the PseudoFinder docs."
+    echo "  --db            <prefix> Dir + prefix (i.e. no file extensions) for the Blast or Diamond DB"
+    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to Bowtie2"
+    echo "  --ref           <file>  Reference genome FASTA file"
+    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to PseudoFinder"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
     echo "  --debug                 Run the script in debug mode (print all code)"
     echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for Bowtie2 and exit"
-    echo "  -v/--version            Print the version of Bowtie2 and exit"
+    echo "  --help                  Print the help for PseudoFinder and exit"
+    echo "  -v/--version            Print the version of PseudoFinder and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i results/assembly.fa --fq_dir data/fastq/ -o results/bowtie2"
-    echo
-    echo "HARDCODED PARAMETERS:"
-    echo "  - The script assumes that the FASTQ reads are paired-end"
+    echo "  sbatch $0 -i results/prokka/assembly.gbk -o results/pseudofinder --db dbs/nr"
     echo
     echo "SOFTWARE DOCUMENTATION:"
-    echo "  - Docs: https://bowtie-bio.sourceforge.net/bowtie2/index.shtml"
+    echo "  - Docs: https://github.com/filip-husnik/pseudofinder/wiki"
+    echo "  - Paper: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9336565/"
     echo
 }
 
@@ -56,20 +55,24 @@ Load_software() {
     set +u
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /fs/ess/PAS0471/jelmer/conda/bowtie2-2.5.0 # Also includes samtools
+    source activate /fs/ess/PAS0471/jelmer/conda/pseudofinder
     set -u
 }
 
 # Print version
 Print_version() {
+    set +e
     Load_software
-    bowtie2 --version
+    pseudofinder.py version
+    set -e
 }
 
 # Print help for the focal program
 Print_help_program() {
     Load_software
-    bowtie2 --help
+    pseudofinder help
+    echo
+    pseudofinder.py annotate --help
 }
 
 # Print SLURM job resource usage info
@@ -86,8 +89,8 @@ Print_resources() {
     echo "Account (project):    $SLURM_JOB_ACCOUNT"
     echo "Job ID:               $SLURM_JOB_ID"
     echo "Job name:             $SLURM_JOB_NAME"
-    echo "Memory (per node):    $SLURM_MEM_PER_NODE"
-    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
+    echo "Memory (MB per node): $SLURM_MEM_PER_NODE"
+    echo "CPUs (per task):      $SLURM_CPUS_PER_TASK"
     [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
     [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
     echo "======================================================================"
@@ -155,21 +158,20 @@ slurm=true
 # ==============================================================================
 # Placeholder defaults
 assembly=""
-fq_dir=""
-fq_fofn=""
-bam=""
+outdir=""
+db=""
+ref="" && ref_arg=""
 more_args=""
 
 # Parse command-line args
 all_args="$*"
-
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --assembly )   shift && assembly=$1 ;;
-        --fq_dir )          shift && fq_dir=$1 ;;
-        --fq_fofn )         shift && fq_fofn=$1 ;;
-        -o | --bam )        shift && bam=$1 ;;
-        --more-args )       shift && more_args=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        --db )              shift && db=$1 ;;
+        --ref )             shift && ref=$1 ;;
+        --more_args )       shift && more_args=$1 ;;
         -v | --version )    Print_version; exit 0 ;;
         -h )                Print_help; exit 0 ;;
         --help )            Print_help_program; exit 0;;
@@ -179,6 +181,7 @@ while [ "$1" != "" ]; do
     esac
     shift
 done
+
 
 # ==============================================================================
 #                          OTHER SETUP
@@ -196,50 +199,38 @@ set -euo pipefail
 [[ "$dryrun" = false ]] && Load_software
 Set_threads
 
-# Other parameters
-outdir=$(dirname "$bam")
-file_ext=$(basename "$assembly" | sed -E 's/.*(.fasta|.fa|.fna)$/\1/')
-assembly_id="$outdir"/$(basename "$assembly" "$file_ext")
-
-# Create lists with input files
-if [[ "$fq_dir" != "" ]]; then
-    [[ ! -d "$fq_dir" ]] && Die "Input FASTQ dir $fq_dir does not exist"
-    R1_list=$(echo "$fq_dir"/*R1*fastq.gz | sed 's/ /,/g')
-    R2_list=$(echo "$fq_dir"/*R2*fastq.gz | sed 's/ /,/g')
-elif [[ "$fq_fofn" != "" ]]; then
-    [[ ! -f "$fq_fofn" ]] && Die "Input FOFN $fq_fofn does not exist"
-    R1_list=$(grep "_R1" "$fq_fofn" | tr "\n" "," | sed 's/,$/\n/')
-    R2_list=$(grep "_R2" "$fq_fofn" | tr "\n" "," | sed 's/,$/\n/')
-else
-    Die "Please specify FASTQ input with --fq_dir or --fq_fofn"
-fi
-
-# Input files
-[[ "$fq_fofn" != "" ]] && mapfile -t fq_files <"$fq_fofn"
-[[ "$fq_dir" != "" ]] && mapfile -t fq_files < <(find "$fq_dir" -type f -name "*fastq.gz")
-
 # Check input
-[[ "$assembly" = "" ]] && Die "Please specify an input assembly with -i/--assembly"
-[[ "$bam" = "" ]] && Die "Please specify an output BAM file with -o/--bam"
-[[ ! -f "$assembly" ]] && Die "Input assembly file $assembly does not exist"
+[[ "$assembly" = "" ]] && Die "Please specify an input file with -i/--assembly" "$all_args"
+[[ "$db" = "" ]] && Die "Please specify a BLAST/DIAMOND database with --db" "$all_args"
+[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
+[[ ! -f "$assembly" ]] && Die "Input file $assembly does not exist"
+
+# Make DB path absolute
+[[ ! "$db" =~ ^/ ]] && db="$PWD"/"$db"
+
+# Determine the output prefix
+out_prefix="$outdir"/$(basename "$assembly" .gbk)
+
+# Reference arg
+[[ "$ref" != "" ]] && ref_arg="--reference $ref"
 
 # Report
 echo
 echo "=========================================================================="
-echo "                    STARTING SCRIPT BOWTIE2.SH"
+echo "                    STARTING SCRIPT PSEUDOFINDER.SH"
 date
 echo "=========================================================================="
 echo "All arguments to this script:     $all_args"
 echo "Input assembly:                   $assembly"
-echo "Input FASTQ dir:                  $fq_dir"
-echo "Output BAM file:                  $bam"
-[[ $more_args != "" ]] && echo "Other arguments for Bowtie:     $more_args"
+echo "Path to database:                 $db"
+echo "Output dir:                       $outdir"
+echo "Output prefix:                    $out_prefix"
+[[ $ref != "" ]] && echo "Reference genome:                 $ref"
+[[ $more_args != "" ]] && echo "Other arguments for Pseudofinder: $more_args"
 echo "Number of threads/cores:          $threads"
 echo
-echo "List of R1 files:                 $R1_list"
-echo "List of R2 files:                 $R2_list"
-echo "Listing the input FASTQ file(s):"
-ls -lh "${fq_files[@]}"
+echo "Listing the input file(s):"
+ls -lh "$assembly"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
@@ -251,28 +242,25 @@ echo "==========================================================================
 #                               RUN
 # ==============================================================================
 # Create the output directory
-${e}mkdir -p "$outdir"/logs
+echo -e "\n# Creating the output directories..."
+${e}mkdir -pv "$outdir"/logs
 
-echo -e "\nIndexing the transcriptome..."
-bowtie2-build \
-    --threads "$threads" \
-    "$assembly" \
-    "$outdir"/"$assembly_id"
+# Run
+echo -e "\n# Now running Pseudofinder..."
+${e}Time \
+    pseudofinder.py annotate \
+        --genome "$assembly" \
+        --outprefix "$out_prefix" \
+        --database "$db" \
+        --diamond \
+        --threads "$threads" \
+        $ref_arg \
+        $more_args
 
-# MAP READS --------------------------------------------------------------------
-echo -e "\n# Starting Bowtie2 mapping..."
-bowtie2 \
-    -p "$threads" \
-    --no-unal \
-    -k 20 \
-    -x "$outdir"/"$assembly_id" \
-    -1 "$R1_list" \
-    -2 "$R2_list" \
-    $more_args |
-    samtools view -@"$threads" --bam --output "$bam"
-
-#? Parameter settings from https://github.com/trinityrnaseq/trinityrnaseq/wiki/RNA-Seq-Read-Representation-by-Trinity-Assembly
-
+#  -ref REFERENCE, --reference REFERENCE
+#                        Please provide a reference genome if you would like for the program to carry out
+#                        maximum-likelihood phylogenentic analysis using PAML, and calculate dN/dS values for each 
+#                        identified ORF in your query genome.
 
 # ==============================================================================
 #                               WRAP-UP
@@ -288,4 +276,4 @@ if [[ "$dryrun" = false ]]; then
 fi
 echo "# Done with script"
 date
-
+echo

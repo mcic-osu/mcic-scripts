@@ -12,7 +12,7 @@
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-## Help function
+# Help function
 Print_help() {
     echo
     echo "======================================================================"
@@ -21,13 +21,15 @@ Print_help() {
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 -o <output file> [ -o <input dir> / [BAM-file-1 BAM-file-2 ...]]"
+    echo "  sbatch $0 -o <output file> [ -i <input dir> / --fofn <FOFN> [BAM-file-1 BAM-file-2 ...]]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -o/--outfile    <dir>   Output BAM file"
-    echo "  -i/--indir      <dir>   Input dir with BAM files (all BAM files in the dir will be used)"
-    echo "                          Specify the input either with an input dir or BAM files as positional arguments"
+    echo "Specify the input using one of the following methods:"
+    echo "  A) -i/--indir   <dir>   Input dir with BAM files (all BAM files in the dir will be used)"
+    echo "  B) --fofn       <file>  File Of File Names (FOFN) with the input BAM files"
+    echo "  C) Specify BAM files as positional arguments at the end of the command"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
@@ -39,6 +41,8 @@ Print_help() {
     echo "EXAMPLE COMMANDS:"
     echo "  Using an input dir:"
     echo "    sbatch $0 -o results/merged.bam -i results/mapped"
+    echo "  Using an FOFN:"
+    echo "    sbatch $0 -o results/merged.bam --fofn bam_list.txt"
     echo "  Using BAM files as positional arguments:"
     echo "    sbatch $0 -o results/merged.bam results/mapped/A.bam results/mapped/B.bam results/mapped/C.bam"
     echo
@@ -48,36 +52,35 @@ Print_help() {
     echo
 }
 
-## Load software
+# Load software
 Load_software() {
     set +u
     module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /fs/ess/PAS0471/jelmer/conda/samtools
     set -u
 }
 
-## Print version
+# Print version
 Print_version() {
     Load_software
     samtools --version | head -n 2
 }
 
-## Print help for the focal program
+# Print help for the focal program
 Print_help_program() {
     Load_software
     samtools --help
 }
 
-## Print SLURM job resource usage info
+# Print SLURM job resource usage info
 Resource_usage() {
     echo
-    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
-        grep -Ev "ba|ex"
+    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
     echo
 }
 
-## Print SLURM job requested resources
+# Print SLURM job requested resources
 Print_resources() {
     set +u
     echo "# SLURM job information:"
@@ -93,7 +96,7 @@ Print_resources() {
     set -u
 }
 
-## Set the number of threads/CPUs
+# Set the number of threads/CPUs
 Set_threads() {
     set +u
     if [[ "$slurm" = true ]]; then
@@ -111,14 +114,14 @@ Set_threads() {
     set -u
 }
 
-## Resource usage information
+# Resource usage information
 Time() {
     /usr/bin/time -f \
         '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
         "$@"
 }   
 
-## Exit upon error with a message
+# Exit upon error with a message
 Die() {
     error_message=${1}
     error_args=${2-none}
@@ -142,7 +145,7 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-## Option defaults
+# Option defaults
 debug=false
 dryrun=false && e=""
 slurm=true
@@ -151,26 +154,27 @@ slurm=true
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-## Placeholder defaults
-declare -a bams
-outdir=""
+# Placeholder defaults
+declare -a infiles
 indir=""
+fofn=""
+outdir=""
 tmpdir_arg=""
 
-## Parse command-line args
+# Parse command-line args
 all_args="$*"
 count=0
-
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --indir )      shift && indir=$1 ;;
+        --fofn )            shift && fofn=$1 ;;
         -o | --outfile )    shift && outfile=$1 ;;
         -v | --version )    Print_version; exit 0 ;;
         -h )                Print_help; exit 0 ;;
         --help )            Print_help_program; exit 0;;
         --dryrun )          dryrun=true && e="echo ";;
         --debug )           debug=true ;;
-        * )                 bams[$count]=$1 && count=$(( count + 1 )) ;;
+        * )                 infiles[count]=$1 && count=$(( count + 1 )) ;;
     esac
     shift
 done
@@ -179,34 +183,36 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-## In debugging mode, print all commands
+# In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
-## Check if this is a SLURM job
+# Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Load software and set nr of threads
+# Bash script settings
+set -euo pipefail
+
+# Load software and set nr of threads
 [[ "$dryrun" = false ]] && Load_software
 Set_threads
 
-## Bash script settings
-set -euo pipefail
-
-## Determine file name for unsorted BAM file
+# Determine file name for unsorted BAM file
 outdir=$(dirname "$outfile")
 
-## Check input
+# Read BAM files into an array if an input dir is provided
+[[ "$indir" != "" ]] && mapfile -t infiles < <(find "$indir" -type f -name "*bam")
+[[ "$fofn" != "" ]] && mapfile -t infiles <"$fofn"
+
+# Check input
 [[ "$outfile" = "" ]] && Die "Please specify an output file with -o/--outfile" "$all_args"
-[[ "$indir" = "" && ${#bams[@]} = 0 ]] && Die "Please specify either an input dir with -i/--indir, or BAM files as positional args" "$all_args"
-[[ "$indir" != "" && ! -d "$indir" ]] && Die "Input file $indir does not exist"
+[[ "$indir" = "" && ${#infiles[@]} = 0 ]] && Die "Please specify input either using an input dir
+    (-i/--indir), a FOFN (--fofn), or BAM files as positional args" "$all_args"
+[[ "$indir" != "" && ! -d "$indir" ]] && Die "Input dir $indir does not exist"
 
-## Read BAM files into an array if an input dir is provided
-[[ "$indir" != "" ]] && mapfile -t bams < <(find "$indir" -type f -name "*bam")
-
-## Set temporary directory if this is a SLURM job
+# Set temporary directory if this is a SLURM job
 [[ "$slurm" = true ]] && tmpdir_arg="-T $TMPDIR"
 
-## Report
+# Report
 echo
 echo "=========================================================================="
 echo "                    STARTING SCRIPT MERGE_BAM.SH"
@@ -215,27 +221,28 @@ echo "==========================================================================
 echo "All arguments to this script:     $all_args"
 echo "Output BAM file:                  $outfile"
 echo "Number of threads/cores:          $threads"
-echo "Number of input BAM files:        ${#bams[@]}"
+echo "Number of input BAM files:        ${#infiles[@]}"
 echo
 echo "Listing the input BAM files:"
-for bam in "${bams[@]}"; do ls -lh "$bam"; done
+for bam in "${infiles[@]}"; do ls -lh "$bam"; done
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
-## Print reserved resources
+# Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
 
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-## Create the output directory
-${e}mkdir -p "$outdir"/logs
+# Create the output directory
+echo -e "\n# Creating the output directories..."
+${e}mkdir -pv "$outdir"/logs
 
-echo "## Now running samtools..."
+echo -e "\n# Now running samtools..."
 ${e}Time samtools merge \
     -o - \
-    "${bams[@]}" |
+    "${infiles[@]}" |
     samtools sort \
         -@ "$threads" \
         -m 4G \
