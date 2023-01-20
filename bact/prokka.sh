@@ -62,14 +62,14 @@ Load_software() {
 Print_version() {
     set +e
     Load_software
-    #TODO_THIS_SOFTWARE --version
+    prokka --version
     set -e
 }
 
 # Print help for the focal program
 Print_help_program() {
     Load_software
-    #TODO_THIS_SOFTWARE --help
+    prokka --help
 }
 
 # Print SLURM job resource usage info
@@ -250,7 +250,7 @@ ${e}Time prokka \
     $genus_arg \
     $species_arg \
     $more_args \
-    "$infile"
+    "$assembly"
 
 #? --strain
 #? --usegenus  ?
