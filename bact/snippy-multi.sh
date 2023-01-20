@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=5:00:00
+#SBATCH --time=3:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --job-name=snippy
 #SBATCH --output=slurm-snippy-%j.out
@@ -27,14 +27,14 @@ print_help() {
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to TODO_THIS_SOFTWARE"
+    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to snippy-multi"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
     echo "  --debug                 Run the script in debug mode (print all code)"
     echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for TODO_THIS_SOFTWARE and exit"
-    echo "  -v/--version            Print the version of TODO_THIS_SOFTWARE and exit"
+    echo "  --help                  Print the help for snippy-multi and exit"
+    echo "  -v/--version            Print the version of Snippy and exit"
     echo
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 -i snippy-input.tsv -r results/assembly/genome.fa -o results/snippy"
@@ -199,7 +199,7 @@ Set_threads
 # Report
 echo
 echo "=========================================================================="
-echo "                    STARTING SCRIPT TODO_SCRIPTNAME"
+echo "                    STARTING SCRIPT SNIPPY-MULTI.SH"
 date
 echo "=========================================================================="
 echo "All arguments to this script:         $all_args"
@@ -211,6 +211,7 @@ echo "Number of threads/cores:              $threads"
 echo
 echo "# Listing the input file(s):"
 ls -lh "$input_table" "$ref"
+echo
 echo "# Showing the contents of the input table file:"
 cat -n "$input_table"
 echo "=========================================================================="
@@ -231,9 +232,9 @@ Time snippy-multi \
     "$input_table" \
     --ref "$ref" \
     --cpus "$threads" \
+    --force \
+    $more_args \
     > "$outdir"/runme.sh
-
-#? use `--prefix` option?
 
 echo -e "\n# Showing contents of the generated runme.sh file:"
 cat -n "$outdir"/runme.sh
