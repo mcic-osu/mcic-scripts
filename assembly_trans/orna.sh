@@ -237,12 +237,17 @@ date
 echo "=========================================================================="
 echo "All arguments to this script:     $all_args"
 echo "Output dir:                       $outdir"
-[[ "$fofn" != "" ]] && echo "FOFN:                             $fofn"
 [[ $sorting_mode != "" ]] && echo "Sorting mode:                     $sorting_mode"
 [[ $sorting_arg != "" ]] && echo "Sorting mode argument:            $sorting_arg"
 echo "Sample ID:                        $sampleID"
 echo "Number of threads/cores:          $threads"
 [[ $more_args != "" ]] && echo "Other arguments for Orna:         $more_args"
+if [[ "$fofn" != "" ]]; then
+    echo "FOFN:                             $fofn"
+    echo "Number of input files:            $(grep -c . "$fofn")"
+    echo "# Listing the input files:"
+    cat "$fofn" | xargs -I{} ls -lh {}
+fi
 echo "=========================================================================="
 
 # Print reserved resources
@@ -253,13 +258,13 @@ echo "==========================================================================
 #                               RUN
 # ==============================================================================
 # Create output dir if needed
-mkdir -pv "$outdir"/logs
+mkdir -p "$outdir"/logs
 
 # Concatenate FASTQ files if a FOFN was provided
 if [[ "$fofn" != "" ]]; then
     echo -e "\n# Now concatenating the FASTQ files..."
-    R1_in="$outdir"/"$sampleID"_R1.gz
-    R2_in="$outdir"/"$sampleID"_R2.gz
+    R1_in="$outdir"/"$sampleID"_R1_concat.fastq.gz
+    R2_in="$outdir"/"$sampleID"_R2_concat.fastq.gz
     grep "_R1" "$fofn" | xargs -I{} cat {} > "$R1_in"
     grep "_R2" "$fofn" | xargs -I{} cat {} > "$R2_in"
 fi
@@ -292,15 +297,20 @@ Time ORNA \
 
 # Rename and gzip output files
 echo -e "\n# Compressing the output FASTQ files..."
-gzip -cv "$sampleID"_1.fq > "$sampleID"_R1.fastq.gz && rm -v "$sampleID"_1.fq
-gzip -cv "$sampleID"_2.fq > "$sampleID"_R2.fastq.gz && rm -v "$sampleID"_2.fq
-rm -v "$sampleID"*h5
+gzip -cv "$sampleID"_1.fq > "$sampleID"_R1.fastq.gz && rm "$sampleID"_1.fq
+gzip -cv "$sampleID"_2.fq > "$sampleID"_R2.fastq.gz && rm "$sampleID"_2.fq
+rm "$sampleID"*h5
 
 # Counting nr of reads in the in- and output files
-echo "-e \n# Counting the nr of reads in the in- and output files..."
+echo -e "\n# Counting the nr of reads in the in- and output files..."
 nreads_in=$(zcat "$R1_in" | awk '{s++}END{print s/4}')
 nreads_out=$(zcat "$sampleID"_R1.fastq.gz | awk '{s++}END{print s/4}')
 echo "# Nr of reads in input: $nreads_in / nr of reads in output: $nreads_out"
+
+# Removing the concatenated input files
+echo -e "\n# Removing the concatenated input files..."
+rm -v "$R1_in" "$R2_in"
+
 
 # ==============================================================================
 #                               WRAP-UP
