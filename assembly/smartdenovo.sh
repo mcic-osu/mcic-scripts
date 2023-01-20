@@ -24,15 +24,15 @@ function Print_help() {
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  (Choose one of the input file options: -i or -I)"
-    echo "  -i/--infiles    <file>  An input FASTQ file"
+    echo "  -o/--outfile    <str>   Output assembly FASTA file (use extension '.fa' or '.fasta')"
+    echo "To specify the input, use one of the two following options:"
+    echo "  -i/--reads      <file>  An input FASTQ file"
     echo "                          Or optionally multiple files, quoted and space-separated"
-    echo "  -I/--fofn       <file>  Text file with list of input FASTQ files one per line (fofn)"
-    echo "  -o/--outfile    <str>   Output assembly FASTA file (extension '.fa' or '.fasta')"
+    echo "  --fofn          <file>  Text file with list of input FASTQ files one per line (fofn)"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --readlen       <int>   Minimum read length, shorter reads will be removed     [default: 5000]"
-    echo "  --more-args     <str>   Other argument(s) to pass to SmartDenovo"
+    echo "  --more_args     <str>   Other argument(s) to pass to SmartDenovo"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
@@ -152,11 +152,11 @@ more_args=""
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infiles )        shift && IFS=" " read -r -a infiles <<< "$1" ;;
+        -i | --reads )          shift && IFS=" " read -r -a infiles <<< "$1" ;;
         -I | --fofn )           shift && fofn=$1 ;;
-        -o | --outfile )        shift && outfile=$1 ;;
+        -o | --assembly )       shift && outfile=$1 ;;
         --readlen )             shift && min_readlen=$1 ;;
-        --more-args )           shift && more_args=$1 ;;
+        --more_args )           shift && more_args=$1 ;;
         -h )                    Print_help; exit 0;;
         --help )                Print_help_program; exit 0;;
         --dryrun )              dryrun=true && e="echo ";;
