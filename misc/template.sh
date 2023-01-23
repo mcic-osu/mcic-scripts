@@ -133,6 +133,7 @@ Die() {
     
     echo >&2
     echo "=====================================================================" >&2
+    date
     printf "$0: ERROR: %s\n" "$error_message" >&2
     echo -e "\nFor help, run this script with the '-h' option" >&2
     echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
