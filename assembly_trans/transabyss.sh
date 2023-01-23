@@ -27,7 +27,6 @@ Print_help() {
     echo "REQUIRED OPTIONS:"
     echo "  -i/--indir <dir> OR --fofn <dir>  Input dir OR a FOFN (File Of File Names)"
     echo "  -o/--outfile        <file>  Output assembly FASTA file"
-    echo "  --id                <str>   Assembly ID (output filename prefix)"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --kmer_size         <int>   Kmer size"
@@ -169,7 +168,6 @@ indir=""
 fofn=""
 declare -a infiles
 outfile=""
-assembly_id=""
 more_args=""
 
 # Parse command-line args
@@ -179,7 +177,6 @@ while [ "$1" != "" ]; do
         -i | --indir )          shift && indir=$1 ;;
         --fofn )                shift && fofn=$1 ;;
         -o | --outfile )        shift && outfile=$1 ;;
-        --id )                  shift && assembly_id=$1 ;;
         --strandedness )        shift && strandedness=$1 ;;
         --kmer_size )           shift && kmer_size=$1 ;;
         --min_contig_length )   shift && min_contig_length=$1 ;;
@@ -211,8 +208,10 @@ set -euo pipefail
 [[ "$dryrun" = false ]] && Load_software
 Set_threads
 
-# Infer outdir
+# Infer outdir and assembly ID
 outdir=$(dirname "$outfile")
+outfile_name=$(basename "$outfile")
+assembly_id=${outfile_name%.*}
 
 # Get the input files
 [[ "$fofn" != "" ]] && mapfile -t infiles <"$fofn"
@@ -225,7 +224,6 @@ fi
 
 # Check input
 [[ "$outfile" = "" ]] && Die "Please provide an output file with -o/--outfile"
-[[ "$assembly_id" = "" ]] && Die "Please provide an assembly ID with --id"
 [[ "$fofn" = "" && "$indir" = "" ]] && Die "Please provide input with -i/--indir or --fofn"
 
 # Report
@@ -238,7 +236,6 @@ echo "All arguments to this script:     $all_args"
 [[ "$indir" != "" ]] && echo "Input dir:                        $indir"
 [[ "$fofn" != "" ]] && echo "FOFN:                             $fofn"
 echo "Output assembly file:             $outfile"
-echo "Assembly ID:                      $assembly_id"
 echo "Kmer size:                        $kmer_size"
 echo "Min contig length:                $min_contig_length"
 echo "Strandedness / strand argument:   $strandedness / $strand_arg"
@@ -275,6 +272,7 @@ ${e}Time transabyss \
 # Copy the assembly
 echo -e "\n# Copying the final assembly file..."
 ${e}cp -v "$outdir"/"$assembly_id"-final.fa "$outfile"
+
 
 # ==============================================================================
 #                               WRAP-UP
