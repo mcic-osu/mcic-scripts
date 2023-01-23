@@ -30,7 +30,7 @@ Print_help() {
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  -m/--mode       <string>    Mode, i.e. assembly type               [default: 'genome']"
-    echo "                              Valid options: 'genome', 'transcripttome', or 'proteins'"
+    echo "                              Valid options: 'genome', 'transcriptome', or 'proteins'"
     echo "  --more-args     <str>       Quoted string with additional argument(s) to pass to Busco"
     echo
     echo "UTILITY OPTIONS:"
