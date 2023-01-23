@@ -1,9 +1,9 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=3:00:00
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=50G
+#SBATCH --time=12:00:00
+#SBATCH --cpus-per-task=15
+#SBATCH --mem=60G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --job-name=evigene
@@ -12,12 +12,12 @@
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-## Help function
+# Help function
 Print_help() {
     echo
     echo "======================================================================"
     echo "                            $0"
-    echo "                  TODO FUNCTION OF THIS SCRIPT"
+    echo "             MERGE TRANSCRIPTOME ASSEMBLIES WITH EVIGENE"
     echo "======================================================================"
     echo
     echo "USAGE:"
@@ -27,12 +27,12 @@ Print_help() {
     echo "REQUIRED OPTIONS:"
     echo "  -i/--infile     <file>  FASTA file containing multiple, concatenated transcriptome assemblies"
     echo "                          NOTE: Concatenate multiple assemblies FASTAs into a single one prior to running this script."
-    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
-    echo "                          NOTE: Any files present in this dir will be removed prior to running EviGene!"
+    echo "  -o/--outfile     <dir>  Output assembly FASTA file"
+    echo "                          NOTE: The directory for this file should be empty!"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to Evigene"
     echo "  --min_cds       <int>   Minimum CDS length in bp                    [default: 350]"
+    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to Evigene"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
@@ -56,8 +56,7 @@ Print_help() {
     echo
 }
 
-
-## Load software
+# Load software
 Load_software() {
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
@@ -66,20 +65,20 @@ Load_software() {
     EVIGENE="$CONDA_ENV_DIR"/bin/prot/tr2aacds.pl
 }
 
-## Print help for the focal program
+# Print help for the focal program
 Print_help_program() {
     Load_software
     "$EVIGENE"
 }
 
-## Print SLURM job resource usage info
+# Print SLURM job resource usage info
 Resource_usage() {
     echo
     sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
     echo
 }
 
-## Print SLURM job requested resources
+# Print SLURM job requested resources
 Print_resources() {
     set +u
     echo "# SLURM job information:"
@@ -95,7 +94,7 @@ Print_resources() {
     set -u
 }
 
-## Set the number of threads/CPUs
+# Set the number of threads/CPUs
 Set_threads() {
     set +u
     if [[ "$slurm" = true ]]; then
@@ -113,14 +112,14 @@ Set_threads() {
     set -u
 }
 
-## Resource usage information
+# Resource usage information
 Time() {
     /usr/bin/time -f \
         '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
         "$@"
 }   
 
-## Exit upon error with a message
+# Exit upon error with a message
 Die() {
     error_message=${1}
     error_args=${2-none}
@@ -144,39 +143,34 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-## Define output files (note: this is within the $outdir, where we will cd to)
-ASSEMBLY_ALL=final/evigene_all.fasta
-ASSEMBLY_PRIMARY=final/evigene_primarytrans.fasta
-
-## Option defaults
+# Option defaults
 min_cds=350
 
 mem=4000               # In MB; only applies if not a Slurm job
 debug=false
-dryrun=false && e=""
+dryrun=false
 slurm=true
 
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-## Placeholder defaults
+# Placeholder defaults
 infile=""
-outdir=""
+outfile=""
 more_args=""
 
-## Parse command-line args
+# Parse command-line args
 all_args="$*"
-
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
+        -o | --outfile )    shift && outfile=$1 ;;
         --min_cds )         shift && min_cds=$1 ;;
-        --more-args )       shift && more_args=$1 ;;
+        --more_args )       shift && more_args=$1 ;;
         -h )                Print_help; exit 0 ;;
         --help )            Print_help_program; exit 0;;
-        --dryrun )          dryrun=true && e="echo ";;
+        --dryrun )          dryrun=true ;;
         --debug )           debug=true ;;
         * )                 Die "Invalid option $1" "$all_args" ;;
     esac
@@ -187,48 +181,54 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-## In debugging mode, print all commands
+# In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
-## Check if this is a SLURM job
+# Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Load software and set nr of threads
+# Load software and set nr of threads
 [[ "$dryrun" = false ]] && Load_software
 Set_threads
 [[ "$slurm" = true ]] && mem="$SLURM_MEM_PER_NODE"
 
-## Bash script settings
+# Bash script settings
 set -euo pipefail
 
-## Get the file ID
-file_ext=$(basename "$infile" | sed -E 's/.*(.fasta|.fa|.fna)$/\1/')
-file_id=$(basename "$infile" "$file_ext")
-
-## Check input
+# Check input
 [[ "$infile" = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
+[[ "$outfile" = "" ]] && Die "Please specify an output file with -o/--outfile" "$all_args"
 [[ ! -f "$infile" ]] && Die "Input file $infile does not exist"
 
-## Report
+# Infer outdir, get the file ID
+[[ ! "$outfile" =~ ^/ ]] && outfile="$PWD"/"$outfile"
+outdir=$(dirname "$outfile")
+file_ext=$(basename "$outfile" | sed -E 's/.*(.fasta|.fa|.fna)$/\1/')
+outfile_primary="$outdir"/$(basename "$outfile")_primarytrans"$file_ext"
+file_id=$(basename "$infile" "$file_ext") # Used by Evigene for original outfile names
+
+# Report
 echo
 echo "=========================================================================="
 echo "                    STARTING SCRIPT EVIGENE.SH"
 date
 echo "=========================================================================="
-echo "All arguments to this script:     $all_args"
-echo "Input file:                       $infile"
-echo "Output dir:                       $outdir"
-echo "Minimum CDS size:                 $min_cds"
-[[ $more_args != "" ]] && echo "Other arguments for Evigene:      $more_args"
-echo "Number of threads/cores:          $threads"
+echo "All arguments to this script:         $all_args"
+echo "Input file:                           $infile"
+echo "Output file (all transcripts):        $outfile"
+echo "Output file (primary transcripts):    $outfile_primary"
+echo "Minimum CDS size:                     $min_cds"
+[[ $more_args != "" ]] && echo "Other arguments for Evigene:          $more_args"
+echo "Number of threads/cores:              $threads"
 echo
-echo "Listing the input file(s):"
+echo "Number of sequences in the input file: $(grep -c "^>" "$infile")"
+echo
+echo "# Listing the input file(s):"
 ls -lh "$infile"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
-## Print reserved resources
+# Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
 
 
@@ -236,22 +236,21 @@ echo "==========================================================================
 #                               RUN
 # ==============================================================================
 if [[ "$dryrun" = false ]]; then
-    ## Remove output dir if it already exists (EviGene behaves weirdly when there are files present!)
-    [[ "$outdir" != "" && -d "$outdir" ]] && rm -r "${outdir:?}"
+    # Create the output directory
+    echo -e "\n# Copying the output directories..."
+    mkdir -pv "$outdir"/logs "$outdir"/final
 
-    ## Create the output directory
-    ${e}mkdir -p "$outdir"/logs "$outdir"/final
-
-    ## Copy input file to outdir
-    echo "## Copying input FASTA to output dir..."
+    # Copy input file to outdir
+    echo -e "\n# Copying the input FASTA to the output dir..."
     infile_base=$(basename "$infile")
     cp -v "$infile" "$outdir"
 
-    ## Move into the output dir
+    # Move into the output dir
     cd "$outdir" || exit
 
-    echo -e "\n## Now running Evigene..."
-    ${e}Time $EVIGENE \
+    # Run Evigene
+    echo -e "\n# Running Evigene..."
+    Time "$EVIGENE" \
         -mrnaseq "$infile_base" \
         -debug \
         -MINCDS "$min_cds" \
@@ -261,12 +260,13 @@ if [[ "$dryrun" = false ]]; then
         -tidyup \
         $more_args
 
-    ## Copy the final assembly file
-    cp -v okayset/"$file_id".okay.mrna "$ASSEMBLY_ALL"
+    # Copy the final assembly file
+    echo -e "\n# Copying the final assembly file..."
+    cp -v okayset/"$file_id".okay.mrna "$outfile"
 
-    ## Make a separate file with primary transcripts
-    awk -v RS='>' '/t1 type/ { print ">" $0 }' "$ASSEMBLY_ALL" > "$ASSEMBLY_PRIMARY"
-
+    # Make a separate file with primary transcripts
+    echo -e "\n# Creating a separate file with primary transcripts..."
+    awk -v RS='>' '/t1 type/ {print ">" $0}' "$outfile" > "$outfile_primary"
 fi
 
 
@@ -276,8 +276,8 @@ fi
 echo
 echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
-    echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/*
+    echo -e "\n# Listing the main output files:"
+    ls -lh "$outfile" "$outfile_primary"
     [[ "$slurm" = true ]] && Resource_usage
 fi
 echo "# Done with script"
