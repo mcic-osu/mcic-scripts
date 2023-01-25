@@ -233,7 +233,7 @@ Set_threads
 
 # Infer output dir and name of gene2transcript map
 outdir=$(dirname "$outfile")
-outfile_name=(basename "$outfile")
+outfile_name=$(basename "$outfile")
 gene2trans="$outdir"/${outfile_name%.*}.gene2trans
 
 # Create comma-delimited list of FASTQ files:
