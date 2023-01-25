@@ -1,9 +1,9 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=12:00:00
-#SBATCH --cpus-per-task=15
-#SBATCH --mem=60G
+#SBATCH --time=20:00:00
+#SBATCH --cpus-per-task=25
+#SBATCH --mem=100G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --job-name=evigene
@@ -204,7 +204,7 @@ set -euo pipefail
 [[ ! "$outfile" =~ ^/ ]] && outfile="$PWD"/"$outfile"
 outdir=$(dirname "$outfile")
 file_ext=$(basename "$outfile" | sed -E 's/.*(.fasta|.fa|.fna)$/\1/')
-outfile_primary="$outdir"/$(basename "$outfile")_primarytrans"$file_ext"
+outfile_primary="$outdir"/$(basename "$outfile" "$file_ext")_1trans"$file_ext"
 file_id=$(basename "$infile" "$file_ext") # Used by Evigene for original outfile names
 
 # Report
@@ -221,7 +221,7 @@ echo "Minimum CDS size:                     $min_cds"
 [[ $more_args != "" ]] && echo "Other arguments for Evigene:          $more_args"
 echo "Number of threads/cores:              $threads"
 echo
-echo "Number of sequences in the input file: $(grep -c "^>" "$infile")"
+echo "Nr sequences in the input file: $(grep -c "^>" "$infile")"
 echo
 echo "# Listing the input file(s):"
 ls -lh "$infile"
@@ -252,10 +252,10 @@ if [[ "$dryrun" = false ]]; then
     echo -e "\n# Running Evigene..."
     Time "$EVIGENE" \
         -mrnaseq "$infile_base" \
-        -debug \
         -MINCDS "$min_cds" \
         -NCPU "$threads" \
         -MAXMEM "$mem" \
+        -debug \
         -log \
         -tidyup \
         $more_args
@@ -267,6 +267,10 @@ if [[ "$dryrun" = false ]]; then
     # Make a separate file with primary transcripts
     echo -e "\n# Creating a separate file with primary transcripts..."
     awk -v RS='>' '/t1 type/ {print ">" $0}' "$outfile" > "$outfile_primary"
+
+    echo
+    echo "Nr sequences in the output file: $(grep -c "^>" "$outfile")"
+    echo "Nr sequences in the output file w/ primary transcripts: $(grep -c "^>" "$outfile_primary")"
 fi
 
 
