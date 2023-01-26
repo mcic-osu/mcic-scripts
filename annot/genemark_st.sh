@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=24:00:00
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=48G
+#SBATCH --time=48:00:00
+#SBATCH --cpus-per-task=3
+#SBATCH --mem=12G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --job-name=genemark
 #SBATCH --output=slurm-genemark-%j.out
+
+#! NOTE: I AM NOT SURE THIS SCRIPT/GENEMARK-ST WORKS AS INTENDED
+#!       IT SEEMS TO ALWAYS BE USING PROKARYOTE MODELS,
+#!       AND SOMETIMES OUTPUTS 2 PROTEINS FOR 1 TRANSCRIPT
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -36,7 +40,8 @@ Print_help() {
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
     echo "  --debug                 Run the script in debug mode (print all code)"
     echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for CodAn and exit"
+    echo "  --help                  Print the help for both the 'gmst' and 'gmhmmp' Genemark utilities, and exit"
+    echo "  -v/--version            Print the version of GeneMark-ST and exit"
     echo
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 -i results/trinity/trinity.fasta -o results/genemark/trinity.faa"
@@ -50,7 +55,7 @@ Print_help() {
 Load_software() {
     GMST=/fs/ess/PAS0471/jelmer/software/genemark-st/gmst.pl
     GMHMMP=/fs/ess/PAS0471/jelmer/software/genemark-st/gmhmmp
-    MODEL=/fs/ess/PAS0471/jelmer/software/genemark-st/MetaGeneMark_v1.mod
+    MODEL=/fs/ess/PAS0471/jelmer/software/genemark-st/GeneMark_hmm.mod
 }
 Load_seqkit() {
     set +u
@@ -58,6 +63,14 @@ Load_seqkit() {
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /fs/ess/PAS0471/jelmer/conda/seqkit
     set -u
+}
+
+# Print version
+Print_version() {
+    set +e
+    Load_software
+    $GMST --version
+    set -e
 }
 
 # Print help for the focal program
@@ -200,7 +213,7 @@ Set_threads
 [[ ! -f "$infile" ]] && Die "Input file $infile does not exist"
 
 # Make paths absolute
-[[ ! "$infile" =~ ^/ ]] && infile="$PWD"/"$infile"
+[[ ! "$infile" =~ ^/ ]] && infile=$(realpath "$infile")
 [[ ! "$outfile" =~ ^/ ]] && outfile="$PWD"/"$outfile"
 
 # Infer the output dir
@@ -210,7 +223,7 @@ outdir=$(dirname "$outfile")
 file_ext=$(basename "$outfile" | sed -E 's/.*(.fasta|.fa|.faa)$/\1/')
 outfile_id=$(basename "$outfile" "$file_ext")
 outfile_all="$outdir"/"$outfile_id"_all"$file_ext"
-infile_id=$(basename "$infile")
+infile_name=$(basename "$infile")
 
 # Report
 echo
@@ -245,27 +258,32 @@ ${e}mkdir -pv "$outdir"/logs
 cd "$outdir" || exit 1
 
 # Run gm-st
-echo -e "\n# Running CodAn..."
+echo -e "\n# Running gm-st..."
 ${e}Time "$GMST" \
     --faa \
     --fnn \
+    --filter 1 \
     $more_args \
     "$infile"
 
-#! Threads?
+# --faa & --fnn: produce protein and nucleotide output files
+# --filter 1: keep at most one prediction per genes (should be default but maybe not?)
 
 echo -e "\n# Running gmHMMp..."
 ${e}Time "$GMHMMP" \
     -p 0 \
     -b \
     -m "$MODEL" \
-    -A "$infile_id".faa \
-    -D "$infile_id".fnn \
-    -o "$infile_id".lst \
+    -A "$infile_name".faa \
+    -D "$infile_name".fnn \
+    -o "$infile_name".lst \
     "$infile"
 
+# -b     output one best prediction per sequence
+# -p 0   gene overlap is allowed
+
 echo -e "\n# Renaming the protein FASTA file..."
-cp -v "$infile".faa "$outfile_all"
+cp -v "$infile_name".faa "$outfile_all"
 
 # Remove '*'s at the end - or some programs (e.g. InterProScan) will complain
 #echo -e "\n# Removing '*' characters from the proteins..."
@@ -280,6 +298,7 @@ ${e}Time seqkit seq \
     --min-len $min_len \
     "$outfile_all" > "$outfile"
 
+echo "Number of sequences in the input file:           $(grep -c "^>" "$infile")"
 echo "Number of proteins before filtering by length:   $(grep -c "^>" "$outfile_all")"
 echo "Number of proteins after filtering by length:    $(grep -c "^>" "$outfile")"
 
@@ -290,6 +309,8 @@ echo "Number of proteins after filtering by length:    $(grep -c "^>" "$outfile"
 echo
 echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
+    echo "# Version used:"
+    Print_version | tee logs/version.txt
     echo -e "\n# Listing the final output file:"
     ls -lh "$outfile"
     [[ "$slurm" = true ]] && Resource_usage
