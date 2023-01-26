@@ -9,6 +9,9 @@
 #SBATCH --job-name=codan
 #SBATCH --output=slurm-codan-%j.out
 
+#! NOTE 2023-01-25 -- Have been getting weird results with the PLANTS_partial mode,
+#!                    translationd doesn't always happen propely (lots of stop codons)
+
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
@@ -28,11 +31,12 @@ Print_help() {
     echo "  -i/--infile     <file>  Input FASTA file with transcripts"
     echo "  -o/--outfile    <dir>   Output FASTA file with proteins"
     echo "  --model         <str>   CodAn model"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to CodAn"
     echo "                          One of: FUNGI_full, FUNGI_partial, INV_full, INV_partial, PLANTS_full, PLANTS_partial, VERT_full, VERT_partial"
     echo "                          See https://github.com/pedronachtigall/CodAn/tree/master/models"
+    echo
+    echo "OTHER KEY OPTIONS:"
+    echo "  --min_len       <int>   Min protein length (nr of codons)           [default: 100]"
+    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to CodAn"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
@@ -220,6 +224,7 @@ echo "==========================================================================
 echo "All arguments to this script:     $all_args"
 echo "Input file:                       $infile"
 echo "Output file:                      $outfile"
+echo "Min. protein length:              $min_len"
 echo "CodAn model:                      $model"
 [[ $more_args != "" ]] && echo "Other arguments for CodAn:        $more_args"
 echo "Number of threads/cores:          $threads"
@@ -260,6 +265,7 @@ echo -e "\n# Translating the ORF sequences..."
 ${e}Time TranslatePartial.py "$outdir"/ORF_sequences.fasta "$outfile_all"
 
 # Remove '*'s at the end - or some programs (e.g. InterProScan) will complain
+echo -e "\n# Removing '*' characters from the proteins..."
 sed -i 's/*$//' "$outfile_all"
 
 # Filter by length
