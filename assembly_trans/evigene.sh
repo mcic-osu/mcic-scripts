@@ -32,6 +32,7 @@ Print_help() {
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --min_cds       <int>   Minimum CDS length in bp                    [default: 350]"
+    echo "  --species       <str>   Species name (for gene IDs)"
     echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to Evigene"
     echo
     echo "UTILITY OPTIONS:"
@@ -157,7 +158,8 @@ slurm=true
 # ==============================================================================
 # Placeholder defaults
 infile=""
-outfile=""
+outfile_all=""
+species="" && species_arg=""
 more_args=""
 
 # Parse command-line args
@@ -165,8 +167,9 @@ all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
-        -o | --outfile )    shift && outfile=$1 ;;
+        -o | --outfile )    shift && outfile_all=$1 ;;
         --min_cds )         shift && min_cds=$1 ;;
+        --species )         shift && species=$1 ;;
         --more_args )       shift && more_args=$1 ;;
         -h )                Print_help; exit 0 ;;
         --help )            Print_help_program; exit 0;;
@@ -197,15 +200,18 @@ set -euo pipefail
 
 # Check input
 [[ "$infile" = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
-[[ "$outfile" = "" ]] && Die "Please specify an output file with -o/--outfile" "$all_args"
+[[ "$outfile_all" = "" ]] && Die "Please specify an output file with -o/--outfile" "$all_args"
 [[ ! -f "$infile" ]] && Die "Input file $infile does not exist"
 
 # Infer outdir, get the file ID
-[[ ! "$outfile" =~ ^/ ]] && outfile="$PWD"/"$outfile"
-outdir=$(dirname "$outfile")
-file_ext=$(basename "$outfile" | sed -E 's/.*(.fasta|.fa|.fna)$/\1/')
-outfile_primary="$outdir"/$(basename "$outfile" "$file_ext")_1trans"$file_ext"
+[[ ! "$outfile_all" =~ ^/ ]] && outfile_all="$PWD"/"$outfile_all"
+outdir=$(dirname "$outfile_all")
+file_ext=$(basename "$outfile_all" | sed -E 's/.*(.fasta|.fa|.fna)$/\1/')
+outfile_1trans="$outdir"/$(basename "$outfile_all" "$file_ext")_1trans"$file_ext"
 file_id=$(basename "$infile" "$file_ext") # Used by Evigene for original outfile names
+
+# Build other args
+[[ "$species" != "" ]] && species_arg="-species=$species"
 
 # Report
 echo
@@ -215,13 +221,13 @@ date
 echo "=========================================================================="
 echo "All arguments to this script:         $all_args"
 echo "Input file:                           $infile"
-echo "Output file (all transcripts):        $outfile"
-echo "Output file (primary transcripts):    $outfile_primary"
+echo "Output file (all transcripts):        $outfile_all"
+echo "Output file (primary transcripts):    $outfile_1trans"
 echo "Minimum CDS size:                     $min_cds"
+[[ $species != "" ]] && echo "Species:                              $species"
 [[ $more_args != "" ]] && echo "Other arguments for Evigene:          $more_args"
 echo "Number of threads/cores:              $threads"
-echo
-echo "Nr sequences in the input file: $(grep -c "^>" "$infile")"
+echo "Nr sequences in the input file:       $(grep -c "^>" "$infile")"
 echo
 echo "# Listing the input file(s):"
 ls -lh "$infile"
@@ -237,7 +243,7 @@ echo "==========================================================================
 # ==============================================================================
 if [[ "$dryrun" = false ]]; then
     # Create the output directory
-    echo -e "\n# Copying the output directories..."
+    echo -e "\n# Creating the output directories..."
     mkdir -pv "$outdir"/logs "$outdir"/final
 
     # Copy input file to outdir
@@ -251,26 +257,36 @@ if [[ "$dryrun" = false ]]; then
     # Run Evigene
     echo -e "\n# Running Evigene..."
     Time "$EVIGENE" \
-        -mrnaseq "$infile_base" \
-        -MINCDS "$min_cds" \
-        -NCPU "$threads" \
-        -MAXMEM "$mem" \
+        -mrnaseq="$infile_base" \
+        -MINCDS="$min_cds" \
+        -NCPU="$threads" \
+        -MAXMEM="$mem" \
         -debug \
-        -log \
+        -logfile \
         -tidyup \
+        $species_arg \
         $more_args
+
+    # -pHeterozygosity=[0..9] : reduce percent identities for heterozygous organism sample (default 0),
+    #  this lowers alternate/paralog identity cutoffs and classes, and drops more high-identity transcripts
 
     # Copy the final assembly file
     echo -e "\n# Copying the final assembly file..."
-    cp -v okayset/"$file_id".okay.mrna "$outfile"
+    cp -v okayset/"$file_id".okay.mrna "$outfile_all"
 
     # Make a separate file with primary transcripts
     echo -e "\n# Creating a separate file with primary transcripts..."
-    awk -v RS='>' '/t1 type/ {print ">" $0}' "$outfile" > "$outfile_primary"
+    awk -v RS='>' '/t1 type/ {print ">" $0}' "$outfile_all" > "$outfile_1trans"
 
+    # Report a summary of the results
     echo
-    echo "Nr sequences in the output file: $(grep -c "^>" "$outfile")"
-    echo "Nr sequences in the output file w/ primary transcripts: $(grep -c "^>" "$outfile_primary")"
+    echo "Nr sequences in the output file w/ all transcripts:     $(grep -c "^>" "$outfile_all")"
+    echo "Nr sequences in the output file w/ primary transcripts: $(grep -c "^>" "$outfile_1trans")"
+    echo
+    echo "======================================================================"
+    echo "# Showing the summary file okayset/$file_id.genesum.txt"
+    cat -n okayset/"$file_id".genesum.txt
+    echo "======================================================================"
 fi
 
 
@@ -281,7 +297,7 @@ echo
 echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
     echo -e "\n# Listing the main output files:"
-    ls -lh "$outfile" "$outfile_primary"
+    ls -lh "$outfile_all" "$outfile_1trans"
     [[ "$slurm" = true ]] && Resource_usage
 fi
 echo "# Done with script"
