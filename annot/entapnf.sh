@@ -37,7 +37,7 @@ Print_help() {
     echo "  --entap_config  <file>  Initial EnTap config file"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "--qcoverage, --tcoverage + ADD contaminants and taxon name #TODO"
+    echo "--qcoverage, --tcoverage, --sensitivity + ADD contaminants and taxon name #TODO"
     echo "  --batch_size    <int>   Number of transcripts to run at a time"
     echo "  --more_args     <str>   Quoted string with additional arguments to pass to 'nextflow run'"
     echo
@@ -172,8 +172,9 @@ outdir=""
 taxid=""
 entap_config=""
 
-qcoverage="" && qcoverage_arg=""   # Use the workflow's default (50)
-tcoverage="" && tcoverage_arg=""   # Use the workflow's default (50)
+qcoverage="" && qcoverage_arg=""     # Use the workflow's default (50)
+tcoverage="" && tcoverage_arg=""     # Use the workflow's default (50)
+sensitivity="" && sensitivity_arg="" # Use the workflow's default (--more-sensitive)
 
 ipr_dir="" && ipr_arg=""
 nr_diamond="" && nr_arg=""
@@ -182,7 +183,7 @@ sprot_diamond="" && sprot_arg=""
 orthodb_diamond="" && orthodb_arg=""
 custom_diamond="" && custom_arg=""
 
-config_file="" && config_arg=""
+config_file_extra="" && config_arg=""
 work_dir="" && work_dir_arg=""
 more_args=""
 
@@ -196,6 +197,7 @@ while [ "$1" != "" ]; do
         --entap_config )        shift && entap_config=$1 ;;
         --qcoverage )           shift && qcoverage=$1 ;;
         --tcoverage )           shift && tcoverage=$1 ;;
+        --sensitivity )         shift && sensitivity=$1 ;;
         --taxid )               shift && taxid=$1 ;;
         --seq_type )            shift && seq_type=$1 ;;
         --data_ipr )            shift && ipr_dir=$1 ;;
@@ -208,7 +210,7 @@ while [ "$1" != "" ]; do
         --batch_size )          shift && batch_size=$1 ;;
         --more_args )           shift && more_args=$1 ;;
         -cnt-dir)               shift && container_dir=$1 ;;
-        -config )               shift && config_file=$1 ;;
+        -config )               shift && config_file_extra=$1 ;;
         -profile )              shift && profile=$1 ;;
         -work-dir )             shift && work_dir=$1 ;;
         -ansi-log )             ansi_log=true ;;
@@ -244,9 +246,14 @@ set -euo pipefail
 [[ ! -f "$assembly" ]] && Die "Input file $assembly does not exist"
 
 # Build the config argument
-[[ ! -f "$osc_config" ]] && osc_config="$outdir"/$(basename "$OSC_CONFIG_URL")
+if [[ ! -f "$osc_config" ]]; then
+    use_downloaded_config=true
+    osc_config="$outdir"/$(basename "$OSC_CONFIG_URL")
+fi
 config_arg="-c $osc_config"
-[[ "$config_file" != "" ]] && config_arg="$config_arg -c ${config_file/,/ -c }"
+
+# Add extra config file, if it was provided
+[[ "$config_file_extra" != "" ]] && config_arg="$config_arg -c ${config_file_extra/,/ -c }"
 
 # Define trace output dir
 trace_dir="$outdir"/pipeline_info
@@ -258,6 +265,7 @@ trace_dir="$outdir"/pipeline_info
 
 [[ "$qcoverage" != "" ]] && qcoverage_arg="--qcoverage $qcoverage"
 [[ "$tcoverage" != "" ]] && tcoverage_arg="--tcoverage $tcoverage"
+[[ "$sensitivity" != "" ]] && sensitivity_arg="--sensitivity $sensitivity"
 
 # Database locations
 enzyme_dat="$sprot_diamond"/enzyme.dat
@@ -299,7 +307,8 @@ echo "  EnTap config file:              $entap_config"
 echo "  Assembly sequence type:         $seq_type"
 echo "  Batch size:                     $batch_size"
 [[ "$qcoverage" != "" ]] && echo "  Min. query coverage:            $qcoverage"
-[[ "$tcoverage" != "" ]] && echo "  Min. target (subject) coverage: $tcoverage" 
+[[ "$tcoverage" != "" ]] && echo "  Min. target (subject) coverage: $tcoverage"
+[[ "$sensitivity" != "" ]] && echo "  DIAMOND sensitivity:            $sensitivity"
 [[ "$more_args" != "" ]] && echo "  Additional arguments:            $more_args"
 echo
 echo "DATABASES:"
@@ -318,7 +327,7 @@ echo "  Work (scratch) dir:             $work_dir"
 echo "  Container dir:                  $container_dir"
 echo "  Config 'profile':               $profile"
 echo "  Config argument:                $config_arg"
-[[ "$config_file" != "" ]] && echo "  Additional config file:         $config_file"
+[[ "$config_file_extra" != "" ]] && echo "  Additional config file:         $config_file_extra"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 echo
@@ -338,7 +347,7 @@ ${e}mkdir -pv "$work_dir" "$container_dir" "$outdir"/logs "$trace_dir"
 [[ -f "$trace_dir"/dag.png ]] && ${e}rm "$trace_dir"/dag.png
 
 # Get the OSC config file
-[[ ! -f $(basename "$OSC_CONFIG_URL") ]] && wget -q -O "$osc_config" "$OSC_CONFIG_URL"
+[[ "$use_downloaded_config" = true ]] && wget -q -O "$osc_config" "$OSC_CONFIG_URL"
 
 # Run the workflow
 echo -e "\n# Starting the workflow...\n"
@@ -351,6 +360,7 @@ ${e}Time nextflow run \
     --batch_size "$batch_size" \
     $qcoverage_arg \
     $tcoverage_arg \
+    $sensitivity_arg \
     $ipr_arg \
     $sprot_arg \
     $refseq_arg \
