@@ -1,16 +1,17 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=6:00:00
+#SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
+#SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=entapnf
 #SBATCH --output=slurm-entapnf-%j.out
 
 #TODO -- Include new parameters in the nfcore-schema thing
-#TODO -- Make taxon name and contaminants options
+#TODO -- Make options for taxon name and contaminants
 
 #? The ext.args line for interproscan in modules.config that included 'PANTHER' was commented out -- why? I included it and it seems to work fine
 
