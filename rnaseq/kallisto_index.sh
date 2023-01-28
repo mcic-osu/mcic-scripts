@@ -26,8 +26,8 @@ Print_help() {
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile     <file>  Input: transcriptome FASTA file"
-    echo "  -o/--outfile    <dir>   Output: transcriptome index file (dir will be created if needed)"
+    echo "  -i/--infile     <file>  Input transcriptome FASTA file"
+    echo "  -o/--outfile    <dir>   Output transcriptome index file ('.idx' extension; dir will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to Kallisto"

@@ -27,7 +27,7 @@ Print_help() {
     echo "REQUIRED OPTIONS:"
     echo "  -i/--R1         <file>  R1 FASTQ input file (The name of the R2 file will be inferred by the script.)"
     echo "  -r/--ref-index  <file>  Kallisto transcriptome index (create with 'kallisto_index.sh' script)"
-    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
+    echo "  -o/--outdir     <dir>   *Base* output dir: script will put results in a subdir with the inferred sample name"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --strandedness  <str>   Library strandedness: 'reverse', 'forward' or 'unstranded'      [default: 'reverse']"
