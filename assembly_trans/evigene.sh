@@ -33,6 +33,7 @@ Print_help() {
     echo "OTHER KEY OPTIONS:"
     echo "  --min_cds       <int>   Minimum CDS length in bp                    [default: 350]"
     echo "  --species       <str>   Species name (for gene IDs)"
+    echo "  --p_het         <int>   0-9: higher number will reduce transcriptome more [default: 0]"
     echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to Evigene"
     echo
     echo "UTILITY OPTIONS:"
@@ -146,6 +147,7 @@ Die() {
 # ==============================================================================
 # Option defaults
 min_cds=350
+p_het=0                # Evigene 'pHeterozygosity' parameter, its default is 9
 
 mem=4000               # In MB; only applies if not a Slurm job
 debug=false
@@ -169,6 +171,7 @@ while [ "$1" != "" ]; do
         -i | --infile )     shift && infile=$1 ;;
         -o | --outfile )    shift && outfile_all=$1 ;;
         --min_cds )         shift && min_cds=$1 ;;
+        --p_het )           shift && p_het=$1 ;;
         --species )         shift && species=$1 ;;
         --more_args )       shift && more_args=$1 ;;
         -h )                Print_help; exit 0 ;;
@@ -224,6 +227,7 @@ echo "Input file:                           $infile"
 echo "Output file (all transcripts):        $outfile_all"
 echo "Output file (primary transcripts):    $outfile_1trans"
 echo "Minimum CDS size:                     $min_cds"
+echo "Percent identity threshold:           $p_het"
 [[ $species != "" ]] && echo "Species:                              $species"
 [[ $more_args != "" ]] && echo "Other arguments for Evigene:          $more_args"
 echo "Number of threads/cores:              $threads"
@@ -259,6 +263,7 @@ if [[ "$dryrun" = false ]]; then
     Time "$EVIGENE" \
         -mrnaseq="$infile_base" \
         -MINCDS="$min_cds" \
+        -pHeterozygosity="$p_het" \
         -NCPU="$threads" \
         -MAXMEM="$mem" \
         -debug \
