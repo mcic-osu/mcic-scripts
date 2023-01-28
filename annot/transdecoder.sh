@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=24:00:00
+#SBATCH --time=6:00:00
 #SBATCH --cpus-per-task=3
 #SBATCH --mem=12G
 #SBATCH --nodes=1
@@ -25,11 +25,16 @@ Print_help() {
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile     <file>  Input FASTA file with transcripts"
-    echo "  -o/--outfile    <dir>   Output FASTA file with proteins"
+    echo "  -i/--infile     <file>  Input nucleotide FASTA file with transcripts"
+    echo "  -o/--out_aa     <dir>   Output protein FASTA file with proteins"
     echo
     echo "OTHER KEY OPTIONS:"
+    echo "  -O/--out_nuc    <file>  Output nucleotide FASTA - only transcripts with a coding frame"
     echo "  --min_len       <int>   Min protein length (nr of codons)           [default: 100]"
+    echo ""
+    echo "  --remove_p              Remove the '.p' additions to protein IDs    [default: false]"
+    echo "                          Compatible with Evigene output"
+    echo "  --keep_stopcod          Keep stop codons '*'s in the sequence       [default: remove]"
     echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to Transdecoder"
     echo
     echo "UTILITY OPTIONS:"
@@ -105,24 +110,6 @@ Print_resources() {
     set -u
 }
 
-# Set the number of threads/CPUs
-Set_threads() {
-    set +u
-    if [[ "$slurm" = true ]]; then
-        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-            threads="$SLURM_CPUS_PER_TASK"
-        elif [[ -n "$SLURM_NTASKS" ]]; then
-            threads="$SLURM_NTASKS"
-        else 
-            echo "WARNING: Can't detect nr of threads, setting to 1"
-            threads=1
-        fi
-    else
-        threads=1
-    fi
-    set -u
-}
-
 # Resource usage information
 Time() {
     /usr/bin/time -f \
@@ -157,6 +144,8 @@ Die() {
 # ==============================================================================
 # Option defaults
 min_len=100
+keep_stopcod=false
+remove_p=false
 
 debug=false
 dryrun=false && e=""
@@ -168,7 +157,8 @@ slurm=true
 # ==============================================================================
 # Placeholder defaults
 infile=""
-outfile=""
+out_aa=""
+out_nuc=""
 more_args=""
 
 # Parse command-line args
@@ -176,7 +166,10 @@ all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
-        -o | --outfile )    shift && outfile=$1 ;;
+        -o | --out_aa )     shift && out_aa=$1 ;;
+        -O | --out_nuc )    shift && out_nuc=$1 ;;
+        --remove_p )        remove_p=true ;;
+        --keep_stopcod )    keep_stopcod=true ;;
         --min_len )         shift && min_len=$1 ;;
         --more_args )       shift && more_args=$1 ;;
         -h )                Print_help; exit 0 ;;
@@ -201,26 +194,27 @@ done
 # Bash script settings
 set -euo pipefail
 
-# Load software and set nr of threads
+# Load software
 [[ "$dryrun" = false ]] && Load_software
-Set_threads
 
 # Check input
 [[ "$infile" = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
-[[ "$outfile" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
+[[ "$out_aa" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
 [[ ! -f "$infile" ]] && Die "Input file $infile does not exist"
 
 # Make paths absolute
 [[ ! "$infile" =~ ^/ ]] && infile=$(realpath "$infile")
-[[ ! "$outfile" =~ ^/ ]] && outfile="$PWD"/"$outfile"
+[[ ! "$out_aa" =~ ^/ ]] && out_aa="$PWD"/"$out_aa"
+[[ ! "$out_nuc" =~ ^/ ]] && out_nuc="$PWD"/"$out_nuc"
 
 # Infer the output dir
-outdir=$(dirname "$outfile")
+outdir=$(dirname "$out_aa")
+outdir_nuc=$(dirname "$out_nuc")
 
 # Output file before length-filtering
-file_ext=$(basename "$outfile" | sed -E 's/.*(.fasta|.fa|.faa)$/\1/')
-outfile_id=$(basename "$outfile" "$file_ext")
-outfile_all="$outdir"/"$outfile_id"_all"$file_ext"
+file_ext=$(basename "$out_aa" | sed -E 's/.*(.fasta|.fa|.faa)$/\1/')
+out_aa_id=$(basename "$out_aa" "$file_ext")
+out_aa_prelenfilt="$outdir"/"$out_aa_id"_all"$file_ext"
 infile_name=$(basename "$infile")
 
 # Report
@@ -230,11 +224,13 @@ echo "                    STARTING SCRIPT TRANSDECODER.SH"
 date
 echo "=========================================================================="
 echo "All arguments to this script:     $all_args"
-echo "Input file:                       $infile"
-echo "Output file:                      $outfile"
+echo "Input nucletotide transcripts:    $infile"
+echo "Output protein transcripts:       $out_aa"
+[[ "$out_nuc" != "" ]] && echo "Output nucleotide transcripts:    $out_nuc"
 echo "Min. protein length:              $min_len"
+echo "Keep stop codon symbols:          $keep_stopcod"
+echo "Remove '.p' addition to IDs:      $remove_p"
 [[ $more_args != "" ]] && echo "Other arguments for Transdecoder: $more_args"
-echo "Number of threads/cores:          $threads"
 echo
 echo "Listing the input file(s):"
 ls -lh "$infile"
@@ -250,44 +246,64 @@ echo "==========================================================================
 # ==============================================================================
 # Create the output directory
 echo -e "\n# Creating the output directories..."
-${e}mkdir -pv "$outdir"/logs
+${e}mkdir -pv "$outdir"/logs "$outdir_nuc"
 
 # Move into the output dir
 cd "$outdir" || exit 1
 
-# Run gm-st
+# Run Transdecoder LongOrfs
 echo -e "\n# Running TransDecoder.LongOrfs..."
 ${e}Time TransDecoder.LongOrfs \
     -m $min_len \
     $more_args \
     -t "$infile"
 
-# Has --gene_trans_map <string> option
-
+# Run Transdecoder Predict
 echo -e "\n# Running TransDecoder.Predict..."
 ${e}Time TransDecoder.Predict \
     -t "$infile" \
     --single_best_only
 
-echo -e "\n# Renaming the protein FASTA file..."
-cp -v "$infile_name".transdecoder.pep "$outfile_all"
-
+echo -e "\n====================================================================="
 # Remove '*'s at the end - or some programs (e.g. InterProScan) will complain
-echo -e "\n# Removing '*' characters from the proteins..."
-sed -i 's/*$//' "$outfile_all"
+if [[ "$keep_stopcod" = false ]]; then
+    echo -e "\n# Removing '*' characters from the proteins..."
+    sed 's/*$//' "$infile_name".transdecoder.pep > "$out_aa_prelenfilt"
+else
+    cp -v "$infile_name".transdecoder.pep "$out_aa_prelenfilt"
+fi
+
+# Remove '.p' additions to transcript/protein IDs
+if [[ "$remove_p" = true ]]; then
+    echo -e "\n# Removing '.p' additions to the protein IDs"
+    sed -i -E 's/(t[0-9])\.p[0-9]+ /\1 /' "$out_aa_prelenfilt"
+fi
 
 # Filter by length
-echo "=========================================================================="
 echo -e "\n# Filtering the proteins by length with seqkit..."
 Load_seqkit
 ${e}Time seqkit seq \
     --remove-gaps \
     --min-len $min_len \
-    "$outfile_all" > "$outfile"
+    "$out_aa_prelenfilt" > "$out_aa"
 
-echo "Number of sequences in the input file:           $(grep -c "^>" "$infile")"
-echo "Number of proteins before filtering by length:   $(grep -c "^>" "$outfile_all")"
-echo "Number of proteins after filtering by length:    $(grep -c "^>" "$outfile")"
+# Filter the nucleotide FASTA to only keep transcripts with a frame
+seqkit grep \
+    -f <(grep "^>" "$out_aa" | awk '{print $1}' | sed -E 's/>//') \
+    <(awk '{print $1}' "$infile") \
+    > "$out_nuc"
+
+# Report
+echo
+echo "Statistics:"
+echo "Nr of sequences in the input file:                    $(grep -c "^>" "$infile")"
+echo "Nr of proteins with frame, before length-filter:      $(grep -c "^>" "$out_aa_prelenfilt")"
+echo "Final nr of proteins (length-filtered, too):          $(grep -c "^>" "$out_aa")"
+echo "Final nr of transcripts (should match nr. proteins):  $(grep -c "^>" "$out_nuc")"
+
+# Remove intermediate files
+echo -e "\n# Removing intermediate files..."
+[[ -s "$out_aa" ]] && rm -v "$out_aa_prelenfilt"
 
 
 # ==============================================================================
@@ -298,8 +314,8 @@ echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
     echo "# Version used:"
     Print_version | tee logs/version.txt
-    echo -e "\n# Listing the final output file:"
-    ls -lh "$outfile"
+    echo -e "\n# Listing the final output files:"
+    ls -lh "$out_aa" "$out_nuc"
     [[ "$slurm" = true ]] && Resource_usage
 fi
 echo "# Done with script"
