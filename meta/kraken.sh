@@ -25,26 +25,26 @@ Print_help() {
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile     <file>  Input sequence file (FASTA, single-end FASTQ, or R1 from paired-end FASTQ)"
-    echo "                            - If an R1 paired-end FASTQ file is provided, the name of the R2 file will be inferred"
-    echo "                            - FASTA files should be unzipped; FASTQ files should be gzipped"
-    echo "  -o/--outdir     <dir>   Output directory"
-    echo "  -d/--db-dir     <dir>   Directory with an existing Kraken database"
-    echo "                            - A few databases are available at: /fs/ess/PAS0471/jelmer/refdata/kraken/std-plus-fungi"
-    echo "                            - Kraken databases can be downloaded from: https://benlangmead.github.io/aws-indexes/k2"
-    echo "                            - Finally, you can use 'kraken-build-custom-db.sh' or 'kraken-build-std-db.sh' to create a database"
+    echo "  -i/--infile             <file>  Input sequence file (FASTA, single-end FASTQ, or R1 from paired-end FASTQ)"
+    echo "                                    - If an R1 paired-end FASTQ file is provided, the name of the R2 file will be inferred"
+    echo "                                    - FASTA files should be unzipped; FASTQ files should be gzipped"
+    echo "  -o/--outdir             <dir>   Output directory"
+    echo "  -d/--db-dir             <dir>   Directory with an existing Kraken database"
+    echo "                                    - A few databases are available at: /fs/ess/PAS0471/jelmer/refdata/kraken"
+    echo "                                    - Kraken databases can be downloaded from: https://benlangmead.github.io/aws-indexes/k2"
+    echo "                                    - Finally, you can use 'kraken-build-custom-db.sh' or 'kraken-build-std-db.sh' to create a database"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --confidence    <num>   Confidence required for assignment: number between 0 and 1            [default: 0.5]"
-    echo "  --minimum-base-quality <int> Base quality Phred score required for use of a base in assignment     [default: 0]"
-    echo "                          NOTE: If setting a score other than 0, any output sequence files will contain 'x's for masked bases"
-    echo "  --memory-mapping        Don't load the full database into RAM memory                          [default: load into memory]"
-    echo "                            (Considerably lower, but can be useful/needed with very large databases)"
-    echo "  --use-names                      Add taxonomic names to the Kraken 'main' output file                  [default: don't add]"
-    echo "                            NOTE: This option is not compatible with Krona plotting"
-    echo "  --single-end            FASTQ files are single-end                                            [default: paired-end]"
-    echo "  --classified-out        Write 'classified' reads/sequences to file (in '<outdir>/classified' dir)     [default: don't write]"
-    echo "  --unclassified-out      Write 'unclassified' reads/sequences to file (in '<outdir>/unclassified' dir) [default: don't write]"
+    echo "  --confidence            <num>   Confidence required for assignment: number between 0 and 1            [default: 0.5]"
+    echo "  --minimum-base-quality  <int>   Base quality Phred score required for use of a base in assignment     [default: 0]"
+    echo "                                    - NOTE: When not 0, output sequences contain 'x's for masked bases"
+    echo "  --memory-mapping                Don't load the full database into RAM memory                          [default: load into memory]"
+    echo "                                    - Considerably lower, but useful/needed with very large databases"
+    echo "  --use-names                     Add taxonomic names to the Kraken 'main' output file                  [default: don't add]"
+    echo "                                    - NOTE: This option is not compatible with Krona plotting"
+    echo "  --single-end                    FASTQ files are single-end                                            [default: paired-end]"
+    echo "  --classified-out                Write 'classified' sequences to file in '<outdir>/classified' dir     [default: don't write]"
+    echo "  --unclassified-out              Write 'unclassified' sequences to file in '<outdir>/unclassified' dir [default: don't write]"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
@@ -199,14 +199,14 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-# Bash script settings
-set -euo pipefail
-
 # In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
 # Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
+
+# Bash script settings
+set -euo pipefail
 
 # Load software and set nr of threads
 [[ "$dryrun" = false ]] && Load_software
@@ -287,7 +287,7 @@ if [[ "$infile" =~ \.fa?s?t?q.gz$ ]]; then
     fi
 
 elif [[ "$infile" =~ \.fn?a?s?t?a$ ]]; then
-    echo -e "Input type is:                 FASTA"
+    echo -e "Input type is:                  FASTA"
     file_type=fasta
     infile_basename=$(basename "$infile")
     sample_ID=${infile_basename%%.*}
@@ -315,6 +315,7 @@ echo "Output file - main:             $outfile_main"
 echo "Output file - report:           $outfile_report"
 [[ "$write_classif" = true ]] && echo "Writing classified sequences:   $class_out_arg"
 [[ "$write_unclassif" = true ]] && echo "Writing unclassified sequences: $unclass_out_arg"
+echo
 echo "Listing the input file(s):"
 ls -lh "$infile"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
