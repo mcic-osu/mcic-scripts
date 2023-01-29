@@ -31,6 +31,13 @@ parser$add_argument("-t", "--tuning",
 parser$add_argument("-b", "--n_boot",
                     type = "integer", default = 2,
                     help = "Number of bootstraps for variance estimation [default %(default)s]")
+parser$add_argument("-x", "--base_taxon",
+                    type = "character", default = NULL,
+                    help = "Base taxon (ASV ID) [default %(default)s]")
+parser$add_argument("-r", "--rarefy_to",
+                    type = "integer", default = NULL,
+                    help = "Rarefy to this depth prior to analysis [default %(default)s]")
+                    
 args <- parser$parse_args()
 
 ps_in <- args$ps_in
@@ -38,6 +45,8 @@ outdir <- args$outdir
 formula <- args$formula
 tuning <- args$tuning
 n_boot <- args$n_boot
+base_taxon <- args$base_taxon
+rarefy_to <- args$rarefy_to
 
 ## Load packages
 if (!require(pacman)) install.packages("pacman", repos = "https://cran.rstudio.com/")
@@ -56,6 +65,8 @@ message("## Output dir:                   ", outdir)
 message("## Analysis formula:             ", formula)
 message("## MCMC tuning setting:          ", tuning)
 message("## Nr of bootstraps:             ", n_boot)
+message("## Base taxon:                   ", base_taxon)
+message("## Rarefy to:                    ", rarefy_to)
 message("## Number of cores:              ", n_cores)
 message("------------------------")
 
@@ -64,6 +75,13 @@ if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
 
 ## Read input
 ps <- readRDS(ps_in)
+
+if (!is.null(rarefy_to)) {
+    ps <- rarefy_even_depth(ps, sample.size = rarefy_to)
+    print(ps)
+}
+
+## Determine the most common ASV #TODO EDIT
 
 
 # PREP PHYLOSEQ OBJECT AND FORMULA ---------------------------------------------
@@ -75,7 +93,6 @@ if (!is.null(formula)) {
         gsub(" +", " ", .) %>%
         strsplit(., " ") %>%
         unlist()
-
 
     ## Remove samples with NA levels in factors
     message("\n## Nr of samples in original object:     ", nsamples(ps))
@@ -94,10 +111,6 @@ if (!is.null(formula)) {
     file_id <- "by_ind"
 }
 
-    ## Determine the most common ASV #TODO EDIT
-    base_tax <- "ASV_1"
-    message("## Base taxon:        ", base_tax)
-
 ## Define output file
 outfile <- file.path(outdir, paste0("divnet_", file_id, ".rds"))
 
@@ -107,7 +120,7 @@ message("\n## Starting DivNet run...")
 #TODO use trycatch first without using taxon base
 res <- divnet(ps,
               formula = formula,
-              base = base_tax,
+              base = base_taxon,
               tuning = tuning,
               B = n_boot,
               ncores = n_cores) 
