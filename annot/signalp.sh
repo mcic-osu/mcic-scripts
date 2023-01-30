@@ -45,9 +45,6 @@ Print_help() {
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 -i results/braker/proteome.fa -o results/signalp"
     echo
-    echo "OUTPUT:"
-    echo "  - "
-    echo
     echo "SOFTWARE DOCUMENTATION:"
     echo "  - Docs: https://github.com/fteufel/signalp-6.0/blob/main/installation_instructions.md"
     echo "  - Paper: https://www.nature.com/articles/s41587-021-01156-3"
