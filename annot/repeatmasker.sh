@@ -27,12 +27,14 @@ Print_help() {
     echo "REQUIRED OPTIONS:"
     echo "  -i/--assembly   <file>  Assembly (nucleotide) FASTA file"
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
-    echo "  --genome_lib    <file>  Genome repeat library FASTA file produced by RepeatModeler (repeatmodeler.sh script)"
     echo
-    echo "OTHER KEY OPTIONS:"
+    echo "ONE OF THESE TWO IS REQUIRED (THEY ARE MUTUALLY EXCLUSIVE):"
+    echo "  --genome_lib    <file>  Genome repeat library FASTA file produced by RepeatModeler (repeatmodeler.sh script)"
     echo "  --species       <str>   Species or taxonomic group name"
     echo "                          To check which species/groups are available, run, e.g:"
     echo "                          /fs/project/PAS0471/jelmer/conda/repeatmasker-4.1.2.p1/share/RepeatMasker/famdb.py names 'oomycetes'"
+    echo
+    echo "OTHER KEY OPTIONS:"
     echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to RepeatMasker"
     echo
     echo "UTILITY OPTIONS:"
@@ -204,9 +206,15 @@ Set_threads
 [[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
 [[ ! -f "$assembly" ]] && Die "Input file $assembly does not exist"
 [[ ! -f "$genome_lib" ]] && Die "Input file $genome_lib does not exist"
+[[ "$species" != "" ]] && [[ "$genome_lib" != "" ]] && Die "Specify --species or --genome_lib, not both"
 
-# Species arg
+# Make path to input files absolute
+[[ ! "$assembly" =~ ^/ ]] && assembly=$(realpath "$assembly")
+[[ ! "$genome_lib" =~ ^/ ]] && genome_lib=$(realpath "$genome_lib")
+
+# Species/genome lib args
 [[ "$species" != "" ]] && species_arg="-species $species"
+[[ "$genome_lib" != "" ]] && genome_lib_arg="-lib $genome_lib"
 
 # Report
 echo
@@ -238,12 +246,15 @@ echo "==========================================================================
 echo -e "\n# Creating the output directories..."
 ${e}mkdir -pv "$outdir"/logs
 
+# Move into the output dir
+cd "$outdir" || exit
+
 # Run
 echo "## Now runnning RepeatMasker..."
 ${e}Time \
     RepeatMasker \
-    -lib "$genome_lib" \
-    -dir "$outdir" \
+    -dir . \
+    $genome_lib_arg \
     $species_arg \
     $more_args \
     "$assembly"
