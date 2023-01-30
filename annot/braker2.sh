@@ -64,9 +64,14 @@ Load_software() {
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     
-    # Braker2 conda env which contains everything except GeneMark-EX and ProtHint 
-    source activate /fs/project/PAS0471/jelmer/conda/braker2-env
+    # Braker2 conda env which contains everything except GeneMark-EX and ProtHint
+    CONDA_DIR=/fs/project/PAS0471/jelmer/conda/braker2-env
+    source activate "$CONDA_DIR"
 
+    # Remove config file for species, if it exists
+    # Otherwise, Braker will complain unless you use '--useexisting', but config may need to be updated...
+    [[ -d "$CONDA_DIR"/config/species/"$species" ]] && rm -rv "$CONDA_DIR"/config/species/"$species"
+    
     # GeneMark-EX
     # See https://github.com/Gaius-Augustus/BRAKER#genemark-ex
     GENEMARK_BASEDIR=/fs/project/PAS0471/jelmer/software/genemark-ex
@@ -212,7 +217,7 @@ done
 # Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-# Bash script settings
+# Strict bash settings
 set -euo pipefail
 
 # Load software and set nr of threads
@@ -285,7 +290,7 @@ ${e}Time \
 #                       (most useful for fungal genomes)
 #  --useexisting        Use the present config and parameter files if they exist for 'species'; 
 #                       will overwrite original parameters if BRAKER performs an AUGUSTUS training.
-#                       (When rerunning a failed run, this setting should allow Braker start where it left off)
+
 
 
 # ==============================================================================
@@ -297,7 +302,7 @@ if [[ "$dryrun" = false ]]; then
     echo "# Version used:"
     Print_version | tee logs/version.txt
     echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/*
+    ls -lhd "$PWD"/braker/*
     [[ "$slurm" = true ]] && Resource_usage
 fi
 echo "# Done with script"
