@@ -272,7 +272,7 @@ if [[ "$dryrun" = false ]]; then
     echo "# Version used:"
     Print_version | tee "$outdir"/logs/version.txt
     echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
+    ls -lhd "$(realpath "$outdir")"/*
     [[ "$slurm" = true ]] && Resource_usage
 fi
 echo "# Done with script"
