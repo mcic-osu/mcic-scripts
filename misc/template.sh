@@ -197,7 +197,7 @@ done
 # Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-# Bash script settings
+# Strict bash settings
 set -euo pipefail
 
 # Load software and set nr of threads
