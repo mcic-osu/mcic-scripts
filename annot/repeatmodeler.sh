@@ -1,9 +1,9 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=6:00:00
-#SBATCH --mem=64G
-#SBATCH --cpus-per-task=16
+#SBATCH --time=18:00:00
+#SBATCH --mem=32G
+#SBATCH --cpus-per-task=8
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --mail-type=END,FAIL
@@ -197,7 +197,10 @@ Set_threads
 [[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
 [[ ! -f "$assembly" ]] && Die "Input file $assembly does not exist"
 
-## Get genome ID for database prefix
+# Make path to assembly absolute
+[[ ! "$assembly" =~ ^/ ]] && assembly=$(realpath "$assembly")
+
+# Get genome ID for database prefix
 assembly_basename=$(basename "$assembly")
 genomeID=${assembly_basename%.*}
 
@@ -229,16 +232,19 @@ echo "==========================================================================
 echo -e "\n# Creating the output directories..."
 ${e}mkdir -pv "$outdir"/logs
 
+# Move into the output dir
+cd "$outdir" || exit
+
 echo "# Building the RepeatModeler database..."
 ${e}Time \
     BuildDatabase \
-    -name "$outdir"/"$genomeID" \
+    -name "$genomeID" \
     "$assembly"
 
 echo -e "# Runnning RepeatModeler..."
 ${e}Time \
     RepeatModeler \
-    -database "$outdir"/"$genomeID" \
+    -database "$genomeID" \
     -pa $(( $threads / 4)) \
     $more_args \
     "$assembly"
@@ -250,9 +256,9 @@ echo
 echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
     echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
+    Print_version | tee logs/version.txt
     echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
+    ls -lhd "$PWD"/*
     [[ "$slurm" = true ]] && Resource_usage
 fi
 echo "# Done with script"
