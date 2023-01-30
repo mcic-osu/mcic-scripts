@@ -4,94 +4,223 @@
 #SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=deeploc
 #SBATCH --output=slurm-deeploc-%j.out
 
 
-# PARSE ARGUMENTS --------------------------------------------------------------
-## Help function
-Help() {
-  echo
-  echo "$0: Run DeepLoc2"
-  echo
-  echo "Syntax: $0 -i <input-FASTA> -o <output-dir>..."
-  echo
-  echo "Required options:"
-  echo      "-i STRING         Input amino acid FASTA file"
-  echo      "-o STRING         Output directory"
-  echo
-  echo "Other options:"
-  echo      "-a STRING         Other argument(s) to pass to DeepTMHMM"
-  echo      "-h                Print this help message and exit"
-  echo
-  echo "Example:               $0 -i ref/aa.fa -o results/tmhmm"
-  echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
-  echo
-  echo "DeepLoc2 paper: https://academic.oup.com/nar/advance-article/doi/10.1093/nar/gkac278/6576357"
-  echo "DeepLoc2 online server: https://services.healthtech.dtu.dk/service.php?DeepLoc-2.0"
-  echo
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
+# Help function
+Print_help() {
+    echo
+    echo "======================================================================"
+    echo "                            $0"
+    echo "                        RUN DEEPLOC2"
+    echo "======================================================================"
+    echo
+    echo "USAGE:"
+    echo "  sbatch $0 -i <input FASTA> -o <output dir> [...]"
+    echo "  bash $0 -h"
+    echo
+    echo "REQUIRED OPTIONS:"
+    echo "  -i/--infile     <file>  Input file: protein FASTA (proteome)"
+    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
+    echo
+    echo "OTHER KEY OPTIONS:"
+    echo "  --model         <str>   DeepLoc2 model: 'Accurate' or 'Fast'        [default: 'Accurate']"
+    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to DeepLoc"
+    echo
+    echo "UTILITY OPTIONS:"
+    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
+    echo "  --debug                 Run the script in debug mode (print all code)"
+    echo "  -h                      Print this help message and exit"
+    echo "  --help                  Print the help for DeepLoc and exit"
+    echo
+    echo "EXAMPLE COMMANDS:"
+    echo "  sbatch $0 -i results/braker/proteome.fa -o results/deeploc"
+    echo
+    echo "SOFTWARE DOCUMENTATION:"
+    echo "  - Online server: https://services.healthtech.dtu.dk/service.php?DeepLoc-2.0"
+    echo "  - Paper: https://academic.oup.com/nar/advance-article/doi/10.1093/nar/gkac278/6576357"
+    echo
 }
 
-## Option defaults
+# Load software
+Load_software() {
+    set +u
+    module load miniconda3/4.12.0-py39
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
+    source activate /fs/project/PAS0471/jelmer/conda/deeploc
+    set -u
+}
+
+# Print help for the focal program
+Print_help_program() {
+    Load_software
+    deeploc2 --help
+}
+
+# Print SLURM job resource usage info
+Resource_usage() {
+    echo
+    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
+    echo
+}
+
+# Print SLURM job requested resources
+Print_resources() {
+    set +u
+    echo "# SLURM job information:"
+    echo "Account (project):    $SLURM_JOB_ACCOUNT"
+    echo "Job ID:               $SLURM_JOB_ID"
+    echo "Job name:             $SLURM_JOB_NAME"
+    echo "Memory (MB per node): $SLURM_MEM_PER_NODE"
+    echo "CPUs (per task):      $SLURM_CPUS_PER_TASK"
+    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
+    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
+    echo "======================================================================"
+    echo
+    set -u
+}
+
+# Resource usage information
+Time() {
+    /usr/bin/time -f \
+        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
+        "$@"
+}   
+
+# Exit upon error with a message
+Die() {
+    error_message=${1}
+    error_args=${2-none}
+    
+    echo >&2
+    echo "=====================================================================" >&2
+    date
+    printf "$0: ERROR: %s\n" "$error_message" >&2
+    echo -e "\nFor help, run this script with the '-h' option" >&2
+    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
+    if [[ "$error_args" != "none" ]]; then
+        echo -e "\nArguments passed to the script:" >&2
+        echo "$error_args" >&2
+    fi
+    echo -e "\nEXITING..." >&2
+    echo "=====================================================================" >&2
+    echo >&2
+    exit 1
+}
+
+
+# ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
+# Option defaults
+model=Accurate
+
+debug=false
+dryrun=false && e=""
+slurm=true
+
+
+# ==============================================================================
+#                          PARSE COMMAND-LINE ARGS
+# ==============================================================================
+# Placeholder defaults
 infile=""
 outdir=""
 more_args=""
 
-## Parse command-line options
-while getopts ':i:o:a:h' flag; do
-  case "${flag}" in
-    i) infile="$OPTARG" ;;
-    o) outdir="$OPTARG" ;;
-    a) more_args="$OPTARG" ;;
-    h) Help && exit 0 ;;
-    \?) echo -e "\n## $0: ERROR: Invalid option -$OPTARG\n\n" >&2 && exit 1 ;;
-    :) echo -e "\n## $0: ERROR: Option -$OPTARG requires an argument\n\n" >&2 && exit 1 ;;
-  esac
+# Parse command-line args
+all_args="$*"
+while [ "$1" != "" ]; do
+    case "$1" in
+        -i | --infile )     shift && infile=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        --model )           shift && model=$1 ;;
+        --more_args )       shift && more_args=$1 ;;
+        -h )                Print_help; exit 0 ;;
+        --help )            Print_help_program; exit 0;;
+        --dryrun )          dryrun=true && e="echo ";;
+        --debug )           debug=true ;;
+        * )                 Die "Invalid option $1" "$all_args" ;;
+    esac
+    shift
 done
 
-## Check input
-[[ "$infile" = "" ]] && echo "## ERROR: Please specify an input FASTA file with -i" >&2 && exit 1
-[[ "$outdir" = "" ]] && echo "## ERROR: Please specify an output directory with -o" >&2 && exit 1
-[[ ! -f "$infile" ]] && echo "## ERROR: Input FASTA file (-i) $infile does not exist" >&2 && exit 1
 
+# ==============================================================================
+#                          OTHER SETUP
+# ==============================================================================
+# In debugging mode, print all commands
+[[ "$debug" = true ]] && set -o xtrace
 
-# SETUP ------------------------------------------------------------------------
-## Load software
-module load python/3.6-conda5.2
-source activate /fs/project/PAS0471/jelmer/conda/deeploc
+# Check if this is a SLURM job
+[[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Bash strict mode
+# Bash script settings
 set -euo pipefail
 
-## Make output dir
-mkdir -p "$outdir"
+# Load software
+[[ "$dryrun" = false ]] && Load_software
 
-## Report
+# Check input
+[[ "$infile" = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
+[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
+[[ ! -f "$infile" ]] && Die "Input file $infile does not exist"
+
+# Report
 echo
-echo "## Starting script deeploc.sh"
+echo "=========================================================================="
+echo "                    STARTING SCRIPT DEEPLOC.SH"
 date
+echo "=========================================================================="
+echo "All arguments to this script:     $all_args"
+echo "Input file:                       $infile"
+echo "Output dir:                       $outdir"
+echo "Run model:                        $model"
+[[ $more_args != "" ]] && echo "Other arguments for DeepLoc:      $more_args"
 echo
-echo "## Input AA FASTA:                        $infile"
-echo "## Output dir:                            $outdir"
-[[ "$more_args" != "" ]] && echo "## Other arguments to pass to DeepLoc:    $more_args"
-echo -e "--------------------\n"
+echo "Listing the input file(s):"
+ls -lh "$infile"
+[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
+echo "=========================================================================="
+
+# Print reserved resources
+[[ "$slurm" = true ]] && Print_resources
 
 
-# RUN LIFTOFF ------------------------------------------------------------------
-echo "## Now running DeepLoc..."
-deeploc2 \
+# ==============================================================================
+#                               RUN
+# ==============================================================================
+# Create the output directory
+echo -e "\n# Creating the output directories..."
+${e}mkdir -pv "$outdir"/logs
+
+# Run
+echo -e "\n# Now running DeepLoc..."
+${e}Time \
+    deeploc2 \
     --fasta "$infile" \
     --output "$outdir" \
-    --model Accurate \
+    --model "$model" \
     $more_args
 
 
-# WRAP-UP ----------------------------------------------------------------------
-echo -e "\n-------------------------------"
-echo "## Listing files in the output dir:"
-ls -lh "$outdir"
-echo -e "\n## Done with script deeploc.sh"
-date
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
 echo
-sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
+echo "========================================================================="
+if [[ "$dryrun" = false ]]; then
+    echo "# Listing files in the output dir:"
+    ls -lhd "$PWD"/"$outdir"/*
+    [[ "$slurm" = true ]] && Resource_usage
+fi
+echo "# Done with script"
+date
 echo
