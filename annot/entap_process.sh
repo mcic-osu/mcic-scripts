@@ -22,15 +22,19 @@ Print_help() {
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 --entap_dir <EnTap results dir> --asm_1trans <FASTA file> --asm_alltrans <FASTA file> --asm_out <FASTA file> --annot_out <TSV file> [...]"
+    echo "  sbatch $0 --entap_dir <EnTap results dir> --asm_1trans <FASTA file> \\"
+    echo "            --asm_alltrans <FASTA file> --asm_out <FASTA file> --annot_out <TSV file> [...]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  --entap_dir     <dir>   Dir with EnTap output (input for this script)"
-    echo "  --asm_1trans    <file>  Input FASTA file with a single transcript per gene"
-    echo "  --asm_alltrans  <file>  Input FASTA file all transcripts per gene"
-    echo "  --asm_out       <file>  Output assembly FASTA"
+    echo "  --asm_1trans    <file>  Input FASTA assembly with a single transcript per gene"
+    echo "  --asm_alltrans  <file>  Input FASTA assembly with all transcripts"
+    echo "  --asm_out       <file>  Output assembly FASTA (will have all transcripts)"
     echo "  --annot_out     <file>  Output (filtered) annotation TSV"
+    echo
+    echo "OTHER KEY OPTIONS:"
+    echo "  --eggnog_contam TODO"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --debug                 Run the script in debug mode (print all code)"
@@ -43,16 +47,10 @@ Print_help() {
 }
 
 # Load software
-Load_seqtk() {
+Load_software() {
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /fs/ess/PAS0471/jelmer/conda/seqtk
-}
-
-Load_bioawk() {
-    module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /fs/project/PAS0471/jelmer/conda/bioawk
+    source activate /fs/ess/PAS0471/jelmer/conda/seqkit
 }
 
 # Exit upon error with a message
@@ -80,6 +78,8 @@ Die() {
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Option defaults
+eggnog_contam="Animals,Fungi,Bacteria,Arthropoda,Opisthokonts,Mammals,Fishes,Aves,Archaea,Nematodes"
+
 check_frames=true
 debug=false
 
@@ -103,6 +103,7 @@ while [ "$1" != "" ]; do
         --asm_alltrans )    shift && asm_alltrans=$1 ;;
         --asm_out )         shift && asm_out=$1 ;;
         --annot_out )       shift && annot_out=$1 ;;
+        --eggnog_contam )   shift && eggnog_contam=$1 ;;
         -v | --version )    Print_version; exit 0 ;;
         -h )                Print_help; exit 0 ;;
         --help )            Print_help_program; exit 0;;
@@ -120,7 +121,7 @@ done
 [[ "$debug" = true ]] && set -o xtrace
 
 # Load software
-Load_seqtk
+Load_software
 
 # Bash script settings
 set -euo pipefail
@@ -135,6 +136,7 @@ frame_dir="$entap_dir"/frame_selection/TransDecoder/processed
 outdir=$(dirname "$asm_out")
 outdir_annot=$(dirname "$annot_out")
 
+annot_intermed="$outdir"/annot_intermed.tsv         # Before eggnog-contam. removal
 not_annot="$outdir"/genes_notannot.txt              # Genes that weren't annotated
 gene2trans="$outdir"/gene2trans.tsv                 # Gene-to-transcript map
 gene_lengths="$outdir"/gene_lengths.tsv             # Gene lengths for GO
@@ -185,7 +187,6 @@ mkdir -pv "$outdir"/logs "$outdir_annot"
 
 # REMOVE NON-ANNOTATED GENES ---------------------------------------------------
 echo -e "\n# Removing non-annotated genes..."
-
 # Make a list of not-annotated genes
 join -v 1 \
     <(grep "^>" "$asm_1trans" | sort -u) \
@@ -194,17 +195,36 @@ join -v 1 \
     >"$not_annot"
 
 # Exclude not-annotated genes from "final" Entap assembly
-grep -v -f "$not_annot" "$entap_final" > "$annot_out"
+grep -v -f "$not_annot" "$entap_final" > "$annot_intermed"
 
 # Get stats to report
 n_in=$(grep -c "^>" "$asm_1trans")
 n_notannot=$(wc -l < "$not_annot")
+
+
+# REMOVE EGGNOG-IDENTIFIED CONTAMINANTS ----------------------------------------
+echo -e "\n# Removing genes with no DIAMOND annotation and EggNOG annotation from contaminant taxa..."
+
+# Write Eggnog contaminant taxa to file
+echo "$eggnog_contam" | tr "," "\n" > "$outdir"/eggnog_contam_taxa.txt
+
+# Identify contaminants
+tail -n +2 "$annot_intermed" |
+    awk -F"\t" '$2 == ""' | awk -F"\t" '{print $1 "\t" $29}' | awk 'NF>1' |
+    grep -f "$outdir"/eggnog_contam_taxa.txt |
+    cut -f 1 | sort \
+    > "$outdir"/eggnog_contam_ids.txt
+
+# Remove contaminants
+grep -v -w -f "$outdir"/eggnog_contam_ids.txt "$annot_intermed" > "$annot_out"
+
+# Get stats
+n_contam_eggnog=$(wc -l < "$outdir"/eggnog_contam_ids.txt)
 n_out=$(tail -n +2 "$annot_out" | wc -l)
 
 
 # SUBSET ASSEMBLY WITH ALL ISOFORMS TO KEEP ENTAP SELECTION --------------------
 echo -e "\n# Subsetting the assembly with all isoforms..."
-
 # Create a gene-to-transcript map
 paste <(grep "^>" "$asm_alltrans" | sed -E 's/>([^ ]+) .*/\1/' | sed -E 's/t[0-9]+//') \
     <(grep "^>" "$asm_alltrans" | sed -E 's/>([^ ]+) .*/\1/') |
@@ -216,7 +236,7 @@ join -t $'\t' "$gene2trans" \
     cut -f 2 >"$trans_final"
 
 # Subset the FASTA file
-seqtk subseq "$asm_alltrans" "$trans_final" >"$asm_out"
+seqkit grep -f "$trans_final" "$asm_alltrans" > "$asm_out"
 
 # Get stats to report
 ntrans_out=$(grep -c "^>" "$asm_out")
@@ -225,9 +245,7 @@ ntrans_in=$(grep -c "^>" "$asm_alltrans")
 
 # GET GENE LENGTHS FOR GO ------------------------------------------------------
 echo -e "\n# Getting the gene lengths..."
-Load_bioawk
-bioawk -c fastx '{print $name, length($seq)}' "$asm_out" > "$gene_lengths"
-
+seqkit fx2tab --length --name "$asm_out" > "$gene_lengths"
 
 # CHECK ENTAP RESULTS ----------------------------------------------------------
 if [[ "$check_frames" = true ]]; then
@@ -245,14 +263,17 @@ n_contam=$(tail -n +2 "$entap_contam" | wc -l)
 
 
 # REPORT -----------------------------------------------------------------------
-echo -e "\n# Done. Summary of the results:"
+echo
+echo "========================================================================="
+echo "Summary of the results:"
 echo "Number of input genes:                     $n_in"
 echo "Number of output genes:                    $n_out"
 echo
 echo "Number of input transcripts:               $ntrans_in"
 echo "Number of output transcripts:              $ntrans_out"
 echo
-echo "Number of genes marked as contaminant:     $n_contam"
+echo "Number of contaminant genes - sim.search:  $n_contam"
+echo "Number of contaminant genes - eggnog:      $n_contam_eggnog"
 echo "Number of non-annotated genes:             $n_notannot"
 if [[ "$check_frames" = true ]]; then
     echo

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
+#SBATCH --time=3:00:00
 #SBATCH --cpus-per-task=10
-#SBATCH --mem=40G
+#SBATCH --mem=120G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --job-name=filter_expr
@@ -25,16 +25,17 @@ Print_help() {
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--assembly_in    <file>  Input nucleotide FASTA with a transcriptome assembly"
-    echo "  -o/--assembly_out   <dir>   Output FASTA assembly"
-    echo "  --kallisto_dir      <dir>   Base Kallisto dir with Kallisto output"
+    echo "  -i/--in_alltrans_nuc    <file>  Input nucleotide FASTA with a transcriptome assembly"
+    echo "  -o/--out_alltrans_nuc   <dir>   Output FASTA assembly"
+    echo "  --kallisto_dir          <dir>   Base Kallisto dir with Kallisto output"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  -O/--onetrans_out   <dir>   Output FASTA assembly with one transcript per gene"
-    echo "  --no_genesum                Don's sum counts by gene (i.e., across transcripts [default: sum by gene]"
-    echo "  --min_tpm           <int>   Min. per-sample TPM threshold                      [default: 1]"
-    echo "  --mean_tpm          <int>   Mean TPM threshold                                 [default: 0.1]"
-    echo "  --more_args         <str>   Quoted string with additional argument(s) to pass to filter_low_expr_transcripts.pl"
+    echo "  --out_1trans_nuc        <dir>   Output FASTA assembly with one transcript per gene"
+    echo "  --in_1trans_aa          <file>  Input protein FASTA with 1 transcript per gene"
+    echo "  --out_1trans_aa         <file>  Output protein FASTA with 1 transcript per gene"
+    echo "  --no_genesum                    Don's sum counts by gene (i.e., across transcripts [default: sum by gene]"
+    echo "  --min_tpm               <int>   Min. per-sample TPM threshold                      [default: 1]"
+    echo "  --mean_tpm              <int>   Mean TPM threshold                                 [default: 0.1]"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --debug                     Run the script in debug mode (print all code)"
@@ -63,6 +64,11 @@ Load_seqkit() {
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /fs/ess/PAS0471/jelmer/conda/seqkit
     set -u
+}
+Load_R() {
+    module load R/4.2.1-gnu11.2
+    FIND_LOW_EXPR=../mcic-scripts/assembly_trans/find_low_expr.R #!TODO FIX
+    #[[ ! -f "$FIND_LOW_EXPR" ]] && #TODO - Download the script
 }
 
 # Print help for the focal program
@@ -140,29 +146,29 @@ slurm=true
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Placeholder defaults
-assembly_in=""
-assembly_out=""
-onetrans_out=""
+in_alltrans_nuc=""
+out_alltrans_nuc=""
+out_1trans_nuc=""
 outdir=""
-more_args=""
 
 # Parse command-line args
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --assembly_in )    shift && assembly_in=$1 ;;
-        -o | --assembly_out )   shift && assembly_out=$1 ;;
-        -O | --onetrans_out )   shift && onetrans_out=$1 ;;
-        --kallisto_dir )        shift && kallisto_dir=$1 ;;
-        --min_tpm )             shift && min_tpm=$1 ;;
-        --mean_tpm )            shift && mean_tpm=$1 ;;
-        --no_genesum )          sum_by_gene=false ;;
-        --more_args )           shift && more_args=$1 ;;
-        -v | --version )        Print_version; exit 0 ;;
-        -h )                    Print_help; exit 0 ;;
-        --help )                Print_help_program; exit 0;;
-        --debug )               debug=true ;;
-        * )                     Die "Invalid option $1" "$all_args" ;;
+        -i | --in_alltrans_nuc )    shift && in_alltrans_nuc=$1 ;;
+        -o | --out_alltrans_nuc )   shift && out_alltrans_nuc=$1 ;;
+        --out_1trans_nuc )          shift && out_1trans_nuc=$1 ;;
+        --in_1trans_aa )            shift && in_1trans_aa=$1 ;;
+        --out_1trans_aa )           shift && out_1trans_aa=$1 ;;
+        --kallisto_dir )            shift && kallisto_dir=$1 ;;
+        --min_tpm )                 shift && min_tpm=$1 ;;
+        --mean_tpm )                shift && mean_tpm=$1 ;;
+        --no_genesum )              sum_by_gene=false ;;
+        -v | --version )            Print_version; exit 0 ;;
+        -h )                        Print_help; exit 0 ;;
+        --help )                    Print_help_program; exit 0;;
+        --debug )                   debug=true ;;
+        * )                         Die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
@@ -184,18 +190,18 @@ set -euo pipefail
 Load_trinity
 
 # Check input
-[[ "$assembly_in" = "" ]] && Die "Please specify an input assembly with -i/--assembly_in" "$all_args"
 [[ "$kallisto_dir" = "" ]] && Die "Please specify an input Kallisto dir with --kallisto_dir" "$all_args"
-[[ "$assembly_in" = "" ]] && Die "Please specify an output assembly with -o/--assembly_in" "$all_args"
-[[ ! -f "$assembly_in" ]] && Die "Input file $assembly_in does not exist"
+[[ "$in_alltrans_nuc" = "" ]] && Die "Please specify an input assembly with --in_alltrans_nuc" "$all_args"
+[[ "$in_alltrans_nuc" = "" ]] && Die "Please specify an output assembly with -o/--in_alltrans_nuc" "$all_args"
+[[ ! -f "$in_alltrans_nuc" ]] && Die "Input file $in_alltrans_nuc does not exist"
 [[ ! -d "$kallisto_dir" ]] && Die "Input dir $kallisto_dir does not exist"
+[[ "$in_1trans_aa" != "" && ! -f "$in_1trans_aa" ]] && Die "Input file $in_1trans_aa does not exist"
 
 # Get outdir, file ID
-outdir=$(dirname "$assembly_out")
-outdir_onetrans=$(dirname "$onetrans_out")
-assembly_basename=$(basename "$assembly_in")
+outdir=$(dirname "$out_alltrans_nuc")
+outdir_onetrans=$(dirname "$out_1trans_nuc")
+assembly_basename=$(basename "$in_alltrans_nuc")
 assembly_id=${assembly_basename/%.*}
-assembly_intermed="$outdir"/"$assembly_id"_intermed.fa
 
 # Sum across transcripts?
 if [[ "$sum_by_gene" = true ]]; then
@@ -204,7 +210,7 @@ if [[ "$sum_by_gene" = true ]]; then
 fi
 
 # The abundance_estimates_to_matrix script will create a matrix file with this name:
-count_matrix="$outdir"/"$assembly_id".isoform.TPM.not_cross_norm
+count_matrix="$outdir"/"$assembly_id".gene.TPM.not_cross_norm
 
 # Report
 echo
@@ -212,17 +218,21 @@ echo "==========================================================================
 echo "                    STARTING SCRIPT FILTER_EXPR.SH"
 date
 echo "=========================================================================="
-echo "All arguments to this script:     $all_args"
-echo "Input assembly:                   $assembly_in"
-echo "Output assembly:                  $assembly_out"
-[[ "$onetrans_out" = "" ]] && echo "Output assembly with 1 transcript per gene: $onetrans_out"
-echo "Sum by gene (across transcripts?) $sum_by_gene"
-echo "Min. per-sample TPM threshold:    $min_tpm"
-echo "Mean TPM threshold:               $mean_tpm"
-[[ $more_args != "" ]] && echo "Other arguments for filter_low_expr_transcripts:  $more_args"
+echo "All arguments to this script:                     $all_args"
 echo
-echo "Listing the input file(s):"
-ls -lh "$assembly_in" "$kallisto_dir"
+echo "Input assembly (nucl., all transcripts):          $in_alltrans_nuc"
+echo "Output assembly (nucl., all transcripts):         $out_alltrans_nuc"
+[[ "$out_1trans_nuc" != "" ]] && echo "Output assembly (nucl., 1 transcript per gene):   $out_1trans_nuc"
+[[ "$in_1trans_aa" != "" ]] && echo "Input assembly (protein, 1 transcript per gene):  $in_1trans_aa"
+[[ "$out_1trans_aa" != "" ]] && echo "Output assembly (protein, 1 transcript per gene): $out_1trans_aa"
+echo
+echo "Output count matrix:                              $count_matrix"
+echo "Sum by gene (across transcripts)?:                $sum_by_gene"
+echo "Min. per-sample TPM threshold:                    $min_tpm"
+echo "Mean TPM threshold:                               $mean_tpm"
+echo
+echo "# Listing the input file(s):"
+ls -lh "$in_alltrans_nuc" "$kallisto_dir"
 echo "=========================================================================="
 
 # Print reserved resources
@@ -239,52 +249,63 @@ mkdir -pv "$outdir"/logs "$outdir_onetrans"
 # Create a gene-to-transcript map
 if [[ "$sum_by_gene" = true ]]; then
     echo -e "\n# Creating a gene-to-transcript map..."
-    paste <(grep "^>" "$assembly_in" | sed -E 's/>([^ ]+) .*/\1/' | sed -E 's/t[0-9]+//') \
-        <(grep "^>" "$assembly_in" | sed -E 's/>([^ ]+) .*/\1/') |
+    Time paste <(grep "^>" "$in_alltrans_nuc" | sed -E 's/>([^ ]+) .*/\1/' | sed -E 's/t[0-9]+//') \
+        <(grep "^>" "$in_alltrans_nuc" | sed -E 's/>([^ ]+) .*/\1/') |
         sort -k1,1 > "$gene2trans"
 fi
 
 # Run abundance_estimates_to_matrix.pl
-echo -e "\n# Running abundance_estimates_to_matrix..."
-Time abundance_estimates_to_matrix.pl \
-    --est_method kallisto \
-    $gene2trans_arg \
-    --out_prefix "$outdir"/"$assembly_id" \
-    --name_sample_by_basedir \
-    $(find "$kallisto_dir" -name "abundance.tsv")
-
-# Filter by min. per-sample TPM (expression level)
-echo -e "\n# Running filter_low_expr_transcripts to filter by min. per-sample TPM..."
-Time filter_low_expr_transcripts.pl \
-    --matrix "$count_matrix" \
-    --transcripts "$assembly_in" \
-    --min_expr_any $min_tpm \
-    $more_args \
-    > "$assembly_intermed"
-
-# Get list of genes with too-low mean TPM
-echo -e "\n# Filtering by overall mean TPM..."
-tail -n +2 "$count_matrix" |
-    awk '{s=0; for(i=2; i<=NF; i++) s=s+$i; print $1 "\t" s/(NF-1)}' |
-    awk -v mean_tpm="$mean_tpm" '$2 < mean_tpm' | cut -f 1 \
-    > "$outdir"/low_mean_TPM_ids.txt
-
-# Filter by mean TPM
-Load_seqkit
-seqkit grep -v -f "$outdir"/low_mean_TPM_ids.txt "$assembly_intermed" > "$assembly_out"
-
-# Get a file with one transcript per genes
-if [[ "$onetrans_out" != "" ]]; then
-    echo -e "\n# Creating a transcriptome with 1 transcript per gene..."
-    seqkit grep "t1 " "$assembly_out" > "$onetrans_out"
+if [[ ! -f "$count_matrix" ]]; then
+    echo -e "\n# Running abundance_estimates_to_matrix..."
+    Time abundance_estimates_to_matrix.pl \
+        --est_method kallisto \
+        $gene2trans_arg \
+        --out_prefix "$outdir"/"$assembly_id" \
+        --name_sample_by_basedir \
+        $(find "$kallisto_dir" -name "abundance.tsv")
+else
+    echo -e "\n# NOTE: Skipping matrix tabulation, file exists..."
+    ls -lh "$count_matrix"
 fi
+
+# Filter by expression level
+echo -e "\n# Running script find_low_expr.R to get IDs of low-expression genes..."
+Load_R
+Rscript "$FIND_LOW_EXPR" "$count_matrix" "$outdir"/lowTPM_geneIDs.txt $min_tpm $mean_tpm
+
+join "$gene2trans" <(sort "$outdir"/low_TPM_ids.txt) | \
+    cut -d " " -f 2 > "$outdir"/lowTPM_transIDs.txt # Get transcript IDs (from gene IDs)
+
+echo -e "\n# Removing low-expression genes from the assembly..."
+Load_seqkit
+Time seqkit grep -v \
+    -f "$outdir"/lowTPM_transIDs.txt \
+    <(awk '{print $1}' "$in_alltrans_nuc") \
+    > "$out_alltrans_nuc"
+
+# Create an assembly with one transcript per gene
+if [[ "$out_1trans_nuc" != "" ]]; then
+    echo -e "\n# Creating a transcriptome with 1 transcript per gene..."
+    Time seqkit grep --by-name -r -p "t1$" "$out_alltrans_nuc" > "$out_1trans_nuc"
+fi
+
+# Also filter the AA FASTA
+#? NOTE: Fasta IDs must contain a space + 2nd word, or final Diamond output will have 'Query_1' etc as IDs!)
+echo -e "\n# Filtering the protein FASTA file to remove low-expression genes ..."
+seqkit grep \
+    -f <(grep "^>" "$out_1trans_nuc" | awk '{print $1}' | sed -E 's/>//') \
+    <(awk '{print $1}' "$in_1trans_aa") |
+    sed '/^>/s/$/ frame/' \
+    >"$out_1trans_aa" 
 
 # Count the number of transcripts
 echo
-echo "Nr transcripts in the input assembly:           $(grep -c "^>" "$assembly_in")"
-echo "Nr transcripts after min. TPM filtering:        $(grep -c "^>" "$assembly_intermed")"
-echo "Nr transcripts after min+mean. TPM filtering:   $(grep -c "^>" "$assembly_out")"
-[[ "$onetrans_out" != "" ]] && echo "Nr final genes:                                   $(grep -c "^>" "$onetrans_out")"
+echo "# In- and output statistics:"
+[[ "$in_1trans_aa" != "" ]] && echo "Count for input - aa - 1trans:                $(grep -c "^>" "$in_1trans_aa")"
+echo "Count for input - nuc - all-transcripts:      $(grep -c "^>" "$in_alltrans_nuc")"
+echo "Count for output - nuc - all-transcripts:     $(grep -c "^>" "$out_alltrans_nuc")"
+[[ "$out_1trans_nuc" != "" ]] && echo "Count for output - nuc - 1trans:              $(grep -c "^>" "$out_1trans_nuc")"
+[[ "$out_1trans_aa" != "" ]] && echo "Count for output - aa - 1trans:               $(grep -c "^>" "$out_1trans_aa")"
 
 
 # ==============================================================================
@@ -293,8 +314,8 @@ echo "Nr transcripts after min+mean. TPM filtering:   $(grep -c "^>" "$assembly_
 echo
 echo "========================================================================="
 echo -e "# Listing the output assembly:"
-ls -lh "$(realpath "$assembly_out")"
-[[ "$onetrans_out" != "" ]] && ls -lh "$(realpath "$onetrans_out")"
+ls -lh "$(realpath "$out_alltrans_nuc")"
+[[ "$out_1trans_nuc" != "" ]] && ls -lh "$(realpath "$out_1trans_nuc")"
 [[ "$slurm" = true ]] && Resource_usage
 echo "# Done with script"
 date

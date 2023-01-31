@@ -299,8 +299,9 @@ echo "==========================================================================
 echo "All arguments passed to this script: $all_args"
 echo
 echo "INPUT/OUTPUT DATA OPTIONS:"
-echo "  Input assembly FASTA:           $assembly"
 echo "  Output dir:                     $outdir"
+echo "  Input assembly FASTA:           $assembly"
+echo "  (Number of genes:               $(grep -c "^>" "$assembly"))"
 echo
 echo "RUN SETTINGS:"
 echo "  Taxon ID:                       $taxid"

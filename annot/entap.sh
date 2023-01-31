@@ -12,7 +12,7 @@
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-## Help function
+# Help function
 Print_help() {
     echo
     echo "======================================================================"
@@ -21,7 +21,7 @@ Print_help() {
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 -c <config file> -o <output dir> <db-DIAMOND-1> [<db-DIAMOND-2> ...]"
+    echo "  sbatch $0 -c <config file> -o <output dir> [ --db_dir <dir> | <db-DIAMOND-1> [<db-DIAMOND-2> ...]]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
@@ -31,16 +31,16 @@ Print_help() {
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "DIAMOND REFERENCE DATABASES (ALSO REQUIRED):"
-    echo "  To specify DIAMOND database files, specify --db-dir OR pass files as positional arguments."
+    echo "  To specify DIAMOND database files, specify --db_dir OR pass files as positional arguments."
     echo "  You can use the following pre-built databases:"
     echo "    - RefSeq Complete:    /fs/project/PAS0471/jelmer/refdata/entap/bin/refseq_complete.dmnd"
     echo "    - UniProt:            /fs/project/PAS0471/jelmer/refdata/entap/bin/uniprot_sprot.dmnd"
-    echo "  --db-dir        <dir>   Directory with DIAMOND database files ('.dmnd')"
+    echo "  --db_dir        <dir>   Directory with DIAMOND database files ('.dmnd')"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --bam           <file>  Input BAM filename"
     echo "                            Default is to run without a BAM file and therefore without expression level filtering"
-    echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to EnTAP"
+    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to EnTAP"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
@@ -58,14 +58,14 @@ Print_help() {
     echo
 }
 
-## Load software
+# Load software
 Load_software() {
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /fs/project/PAS0471/jelmer/conda/entap-0.10.8
 }
 
-## Print version
+# Print version
 Print_version() {
     set +u
     Load_software
@@ -73,20 +73,20 @@ Print_version() {
     set -u
 }
 
-## Print help for the focal program
+# Print help for the focal program
 Print_help_program() {
     Load_software
     EnTAP --help
 }
 
-## Print SLURM job resource usage info
+# Print SLURM job resource usage info
 Resource_usage() {
     echo
     sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
     echo
 }
 
-## Print SLURM job requested resources
+# Print SLURM job requested resources
 Print_resources() {
     set +u
     echo "# SLURM job information:"
@@ -102,7 +102,7 @@ Print_resources() {
     set -u
 }
 
-## Set the number of threads/CPUs
+# Set the number of threads/CPUs
 Set_threads() {
     set +u
     if [[ "$slurm" = true ]]; then
@@ -120,14 +120,14 @@ Set_threads() {
     set -u
 }
 
-## Resource usage information
+# Resource usage information
 Time() {
     /usr/bin/time -f \
         '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
         "$@"
 }   
 
-## Exit upon error with a message
+# Exit upon error with a message
 Die() {
     error_message=${1}
     error_args=${2-none}
@@ -151,7 +151,7 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-## Other option defaults
+# Other option defaults
 debug=false
 dryrun=false && e=""
 slurm=true
@@ -160,7 +160,7 @@ slurm=true
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-## Placeholder defaults
+# Placeholder defaults
 assembly=""
 declare -a dbs
 db_dir=""
@@ -170,10 +170,9 @@ config=""
 bam="" && align_arg=""
 more_args=""
 
-## Parse command-line args
+# Parse command-line args
 all_args="$*"
 count=0
-
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --assembly )   shift && assembly=$1 ;;
@@ -187,7 +186,7 @@ while [ "$1" != "" ]; do
         --help )            Print_help_program; exit 0;;
         --dryrun )          dryrun=true && e="echo ";;
         --debug )           debug=true ;;
-        * )                 dbs[$count]=$1 && count=$(( count + 1 )) ;;
+        * )                 dbs[count]=$1 && count=$(( count + 1 )) ;;
     esac
     shift
 done
@@ -196,25 +195,20 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-## In debugging mode, print all commands
+# In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
-## Check if this is a SLURM job
+# Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Load software and set nr of threads
+# Load software and set nr of threads
 [[ "$dryrun" = false ]] && Load_software
 Set_threads
 
-## Bash script settings
+# Bash script settings
 set -euo pipefail
 
-## Make paths absolute, or EnTap will fail
-[[ ! $config =~ ^/ ]] && config="$PWD"/"$config"
-[[ ! $assembly =~ ^/ ]] && assembly="$PWD"/"$assembly"
-[[ ! $outdir =~ ^/ ]] && outdir="$PWD"/"$outdir"
-
-## Check input
+# Check input
 [[ "$assembly" = "" ]] && Die "Please specify an assembly file with -i/--assembly" "$all_args"
 [[ "$config" = "" ]] && Die "Please specify a config file with -c/--config" "$all_args"
 [[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
@@ -222,10 +216,18 @@ set -euo pipefail
 [[ ! -f "$config" ]] && Die "Config file $config does not exist" "$all_args"
 [[ "$bam" != "" ]] && [[ ! -f "$bam" ]] && Die "BAM file $bam does not exist" "$all_args"
 
-## BAM arg
-[[ "$bam" != "" ]] && align_arg="--align $bam"
+# Make paths absolute, or EnTap will fail
+[[ ! $config =~ ^/ ]] && config="$PWD"/"$config"
+[[ ! $assembly =~ ^/ ]] && assembly="$PWD"/"$assembly"
+[[ ! $outdir =~ ^/ ]] && outdir="$PWD"/"$outdir"
 
-## Report
+# BAM arg
+if [[ "$bam" != "" ]]; then
+    bam="$PWD"/"$bam"  # Make path absolute
+    align_arg="--align $bam"
+fi
+
+# Report
 echo
 echo "=========================================================================="
 echo "                    STARTING SCRIPT ENTAP.SH"
@@ -239,9 +241,9 @@ echo "Number of entries in the assembly:    $(grep -c "^>" "$assembly")"
 echo "Number of threads/cores:              $threads"
 [[ "$bam" != "" ]] && echo "Input BAM file:                       $bam"
 [[ $more_args != "" ]] && echo "Other arguments for EnTAP:            $more_args"
-echo
-echo "Listing the DIAMOND databases:"
-## Build database argument for EnTap
+
+# Build database argument for EnTap
+echo "# Listing the DIAMOND databases:"
 if [[ "$db_dir" != "" ]]; then
     if compgen -G "$db_dir"/*dmnd > /dev/null; then
         for db in "$db_dir"/*dmnd; do
@@ -259,31 +261,32 @@ else
     Die "Please specify input DIAMOND databases with --dbs, --db-dir, or as positional args"
 fi
 
-## Report, part 2
-echo
+# Report, part 2
 echo "Input database arg:                   $db_arg"
 echo
-echo "Printing the contents of the config file:"
+echo "# Printing the contents of the config file:"
 cat -n "$config"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
-## Print reserved resources
+# Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
 
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-## Create output directory
-mkdir -p "$outdir"/logs
+# Create output directory
+echo -e "\nCreating the output directories..."
+mkdir -pv "$outdir"/logs
 
-## Copy the entap_graphing.py script to the working dir
-## Entap will call it using 'python entap_graphing.py' which won't work unless it's in the current working dir
+# Copy the entap_graphing.py script to the working dir
+# Entap will call it using 'python entap_graphing.py' which won't work unless it's in the current working dir
+echo -e "\nCopying the graphing script to the working dir..."
 graphing_script=$(whereis entap_graphing.py | sed 's/.* //')
 cp -v "$graphing_script" .
 
-echo -e "\n## Now running EnTAP..."
+echo -e "\n# Now running EnTAP..."
 ${e}Time EnTAP \
     --runP \
     --ini "$config" \
