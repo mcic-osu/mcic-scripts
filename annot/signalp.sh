@@ -42,6 +42,9 @@ Print_help() {
     echo "  --help                  Print the help for SignalP and exit"
     echo "  -v/--version            Print the version of SignalP and exit"
     echo
+    echo "HARDCODED OPTIONS:"
+    echo "  NOTE: SignalP runs in 'fast' mode ('--mode fast'), since the other two modes have not been installed"
+    echo
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 -i results/braker/proteome.fa -o results/signalp"
     echo
