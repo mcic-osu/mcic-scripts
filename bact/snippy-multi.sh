@@ -250,10 +250,21 @@ Time bash runme.sh
 echo
 echo "========================================================================="
 echo "# Version used:"
-Print_version | tee "$outdir"/logs/version.txt
+Print_version | tee logs/version.txt
 echo -e "\n# Listing files in the output dir:"
 ls -lhd "$PWD"/*
 [[ "$slurm" = true ]] && Resource_usage
 echo "# Done with script"
 date
 echo
+
+
+# ==============================================================================
+#                               NOTES
+# ==============================================================================
+# I was getting SnpEff errors when trying to run with Genbank input
+# (SnpEff is only run when the input is GenBank and not FASTA)
+# See <https://github.com/tseemann/snippy/issues/259?_blank>
+# and <https://www.mail-archive.com/debian-bugs-dist@lists.debian.org/msg1890116.html>
+# Based on the latter link, I downgraded snpEff to v5.0 and that worked!
+# micromamba install -c bioconda snpeff=5.0
