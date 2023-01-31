@@ -3,6 +3,7 @@
 #SBATCH --account=PAS0471
 #SBATCH --time=6:00:00
 #SBATCH --mem=20G
+#SBATCH --cpus-per-task=5
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --mail-type=END,FAIL
@@ -25,8 +26,8 @@ Print_help() {
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--assembly   <file>  Assembly (nucleotide) FASTA file"
-    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
+    echo "  -i/--assembly_in   <file>   Input assembly: a nucleotide FASTA file"
+    echo "  -o/--assembly_out  <file>   Output, masked, assembly"
     echo
     echo "ONE OF THESE TWO IS REQUIRED (THEY ARE MUTUALLY EXCLUSIVE):"
     echo "  --genome_lib    <file>  Genome repeat library FASTA file produced by RepeatModeler (repeatmodeler.sh script)"
@@ -158,27 +159,27 @@ slurm=true
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Placeholder defaults
-assembly=""
+assembly_in=""
+assembly_out=""
 genome_lib=""
 species="" && species_arg=""
-outdir=""
 more_args=""
 
 # Parse command-line args
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --assembly )   shift && assembly=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
-        --genome_lib )      shift && genome_lib=$1 ;;
-        --species )         shift && species=$1 ;;
-        --more_args )       shift && more_args=$1 ;;
-        -v | --version )    Print_version; exit 0 ;;
-        -h )                Print_help; exit 0 ;;
-        --help )            Print_help_program; exit 0;;
-        --dryrun )          dryrun=true && e="echo ";;
-        --debug )           debug=true ;;
-        * )                 Die "Invalid option $1" "$all_args" ;;
+        -i | --assembly_in )    shift && assembly_in=$1 ;;
+        -o | --assembly_out )   shift && assembly_out=$1 ;;
+        --genome_lib )          shift && genome_lib=$1 ;;
+        --species )             shift && species=$1 ;;
+        --more_args )           shift && more_args=$1 ;;
+        -v | --version )        Print_version; exit 0 ;;
+        -h )                    Print_help; exit 0 ;;
+        --help )                Print_help_program; exit 0;;
+        --dryrun )              dryrun=true && e="echo ";;
+        --debug )               debug=true ;;
+        * )                     Die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
@@ -201,20 +202,24 @@ set -euo pipefail
 Set_threads
 
 # Check input
-[[ "$assembly" = "" ]] && Die "Please specify an input file with -i/--assembly" "$all_args"
+[[ "$assembly_in" = "" ]] && Die "Please specify an input file with -i/--assembly_in" "$all_args"
 [[ "$genome_lib" = "" ]] && Die "Please specify an input file with --genome_lib" "$genome_lib"
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
-[[ ! -f "$assembly" ]] && Die "Input file $assembly does not exist"
+[[ "$assembly_out" = "" ]] && Die "Please specify an output assembly with -o/--assembly_out" "$all_args"
+[[ ! -f "$assembly_in" ]] && Die "Input file $assembly_in does not exist"
 [[ ! -f "$genome_lib" ]] && Die "Input file $genome_lib does not exist"
 [[ "$species" != "" ]] && [[ "$genome_lib" != "" ]] && Die "Specify --species or --genome_lib, not both"
 
-# Make path to input files absolute
-[[ ! "$assembly" =~ ^/ ]] && assembly=$(realpath "$assembly")
+# Make file paths absolute
+[[ ! "$assembly_in" =~ ^/ ]] && assembly_in=$(realpath "$assembly_in")
 [[ ! "$genome_lib" =~ ^/ ]] && genome_lib=$(realpath "$genome_lib")
+[[ ! "$assembly_out" =~ ^/ ]] && assembly_out="$PWD"/"$assembly_out"
 
 # Species/genome lib args
 [[ "$species" != "" ]] && species_arg="-species $species"
 [[ "$genome_lib" != "" ]] && genome_lib_arg="-lib $genome_lib"
+
+# Get outdir
+outdir=$(dirname "$assembly_out")
 
 # Report
 echo
@@ -223,15 +228,15 @@ echo "                    STARTING SCRIPT REPEATMASKER.SH"
 date
 echo "=========================================================================="
 echo "All arguments to this script:         $all_args"
-echo "Input file (genome FASTA):            $assembly"
+echo "Input assembly (nucleotide FASTA):    $assembly_in"
+echo "Output assembly:                      $assembly_out"
 echo "Genome database from RepeatModeler:   $genome_lib"
-echo "Output dir:                           $outdir"
 [[ $species_arg != "" ]] && echo "Species name:                         $species"
 [[ $more_args != "" ]] && echo "Other arguments for RepeatMasker:     $more_args"
 echo "Number of threads/cores:              $threads"
 echo
 echo "Listing the input file(s):"
-ls -lh "$assembly"
+ls -lh "$assembly_in" "$genome_lib"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
@@ -250,14 +255,18 @@ ${e}mkdir -pv "$outdir"/logs
 cd "$outdir" || exit
 
 # Run
-echo "## Now runnning RepeatMasker..."
+echo -e "\n# Now runnning RepeatMasker..."
 ${e}Time \
     RepeatMasker \
     -dir . \
     $genome_lib_arg \
     $species_arg \
     $more_args \
-    "$assembly"
+    "$assembly_in"
+
+# Copy the output file
+echo -e "\n# Now copying the masked assembly..."
+cp -v "$outdir"/"$(basename "$assembly_in")" "$assembly_out"
 
 
 # ==============================================================================
@@ -267,9 +276,9 @@ echo
 echo "========================================================================="
 if [[ "$dryrun" = false ]]; then
     echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
+    Print_version | tee logs/version.txt
+    echo -e "\n# Listing the output assembly file:"
+    ls -lh "$(realpath "$assembly_out")"
     [[ "$slurm" = true ]] && Resource_usage
 fi
 echo "# Done with script"
