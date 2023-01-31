@@ -266,7 +266,7 @@ ${e}Time \
 
 # Copy the output file
 echo -e "\n# Now copying the masked assembly..."
-cp -v "$outdir"/"$(basename "$assembly_in")" "$assembly_out"
+cp -v "$outdir"/"$(basename "$assembly_in")".masked "$assembly_out"
 
 
 # ==============================================================================
