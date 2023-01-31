@@ -30,7 +30,7 @@ Print_help() {
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --fungal_more           Run EffectorP in fungal mode ('-f' option)  [default: off => oomycete mode]"
+    echo "  --fungal_mode           Run EffectorP in fungal mode ('-f' option)  [default: off => oomycete mode]"
     echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to EffectorP"
     echo
     echo "UTILITY OPTIONS:"
