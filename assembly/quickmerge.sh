@@ -6,6 +6,7 @@
 #SBATCH --mem=40G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
+#SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=quickmerge
 #SBATCH --output=slurm-quickmerge-%j.out
 

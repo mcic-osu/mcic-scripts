@@ -6,6 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64G
+#SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=rcorrector
 #SBATCH --output=slurm-rcorr-%j.out
 

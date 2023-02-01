@@ -6,10 +6,12 @@
 #SBATCH --exclusive
 #SBATCH --mem=170G
 #SBATCH --cpus-per-task=42
+#SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=trinity
 #SBATCH --output=slurm-trinity-%j.out
 
-#TODO Use trap to copy files from TMPDIR in case of failure
+#TODO - Use trap to copy files from TMPDIR in case of failure
+#TODO - Use built-in parallel job submission for stage 2!
 
 # ==============================================================================
 #                                   FUNCTIONS

@@ -6,6 +6,7 @@
 #SBATCH --mem=12G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
+#SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=transdecoder
 #SBATCH --output=slurm-transdecoder-%j.out
 

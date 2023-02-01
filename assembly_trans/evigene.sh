@@ -6,6 +6,7 @@
 #SBATCH --mem=100G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
+#SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=evigene
 #SBATCH --output=slurm-evigene-%j.out
 

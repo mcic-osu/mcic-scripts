@@ -6,6 +6,7 @@
 #SBATCH --mem=64G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
+#SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=entap
 #SBATCH --output=slurm-entap-%j.out
 

@@ -6,6 +6,7 @@
 #SBATCH --mem=80G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
+#SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=quast
 #SBATCH --output=slurm-quast-%j.out
 

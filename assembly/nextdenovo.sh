@@ -2,6 +2,7 @@
 
 #SBATCH --account=PAS0471
 #SBATCH --time=48:00:00
+#SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=nextdenovo
 #SBATCH --output=slurm-nextdenovo-%j.out
 

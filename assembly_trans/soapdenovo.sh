@@ -4,6 +4,7 @@
 #SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=50G
+#SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=soapdenovo
 #SBATCH --output=slurm-soapdenovo-%j.out
 

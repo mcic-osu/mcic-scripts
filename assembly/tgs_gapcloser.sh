@@ -7,6 +7,7 @@
 #SBATCH --mem=740G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
+#SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=tgs_gapcloser
 #SBATCH --output=slurm-tgs_gapcloser-%j.out
 
