@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
+#SBATCH --time=30
 #SBATCH --cpus-per-task=12
-#SBATCH --mem=4G
+#SBATCH --mem=48G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --job-name=prokka
