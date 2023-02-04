@@ -4,6 +4,9 @@
 #SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=nfcore_ampliseq
 #SBATCH --output=slurm-nfcore_ampliseq-%j.out
 
@@ -45,10 +48,13 @@ Print_help() {
     echo "  --sample_inference  <str>   Dada sample inference method            [default: 'independent']"
     echo "                                - 'independent', 'pooled', or 'pseudo'"
     echo "  --dada_ref_taxonomy <str>   Reference taxonomy for dada             [default: 'silva=138' for 16S / 'unite-fungi=8.3' for ITS]"
-    echo "  --filter_ssu        <str>   Quoted, comma-separated list of kingdoms to keep [default: no SSU filtering]"
+    echo "  --filter_ssu        <str>   Quoted, comma-separated list of kingdoms to keep after Barrnap classification"
     echo "                                - Recommended for 16S: 'bac'"
     echo "                                - Don't use this for ITS"
+    echo "                                - Default: no SSU filtering"
     echo "                                - See https://nf-co.re/ampliseq/2.4.1/parameters#filter_ssu"
+    echo "  --exclude_taxa      <str>   Quoted, comma-separated list of Kingdoms/taxa to remove after ASV tax. classification with DADA2 or QIIME2"
+    echo "                                - Default: 'mitochondria,chloroplast'"
     echo "  --min_frequency     <int>   ASV must be present at least x times    [default: 1]"
     echo "  --metadata          <file>  Metadata TSV file                       [default: no metadata => no by-group stats]"
     echo "                                - At a minimum should have a column named 'id'"
@@ -164,6 +170,7 @@ fastq_dir=""
 outdir=""
 FW_primer=""
 RV_primer=""
+exclude_taxa="" && exclude_taxa_arg=""
 extension="" && extension_arg=""
 trunclenf="" && trunclenf_arg=""
 trunclenr="" && trunclenr_arg=""
@@ -197,6 +204,7 @@ while [ "$1" != "" ]; do
         --max_len_asv )                 shift && max_len_asv=$1 ;;
         --min_frequency )               shift && min_frequency=$1 ;;
         --filter_ssu )                  shift && filter_ssu=$1 ;;
+        --exclude_taxa )                shift && exclude_taxa=$1 ;;
         --metadata )                    shift && metadata=$1 ;;
         --metadata_category )           shift && metadata_category=$1 ;;
         --metadata_category_barplot )   shift && metadata_category_barplot=$1 ;;
@@ -284,33 +292,39 @@ echo "==========================================================================
 echo "              STARTING SCRIPT NCFORE_AMPLISEQ.SH"
 echo "=========================================================================="
 date
-echo "All arguments to this script:     $all_args"
-echo "Input FASTQ dir:                  $fastq_dir"
-echo "Output dir:                       $outdir"
-echo "Forward primer:                   $FW_primer"
-echo "Reverse primer:                   $RV_primer"
-[[ "$dada_ref_taxonomy" != "" ]] && echo "Dada reference taxonomy:          $dada_ref_taxonomy"
-[[ "$extension" != "" ]] && echo "File extension:                   $extension"
-[[ "$sample_inference" != "" ]] && echo "Sample inference method:          $sample_inference"
-[[ "$min_len_asv" != "" ]] && echo "Min. ASV length:                  $min_len_asv"
-[[ "$max_len_asv" != "" ]] && echo "Max. ASV length:                  $max_len_asv"
-[[ "$trunclenf" != "" ]] && echo "Truncate forward reads at:        $trunclenf"
-[[ "$trunclenr" != "" ]] && echo "Truncate reverse reads at:        $trunclenr"
-[[ "$filter_ssu" != "" ]] && echo "Filter SSU:                       $filter_ssu"
-[[ "$min_frequency" != "" ]] && echo "Min. ASV frequency:               $min_frequency"
-[[ "$metadata" != "" ]] && echo "Metadata file:                    $metadata"
-[[ "$metadata_category" != "" ]] && echo "Metadata categories:              $metadata_category"
-[[ "$metadata_category_barplot" != "" ]] && echo "Metadata categories for barplots: $metadata_category_barplot"
-[[ "$metadata_arg" != "" ]] && echo "Metadata argument:                $metadata_arg"
-[[ "$more_args" != "" ]] && echo "Additional arguments:             $more_args"
+echo "All arguments to this script:                 $all_args"
 echo
-echo "Resume previous run:              $resume"
-echo "Container dir:                    $container_dir"
-echo "Scratch (work) dir:               $work_dir"
-echo "Nextflow workflow dir:            $workflow_dir"
-echo "Config 'profile':                 $profile"
-echo "Config file argument:             $config_arg"
-[[ "$config_file" != "" ]] && echo "Additional config file:           $config_file"
+echo "INPUT AND OUTPUT:"
+echo "Input FASTQ dir:                              $fastq_dir"
+echo "Output dir:                                   $outdir"
+[[ "$extension" != "" ]] && echo "File extension:                               $extension"
+[[ "$metadata" != "" ]] && echo "Metadata file:                                $metadata"
+echo
+echo "SETTINGS:"
+echo "Forward primer:                               $FW_primer"
+echo "Reverse primer:                               $RV_primer"
+[[ "$dada_ref_taxonomy" != "" ]] && echo "Dada reference taxonomy:                      $dada_ref_taxonomy"
+[[ "$sample_inference" != "" ]] && echo "Sample inference method:                      $sample_inference"
+[[ "$min_len_asv" != "" ]] && echo "Min. ASV length:                              $min_len_asv"
+[[ "$max_len_asv" != "" ]] && echo "Max. ASV length:                              $max_len_asv"
+[[ "$trunclenf" != "" ]] && echo "Truncate forward reads at:                    $trunclenf"
+[[ "$trunclenr" != "" ]] && echo "Truncate reverse reads at:                    $trunclenr"
+[[ "$filter_ssu" != "" ]] && echo "Filter SSU (Barrnap classification):          $filter_ssu"
+[[ "$exclude_taxa" != "" ]] && echo "Exclude taxa (DADA2/QIIME classification):    $exclude_taxa"
+[[ "$min_frequency" != "" ]] && echo "Min. ASV frequency:                           $min_frequency"
+[[ "$metadata_category" != "" ]] && echo "Metadata categories:                          $metadata_category"
+[[ "$metadata_category_barplot" != "" ]] && echo "Metadata categories for barplots:             $metadata_category_barplot"
+[[ "$metadata_arg" != "" ]] && echo "Metadata argument:                            $metadata_arg"
+[[ "$more_args" != "" ]] && echo "Additional arguments:                         $more_args"
+echo
+echo "NEXTFLOW-RELATED SETTINGS:"
+echo "Resume previous run:                          $resume"
+echo "Container dir:                                $container_dir"
+echo "Scratch (work) dir:                           $work_dir"
+echo "Nextflow workflow dir:                        $workflow_dir"
+echo "Config 'profile':                             $profile"
+echo "Config file argument:                         $config_arg"
+[[ "$config_file" != "" ]] && echo "Additional config file:                       $config_file"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 echo
