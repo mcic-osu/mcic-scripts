@@ -3,7 +3,7 @@
 #SBATCH --account=PAS0471
 #SBATCH --time=3:00:00
 #SBATCH --cpus-per-task=10
-#SBATCH --mem=120G
+#SBATCH --mem=170G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --job-name=filter_expr
@@ -67,7 +67,7 @@ Load_seqkit() {
 }
 Load_R() {
     module load R/4.2.1-gnu11.2
-    FIND_LOW_EXPR=../mcic-scripts/assembly_trans/find_low_expr.R #!TODO FIX
+    FIND_LOW_EXPR=mcic-scripts/assembly_trans/find_low_expr.R #!TODO FIX
     #[[ ! -f "$FIND_LOW_EXPR" ]] && #TODO - Download the script
 }
 
@@ -202,11 +202,12 @@ outdir=$(dirname "$out_alltrans_nuc")
 outdir_onetrans=$(dirname "$out_1trans_nuc")
 assembly_basename=$(basename "$in_alltrans_nuc")
 assembly_id=${assembly_basename/%.*}
+gene2trans_out="$outdir"/"$assembly_id"_gene2trans.tsv
 
 # Sum across transcripts?
 if [[ "$sum_by_gene" = true ]]; then
-    gene2trans="$outdir"/gene2trans.tsv
-    gene2trans_arg="--gene_trans_map $gene2trans"
+    gene2trans_in="$outdir"/"$assembly_id"_gene2trans_in.tsv
+    gene2trans_arg="--gene_trans_map $gene2trans_in"
 fi
 
 # The abundance_estimates_to_matrix script will create a matrix file with this name:
@@ -248,10 +249,10 @@ mkdir -pv "$outdir"/logs "$outdir_onetrans"
 
 # Create a gene-to-transcript map
 if [[ "$sum_by_gene" = true ]]; then
-    echo -e "\n# Creating a gene-to-transcript map..."
+    echo -e "\n# Creating a gene-to-transcript map for the input assembly..."
     Time paste <(grep "^>" "$in_alltrans_nuc" | sed -E 's/>([^ ]+) .*/\1/' | sed -E 's/t[0-9]+//') \
         <(grep "^>" "$in_alltrans_nuc" | sed -E 's/>([^ ]+) .*/\1/') |
-        sort -k1,1 > "$gene2trans"
+        sort -k1,1 > "$gene2trans_in"
 fi
 
 # Run abundance_estimates_to_matrix.pl
@@ -268,15 +269,18 @@ else
     ls -lh "$count_matrix"
 fi
 
-# Filter by expression level
+# Get IDs of too-low-expression _genes_
 echo -e "\n# Running script find_low_expr.R to get IDs of low-expression genes..."
 Load_R
 Rscript "$FIND_LOW_EXPR" "$count_matrix" "$outdir"/lowTPM_geneIDs.txt $min_tpm $mean_tpm
 
-join "$gene2trans" <(sort "$outdir"/low_TPM_ids.txt) | \
-    cut -d " " -f 2 > "$outdir"/lowTPM_transIDs.txt # Get transcript IDs (from gene IDs)
+# Get IDs of too-low-expression _transcripts_
+join "$gene2trans_in" <(sort "$outdir"/lowTPM_geneIDs.txt) |
+    cut -d " " -f 2 \
+    > "$outdir"/lowTPM_transIDs.txt
 
-echo -e "\n# Removing low-expression genes from the assembly..."
+# Remove low-expression transcripts
+echo -e "\n# Removing low-expression transcripts from the all-transcripts assembly..."
 Load_seqkit
 Time seqkit grep -v \
     -f "$outdir"/lowTPM_transIDs.txt \
@@ -298,6 +302,12 @@ seqkit grep \
     sed '/^>/s/$/ frame/' \
     >"$out_1trans_aa" 
 
+# Create a gene-to-transcript map for the output assembly
+echo -e "\n# Creating a gene-to-transcript map for the output assembly..."
+Time paste <(grep "^>" "$out_alltrans_nuc" | sed -E 's/>([^ ]+).*/\1/' | sed -E 's/t[0-9]+//') \
+    <(grep "^>" "$out_alltrans_nuc" | sed -E 's/>([^ ]+).*/\1/') |
+    sort -k1,1 > "$gene2trans_out"
+
 # Count the number of transcripts
 echo
 echo "# In- and output statistics:"
@@ -306,6 +316,7 @@ echo "Count for input - nuc - all-transcripts:      $(grep -c "^>" "$in_alltrans
 echo "Count for output - nuc - all-transcripts:     $(grep -c "^>" "$out_alltrans_nuc")"
 [[ "$out_1trans_nuc" != "" ]] && echo "Count for output - nuc - 1trans:              $(grep -c "^>" "$out_1trans_nuc")"
 [[ "$out_1trans_aa" != "" ]] && echo "Count for output - aa - 1trans:               $(grep -c "^>" "$out_1trans_aa")"
+echo "Count for the output gene-to-transcript map:  $(wc -l < "$gene2trans_out")"
 
 
 # ==============================================================================
