@@ -13,15 +13,15 @@ extract_DE <- function(
 
   # Get DEseq results
   res <- results(dds, contrast = c(fac, comp), tidy = TRUE) |>
-    as_tibble() |>
-    rename(gene = row,
-           lfc = log2FoldChange,
-           mean = baseMean) |>
+    dplyr::rename(gene = row,
+                  lfc = log2FoldChange,
+                  mean = baseMean) |>
     mutate(group1 = comp[1],
            group2 = comp[2],
            contrast = paste0(comp, collapse = "_")) |>
     select(-lfcSE, -stat) |>
-    arrange(padj)
+    arrange(padj) |>
+    as_tibble()
 
   # Include mean normalized counts
   if (!is.null(count_df)) {
@@ -156,6 +156,7 @@ pMA <- function(
     rm_padj_na = TRUE,
     ptsize_nonsig = 1,
     ptsize_sig = 1,
+    ptcol_sig = "blue",
     alpha_nonsig = 0.3,
     alpha_sig = 0.3,
     x_min = NA,
@@ -198,8 +199,8 @@ pMA <- function(
                aes(x = mean,
                    y = lfc),
                shape = 21,
-               fill = "grey50",
-               color = "grey50",
+               fill = "grey80",
+               color = "grey40",
                size = ptsize_nonsig,
                alpha = alpha_nonsig) +
     geom_point(data = dplyr::filter(deseq_results, isDE == TRUE),
@@ -207,8 +208,8 @@ pMA <- function(
                    y = lfc,
                    text = glue::glue(glue_string)),
                shape = 21,
-               fill = "blue",
-               color = "blue",
+               fill = ptcol_sig,
+               color = ptcol_sig,
                size = ptsize_sig,
                alpha = alpha_sig) +
     scale_x_log10(labels = scales::comma_format(accuracy = 1),
@@ -219,7 +220,7 @@ pMA <- function(
     labs(x = xlab,
          y = ylab) +
     theme(panel.grid.minor = element_blank(),
-          plot.title = element_text(hjust = 0.5))
+          plot.title = element_text(size = 14, hjust = 0.5))
 
   if (!is.null(contrast)) {
     if (length(fcontrast) > 1) p <- p + facet_wrap(vars(contrast))
@@ -276,10 +277,10 @@ pvolc <- function(DE_df,
         text = glue_string) +
     geom_point(data = filter(DE_df, isDE == FALSE),
                fill = "grey80",
-               size = 3, shape = 21, color = "grey40", alpha = 0.3) +
+               size = 2, shape = 21, color = "grey40", alpha = 0.3) +
     geom_point(data = filter(DE_df, isDE == TRUE),
                aes(fill = contrast),
-               size = 3, shape = 21, color = "grey20", alpha = 0.5) +
+               size = 2, shape = 21, color = "grey20", alpha = 0.5) +
     geom_vline(xintercept = 0, color = "grey30") +
     scale_x_continuous(expand = expansion(mult = c(0.02, 0.02))) +
     scale_y_continuous(expand = expansion(mult = c(0, 0.02))) +
@@ -354,13 +355,15 @@ pheat <- function(genes,
                                      width = 20, ellipsis = "")
 
   ## Function to create the plot
-  pheatmap(fcount_mat, annotation_col = fmeta,
+  p <- pheatmap(fcount_mat, annotation_col = fmeta,
            cluster_rows = cluster_rows, cluster_cols = FALSE,
            show_rownames = show_rownames, show_colnames = show_colnames,
            annotation_colors = annotation_colors,
            cellheight = cellheight,
            fontsize = 9, fontsize_row = id_labsize, cex = 1,
            ...)
+
+  return(p)
 }
 
 # Boxplot showing abundances for a single gene
