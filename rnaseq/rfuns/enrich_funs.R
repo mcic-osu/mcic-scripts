@@ -332,8 +332,7 @@ enrich_plot <- function(
   enrich_res,                   # Enrichment results
   contrasts,                    # One or more contrasts
   DE_directions = c("up", "down", "either"),  # One or more DE directions
-  plot_ontologies = TRUE,       # Show BP/CC/MF ontologies separately.
-                                # NOTE: should be FALSE for KEGG results
+  plot_ontologies = TRUE,       # Show BP/CC/MF ontologies separately (should be FALSE for KEGG results)
   x_var = "contrast",           # What to plot along the x-axis (refer to column in `enrich_res`)
   x_var_levels = NULL,          # Factor levels for x_var (for ordering)
   facet_var = NULL,             # What to facet by (default: no faceting)
@@ -342,53 +341,75 @@ enrich_plot <- function(
   padj_tres = 1,                # Further subset categories: only those with padj below this value
   n_tres = 0,                   # Further subset categories: only those with nrDEInCat at or above this value
   xlabs = NULL,
-  ylabsize = 8,
-  xlabsize = 8,
-  title = NULL
+  ylabsize = 10,
+  xlabsize = 14,
+  plot_title = NULL,
+  facet_labeller = "label_value",
+  just_df = FALSE               # If true, don't make plot, just return modified df
   ) {
 
+  # Columns to select
   vars <- c("category", "ontology", "description",
             "contrast", "DE_direction", "padj")
 
+  # Prep the df
   enrich_res <- enrich_res %>%
-    select(any_of(vars)) %>%
+    #select(any_of(vars)) %>%
     filter(contrast %in% contrasts,
            DE_direction %in% DE_directions) %>%
-    ## Pivot wider and then longer to include all terms in all contrasts
-    pivot_wider(names_from = contrast, values_from = padj) %>%
-    pivot_longer(cols = any_of(contrasts),
-                 names_to = "contrast", values_to = "padj") %>%
-    left_join(select(enrich_res, contrast, category, DE_direction, numDEInCat, sig),
-              by = c("contrast", "category", "DE_direction")) %>%
-    ## No labels if not significant
-    mutate(numDEInCat = ifelse(padj >= 0.05, NA, numDEInCat)) %>%
-    mutate(contrast = sub("padj_", "", contrast),
+    mutate(numDEInCat = ifelse(padj >= 0.05, NA, numDEInCat),
+           contrast = sub("padj_", "", contrast),
            padj = ifelse(sig == FALSE, NA, padj),
            padj_log = -log10(padj)) %>%
-    ## Only take GO categories with at least one significant contrast
+    # Only take GO categories with at least one significant contrast
     filter(category %in% (filter(., sig == TRUE) %>% pull(category))) %>%
-    ## Only take GO categories with at least one significant contrast
+    # Only take GO categories with at least one significant contrast
     filter(category %in% (filter(., padj < padj_tres & numDEInCat >= n_tres) %>%
                             pull(category))) %>%
-    ## Only take contrasts with at least one significant category
+    # Only take contrasts with at least one significant category
     filter(contrast %in% (filter(., sig == TRUE) %>% pull(contrast))) %>%
-    arrange(padj_log) %>%
     mutate(description = paste0(category, " - ", description),
            description = str_trunc(description, width = 45),
-           description = ifelse(is.na(description), category, description))
+           description = ifelse(is.na(description), category, description)) %>%
+    arrange(padj_log)
 
+  # Make sure all combinations of contrast, DE_dir, and GO cat. are present
+  # A) Make a lookup table with GO terms
+  go_lookup <- enrich_res |>
+    select(any_of(c("category", "ontology", "description"))) |>
+    distinct()
+  # B) Make a df with all possible combinations of contrast, DE_dir, and GO cat.
+  enrich_rows <- enrich_res |>
+    select(contrast, DE_direction, category) |>
+    complete(contrast, DE_direction, category) |>
+    left_join(go_lookup, by = c("category"))
+  # C) Merge this with the enrich_res
+  enrich_res <- left_join(enrich_rows,
+                          enrich_res |> select(-(any_of(c("ontology", "description")))),
+                          by = c("contrast", "DE_direction", "category"),
+                          multiple = "all") |>
+    mutate(sig = ifelse(is.na(sig), FALSE, sig))
+
+  # If requested, don't make a plot and return the df
+  if (just_df == TRUE) return(enrich_res)
+
+  # Make sure the x-axis levels are ordered correctly
   if (!is.null(x_var_levels))
     enrich_res[[x_var]] <- factor(enrich_res[[x_var]], x_var_levels)
 
+  # Legend title with subscript
+  legend_title <- expression("-Log"[10]*" P")
+
+  # Make the plot
   p <- ggplot(enrich_res) +
     aes(x = .data[[x_var]],
         y = str_trunc(description, width = 40),
         fill = padj_log) +
-    geom_tile(stat = "identity", size = 0.25, color = "grey80") +
+    geom_tile(stat = "identity", linewidth = 0.25, color = "grey80") +
     scale_fill_viridis_c(option = "D", na.value = "grey95") +
     scale_y_discrete(position = "right") +
-    labs(fill = "-log10\n(adj. p)",
-         title = title) +
+    labs(fill = legend_title,
+         title = plot_title) +
     theme_minimal() +
     theme(legend.position = "left",
           panel.grid = element_blank(),
@@ -398,36 +419,44 @@ enrich_plot <- function(
           strip.text = element_text(face = "bold"),
           plot.title = element_text(hjust = 0.5))
 
-  ## Add a count of the nr of DE genes in each category
+  # Add a count of the nr of DE genes in each category
   if (label_count == TRUE)
     p <- p + geom_label(aes(label = numDEInCat),
                         fill = "grey95", size = label_count_size)
 
-  ## Faceting - ggforce::facet_col will keep tile heights constant
+  # Faceting
   if (plot_ontologies == TRUE) {
     if (is.null(facet_var)) {
-      p <- p + facet_col(vars(ontology), scales = "free_y", space = "free")
+      # ggforce::facet_col will keep tile heights constant
+      p <- p + facet_col(vars(ontology),
+                         scales = "free_y", space = "free")
     } else {
       p <- p + facet_grid(rows = vars(ontology),
                           cols = vars(!!sym(facet_var)),
-                          scales = "free_y", space = "free_y",
-                          switch = "y")
+                          scales = "free_y",
+                          space = "free_y",
+                          switch = "y",
+                          labeller = facet_labeller)
     }
-  } else {
+  }
+
+  if (plot_ontologies == FALSE) {
     if (!is.null(facet_var)) {
       p <- p + facet_grid(cols = vars(!!sym(facet_var)),
-                          scales = "free_y", space = "free_y",
+                          scales = "free_y",
+                          space = "free_y",
                           switch = "y")
     }
   }
-  ## Add x-axis label
+
+  # Add x-axis label
   if (!is.null(xlabs)) p <- p + scale_x_discrete(labels = xlabs)
 
-  ## Print the final figure
-  print(p)
+  return(p)
 }
 
-## GO dotplot
+
+# GO dotplot
 GO_dotplot <- function(df, type = "GO") {
 
   if (type == "GO") group_by <- "ontology" else group_by <- NULL
