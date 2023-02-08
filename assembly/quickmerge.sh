@@ -10,6 +10,7 @@
 #SBATCH --job-name=quickmerge
 #SBATCH --output=slurm-quickmerge-%j.out
 
+#TODO - Auto-determine minlen_anchor => N50 of 'reference'/worst assembly
 #TODO - Manually use newer Mummer version first? See https://onlinelibrary.wiley.com/doi/full/10.1111/tpj.15690
 
 # ==============================================================================
