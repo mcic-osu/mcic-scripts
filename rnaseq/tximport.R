@@ -15,22 +15,19 @@
 
 
 # SET-UP -----------------------------------------------------------------------
-message("\n# Starting script tximport.R")
-Sys.time()
-message()
-
 # Load/install packages
 rep <- "https://cloud.r-project.org"
 lib <- Sys.getenv("R_LIBS_USER")
 dir.create(path = lib, showWarnings = FALSE, recursive = TRUE)
 
-if (!require(argparse)) install.packages("argparse", repos = rep, lib = lib)
-if (!require(pacman)) install.packages("pacman", repos = rep, lib = lib)
-if (!require(BiocManager)) install.packages("BiocManager", repos = rep, lib = lib)
-if (!require(tximport)) BiocManager::install("tximport")
-if (!require(rhdf5)) BiocManager::install("rhdf5")
-if (!require(DESeq2)) BiocManager::install("DESeq2")
-
+suppressPackageStartupMessages( {
+  if (!require(argparse)) install.packages("argparse", repos = rep, lib = lib)
+  if (!require(pacman)) install.packages("pacman", repos = rep, lib = lib)
+  if (!require(BiocManager)) install.packages("BiocManager", repos = rep, lib = lib)
+  if (!require(tximport)) BiocManager::install("tximport")
+  if (!require(rhdf5)) BiocManager::install("rhdf5")
+  if (!require(DESeq2)) BiocManager::install("DESeq2")
+} )
 packages <- c("argparse", "tximport", "rhdf5", "DESeq2", "tidyverse")
 pacman::p_load(char = packages, install = TRUE)
 
@@ -48,22 +45,27 @@ parser$add_argument("--tx2gene",
 parser$add_argument("--meta",
                     type = "character", required = FALSE, default = NULL,
                     help = "Metadata file (TSV), needed to create a DESeq object")
-parser$add_argument("--sample_id_column",
-                    type = "character", required = FALSE, default = "sample_id",
-                    help = "Name of the column in the metadata file with the sample IDs")
+parser$add_argument("--id_col",
+                    type = "integer",
+                    required = FALSE,
+                    default = 1,
+                    help = "In metadata file, column number with sample IDs")
 args <- parser$parse_args()
 
 indir <- args$indir
 outdir <- args$outdir
 tx2gene_file <- args$tx2gene
 meta_file <- args$meta
-sample_id_column <- args$sample_id_column
+sample_id_column <- args$id_col
 
-# Output files
+# Define output files
 txi_out <- file.path(outdir, "tximport_object.rds")
 dds_out <- file.path(outdir, "deseq_object.rds")
 
 # Report
+message("\n# Starting script tximport.R")
+Sys.time()
+message()
 message("Input dir:                     ", indir)
 message("Output dir:                    ", outdir)
 message("Transcript-to-gene map file:   ", tx2gene_file)
