@@ -1,3 +1,16 @@
+# Run DE analysis
+run_DE <- function(
+  dds,
+  minReplicatesForReplace = 7,
+  ...
+) {
+  
+  DESeq(dds,
+        minReplicatesForReplace = minReplicatesForReplace,
+        ...)
+}
+
+
 # Get DE results
 extract_DE <- function(
     comp,                   # Vector of 2 with focal levels of factor 'fac'
@@ -12,7 +25,11 @@ extract_DE <- function(
   ) {
 
   # Get DEseq results
-  res <- results(dds, contrast = c(fac, comp), tidy = TRUE) |>
+  res <- results(dds,
+                 contrast = c(fac, comp),
+                 lfcThreshold = lfc_tres,
+                 alpha = p_tres,
+                 tidy = TRUE) |>
     dplyr::rename(gene = row,
                   lfc = log2FoldChange,
                   mean = baseMean) |>
@@ -46,11 +63,6 @@ extract_DE <- function(
   res <- res |> mutate(
     isDE = ifelse(padj < p_tres & abs(lfc) > lfc_tres & mean > mean_tres, TRUE, FALSE)
     )
-
-  # Report
-  nsig <- sum(res$isDE, na.rm = TRUE)
-  message(comp[1], " vs ", comp[2], " - Nr DEGs: ", nsig)
-
   # Only take significant genes
   if (sig_only == TRUE) res <- res |> filter(isDE == TRUE)
 
@@ -61,6 +73,10 @@ extract_DE <- function(
       arrange(padj)
   }
 
+  # Report
+  nsig <- sum(res$isDE, na.rm = TRUE)
+  message(comp[1], " vs ", comp[2], " - Nr DEGs: ", nsig)
+  
   return(res)
 }
 
@@ -71,9 +87,9 @@ shrink_lfc <- function(
     fac,                # focal factor (column name)
     comp,               # vector of two with focal factor levels (column values)
     lfc_tres = 1,       # If set to 0, original p-values will be used; otherwise, LFC-based s-values
-    p_tres = 0.05,       # P-value threshold
-    s_tres = 0.005)     # S-value threshold
-  {
+    p_tres = 0.05,      # P-value threshold
+    s_tres = 0.005      # S-value threshold
+  ) {
 
   coef <- paste0(fac, "_", paste0(comp, collapse = "_vs_"))
   message("\nCoefficient: ", coef)
@@ -119,35 +135,45 @@ shrink_lfc <- function(
   return(res)
 }
 
+
 # Function to normalize counts
-norm_counts <- function(dds,
-                        meta_df = NULL,
-                        return_matrix = FALSE) {
-
+norm_counts <- function(
+    dds,                     # DESeq object
+    transform = "rlog",      # Normalization/transformation method
+    annot = NULL,            # Gene ID column should be named 'gene'
+    return_matrix = FALSE    # Don't transform to tidy format & don't add metadata
+    ) {
+  
   # Normalize the counts
-  dds <- estimateSizeFactors(dds)
-  counts_raw <- dds@assays@data$counts
-  count_mat <- sweep(counts_raw, 2, sizeFactors(dds), "/")
+  if (transform == "vst") count_mat <- assay(vst(dds, blind = TRUE))
+  if (transform == "rlog") count_mat <- assay(rlog(dds, blind = TRUE))
+  
+  # (Old way)
+  #dds <- estimateSizeFactors(dds)
+  #counts_raw <- dds@assays@data$counts
+  #count_mat <- sweep(counts_raw, 2, sizeFactors(dds), "/")
 
+  # Stop here if there's no metadata
   if (return_matrix == TRUE) return(count_mat)
 
   # Get metadata from dds if not provided
-  if (is.null(meta_df)) {
-    message("Extracting metadata from dds")
-    meta_df <- colData(dds) |>
-      as.data.frame() |>
-      rownames_to_column("sample")
-  }
+  meta_df <- colData(dds) |>
+    as.data.frame() |>
+    rownames_to_column("sample")
 
   # Get a long-format count df with metadata
   count_df <- as.data.frame(count_mat) |>
     rownames_to_column("gene") |>
     pivot_longer(-gene, names_to = "sample", values_to = "count") |>
-    inner_join(meta_df, by = "sample")
+    left_join(meta_df, by = "sample")
 
+  if (!is.null(annot)) {
+    count_df <- count_df |>
+      left_join(annot, by = "gene")
+  }
+  
   return(count_df)
 }
-
 
 
 # Function to make an MA plot
@@ -366,17 +392,20 @@ pheat <- function(genes,
   return(p)
 }
 
+
 # Boxplot showing abundances for a single gene
-pbox <- function(gene,
-                 count_df,
-                 x_by,
-                 col_by = NULL,
-                 annot = NULL,
-                 cols = NULL,
-                 log_scale = FALSE,
-                 theme_base_size = 13,
-                 save_plot = FALSE,
-                 plotdir = "results/figures/geneplots") {
+pbox <- function(
+    gene,
+    count_df,
+    x_by,
+    col_by = NULL,
+    annot = NULL,   
+    cols = NULL,
+    log_scale = FALSE,
+    theme_base_size = 13,
+    save_plot = FALSE,
+    plotdir = "results/figures/geneplots"
+    ) {
 
   fgene <- gene
 
@@ -450,10 +479,13 @@ pbox <- function(gene,
   return(p)
 }
 
+
 # Wrapper function to combine 4 single-gene boxplots
 p4box <- function(genes, count_df,
                   annot = NULL, cols = NULL,
                   x_by = "tissue", col_by = "tissue", ...) {
+  
+  library(patchwork)
 
   p1 <- pbox(genes[1], count_df, annot, cols,
              theme_base_size = 11, ...) +
@@ -478,4 +510,165 @@ p4box <- function(genes, count_df,
 
   p <- (p1 + p2) / (p3 + p4)
   print(p)
+}
+
+# Packages
+library(tidyverse)
+if (!require(PCAtools)) {
+  biocManager::install("PCAtools")
+  library(PCAtools)
+}
+
+# Function to create a PCA the same way as the DESeq2 function
+# (The DEseq function uses `prcomp()` under the hood)
+pca_prcomp <- function(
+    dds,
+    transform = "rlog",
+    ntop = 500
+) {
+  
+  message("Using the top ", ntop, " most highly variable genes...")
+  
+  # Normalize the data
+  if (transform == "vst") dds_norm <- vst(dds, blind = TRUE)
+  if (transform == "rlog") dds_norm <- rlog(dds, blind = TRUE)
+  
+  # Run the PCA
+  rv <- rowVars(assay(dds_norm))
+  select <- order(rv, decreasing = TRUE)[seq_len(min(ntop, length(rv)))]
+  pca <- prcomp(t(assay(dds_norm)[select, ]))
+  
+  # Prep data for plotting
+  percent_var <- round(pca$sdev^2 / sum(pca$sdev^2) * 100, 2)
+  pca_df <- as.data.frame(cbind(colData(dds_norm), pca$x))
+  
+  # Put everything in a list
+  pca_res <- list(df = pca_df, percent_var = percent_var)
+  
+  return(pca_res)
+}
+
+# Function to run the PCA using the PCAtools `pca()` function
+pca_pcatools <- function(
+    dds,                 # DESeq object
+    transform = "rlog", # Type of normalization
+    remove_prop = 0.1    # Remove this proportion of variables (genes) with the lowest variance
+) {
+  
+  # Normalize the data
+  if (transform == "vst") mat_norm <- assay(vst(dds, blind = TRUE))
+  if (transform == "rlog") mat_norm <- assay(rlog(dds, blind = TRUE))
+  
+  # Run the PCA
+  pca_res <- pca(mat_norm,
+                 metadata = colData(dds),
+                 removeVar = remove_prop)
+  
+  return(pca_res)
+}
+
+# Function to create a regular PCA plot from PCAtools PCA results
+pca_plot <- function(
+    pca_res,                      # PCA results after running `PCA_run()`
+    x = "PC1",                    # Principal component to plot on the x-axis
+    y = "PC2",                    # Principal component to plot on the y-axis
+    col = NULL,                   # Vary point color by this variable from the metadata
+    shape = NULL,                 # Vary point shape by this variable from the metadata
+    pt_size = 5,
+    add_ids = FALSE,              # Add sample names to points TRUE/FALSE
+    title = NULL)                 # Add a title as a string; "NULL" is no title
+{
+  
+  if (class(pca_res) == "pca") {
+    # Extract the data from the PCAtools object
+    meta <- as.data.frame(pca_res$metadata) |>
+      rownames_to_column("sample")
+    
+    df <- as.data.frame(pca_res$rotated) |>
+      rownames_to_column("sample") |>
+      left_join(meta, by = "sample")
+    
+    percent_var <- round(pca_res$variance, 2)
+    
+  } else {
+    percent_var <- pca_res$percent_var
+    
+    df <- pca_res$df |>
+      rownames_to_column("sample")
+  }
+  
+  # Sample names
+  if (add_ids == TRUE) names <- pca_res$yvars
+  if (add_ids == FALSE) names <- 0
+  
+  # Axis labels
+  x_nr <- as.integer(sub("PC", "", x))
+  y_nr <- as.integer(sub("PC", "", y))
+  x_lab <- paste0(x, " (", percent_var[x_nr], "% of variance)")
+  y_lab <- paste0(y, " (", percent_var[y_nr], "% of variance)")
+  
+  # Create the base plot
+  p <- ggplot(data = df,
+              aes(x = .data[[x]],
+                  y = .data[[y]]))
+  
+  # Color and shape aesthethics
+  if (!is.null(col)) {
+    p <- p +
+      aes(color = .data[[col]]) +
+      scale_color_brewer(palette = "Dark2")
+  }
+  if (!is.null(shape)) p <- p + aes(shape = .data[[shape]])
+  
+  # Plot polishing
+  p <- p +
+    geom_point(size = pt_size) +
+    labs(x = x_lab, y = y_lab, title = title) +
+    theme(panel.grid.minor = element_blank(),
+          axis.text.x = element_text(size = 10),
+          axis.text.y = element_text(size = 10))
+  
+  if (add_ids == TRUE) {
+    p <- p +
+      geom_text_repel(aes(label = .data[[1]]),
+                      max.overlaps = 20, point.padding = 3)
+  }
+  
+  return(p)
+}
+
+
+# Function to create a PCA biplot
+pca_biplot <- function(
+    pca_res,                      # PCA results after running `PCA_run()`
+    x = "PC1",                    # Principal component to plot on the x-axis
+    y = "PC2",                    # Principal component to plot on the y-axis
+    col = "Treatment",            # Vary point color by this variable from the metadata
+    shape = "Irrigation",         # Vary point shape by this variable from the metadata
+    n_genes = 5,                  # Number of genes to plot loadings for
+    add_ids = TRUE,               # Add sample names to points TRUE/FALSE
+    title = NULL                  # Add a title as a string; "NULL" is no title
+) {
+  percent_var <- round(pca_res$variance, 2)
+  
+  if (add_ids == TRUE) name_idx <- 1:nrow(pca_res$metadata)
+  if (add_ids == FALSE) name_idx <- 0
+  
+  x_nr <- as.integer(sub("PC", "", x))
+  y_nr <- as.integer(sub("PC", "", y))
+  
+  p <- biplot(pca_res,         # `biplot()` function from PCAtools
+              x = x,
+              y = y,
+              selectLab = name_idx,
+              showLoadings = TRUE,
+              ntopLoadings = n_genes / 2,
+              colby = col,
+              shape = shape) +
+    xlab(paste0(x, " (", percent_var[x_nr], "% of variance)")) +
+    ylab(paste0(y, " (", percent_var[y_nr], "% of variance)")) +
+    ggtitle(title) +
+    theme_bw()
+  
+  return(p)
 }
