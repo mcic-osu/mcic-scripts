@@ -1,4 +1,4 @@
-## Packages
+# Packages
 if (!require("ggforce", quietly = TRUE)) install.packages("ggforce")
 library(ggforce)
 
@@ -19,22 +19,22 @@ run_enrich <- function(
 
   fcontrast <- contrast
 
-  ## Filter the DE results, if needed: only take up- or downregulated
+  # Filter the DE results, if needed: only take up- or downregulated
   if (DE_direction == "up") DE_res <- DE_res %>% filter(log2FoldChange > 0)
   if (DE_direction == "down") DE_res <- DE_res %>% filter(log2FoldChange < 0)
 
-  ## Create a vector with DEGs
+  # Create a vector with DEGs
   DE_genes <- DE_res %>%
     filter(padj < p_DE,
            abs(log2FoldChange) > lfc_DE,
            contrast == fcontrast) %>%
     pull(gene_id)
 
-  ## Report
+  # Report
   cat(fcontrast, " // DE Direction:", DE_direction,
       " // Nr DE genes: ", length(DE_genes))
 
-  ## Prep term mappings
+  # Prep term mappings
   term2gene <- cat_map[, 1:2]
   if (ncol(cat_map) > 2) {
     term2name <- cat_map[, c(1, 3)]
@@ -43,7 +43,7 @@ run_enrich <- function(
     term2name <- NA
   }
 
-  ## Run the enrichment analysis
+  # Run the enrichment analysis
   if (length(DE_genes) > 1) {
     enrich_res <- enricher(gene = DE_genes,
                            TERM2GENE = term2gene,
@@ -81,31 +81,31 @@ run_enrich <- function(
 
 
 # GOSEQ PACKAGE FUNCTIONS ------------------------------------------------------
-## This function will run the GO analysis 3 times for each contrast:
-## for either DE direction, for LFC>0 DEGs only, and LFC<0 DEGs only.
-## Then it will save the results in a TSV and print a summary.
+# This function will run the GO analysis 3 times for each contrast:
+# for either DE direction, for LFC>0 DEGs only, and LFC<0 DEGs only.
+# Then it will save the results in a TSV and print a summary.
 run_GO_all <- function(contrasts, DE_res, GO_map, gene_lens, ...) {
 
-  ## Either DE direction
+  # Either DE direction
   GO_ei <- map_dfr(.x = contrasts, .f = run_GO,
                    DE_res = DE_res, gene_lens = gene_len_df, GO_map = GO_map,
                    DE_direction = "either", ...)
 
-  ## DE up (LFC>0)
+  # DE up (LFC>0)
   GO_up <- map_dfr(.x = contrasts, .f = run_GO,
                    DE_res = DE_res, gene_lens = gene_len_df, GO_map = GO_map,
                    DE_direction = "up", ...)
 
-  ## DE down (LFC<0)
+  # DE down (LFC<0)
   GO_dn <- map_dfr(.x = contrasts, .f = run_GO,
                    DE_res = DE_res, gene_lens = gene_len_df, GO_map = GO_map,
                    DE_direction = "down", ...)
 
-  ## Combine results for different DE directions
+  # Combine results for different DE directions
   GO_combined <- bind_rows(GO_ei, GO_up, GO_dn) %>%
     mutate(DE_direction = factor(DE_direction, levels = c("either", "up", "down")))
 
-  ## Summarize the results
+  # Summarize the results
   smr <- GO_combined %>%
     group_by(contrast, DE_direction) %>%
     summarize(nsig = sum(sig), .groups = "drop") %>%
@@ -115,7 +115,7 @@ run_GO_all <- function(contrasts, DE_res, GO_map, gene_lens, ...) {
   return(GO_combined)
 }
 
-## GO analysis wrapper function
+# GO analysis wrapper function
 run_GO <- function(
   contrast,                          # A DE contrast as specified in the 'contrast' column in the 'DE_res' df
   DE_res,                            # Df with DE results from DESeq2
@@ -166,8 +166,8 @@ DE_vec <- get_DE_vec(
   return(GO_df)
 }
 
-## Function to run a GO analysis with goseq
-## (Helper function, use GO_wrap to run the analysis)
+# Function to run a GO analysis with goseq
+# (Helper function, use run_GO to run the analysis)
 run_GO_internal <- function(
   contrast, DE_vec, GO_map, gene_lens,
   DE_direction = "either",
@@ -180,6 +180,8 @@ run_GO_internal <- function(
   ) {
 
   if (verbose == TRUE) {
+    message()
+    message("run_GO_internal function...")
     message("GO analysis settings:")
     message("   - min_in_cat: ", min_in_cat, "  // max_in_cat: ", max_in_cat)
     message("   - min_DE_in_cat: ", min_DE_in_cat)
@@ -188,45 +190,46 @@ run_GO_internal <- function(
   }
 
   if (sum(DE_vec) >= 2) {
-    ## Remove rows from gene length df not in the DE_vec
+    # Remove rows from gene length df not in the DE_vec
     fgene_lens <- gene_lens %>% filter(gene_id %in% names(DE_vec))
     if (nrow(fgene_lens) == 0) stop("Error: no rows left in gene length df, gene_id's likely don't match!")
+    
     n_removed <- nrow(gene_lens) - nrow(fgene_lens)
     if (verbose == TRUE) message("- Nr genes removed from gene length df (not in DE vector): ", n_removed)
 
-    ## Remove elements from DE_vec not among the gene lengths
+    # Remove elements from DE_vec not among the gene lengths
     fDE_vec <- DE_vec[names(DE_vec) %in% fgene_lens$gene_id]
-
     if (length(fDE_vec) == 0) stop("Error: no entries left in DE vector, gene_id's likely don't match!")
+    
     n_removed <- length(DE_vec) - length(fDE_vec)
     if (verbose == TRUE) message("- Nr genes removed from DE vector (not in gene length df): ", n_removed)
     if (verbose == TRUE) message("- Final length of DE vector: ", length(fDE_vec))
 
-    ## Check nr of genes with GO annotations
+    # Check nr of genes with GO annotations
     ngenes_go <- length(intersect(GO_map$gene_id, names(fDE_vec)))
     if (verbose == TRUE) message("- Nr genes in DE vector with GO annotations: ", ngenes_go)
 
-    ## Check that gene lengths and contrast vector contain the same genes in the same order
+    # Check that gene lengths and contrast vector contain the same genes in the same order
     if (!all(fgene_lens$gene_id == names(fDE_vec))) {
       message("Gene IDs in gene length df do not match the gene IDs in the DE vector")
-      message("Gene lengths:")
+      message("IDs in gene length df:")
       print(head(fgene_lens$gene_id))
-      head("DE vector:")
+      message("IDs in DE vector:")
       print(head(names(fDE_vec)))
       stop()
     }
 
-    ## Probability weighting function based on gene lengths
+    # Probability weighting function based on gene lengths
     pwf <- nullp(DEgenes = fDE_vec,
                  bias.data = fgene_lens$length,
                  plot.fit = FALSE, genome = NULL, id = NULL)
 
-    ## Run GO test
+    # Run GO test
     GO_df <- suppressMessages(
       goseq(pwf = pwf, gene2cat = GO_map, method = "Wallenius")
     )
 
-    ## Process GO results
+    # Process GO results
     GO_df <- GO_df %>% filter(numDEInCat >= min_DE_in_cat)
     GO_df <- GO_df %>% filter(numInCat >= min_in_cat)
     GO_df <- GO_df %>% filter(numInCat <= max_in_cat)
@@ -247,7 +250,7 @@ run_GO_internal <- function(
         "  DE dir.:", DE_direction,
         "  Nr DEG:", sum(DE_vec),
         "  Nr GO cat:", nrow(GO_df),
-        "  Nr sig. (p/padj):", sum(GO_df$p < 0.05), "/", sum(GO_df$sig),
+        "  Nr sig.:", sum(GO_df$sig),
         "\n")
 
     return(GO_df)
@@ -260,13 +263,12 @@ run_GO_internal <- function(
   }
 }
 
-## Create named vector of DE genes (0s and 1s to indicate significance)
-## for goseq analysis
-## (Helper function, use GO_wrap to run the analysis)
+# Create named vector of DE genes (0s and 1s to indicate significance) for goseq analysis
+# (Helper function, use run_GO to run the analysis)
 get_DE_vec <- function(
   contrast,                # Focal comparison (contrast)
   DE_res,                  # DE results df from DESeq2
-  DE_direction = "either", # either / up / down
+  DE_direction = "either", # 'either' / 'up' / 'down'
   p_DE = 0.05,             # padj threshold for DE
   lfc_DE = 0,              # LFC threshold for DE
   use_sig_column = NULL,   # Use a column in the DE results with TRUE/FALSE indicating DE significance
@@ -276,7 +278,7 @@ get_DE_vec <- function(
 
   fcontrast <- contrast
 
-  ## If we use a column with precomputed DE significance, don't use thresholds
+  # If we use a column with precomputed DE significance, don't use thresholds
   if (!is.null(use_sig_column)) {
     if (verbose == TRUE) message("Using column ", use_sig_column, "to find DE genes")
     colnames(DE_res)[grep(use_sig_column, colnames(DE))] <- "isDE"
@@ -291,23 +293,27 @@ get_DE_vec <- function(
     message("    - Remove genes with NA as the adj. p-value: ", rm_padj_na)
   }
 
-  ## Create df for focal contrast
+  # Create df for focal contrast
   fDE <- DE_res %>%
     filter(contrast == fcontrast) %>%
     arrange(gene_id)
+  
+  if (any(duplicated(fDE$gene_id))) {
+    stop("ERROR: Duplicated gene IDs detected")
+  }
 
-  ## Indicate which genes are significant
+  # Indicate which genes are significant
   if (is.null(use_sig_column))
     fDE <- fDE %>%
-    mutate(isDE = ifelse(padj < p_DE & abs(log2FoldChange) > lfc_DE, TRUE, FALSE))
+      mutate(isDE = ifelse(padj < p_DE & abs(log2FoldChange) > lfc_DE, TRUE, FALSE))
 
-  ## Subset to up/down DEGs if needed
+  # Subset to up/down DEGs if needed
   if (DE_direction == "up")
     fDE <- fDE %>% mutate(isDE = ifelse(log2FoldChange > 0, isDE, FALSE))
   if (DE_direction == "down")
     fDE <- fDE %>% mutate(isDE = ifelse(log2FoldChange < 0, isDE, FALSE))
 
-  ## Report nr of genes
+  # Report nr of genes
   n_genes <- length(unique(fDE$gene_id))
   if (verbose == TRUE) message("- Nr unique genes in DE results: ", n_genes)
 
@@ -327,7 +333,7 @@ get_DE_vec <- function(
 
 
 # PLOTTING FUNCTIONS -----------------------------------------------------------
-## Function to plot the GO results
+# Function to plot the GO results
 enrich_plot <- function(
   enrich_res,                   # Enrichment results
   contrasts,                    # One or more contrasts
@@ -341,8 +347,9 @@ enrich_plot <- function(
   padj_tres = 1,                # Further subset categories: only those with padj below this value
   n_tres = 0,                   # Further subset categories: only those with nrDEInCat at or above this value
   xlabs = NULL,
-  ylabsize = 10,
-  xlabsize = 14,
+  ylab_size = 10,
+  xlab_size = 14,
+  xlab_angle = 0,
   plot_title = NULL,
   facet_labeller = "label_value",
   just_df = FALSE               # If true, don't make plot, just return modified df
@@ -414,8 +421,8 @@ enrich_plot <- function(
     theme(legend.position = "left",
           panel.grid = element_blank(),
           axis.title = element_blank(),
-          axis.text.x = element_text(size = xlabsize),
-          axis.text.y = element_text(size = ylabsize),
+          axis.text.x = element_text(size = xlab_size, angle = xlab_angle),
+          axis.text.y = element_text(size = ylab_size),
           strip.text = element_text(face = "bold"),
           plot.title = element_text(hjust = 0.5))
 
@@ -499,11 +506,11 @@ GO_dotplot <- function(df, type = "GO") {
 
 # KEGG DATABASE FUNCTIONS ------------------------------------------------------
 
-## Function to get the description (technically: 'Name') of a KEGG pathway,
-## given its pathway ID ('ko' or 'map' IDs).
-## Needs tryCatch because come IDs fail (example of a failing pathway ID: "ko01130"),
-## and the function needs to keep running.
-## Use like: `pw_descrip <- map_dfr(.x = kegg_ids, .f = kegg_descrip)`
+# Function to get the description (technically: 'Name') of a KEGG pathway,
+# given its pathway ID ('ko' or 'map' IDs).
+# Needs tryCatch because come IDs fail (example of a failing pathway ID: "ko01130"),
+# and the function needs to keep running.
+# Use like: `pw_descrip <- map_dfr(.x = kegg_ids, .f = kegg_descrip)`
 get_kegg_descrip <- function(kegg_pathway) {
   message(kegg_pathway)
   tryCatch( {
@@ -516,7 +523,7 @@ get_kegg_descrip <- function(kegg_pathway) {
   )
 }
 
-## Get the genes belonging to a certain KEGG pathway
+# Get the genes belonging to a certain KEGG pathway
 get_pw_genes <- function(pathway_id) {
   print(pathway_id)
 
@@ -529,7 +536,7 @@ get_pw_genes <- function(pathway_id) {
   return(pw2)
 }
 
-## Function to get a KEGG pathway (ko-ID) associated with a KEGG K-term
+# Function to get a KEGG pathway (ko-ID) associated with a KEGG K-term
 get_pathway <- function(K_term, outdir) {
   # K_term <- "K13449"
   cat("K_term:", K_term, " ")
