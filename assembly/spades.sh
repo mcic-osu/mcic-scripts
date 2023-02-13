@@ -27,15 +27,15 @@ Print_help() {
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -o/--outfile    <file>  Output assembly FASTA file"
-    echo "Either -i/--R1, -I/--indir, or -f/--fofn has to be be used to specify the input:"
-    echo "  --R1            <file>  Input R1 (forward) FASTQ file (the name of the R2 file will be inferred)"
-    echo "  --indir         <dir>   Dir with gzipped FASTQ files"
-    echo "  --fofn          <file>  File of file names (fofn): one line per input R1 FASTQ file"
+    echo "To specify the input, use one of the following options:"
+    echo "  -i/--R1         <file>  Input R1 (forward) FASTQ file (the name of the R2 file will be inferred)"
+    echo "  -I/--indir      <dir>   Dir with gzipped FASTQ files"
+    echo "  -f/--fofn       <file>  File of file names (fofn): one line per input R1 FASTQ file"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --mode          <str>   Spades run mode                             [default: default Spades]"
+    echo "  -m/--mode       <str>   Spades run mode                             [default: default Spades]"
     echo "                          Possible values: 'isolate', 'meta', 'metaplasmid, 'metaviral', 'plasmid', 'rna', 'rnaviral'"
-    echo "  --kmer_size    <str>    Comma-separated list of kmer sizes          [default: 'auto' => Spades default of auto-selecting kmer sizes]"
+    echo "  -k/--kmer_sizes <str>   Comma-separated list of kmer sizes          [default: 'auto' => Spades default of auto-selecting kmer sizes]"
     echo "  --ss / --strandedness <str>   Strandedness for RNAseq libraries     [default: 'rf' (reverse)]"
     echo "                          Options: 'rf'/'reverse', 'fr'/'forward', or 'unstranded'"
     echo "  --careful               Run in 'careful' mode (small genomes only)  [default: don't run in careful mode]"
@@ -161,7 +161,7 @@ NODE_TMPDIR="$TMPDIR"
 
 # Option defaults
 use_node_tmpdir=false
-kmer_size="auto" && kmer_arg=""
+kmer_sizes="auto" && kmer_arg=""
 careful=false && careful_arg=""
 continue=false
 strandedness="rf"       # Only applies for mode 'rna'
@@ -192,9 +192,9 @@ while [ "$1" != "" ]; do
         -I | --indir )          shift && indir=$1 ;;
         -f | --fofn )           shift && fofn=$1 ;;
         -o | --outfile )        shift && outfile=$1 ;;
-        --kmer_size )           shift && kmer_size=$1 ;;
+        -k | --kmer_sizes )     shift && kmer_sizes=$1 ;;
+        -m | --mode )           shift && mode=$1 ;;
         --ss | --strandedness)  shift && strandedness=$1 ;;
-        --mode )                shift && mode=$1 ;;
         --careful )             careful=true ;;
         --continue )            continue=true ;;
         --use_node_tmpdir )     use_node_tmpdir=true ;;  
@@ -246,7 +246,7 @@ fi
 # Build some arguments to pass to SPAdes
 [[ "$mode" != "" ]] && mode_arg="--$mode"
 [[ "$careful" = true ]] && careful_arg="--careful"
-[[ "$kmer_size" != "auto" ]] && kmer_arg="-k $kmer_size"
+[[ "$kmer_sizes" != "auto" ]] && kmer_arg="-k $kmer_sizes"
 
 if [[ "$mode" = rna ]]; then
     if [[ "$strandedness" = "unstranded" ]]; then
@@ -289,18 +289,19 @@ echo "                   STARTING SCRIPT SPADES.SH"
 date
 echo "=========================================================================="
 echo "All arguments to this script:     $all_args"
+[[ "$mode" != "" ]] && echo "Running mode:                     $mode"
+[[ "$R1" != "" ]] && echo "Input FASTQ file - R1:            $R1"
+[[ "$R1" != "" ]] && echo "Input FASTQ file - R2:            $R2"
+[[ "$mode" = rna ]] && echo "Strandedness / strand argument:   $strandedness / $strand_arg"
 echo "Output assembly file:             $outfile"
-echo "Kmer size(s):                     $kmer_size"
+echo "Kmer size(s):                     $kmer_sizes"
 echo "Using 'careful' setting:          $careful"
+echo
 echo "Continuing a previous run:        $continue"
 echo "Number of threads/cores:          $threads"
 echo "Memory in GB:                     $mem"
-[[ "$R1" != "" ]] && echo "Input FASTQ file - R1:            $R1"
-[[ "$mode" = rna ]] && echo "Strandedness / strand argument:   $strandedness / $strand_arg"
-[[ "$mode" != "" ]] && echo "Running mode:                     $mode"
-[[ $more_args != "" ]] && echo "Other arguments for Spades:       $more_args"
 [[ $tmpdir_arg != "" ]] && echo "Temp dir argument:                $tmpdir_arg"
-[[ "$R1" != "" ]] && echo "Input FASTQ file - R2:            $R2"
+[[ $more_args != "" ]] && echo "Other arguments for Spades:       $more_args"
 
 # Create the output directory
 mkdir -p "$outdir"/logs
@@ -310,11 +311,11 @@ if [[ "$indir" != "" ]]; then
     echo -e "\nPreparing a FOFN from files in the input dir..."
     fofn="$outdir"/input_filenames.txt
     ls "$indir"/*_R1*q.gz > "$fofn"
+    echo "Number of input files:            $(grep -c "." "$fofn")"
 fi
 
 # Report part 2
 echo "Input file argument:              $infile_arg"
-echo "Number of input files:            $(grep -c "." "$fofn")"
 echo "Listing the input file(s):"
 [[ "$R1" != "" ]] && ls -lh "$R1" "$R2"
 [[ "$fofn" != "" ]] && cat "$fofn" | xargs -I{} ls -lh {}
@@ -390,7 +391,11 @@ else
 fi
 
 echo -e "\n# Copying the SPAdes output assembly"
-cp -v "$outdir"/transcripts.fasta "$outfile"
+if [[ "$mode" = "rna" ]]; then
+    cp -v "$outdir"/transcripts.fasta "$outfile"
+else
+    cp -v "$outdir"/contigs.fasta "$outfile"
+fi
 
 
 # ==============================================================================
