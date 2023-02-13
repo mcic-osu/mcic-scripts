@@ -5,36 +5,42 @@ library(ggforce)
 
 # CLUSTERPROFILER FUNCTIONS ----------------------------------------------------
 run_enrich <- function(
-  contrast,                # Comparison as specified in 'contrast' column in DE results
-  DE_direction = "either", # 'either', 'up' (LFC>0), or 'down' (LFC<0)
-  DE_res,                  # DE results df
-  cat_map,                 # Functional category to gene mapping with columns: 1:category, 2:gene_id, and optionally 3:description
-  p_DE = 0.05,             # Adj. pvalue threshold for DE
-  lfc_DE = 0,              # LFC threshold for DE
-  min_DE_in_cat = 2,       # Min. nr. DE genes in GO term for a term to be significant
-  p_enrich = 0.05,         # Adj. pvalue threshold for enrichment
-  q_enrich = 0.2,          # Q value threshold for enrichment
-  filter_no_descrip = TRUE # Remove pathways with no description
+  contrast,                  # Comparison as specified in 'contrast' column in DE results
+  DE_direction = "either",   # 'either', 'up' (LFC>0), or 'down' (LFC<0)
+  DE_res,                    # DE results df
+  cat_map,                   # Functional category to gene mapping with columns: 1:category, 2:gene_id, and optionally 3:description
+  p_DE = 0.05,               # Adj. p-value threshold for DE
+  lfc_DE = 0,                # LFC threshold for DE
+  min_DE_in_cat = 2,         # Min. nr. DE genes in GO term for a term to be significant
+  p_enrich = 0.05,           # Adj. p-value threshold for enrichment
+  q_enrich = 0.2,            # Q value threshold for enrichment
+  filter_no_descrip = TRUE,  # Remove pathways with no description
+  return_df = FALSE          # Convert results object to a simple dataframe (tibble)
 ) {
 
   fcontrast <- contrast
 
-  # Filter the DE results, if needed: only take up- or downregulated
-  if (DE_direction == "up") DE_res <- DE_res %>% filter(log2FoldChange > 0)
-  if (DE_direction == "down") DE_res <- DE_res %>% filter(log2FoldChange < 0)
+  # Filter the DE results, if needed: only take over- or underexpressed
+  if (DE_direction == "up") DE_res <- DE_res |> filter(log2FoldChange > 0)
+  if (DE_direction == "down") DE_res <- DE_res |> filter(log2FoldChange < 0)
 
   # Create a vector with DEGs
-  DE_genes <- DE_res %>%
+  DE_genes <- DE_res |>
     filter(padj < p_DE,
            abs(log2FoldChange) > lfc_DE,
-           contrast == fcontrast) %>%
+           contrast == fcontrast) |>
     pull(gene_id)
-
+  
+  # Check if genes are present multiple times -- this would indicate there are multiple contrasts
+  if (any(duplicated(DE_genes))) {
+    stop("ERROR: Duplicated gene IDs detected -- there are probably multiple contrasts remaining in your input df")
+  }
+  
   # Report
   cat(fcontrast, " // DE Direction:", DE_direction,
       " // Nr DE genes: ", length(DE_genes))
 
-  # Prep term mappings
+  # Prep term mappings - if there's a third column, make a term2name df as well
   term2gene <- cat_map[, 1:2]
   if (ncol(cat_map) > 2) {
     term2name <- cat_map[, c(1, 3)]
@@ -44,20 +50,35 @@ run_enrich <- function(
   }
 
   # Run the enrichment analysis
-  if (length(DE_genes) > 1) {
-    enrich_res <- enricher(gene = DE_genes,
-                           TERM2GENE = term2gene,
-                           TERM2NAME = term2name,
-                           pAdjustMethod = "BH",
-                           pvalueCutoff = 1,
-                           qvalueCutoff = 1) %>%
-      as.data.frame(.) %>%
+  if (length(DE_genes) <= 1) {
+    cat("\n")
+    return(NULL)
+  }
+    
+  res <- enricher(gene = DE_genes,
+                  TERM2GENE = term2gene,
+                  TERM2NAME = term2name,
+                  pAdjustMethod = "BH",
+                  pvalueCutoff = 1,
+                  qvalueCutoff = 1)
+  
+  if (return_df == FALSE) {
+    res <- res |>
+      filter(p.adjust < p_enrich,
+             qvalue < q_enrich,
+             Count >= min_DE_in_cat)
+    cat(" // Nr enriched pathways:", nrow(res), "\n")
+  }
+  
+  if (return_df == TRUE) {
+    
+    res <- as_tibble(res) |>
       mutate(sig = ifelse(p.adjust < p_enrich &
                             qvalue < q_enrich &
                             Count >= min_DE_in_cat,
-                          1, 0),
+                          TRUE, FALSE),
              contrast = fcontrast,
-             DE_direction = DE_direction) %>%
+             DE_direction = DE_direction) |>
       select(contrast,
              DE_direction,
              category = ID,
@@ -69,14 +90,72 @@ run_enrich <- function(
              sig,
              description = Description,
              gene_ids = geneID)
-
-    row.names(enrich_res) <- NULL
-
-    cat(" // Nr enriched pathways:", sum(enrich_res$sig), "\n")
-    return(enrich_res)
-  } else {
-    cat("\n")
+    
+    cat(" // Nr enriched pathways:", sum(res$sig), "\n")
   }
+  
+  return(res)
+}
+
+# Function to run a Gene Set Enrichment Analysis (gsea)
+run_gsea <- function(
+    contrast,               # Contrast ID present in a column 'contrast'
+    DE_res,                 # Differential expression level
+    cat_map,                # Gene set category map (e.g., GO)
+    p_enrich = 0.05,        # Adj. p-value threshold for enrichment
+    return_df = FALSE       # Convert results object to a simple dataframe (tibble)
+  ) {
+  
+  term2name <- NA
+  fcontrast <- contrast
+  
+  # Prep the df to later create a gene vector
+  gene_df <- DE_res |>
+    filter(contrast == fcontrast,
+           !is.na(log2FoldChange)) |>
+    arrange(desc(log2FoldChange))
+  
+  # Check if genes are present multiple times -- this would indicate there are multiple contrasts
+  if (any(duplicated(gene_df$gene_id))) {
+    stop("ERROR: Duplicated gene IDs detected -- there are probably multiple contrasts remaining in your input df")
+  }
+  
+  # Create a vector with lfc's and gene IDs
+  gene_vec <- gene_df$log2FoldChange
+  names(gene_vec) <- gene_df$gene_id
+  
+  # Report
+  n_DE <- sum(gene_df$padj < 0.05, na.rm = TRUE)
+  message("Contrast: ", fcontrast, " // Nr DE genes: ", n_DE)
+  
+  # Prep term mappings - if there's a third column, make a term2name df as well
+  term2gene <- cat_map[, 1:2]
+  if (ncol(cat_map) > 2) term2name <- cat_map[, c(1, 3)]
+  
+  # Run the enrichment analysis
+  gsea_res <- GSEA(geneList = gene_vec,
+                   TERM2GENE = term2gene,
+                   TERM2NAME = term2name,
+                   pvalueCutoff = 1,
+                   pAdjustMethod = "BH",
+                   verbose = FALSE)
+  
+  # Report
+  n_sig <- sum(gsea_res$p.adjust < p_enrich)
+  message("Nr enriched pathways: ", n_sig, "\n")
+  
+  # Return a df, if requested
+  if (return_df == FALSE) {
+    gsea_res <- gsea_res |> filter(p.adjust < p_enrich)
+  
+  } else {
+    gsea_res <- as_tibble(gsea_res) |> 
+      mutate(sig = ifelse(p.adjust < p_enrich, TRUE, FALSE),
+             contrast = fcontrast) |>
+      rename(category = ID)
+  }
+
+  return(gsea_res)
 }
 
 
@@ -102,13 +181,13 @@ run_GO_all <- function(contrasts, DE_res, GO_map, gene_lens, ...) {
                    DE_direction = "down", ...)
 
   # Combine results for different DE directions
-  GO_combined <- bind_rows(GO_ei, GO_up, GO_dn) %>%
+  GO_combined <- bind_rows(GO_ei, GO_up, GO_dn) |>
     mutate(DE_direction = factor(DE_direction, levels = c("either", "up", "down")))
 
   # Summarize the results
-  smr <- GO_combined %>%
-    group_by(contrast, DE_direction) %>%
-    summarize(nsig = sum(sig), .groups = "drop") %>%
+  smr <- GO_combined |>
+    group_by(contrast, DE_direction) |>
+    summarize(nsig = sum(sig), .groups = "drop") |>
     pivot_wider(id_cols = contrast, names_from = DE_direction, values_from = nsig)
   print(smr)
 
@@ -191,7 +270,7 @@ run_GO_internal <- function(
 
   if (sum(DE_vec) >= 2) {
     # Remove rows from gene length df not in the DE_vec
-    fgene_lens <- gene_lens %>% filter(gene_id %in% names(DE_vec))
+    fgene_lens <- gene_lens |> filter(gene_id %in% names(DE_vec))
     if (nrow(fgene_lens) == 0) stop("Error: no rows left in gene length df, gene_id's likely don't match!")
     
     n_removed <- nrow(gene_lens) - nrow(fgene_lens)
@@ -230,17 +309,17 @@ run_GO_internal <- function(
     )
 
     # Process GO results
-    GO_df <- GO_df %>% filter(numDEInCat >= min_DE_in_cat)
-    GO_df <- GO_df %>% filter(numInCat >= min_in_cat)
-    GO_df <- GO_df %>% filter(numInCat <= max_in_cat)
-    GO_df <- GO_df %>% filter(ontology %in% ontologies)
-    if (filter_no_descrip == TRUE) GO_df <- GO_df %>% filter(!is.na(term))
+    GO_df <- GO_df |> filter(numDEInCat >= min_DE_in_cat)
+    GO_df <- GO_df |> filter(numInCat >= min_in_cat)
+    GO_df <- GO_df |> filter(numInCat <= max_in_cat)
+    GO_df <- GO_df |> filter(ontology %in% ontologies)
+    if (filter_no_descrip == TRUE) GO_df <- GO_df |> filter(!is.na(term))
 
-    GO_df <- GO_df %>%
+    GO_df <- GO_df |>
       mutate(padj = p.adjust(over_represented_pvalue, method = "BH"),
              sig = ifelse(padj < 0.05 & numDEInCat >= min_DE_in_cat, TRUE, FALSE),
              contrast = contrast,
-             DE_direction = DE_direction) %>%
+             DE_direction = DE_direction) |>
       select(contrast, DE_direction,
              sig, p = over_represented_pvalue, padj,
              numDEInCat, numInCat,
@@ -294,24 +373,25 @@ get_DE_vec <- function(
   }
 
   # Create df for focal contrast
-  fDE <- DE_res %>%
-    filter(contrast == fcontrast) %>%
+  fDE <- DE_res |>
+    filter(contrast == fcontrast) |>
     arrange(gene_id)
   
+  # Check if genes are present multiple times -- this would indicate there are multiple contrasts
   if (any(duplicated(fDE$gene_id))) {
-    stop("ERROR: Duplicated gene IDs detected")
+    stop("ERROR: Duplicated gene IDs detected -- there are probably multiple contrasts remaining in your input df")
   }
 
   # Indicate which genes are significant
   if (is.null(use_sig_column))
-    fDE <- fDE %>%
+    fDE <- fDE |>
       mutate(isDE = ifelse(padj < p_DE & abs(log2FoldChange) > lfc_DE, TRUE, FALSE))
 
   # Subset to up/down DEGs if needed
   if (DE_direction == "up")
-    fDE <- fDE %>% mutate(isDE = ifelse(log2FoldChange > 0, isDE, FALSE))
+    fDE <- fDE |> mutate(isDE = ifelse(log2FoldChange > 0, isDE, FALSE))
   if (DE_direction == "down")
-    fDE <- fDE %>% mutate(isDE = ifelse(log2FoldChange < 0, isDE, FALSE))
+    fDE <- fDE |> mutate(isDE = ifelse(log2FoldChange < 0, isDE, FALSE))
 
   # Report nr of genes
   n_genes <- length(unique(fDE$gene_id))
@@ -319,11 +399,11 @@ get_DE_vec <- function(
 
   # Exclude genes with NA adj-p-val - those were not tested
   if (rm_padj_na == TRUE) {
-    fDE <- fDE %>% filter(!is.na(padj))
+    fDE <- fDE |> filter(!is.na(padj))
     n_genes <- length(unique(fDE$gene_id))
     if (verbose == TRUE) message("- Nr unique genes after removing padj=NA: ", n_genes)
   } else {
-    fDE <- fDE %>% mutate(isDE = ifelse(is.na(isDE), FALSE, TRUE))
+    fDE <- fDE |> mutate(isDE = ifelse(is.na(isDE), FALSE, TRUE))
   }
 
   DE_vec <- fDE$isDE
@@ -360,24 +440,24 @@ enrich_plot <- function(
             "contrast", "DE_direction", "padj")
 
   # Prep the df
-  enrich_res <- enrich_res %>%
-    #select(any_of(vars)) %>%
+  enrich_res <- enrich_res |>
+    #select(any_of(vars)) |>
     filter(contrast %in% contrasts,
-           DE_direction %in% DE_directions) %>%
+           DE_direction %in% DE_directions) |>
     mutate(numDEInCat = ifelse(padj >= 0.05, NA, numDEInCat),
            contrast = sub("padj_", "", contrast),
            padj = ifelse(sig == FALSE, NA, padj),
-           padj_log = -log10(padj)) %>%
+           padj_log = -log10(padj)) |>
     # Only take GO categories with at least one significant contrast
-    filter(category %in% (filter(., sig == TRUE) %>% pull(category))) %>%
+    filter(category %in% (filter(., sig == TRUE) |> pull(category))) |>
     # Only take GO categories with at least one significant contrast
-    filter(category %in% (filter(., padj < padj_tres & numDEInCat >= n_tres) %>%
-                            pull(category))) %>%
+    filter(category %in% (filter(., padj < padj_tres & numDEInCat >= n_tres) |>
+                            pull(category))) |>
     # Only take contrasts with at least one significant category
-    filter(contrast %in% (filter(., sig == TRUE) %>% pull(contrast))) %>%
+    filter(contrast %in% (filter(., sig == TRUE) |> pull(contrast))) |>
     mutate(description = paste0(category, " - ", description),
            description = str_trunc(description, width = 45),
-           description = ifelse(is.na(description), category, description)) %>%
+           description = ifelse(is.na(description), category, description)) |>
     arrange(padj_log)
 
   # Make sure all combinations of contrast, DE_dir, and GO cat. are present
@@ -544,8 +624,8 @@ get_pathway <- function(K_term, outdir) {
   tryCatch(
     {
       kegg_info <- keggGet(K_term)
-      pathway_df <- data.frame(pathway_description = kegg_info[[1]]$PATHWAY) %>%
-        rownames_to_column("pathway_id") %>%
+      pathway_df <- data.frame(pathway_description = kegg_info[[1]]$PATHWAY) |>
+        rownames_to_column("pathway_id") |>
         mutate("K_term" = K_term)
 
       cat(" Nr of pathways:", nrow(pathway_df), "\n")
@@ -564,4 +644,11 @@ get_pathway <- function(K_term, outdir) {
       return(NULL)
     }
   )
+}
+
+get_NCBI_id <- function(geneID) {
+  geneID_NCBI <- entrez_search(db = "gene", term = geneID)$ids
+  message(geneID, " - ", geneID_NCBI)
+  if (is_empty(geneID_NCBI)) geneID_NCBI <- NA
+  return(data.frame(geneID, geneID_NCBI))
 }
