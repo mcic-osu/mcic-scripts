@@ -9,8 +9,6 @@
 #SBATCH --job-name=trimmomatic
 #SBATCH --output=slurm-trimmomatic-%j.out
 
-#TODO - Use adapter file by default, then test the script
-
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
@@ -19,39 +17,37 @@ Print_help() {
     echo
     echo "======================================================================"
     echo "                            $0"
-    echo "                  TODO FUNCTION OF THIS SCRIPT"
+    echo "         RUN TRIMMOMATIC TO QUALITY- AND ADAPTER TRIM FASTQ FILES"
     echo "======================================================================"
     echo
+    echo "NOTE:"
+    echo "  - This script only works for paired-end sequences"
+    echo 
     echo "USAGE:"
-    echo "  sbatch $0 -i <input file> -o <output dir> [...]"
+    echo "  sbatch $0 -i <R1 FASTQ> -o <output dir> [...]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-        echo "  -i STRING     Input R1 (forward reads) sequence file (name of R2 will be inferred)"
-    echo "  -o STRING     Output directory (will be created if needed)"
-    echo "  -i/--infile     <file>  Input file"
-    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
+    echo "  -i/--R1             <file>  Input R1 FASTQ file (path to R2 will be inferred)"
+    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-        echo "  -a STRING     Adapter file                       [default: 'none']"
-    echo "                Possible values: 'NexteraPE-PE.fa', 'TruSeq2-PE.fa', 'TruSeq3-PE.fa'"
-    echo "                Or provide the path to your own FASTA file with adapters, e.g. 'adapters.fa' from BBduk"
-    echo "                With the default, no adapter trimming is done."
-    echo "  -A STRING     Adapter removal parameters         [default: '2:30:10:2:True']"
-    echo "  -h            Print this help message and exit"
-    echo "  -p STRING     Trimming parameters for Trimmomatic"
-    echo "                                                   [default: 'LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36']"
-    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to TODO_THIS_SOFTWARE"
+    echo "  -a/--adapter_file   <file>  Adapter file                            [default: 'none']"
+    echo "                              Possible values: 'NexteraPE-PE.fa', 'TruSeq2-PE.fa', 'TruSeq3-PE.fa'"
+    echo "                              Or provide the path to your own FASTA file with adapters, e.g. 'adapters.fa' from BBduk"
+    echo "                              With the default, no adapter trimming is done."
+    echo "  -A/--adapter_param  <str>   Adapter removal parameters              [default: '2:30:10:2:True']"
+    echo "  -p/--trim_param     <str>   Trimming parameters for Trimmomatic     [default: 'LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36']"
+    echo "  --more_args         <str>   Quoted string with additional argument(s) to pass to Trimmomatic"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                 Run the script in debug mode (print all code)"
-    echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for TODO_THIS_SOFTWARE and exit"
-    echo "  -v/--version            Print the version of TODO_THIS_SOFTWARE and exit"
+    echo "  --debug                     Run the script in debug mode (print all code)"
+    echo "  -h                          Print this help message and exit"
+    echo "  --help                      Print the help for Trimmomatic and exit"
+    echo "  -v/--version                Print the version of Trimmomatic and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i data/fastq/A1_R1.fastq.gz -o results/trimmomatic -a metadata/adapters.fa"
+    echo "  sbatch $0 -i data/fastq/A1_R1.fastq.gz -o results/trimmomatic -a mcic-scripts/trim/adapters.fa"
     echo
     echo "SOFTWARE DOCUMENTATION:"
     echo "  - Docs: http://www.usadellab.org/cms/?page=trimmomatic"
@@ -155,20 +151,13 @@ Die() {
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Option defaults
-R1_in=""
-outdir=""
-adapter_file="" && adapter_arg=""
-trim_arg=""
-
 trim_param="LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36"
 # Same as example on https://github.com/usadellab/Trimmomatic and https://rpubs.com/ednachiang/MetaG_Pipeline
 # Alternatively, example of a much stricter mode: "AVGQUAL:28 LEADING:20 TRAILING:20 MINLEN:36"
-
 adapter_param="2:30:10:2:True"
 # Same as example on https://github.com/usadellab/Trimmomatic
 
 debug=false
-dryrun=false && e=""
 slurm=true
 
 
@@ -176,6 +165,10 @@ slurm=true
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Placeholder defaults
+R1_in=""
+outdir=""
+adapter_file="" && adapter_arg=""
+trim_arg=""
 outdir=""
 more_args=""
 
@@ -183,69 +176,69 @@ more_args=""
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --R1 )         shift && R1_in=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
-        --adapter_param )   shift && adapter_param=$1 ;;
-        --adapter_file )    shift && adapter_file=$1 ;;
-        --trim_param )      shift && trim_param=$1 ;;
-        --more_args )       shift && more_args=$1 ;;
-        -v | --version )    Print_version; exit 0 ;;
-        -h )                Print_help; exit 0 ;;
-        --help )            Print_help_program; exit 0;;
-        --dryrun )          dryrun=true && e="echo ";;
-        --debug )           debug=true ;;
-        * )                 Die "Invalid option $1" "$all_args" ;;
+        -i | --R1 )             shift && R1_in=$1 ;;
+        -o | --outdir )         shift && outdir=$1 ;;
+        -a | --adapter_file )   shift && adapter_file=$1 ;;
+        -A | --adapter_param )  shift && adapter_param=$1 ;;
+        -p | --trim_param )     shift && trim_param=$1 ;;
+        --more_args )           shift && more_args=$1 ;;
+        -v | --version )        Print_version; exit 0 ;;
+        -h )                    Print_help; exit 0 ;;
+        --help )                Print_help_program; exit 0;;
+        --debug )               debug=true ;;
+        * )                     Die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
 
+
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-# Bash script settings
-set -euo pipefail
-
 # In debugging mode, print all commands
 [[ "$debug" = true ]] && set -o xtrace
 
 # Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
+# Bash script settings
+set -euo pipefail
+
 # Load software and set nr of threads
-[[ "$dryrun" = false ]] && Load_software
+Load_software
 Set_threads
 
-# Check input
+# Check input, part I
 [[ "$R1_in"  = "" ]] && Die "Please provide an R1 input FASTQ file with -i/--R1"
 [[ "$outdir"  = "" ]] && Die "Please provide an output dir with -o/--outdir"
 [[ ! -f $R1_in ]] && Die "Input file R1_in ($R1_in) does not exist"
 
 # Process parameters
-file_ext=$(basename "$R1_in" | sed -E 's/.*(.fasta|.fastq.gz|.fq.gz)$/\1/')
+file_ext=$(basename "$R1_in" | sed -E 's/.*(.fastq.gz|.fq.gz)$/\1/')
 R1_suffix=$(basename "$R1_in" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
 R2_suffix=${R1_suffix/1/2}
 R2_in=${R1_in/$R1_suffix/$R2_suffix}
-sample_id=$(basename "$R1" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
+sample_id=$(basename "$R1_in" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
 R1_basename=$(basename "$R1_in" "$file_ext")
 R2_basename=$(basename "$R2_in" "$file_ext")
 
 # Define output files
-discard_dir="$outdir"/discard                          # Dir for discarded sequences
-trimstats_file="$outdir"/logs/"$sample_id".trimstats.txt # File with Trimmomatic stdout
-R1_out="$outdir"/"$R1_basename".fastq.gz # Output R1 file
-R2_out="$outdir"/"$R2_basename".fastq.gz # Output R2 file
-R1_discard=$discard_dir/"$R1_basename"_U1.fastq.gz # Output file for discarded R1 reads
-R2_discard=$discard_dir/"$R2_basename"_U2.fastq.gz # Output file for discarded R2 reads
+discard_dir="$outdir"/discard                               # Dir for discarded sequences
+trimstats_file="$outdir"/logs/"$sample_id".trimstats.txt    # File with Trimmomatic stdout
+R1_out="$outdir"/"$R1_basename".fastq.gz                    # Output R1 FASTQ file
+R2_out="$outdir"/"$R2_basename".fastq.gz                    # Output R2 FASTQ file
+R1_discard=$discard_dir/"$R1_basename"_U1.fastq.gz          # Output file for discarded R1 reads
+R2_discard=$discard_dir/"$R2_basename"_U2.fastq.gz          # Output file for discarded R2 reads
 
 # Adapter parameters argument - As in the example here https://github.com/usadellab/Trimmomatic
 [[ $adapter_file != "" ]] && adapter_arg=" ILLUMINACLIP:$adapter_file:$adapter_param"
 [[ $trim_param != "" ]] && trim_arg=" $trim_param"
 
-# Check parameters
-[[ ! -f $R2_in ]] && Die "Input file R1_in ($R2_in) does not exist"
-[[ "$R1_in" = "$R2_in" ]] && echo "Input R1 and R2 FASTQ files are the same file: $R1"
-[[ "$R1_in" = "$R1_out" ]] && echo "Input R1 and output R1 FASTQ files are the same file: $R1"
-[[ "$R2_in" = "$R2_out" ]] && echo "Input R2 and output R2 FASTQ files are the same file: $R1"
+# Check input, part II
+[[ ! -f $R2_in ]] && Die "Input file R2_in ($R2_in) does not exist"
+[[ "$R1_in" = "$R2_in" ]] && echo "Input R1 and R2 FASTQ files are the same file: $R1_in"
+[[ "$R1_in" = "$R1_out" ]] && echo "Input R1 and output R1 FASTQ files are the same file: $R1_in"
+[[ "$R2_in" = "$R2_out" ]] && echo "Input R2 and output R2 FASTQ files are the same file: $R2_in"
 
 # Report
 echo
@@ -259,14 +252,13 @@ echo "Input R2 file:                    $R2_in"
 echo "Output dir:                       $outdir"
 echo "Output R1 file:                   $R1_out"
 echo "Output R2 file:                   $R2_out"
-[[ "$trim_arg" != "" ]] && echo "Trimming argument:                $trim_arg"
-[[ "$adapter_arg" != "" ]] && echo "Adapter argument:                 $adapter_arg"
-[[ $more_args != "" ]] && echo "Other arguments for Trimmomatic:$more_args"
+[[ "$trim_arg" != "" ]] && echo "Trimming argument:               $trim_arg"
+[[ "$adapter_arg" != "" ]] && echo "Adapter argument:                $adapter_arg"
+[[ $more_args != "" ]] && echo "Other arguments for Trimmomatic:  $more_args"
 echo "Number of threads/cores:          $threads"
 echo
 echo "Listing the input file(s):"
 ls -lh "$R1_in" "$R2_in"
-[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
 # Print reserved resources
@@ -278,12 +270,11 @@ echo "==========================================================================
 # ==============================================================================
 # Create output dirs
 echo -e "\n# Creating the output directories..."
-${e}mkdir -p "$outdir/logs" "$discard_dir"
+mkdir -pv "$outdir/logs" "$discard_dir"
 
 # Run Trimmomatic
 echo -e "\n# Starting the Trimmomatic run..."
-${e}Time \
-    trimmomatic PE \
+Time trimmomatic PE \
     -threads "$threads" \
     "$R1_in" "$R2_in" \
     "$R1_out" "$R1_discard" \
@@ -292,7 +283,7 @@ ${e}Time \
 
 # Count the number of reads
 echo -e "\n# Now counting the number of reads in the in- and output..."
-nreads_raw=$(zcat "$R1_in" | awk '{s++}END{print s/4}')
+nreads_raw=$(zcat "$R1_in" | awk '{s++} END{print s/4}')
 nreads_trim=$(zcat "$R1_out" | awk '{s++} END{print s/4}')
 echo -e "Number of raw / trimmed read-pairs: $nreads_raw / $nreads_trim"
 
@@ -302,13 +293,11 @@ echo -e "Number of raw / trimmed read-pairs: $nreads_raw / $nreads_trim"
 # ==============================================================================
 echo
 echo "========================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing files in the output dir:"
-    ls -lh "$PWD"/"$outdir"/"$R1_out" "$PWD"/"$outdir"/"$R2_out"
-    [[ "$slurm" = true ]] && Resource_usage
-fi
+echo "# Version used:"
+Print_version | tee "$outdir"/logs/version.txt
+echo -e "\n# Listing files in the output dir:"
+ls -lh "$(realpath "$R1_out")" "$(realpath "$R2_out")"
+[[ "$slurm" = true ]] && Resource_usage
 echo "# Done with script"
 date
 echo
