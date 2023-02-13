@@ -35,10 +35,10 @@ Print_help() {
     echo "  --organism      <str>   Organism name                      [default: none]"
     echo "                          For a list of options, run 'amrfinder -l'"
     echo "                          See https://github.com/ncbi/amr/wiki/Running-AMRFinderPlus#--organism-option"
-    echo "  --gff_as_is             Don't create a 'fixed' GFF file prior to running AMRFinderPlus"
-    echo "                          The default is to change 'ID=' entries to 'Name='."
-    echo "                          This is necessary to run AMRFinderPlus, at least if the GFF was produced by Prokka"
-    echo "                          See https://github.com/ncbi/amr/issues/26"
+    echo "  --annotation_format <str> Which program produced the annotation?    [default: 'prokka']"
+    echo "                          Options include 'bakta', 'patric', 'prokka', and 'rast'"
+    echo "                          See https://github.com/ncbi/amr/wiki/Running-AMRFinderPlus#the---annotation_format-format-option"
+    echo "  --no_update_db          Don't attempt to update the database (may be needed when running many jobs in parallel)"
     echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to AMRFinderPlus"
     echo
     echo "UTILITY OPTIONS:"
@@ -62,7 +62,7 @@ Load_software() {
     set +u
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /fs/ess/PAS0471/jelmer/conda/amrfinderplus-3.10.30
+    source activate /fs/ess/PAS0471/jelmer/conda/amrfinderplus
     set -u
 }
 
@@ -154,6 +154,9 @@ Die() {
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Option defaults
+annotation_format="prokka"
+update_db=true
+
 debug=false
 dryrun=false && e=""
 slurm=true
@@ -168,30 +171,29 @@ assembly_faa=""
 gff=""
 outdir=""
 organism="" && organism_arg=""
-fix_gff="true"
 more_args=""
 
 # Parse command-line args
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -o | --outdir )     shift && outdir=$1 ;;
-        --nucleotide )      shift && assembly_fna=$1 ;;
-        --protein )         shift && assembly_faa=$1 ;;
-        --gff )             shift && gff=$1 ;;
-        --organism )        shift && organism=$1 ;;
-        --gff_as_is )       fix_gff=false ;;
-        --more_args )       shift && more_args=$1 ;;
-        -v | --version )    Print_version; exit 0 ;;
-        -h )                Print_help; exit 0 ;;
-        --help )            Print_help_program; exit 0;;
-        --dryrun )          dryrun=true && e="echo ";;
-        --debug )           debug=true ;;
-        * )                 Die "Invalid option $1" "$all_args" ;;
+        -o | --outdir )         shift && outdir=$1 ;;
+        --nucleotide )          shift && assembly_fna=$1 ;;
+        --protein )             shift && assembly_faa=$1 ;;
+        --gff )                 shift && gff=$1 ;;
+        --organism )            shift && organism=$1 ;;
+        --annotation_format )   shift && annotation_format=$1 ;;
+        --more_args )           shift && more_args=$1 ;;
+        --no_update_db )        update_db=false ;;      
+        -v | --version )        Print_version; exit 0 ;;
+        -h )                    Print_help; exit 0 ;;
+        --help )                Print_help_program; exit 0;;
+        --dryrun )              dryrun=true && e="echo ";;
+        --debug )               debug=true ;;
+        * )                     Die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
-
 
 # ==============================================================================
 #                          OTHER SETUP
@@ -211,8 +213,8 @@ Set_threads
 
 # Check input
 [[ "$assembly_fna" = "" ]] && Die "Please specify an input nucleotide FASTA with --nucleotide" "$all_args"
-[[ "$assembly_faa" = "" ]] && Die "Please specify an input nucleotide FASTA with --protein" "$all_args"
-[[ "$gff" = "" ]] && Die "Please specify an input nucleotide FASTA with --gff" "$all_args"
+[[ "$assembly_faa" = "" ]] && Die "Please specify an input protein FASTA with --protein" "$all_args"
+[[ "$gff" = "" ]] && Die "Please specify an input GFF annotion file with --gff" "$all_args"
 [[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
 [[ ! -f "$assembly_fna" ]] && Die "Input file $assembly_fna does not exist"
 [[ ! -f "$assembly_faa" ]] && Die "Input file $assembly_faa does not exist"
@@ -237,8 +239,10 @@ echo "All arguments to this script:     $all_args"
 echo "Input nucleotide FASTA file:      $assembly_fna"
 echo "Input protein FASTA file:         $assembly_faa"
 echo "Input GFF file:                   $gff"
+echo "Annotation (GFF) format:          $annotation_format"
 echo "Output dir:                       $outdir"
 echo "Output mutation report:           $mutation_report"
+echo "Update the database, if needed:   $update_db"
 [[ $organism != "" ]] && echo "Organism:                         $organism"
 [[ $more_args != "" ]] && echo "Other arguments for AmrFinderPlus:    $more_args"
 echo "Number of threads/cores:          $threads"
@@ -259,13 +263,10 @@ echo "==========================================================================
 echo "# Creating the output directories..."
 ${e}mkdir -pv "$outdir"/logs
 
-# Change GFF to be compliant with Amrfinderplus
-if [[ "$fix_gff" = true ]]; then
-    echo -e "\n# Editing the input GFF file..."    
-    sed -E 's/Name=[^;]+;//' "$gff" | sed 's/ID=/Name=/' > "$outdir"/"$sampleID".gff
-    gff="$outdir"/"$sampleID".gff
-    echo "# Listing the edited GFF file:"
-    ls -lh "$gff"
+# Download latest database, if there's an update
+if [[ "$update_db" = true ]]; then
+    echo -e "\n# Checking for (& downloading) database updates...."
+    ${e}Time amrfinder -u
 fi
 
 # Run
@@ -274,6 +275,7 @@ ${e}Time amrfinder \
     --nucleotide "$assembly_fna" \
     --protein "$assembly_faa" \
     --gff "$gff" \
+    --annotation_format "$annotation_format" \
     --threads "$threads" \
     -o "$outfile" \
     --mutation_all "$mutation_report" \
