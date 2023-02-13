@@ -26,7 +26,7 @@ Print_help() {
     echo "REQUIRED OPTIONS:"
     echo "  -o/--outdir         <dir>   Output dir"
     echo "  To specify the input assembly/assemblies, use one of the following options:"
-    echo "    A) --assembly     <file>  Input assembly FASTA file"
+    echo "    A) -i/--assembly  <file>  Input assembly FASTA file"
     echo "    B) --assembly_dir <dir>   Input dir with assembly FASTA files (extension '.fasta')"
     echo "    C) Pass assembly FASTA files(s) as positional arguments at the end of the command."
     echo
@@ -192,9 +192,9 @@ all_args="$*"
 count=0
 while [ "$1" != "" ]; do
     case "$1" in
-        --assembly )        shift && assembly=$1 ;;
-        --assembly_dir )    shift && assembly_dir=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
+        -i | --assembly )   shift && assembly=$1 ;;
+        --assembly_dir )    shift && assembly_dir=$1 ;;
         --ref_fa )          shift && ref_fa=$1 ;;
         --ref_annot )       shift && ref_annot=$1 ;;
         --R1 )              shift && R1=$1 ;;
