@@ -626,7 +626,9 @@ pca_plot <- function(
     labs(x = x_lab, y = y_lab, title = title) +
     theme(panel.grid.minor = element_blank(),
           axis.text.x = element_text(size = 10),
-          axis.text.y = element_text(size = 10))
+          axis.text.y = element_text(size = 10),
+          plot.title = element_text(hjust = 0.5,
+                                    color = "grey20"))
   
   if (add_ids == TRUE) {
     p <- p +
