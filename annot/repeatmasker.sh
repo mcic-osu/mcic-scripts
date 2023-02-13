@@ -203,11 +203,11 @@ Set_threads
 
 # Check input
 [[ "$assembly_in" = "" ]] && Die "Please specify an input file with -i/--assembly_in" "$all_args"
-[[ "$genome_lib" = "" ]] && Die "Please specify an input file with --genome_lib" "$genome_lib"
 [[ "$assembly_out" = "" ]] && Die "Please specify an output assembly with -o/--assembly_out" "$all_args"
 [[ ! -f "$assembly_in" ]] && Die "Input file $assembly_in does not exist"
-[[ ! -f "$genome_lib" ]] && Die "Input file $genome_lib does not exist"
+[[ "$species" = "" ]] && [[ "$genome_lib" = "" ]] && Die "Specify one of --species or --genome_lib"
 [[ "$species" != "" ]] && [[ "$genome_lib" != "" ]] && Die "Specify --species or --genome_lib, not both"
+[[ "$genome_lib" != "" && ! -f "$genome_lib" ]] && Die "Input file $genome_lib does not exist"
 
 # Make file paths absolute
 [[ ! "$assembly_in" =~ ^/ ]] && assembly_in=$(realpath "$assembly_in")
