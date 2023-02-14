@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=24:00:00
+#SBATCH --time=120:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
 #SBATCH --nodes=1
@@ -158,6 +158,7 @@ container_dir=/fs/project/PAS0471/containers
 profile="singularity"
 resume=true && resume_arg="-resume"
 ansi_log=false && ansi_log_arg="-ansi-log false"
+use_downloaded_config=false
 
 debug=false
 dryrun=false && e=""
@@ -183,6 +184,7 @@ refseq_diamond="" && refseq_arg=""
 sprot_diamond="" && sprot_arg=""
 orthodb_diamond="" && orthodb_arg=""
 custom_diamond="" && custom_arg=""
+string_diamond="" && string_arg=""
 
 config_file_extra="" && config_arg=""
 work_dir="" && work_dir_arg=""
@@ -349,7 +351,10 @@ ${e}mkdir -pv "$work_dir" "$container_dir" "$outdir"/logs "$trace_dir"
 [[ -f "$trace_dir"/dag.png ]] && ${e}rm "$trace_dir"/dag.png
 
 # Get the OSC config file
-[[ "$use_downloaded_config" = true ]] && wget -q -O "$osc_config" "$OSC_CONFIG_URL"
+if [[ "$use_downloaded_config" = true ]]; then
+    echo -e "\n # Downloading the OSC config file..."
+    wget -O "$osc_config" "$OSC_CONFIG_URL"
+fi
 
 # Run the workflow
 echo -e "\n# Starting the workflow...\n"
