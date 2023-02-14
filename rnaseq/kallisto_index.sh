@@ -1,11 +1,12 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=64G
+#SBATCH --time=3:00:00
+#SBATCH --cpus-per-task=20
+#SBATCH --mem=80G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
+#SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=kallisto_index
 #SBATCH --output=slurm-kallisto_index-%j.out
 
