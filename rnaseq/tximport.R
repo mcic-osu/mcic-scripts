@@ -83,12 +83,15 @@ tx2gene <- read_tsv(tx2gene_file,
                      col_types = "cc") |>
   dplyr::select(TXNAME, GENEID)
 
+# Get Kallisto files
+kallisto_files <- list.files(indir, pattern = "abundance.h5$", recursive = TRUE,
+                             full.names = TRUE)
+message("# Showing the kallisto files: (", length(kallisto_files), " total)")
+print(kallisto_files)
+
 # Import Kallisto transcript counts --
 # create gene-level count estimates normalized by library size and transcript length
 # See https://bioconductor.org/packages/devel/bioc/vignettes/tximport/inst/doc/tximport.html
-kallisto_files <- list.files(indir, pattern = "abundance.h5$", recursive = TRUE,
-                             full.names = TRUE)
-
 txi <- tximport(kallisto_files,
                 type = "kallisto",
                 tx2gene = tx2gene,
