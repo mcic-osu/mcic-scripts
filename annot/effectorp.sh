@@ -26,7 +26,8 @@ Print_help() {
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile     <file>  Input file: protein FASTA (proteome)"
+    echo "  -i/--infile     <file>  Input file: protein FASTA (secretome)"
+    echo "                          Run EffectorP on secreted proteins only, as IDed with SignalP and (Deep)TMHMM"
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
