@@ -17,7 +17,7 @@
 # ==============================================================================
 # Constants
 readonly SCRIPT_NAME=#TODO #This is necessary because Slurm will copy&rename the script
-readonly SCRIPT_VERSION=1.0
+readonly SCRIPT_VERSION="1.0"
 readonly SCRIPT_AUTHOR="Jelmer Poelstra"
 readonly CONDA_ENV=#TODO
 readonly TOOL_BINARY=#TODO
@@ -34,12 +34,10 @@ readonly TOOL_PAPER=#TODO
 # Help function
 script_help() {
     echo
-    echo "======================================================================"
-    echo "                            $0"
-    echo "                      RUN $TOOL_NAME"
-    echo "======================================================================"
+    echo "        $0 (v. $SCRIPT_VERSION): Run $TOOL_NAME"
+    echo "        =============================================="
     echo "USAGE:"
-    echo "  sbatch $0 -i <input file> -o <output dir> [...]"
+    echo "  sbatch $0 -i <input-file> -o <output-dir> [...]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
@@ -70,14 +68,12 @@ script_help() {
 # Load software
 load_tool_conda() {
     set +u
-    # Load the OSC Conda module 
-    module load miniconda3/4.12.0-py39
-    # Deactivate any activae Conda environments
+    module load miniconda3/4.12.0-py39 # Load the OSC Conda module
+    # Deactivate any active Conda environments:
     if [[ -n "$CONDA_SHLVL" ]]; then
         for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     fi
-    # Activate the focal environment
-    source activate "$CONDA_ENV"
+    source activate "$CONDA_ENV" # Activate the focal environment
     set -u
 }
 
@@ -85,8 +81,6 @@ load_tool_conda() {
 die() {
     local error_message=${1}
     local error_args=${2-none}
-    
-    echo -e "\n============================================================" >&2
     printf "$(pt) $0: ERROR: %s\n" "$error_message" >&2
     log_time "$0: ERROR: $error_message" >&2
     log_time "For help, run this script with the '-h' option" >&2
@@ -95,18 +89,15 @@ die() {
         echo "$error_args" >&2
     fi
     log_time "EXITING..." >&2
-    echo -e "============================================================\n" >&2
     exit 1
 }
 
 # Log messages that include the time
-log_time() {
-    echo -e "\n[$(date +'%Y-%m-%d %H:%M:%S')]" ${1-""}
-}
+log_time() { echo -e "\n[$(date +'%Y-%m-%d %H:%M:%S')]" ${1-""}; }
 
 # Print the script version
 script_version() {
-    echo -e "\n$SCRIPT_NAME by $SCRIPT_AUTHOR, version $SCRIPT_VERSION"
+    echo "Run using $SCRIPT_NAME by $SCRIPT_AUTHOR, version $SCRIPT_VERSION (https://github.com/mcic-osu/mcic-scripts)"
 }
 
 # Print the tool's version
@@ -132,13 +123,12 @@ resource_usage() {
 slurm_resources() {
     set +u
     log_time "SLURM job information:"
-    echo "Account (project):    $SLURM_JOB_ACCOUNT"
-    echo "Job ID:               $SLURM_JOB_ID"
-    echo "Job name:             $SLURM_JOB_NAME"
-    echo "Memory (MB per node): $SLURM_MEM_PER_NODE"
-    echo "CPUs (per task):      $SLURM_CPUS_PER_TASK"
-    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
-    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
+    echo "Account (project):                        $SLURM_JOB_ACCOUNT"
+    echo "Job ID:                                   $SLURM_JOB_ID"
+    echo "Job name:                                 $SLURM_JOB_NAME"
+    echo "Memory (MB per node):                     $SLURM_MEM_PER_NODE"
+    echo "CPUs (per task):                          $SLURM_CPUS_PER_TASK"
+    echo "Time limit:                               $SLURM_TIMELIMIT"
     echo -e "=================================================================\n"
     set -u
 }
@@ -165,7 +155,7 @@ set_threads() {
 runstats() {
     /usr/bin/time -f \
         "\n# Ran the command: \n%C
-        \n\n# Run stats by /usr/bin/time:\n
+        \n# Run stats by /usr/bin/time:
         Time: %E   CPU: %P    Max mem: %M K    Exit status: %x \n" \
         "$@"
 }
@@ -182,9 +172,9 @@ more_args=
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infile )     shift && infile=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
-        --more_args )       shift && more_args=$1 ;;
+        -i | --infile )     shift && readonly infile=$1 ;;
+        -o | --outdir )     shift && readonly outdir=$1 ;;
+        --more_args )       shift && readonly more_args=$1 ;;
         -v )                script_version; exit 0 ;;
         -h )                script_help; exit 0 ;;
         --version )         tool_version; exit 0 ;;
@@ -216,29 +206,6 @@ set_threads
 # ==============================================================================
 #                      DEFINE OUTPUTS AND DERIVED INPUTS
 # ==============================================================================
-# FASTQ filename parsing #TODO_edit_or_remove
-#file_ext=$(basename "$R1" | sed -E 's/.*(.fasta|.fastq.gz|.fq.gz)$/\1/')
-#R1_suffix=$(basename "$R1" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
-#R2_suffix=${R1_suffix/1/2}
-#R2=${R1/$R1_suffix/$R2_suffix}
-#sample_id=$(basename "$R1" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
-
-# Other input filename parsing #TODO_edit_or_remove
-#R1_filename="$(basename "$R1")"
-#file_ext=${R1_filename%.*}
-
-# Make paths absolute #TODO_edit_or_remove
-#infile=$(realpath "infile")
-#[[ ! "$outdir" =~ ^/ ]] && outdir="$PWD"/"$outdir" 
-
-# Read a fofn #TODO_edit_or_remove
-#[[ -n "$fofn" ]] && mapfile -t infiles <"$fofn"
-#[[ -n "$indir" ]] && mapfile infiles < <(find "$indir" -type f)
-
-# Check derived inputs
-#[[ ! -f $R2 ]] && die "Input file R1_in ($R2_in) does not exist"
-#[[ "$R1" == "$R2" ]] && die "Input R1 and R2 FASTQ files are the same file: $R1"
-
 # Define outputs based on script parameters
 readonly version_file="$outdir"/logs/version.txt
 readonly log_dir="$outdir"/logs
@@ -246,32 +213,25 @@ readonly log_dir="$outdir"/logs
 # ==============================================================================
 #                               REPORT
 # ==============================================================================
-echo
-echo "=========================================================================="
-echo "               STARTING SCRIPT $SCRIPT_NAME, VERSION $SCRIPT_VERSION"
-date
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All arguments to this script:             $all_args"
 echo "Input file:                               $infile"
 echo "Output dir:                               $outdir"
-[[ $more_args != "" ]] && echo "Other arguments for TODO_THIS_SOFTWARE:   $more_args"
+[[ $more_args != "" ]] && echo "Other arguments for $TOOL_NAME:   $more_args"
 echo "Number of threads/cores:                  $threads"
-echo
-echo "Listing the input file(s):"
+echo "# Listing the input file(s):"
 ls -lh "$infile" #TODO
-echo "=========================================================================="
-
-# Print reserved resources
 [[ "$is_slurm" = true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Create the output directory
+# Create the output directories
 log_time "Creating the output directories..."
 mkdir -pv "$log_dir"
 
-# Run
+# Run the tool
 log_time "Running $TOOL_NAME..."
 runstats "$TOOL_BINARY" \
         -t "$threads" \
@@ -280,16 +240,12 @@ runstats "$TOOL_BINARY" \
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
-echo
-echo "========================================================================="
+printf "\n======================================================================"
 log_time "Versions used:"
 tool_version | tee "$version_file"
 script_version | tee -a "$version_file" 
-echo
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
-echo
-[[ "$is_slurm" = true ]] && resource_usage
-echo
+[[ "$is_slurm" = true ]] && echo && resource_usage
 log_time "Done with script $SCRIPT_NAME"
 echo
