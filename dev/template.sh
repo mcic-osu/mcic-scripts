@@ -193,7 +193,7 @@ done
 [[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 
 # ==============================================================================
-#                          OTHER SETUP
+#                          INFRASTRUCTURE SETUP
 # ==============================================================================
 # Check if this is a SLURM job
 if [[ -z "$SLURM_JOB_ID" ]]; then is_slurm=false; else is_slurm=true; fi
@@ -206,7 +206,7 @@ load_tool_conda
 set_threads
 
 # ==============================================================================
-#                      DEFINE OUTPUTS AND DERIVED INPUTS
+#              DEFINE OUTPUTS AND DERIVED INPUTS, BUILD ARGS
 # ==============================================================================
 # Define outputs based on script parameters
 readonly version_file="$outdir"/logs/version.txt
@@ -237,8 +237,8 @@ mkdir -pv "$log_dir"
 # Run the tool
 log_time "Running $TOOL_NAME..."
 runstats "$TOOL_BINARY" \
-        -t "$threads" \
-        $more_args
+    -t "$threads" \
+    $more_args
 
 # ==============================================================================
 #                               WRAP-UP
