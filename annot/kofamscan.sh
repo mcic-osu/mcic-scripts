@@ -64,8 +64,9 @@ script_help() {
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 -i results/assembly/proteins.faa -o results/kofamscan/ko.tsv"
     echo
-    echo "OUTPUT:" #TODO
-    echo "  - " 
+    echo "OUTPUT:"
+    echo "  - A single tabular output file with gene-to-KO mappings,"
+    echo "    whose format depends on the --out_format option."
     echo
     echo "TOOL DOCUMENTATION:"
     echo "  - Docs: $TOOL_DOCS"
