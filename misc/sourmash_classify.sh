@@ -112,9 +112,9 @@ if [[ "$db_dir" != "" ]]; then
     if [[ ! -f "$db" ]]; then
         echo "## Downloading database for k=$kval"
         echo "## (See https://sourmash.readthedocs.io/en/latest/databases.html#gtdb-all-genomes-258k)"
-        [[ "$kval" = 21 ]] && curl -JL -o "$db" https://osf.io/hm3c4/download
-        [[ "$kval" = 31 ]] && curl -JL -o "$db" https://osf.io/tf3ah/download
-        [[ "$kval" = 51 ]] && curl -JL -o "$db" https://osf.io/3cdp6/download
+        [[ "$kval" = 21 ]] && curl --insecure -JL -o "$db" https://osf.io/hm3c4/download
+        [[ "$kval" = 31 ]] && curl --insecure -JL -o "$db" https://osf.io/9xdg2/download
+        [[ "$kval" = 51 ]] && curl --insecure -JL -o "$db" https://osf.io/3cdp6/download
         [[ ! -f "$db" ]] && echo "ERROR: Downloaded DB file does not exist/have expected name $db" >&2 & exit 1
         echo
     fi
