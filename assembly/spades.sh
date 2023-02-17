@@ -22,11 +22,12 @@ Print_help() {
     echo "======================================================================"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 [ -i <input R1> / -I <indir> / -F <fofn> ] -o <output dir> [...]"
+    echo "  sbatch $0 [ -i <input R1> / -I <indir> / -F <fofn> ] -o <output-file> [...]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -o/--outfile    <file>  Output assembly FASTA file"
+    echo "  -o/--outfile    <file>  Output assembly FASTA file."
+    echo "                          Note: use a separate dir for each assembly"
     echo "To specify the input, use one of the following options:"
     echo "  -i/--R1         <file>  Input R1 (forward) FASTQ file (the name of the R2 file will be inferred)"
     echo "  -I/--indir      <dir>   Dir with gzipped FASTQ files"
@@ -52,7 +53,7 @@ Print_help() {
     echo "  -v/--version            Print the version of Spades and exit"
     echo
     echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i data/A_R1.fastq.gz -o results/spades"
+    echo "  sbatch $0 -i data/sampleA_R1.fastq.gz -o results/spades/sampleA/sampleA_assembly.fasta"
     echo
     echo "SOFTWARE DOCUMENTATION:"
     echo "  - Docs: https://github.com/ablab/spades"
