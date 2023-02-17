@@ -36,6 +36,9 @@ script_help() {
     echo
     echo "        $0 (v. $SCRIPT_VERSION): Run $TOOL_NAME"
     echo "        =============================================="
+    echo "DESCRIPTION:"
+    echo "  #TODO"
+    echo
     echo "USAGE:"
     echo "  sbatch $0 -i <input-file> -o <output-dir> [...]"
     echo "  bash $0 -h"
@@ -81,7 +84,6 @@ load_tool_conda() {
 die() {
     local error_message=${1}
     local error_args=${2-none}
-    printf "$(pt) $0: ERROR: %s\n" "$error_message" >&2
     log_time "$0: ERROR: $error_message" >&2
     log_time "For help, run this script with the '-h' option" >&2
     if [[ "$error_args" != "none" ]]; then
@@ -220,7 +222,8 @@ echo "Input file:                               $infile"
 echo "Output dir:                               $outdir"
 [[ $more_args != "" ]] && echo "Other arguments for $TOOL_NAME:   $more_args"
 echo "Number of threads/cores:                  $threads"
-echo "# Listing the input file(s):"
+echo
+log_time "Listing the input file(s):"
 ls -lh "$infile" #TODO
 [[ "$is_slurm" = true ]] && slurm_resources
 
