@@ -92,10 +92,14 @@ print(kallisto_files)
 # Import Kallisto transcript counts --
 # create gene-level count estimates normalized by library size and transcript length
 # See https://bioconductor.org/packages/devel/bioc/vignettes/tximport/inst/doc/tximport.html
+message("\n# Now importing the count files...")
 txi <- tximport(kallisto_files,
                 type = "kallisto",
                 tx2gene = tx2gene,
                 countsFromAbundance = "lengthScaledTPM")
+
+message("\n# Done. Dimensions of count matrix:")
+dim(txi$counts)
 
 # Save tximport object
 saveRDS(txi, txi_out)
@@ -104,8 +108,7 @@ saveRDS(txi, txi_out)
 # CREATE DESEQ OBJECT ----------------------------------------------------------
 if (!is.null(meta_file)) {
     # Read metadata
-    meta <- read.delim(meta_file) |>
-        arrange(.data[[sample_id_column]])
+    meta <- read.delim(meta_file) |> arrange(.data[[sample_id_column]])
     rownames(meta) <- meta[[sample_id_column]]
 
     # Name Kallisto files according to metadata
@@ -115,8 +118,6 @@ if (!is.null(meta_file)) {
     stopifnot(all(rownames(meta) == colnames(txi$counts)))
     message("\n# Sample names:")
     print(rownames(meta))
-    message("\n# Dimensions of count matrix:")
-    dim(txi$counts)
 
     # Create DESeq object
     dds <- DESeqDataSetFromTximport(txi, meta, ~1)
