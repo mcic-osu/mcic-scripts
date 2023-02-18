@@ -12,7 +12,7 @@ sample_id=$(basename "$R1" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//"
 
 # Other input filename parsing
 R1_filename="$(basename "$R1")"
-file_ext=${R1_filename%.*}
+file_ext=${R1_filename##*.}
 
 # Make paths absolute
 infile=$(realpath "$infile")
