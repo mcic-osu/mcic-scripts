@@ -27,6 +27,7 @@ readonly TOOL_PAPER=https://www.sciencedirect.com/science/article/pii/S200103702
 
 # Option defaults
 db_dir=/fs/ess/PAS0471/jelmer/refdata/recognizer
+download_db=false
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -48,7 +49,8 @@ script_help() {
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --db_dir        <dir>   Dir with (or for) the database              [default: /fs/ess/PAS0471/jelmer/refdata/recognizer]"
+    echo "  --db_dir        <dir>   Dir with the reCOGnizer database files      [default: /fs/ess/PAS0471/jelmer/refdata/recognizer]"
+    echo "  --download_db           Download/update the database"
     echo "  --evalue        <num>   Evalue threshold for hits                   [default: ReCOGnizer default, which is 1e-2]"
     echo "  --more_args     <str>   Quoted string with more argument(s) for $TOOL_NAME"
     echo
@@ -177,9 +179,10 @@ evalue= && evalue_arg=
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infile )     shift && readonly infile=$1 ;;
-        -o | --outdir )     shift && readonly outdir=$1 ;;
-        --db_dir )          shift && readonly db_dir=$1 ;;
+        -i | --infile )     shift && infile=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        --db_dir )          shift && db_dir=$1 ;;
+        --download_db )     readonly download_db=true ;;
         --evalue )          shift && readonly evalue=$1 ;;
         --more_args )       shift && readonly more_args=$1 ;;
         -v )                script_version; exit 0 ;;
@@ -215,6 +218,11 @@ set_threads
 # Build args
 [[ -n "$evalue" ]] && evalue_arg="--evalue $evalue"
 
+# Make paths absolute
+infile=$(realpath "$infile")
+[[ ! "$outdir" =~ ^/ ]] && outdir="$PWD"/"$outdir"
+[[ ! "$db_dir" =~ ^/ ]] && db_dir="$PWD"/"$db_dir"
+
 # Define outputs based on script parameters
 readonly version_file="$outdir"/logs/version.txt
 readonly log_dir="$outdir"/logs
@@ -227,6 +235,9 @@ echo "==========================================================================
 echo "All arguments to this script:             $all_args"
 echo "Input file:                               $infile"
 echo "Output dir:                               $outdir"
+echo "Database dir:                             $db_dir"
+echo "Download the database?                    $download_db"
+[[ -n "$evalue" ]] && echo "E-value threshold:                        $evalue"
 [[ $more_args != "" ]] && echo "Other arguments for $TOOL_NAME:   $more_args"
 echo "Number of threads/cores:                  $threads"
 echo
@@ -241,12 +252,20 @@ ls -lh "$infile"
 log_time "Creating the output directories..."
 mkdir -pv "$log_dir"
 
+# Download databases
+if [[ "$download_db" == true ]]; then
+    cd "$db_dir" || die "Can't move to $db_dir"
+    runstats "$TOOL_BINARY" \
+        --download-resources \
+        --resources-directory "$db_dir"
+fi
+
 # Run the tool
 log_time "Running $TOOL_NAME..."
+cd "$outdir" || die "Can't move to $db_dir"
 runstats "$TOOL_BINARY" \
     --file "$infile" \
-    --output "$outdir" \
-    --download-resources \
+    --output . \
     --resources-directory "$db_dir" \
     --threads "$threads" \
     $evalue_arg \
