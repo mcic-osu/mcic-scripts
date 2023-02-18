@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=168:00:00
+#SBATCH --time=2:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=kofamscan
 #SBATCH --output=slurm-kofamscan-%j.out
 
@@ -47,7 +46,7 @@ script_help() {
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--infile     <file>  Input protein FASTA file"
-    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
+    echo "  -o/--outfile    <dir>   Output file"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --db_dir        <dir>   Dir with (or for) the KEGG database         [default: /fs/ess/PAS0471/jelmer/refdata/kegg]"
@@ -181,9 +180,9 @@ more_args=
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infile )     shift && readonly infile=$1 ;;
-        -o | --outfile )    shift && readonly outfile=$1 ;;
-        --db_dir )          shift && readonly db_dir=$1 ;;
+        -i | --infile )     shift && infile=$1 ;;
+        -o | --outfile )    shift && outfile=$1 ;;
+        --db_dir )          shift && db_dir=$1 ;;
         --download_db )     readonly download_db=true ;;
         --out_format )      shift && readonly out_format=$1 ;;
         --more_args )       shift && readonly more_args=$1 ;;
@@ -219,10 +218,15 @@ set_threads
 #                      DEFINE OUTPUTS AND DERIVED INPUTS
 # ==============================================================================
 # Derived inputs
-readonly profile_dir="$db_dir"/profiles
-readonly ko_list="$db_dir"/ko_list
+profile_dir="$db_dir"/profiles
+ko_list="$db_dir"/ko_list
 [[ ! -d "$profile_dir" ]] && die "Input dir $profile_dir does not exist"
 [[ ! -f "$ko_list" ]] && die "Input file $ko_list does not exist"
+
+# Make paths absolute
+infile=$(realpath "$infile")
+[[ ! "$outfile" =~ ^/ ]] && outfile="$PWD"/"$outfile"
+[[ ! "$db_dir" =~ ^/ ]] && db_dir="$PWD"/"$db_dir"
 
 # Define outputs based on script parameters
 outdir=$(dirname "$outfile")
@@ -236,6 +240,7 @@ log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All arguments to this script:             $all_args"
 echo "Input file:                               $infile"
+echo "Nr of entries in the input file:          $(grep -c "^>" "$infile")"
 echo "Output file:                              $outfile"
 echo "Output format:                            $out_format"
 echo "Database dir:                             $db_dir"
@@ -268,6 +273,22 @@ if [[ "$download_db" == true ]]; then
     
     cd -
 fi
+
+# Copy the DB to the TMPDIR
+if [[ "$is_slurm" == true ]]; then
+    log_time "Copying the database to the TMPDIR..."
+    cp -r "$db_dir" "$TMPDIR"
+    db_dir="$TMPDIR"/$(basename "$db_dir")
+
+    profile_dir="$db_dir"/profiles
+    ko_list="$db_dir"/ko_list
+    [[ ! -d "$profile_dir" ]] && die "Input dir $profile_dir does not exist"
+    [[ ! -f "$ko_list" ]] && die "Input file $ko_list does not exist"
+fi
+
+# Move into the outdir
+# This is needed because kofamscan will create a 'tmp' dir in the working dir
+cd "$outdir" || Die "Can't move to $outdir"
 
 # Run the tool
 log_time "Running $TOOL_NAME..."
