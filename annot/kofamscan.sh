@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=2:00:00
+#SBATCH --time=5:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
 #SBATCH --nodes=1
@@ -276,7 +276,7 @@ fi
 
 # Copy the DB to the TMPDIR
 if [[ "$is_slurm" == true ]]; then
-    log_time "Copying the database to the TMPDIR..."
+    log_time "Copying the database to the TMPDIR $TMPDIR..."
     cp -r "$db_dir" "$TMPDIR"
     db_dir="$TMPDIR"/$(basename "$db_dir")
 
@@ -288,7 +288,11 @@ fi
 
 # Move into the outdir
 # This is needed because kofamscan will create a 'tmp' dir in the working dir
-cd "$outdir" || Die "Can't move to $outdir"
+if [[ "$is_slurm" == true ]]; then
+    cd "$TMPDIR" || Die "Can't move to $TMPDIR"
+else
+    cd "$outdir" || Die "Can't move to $outdir"
+fi
 
 # Run the tool
 log_time "Running $TOOL_NAME..."
