@@ -25,11 +25,10 @@ run_enrich <- function(
   if (DE_direction == "down") DE_res <- DE_res |> filter(log2FoldChange < 0)
 
   # Create a vector with DEGs
-  DE_genes <- DE_res |>
-    filter(padj < p_DE,
-           abs(log2FoldChange) > lfc_DE,
-           contrast == fcontrast) |>
-    pull(gene_id)
+  DE_res <- DE_res |> filter(padj < p_DE,
+                             contrast == fcontrast)
+  if (lfc_DE != 0) DE_res <- DE_res |> filter(abs(log2FoldChange) > lfc_DE)
+  DE_genes <- DE_res$gene_id
   
   # Check if genes are present multiple times -- this would indicate there are multiple contrasts
   if (any(duplicated(DE_genes))) {
@@ -198,10 +197,8 @@ run_GO_all <- function(contrasts, DE_res, GO_map, gene_lens, ...) {
 run_GO <- function(
   contrast,                          # A DE contrast as specified in the 'contrast' column in the 'DE_res' df
   DE_res,                            # Df with DE results from DESeq2
-  GO_map,                            # Df with one GOterm-to-gene relation per row,
-                                     # with columns 'gene_id' and 'go_term'
-  gene_lens,                         # Df with gene lengths,
-                                     # with columns 'gene_id' and 'length'
+  GO_map,                            # Df with one GOterm-to-gene relation per row, w/ columns 'gene_id' and 'go_term'
+  gene_lens,                         # Df with gene lengths w/ columns 'gene_id' and 'length'
   DE_direction = "either",           # 'either' (= both together), 'up' (LFC>0), or 'down' (LFC>0)
   min_in_cat = 2, max_in_cat = Inf,  # Min. & max. nr of total terms in GO category
   min_DE_in_cat = 2,                 # Min. nr. DE genes in GO term for a term to be significant
@@ -218,14 +215,15 @@ run_GO <- function(
   if (verbose == TRUE) {
     cat("\n-------------\nStarting analysis for contrast:", contrast, "\n")
   }
-
-DE_vec <- get_DE_vec(
-    contrast,
-    DE_res,
-    DE_direction = DE_direction,
-    rm_padj_na = rm_padj_na,
-    verbose = verbose,
-    ...
+  
+  DE_vec <- get_DE_vec(
+      contrast,
+      DE_res,
+      DE_direction = DE_direction,
+      rm_padj_na = rm_padj_na,
+      verbose = verbose,
+      use_sig_column = use_sig_column,
+      ...
   )
 
   GO_df <- run_GO_internal(
@@ -359,8 +357,9 @@ get_DE_vec <- function(
 
   # If we use a column with precomputed DE significance, don't use thresholds
   if (!is.null(use_sig_column)) {
-    if (verbose == TRUE) message("Using column ", use_sig_column, "to find DE genes")
-    colnames(DE_res)[grep(use_sig_column, colnames(DE))] <- "isDE"
+    if (verbose == TRUE) message("Using column ", use_sig_column, " to find DE genes")
+    
+    colnames(DE_res)[grep(use_sig_column, colnames(DE_res))] <- "isDE"
     p_DE <- NULL
     lfc_DE <- NULL
   }
@@ -383,9 +382,15 @@ get_DE_vec <- function(
   }
 
   # Indicate which genes are significant
-  if (is.null(use_sig_column))
-    fDE <- fDE |>
-      mutate(isDE = ifelse(padj < p_DE & abs(log2FoldChange) > lfc_DE, TRUE, FALSE))
+  if (is.null(use_sig_column)) {
+    if (lfc_DE != 0) {
+      fDE <- fDE |>
+        mutate(isDE = ifelse(padj < p_DE & abs(log2FoldChange) > lfc_DE, TRUE, FALSE))
+    } else {
+      fDE <- fDE |>
+        mutate(isDE = ifelse(padj < p_DE, TRUE, FALSE))
+    }
+  }
 
   # Subset to up/down DEGs if needed
   if (DE_direction == "up")
@@ -397,17 +402,21 @@ get_DE_vec <- function(
   n_genes <- length(unique(fDE$gene_id))
   if (verbose == TRUE) message("- Nr unique genes in DE results: ", n_genes)
 
-  # Exclude genes with NA adj-p-val - those were not tested
   if (rm_padj_na == TRUE) {
+    # Exclude genes with NA adj-p-val - those were not tested
     fDE <- fDE |> filter(!is.na(padj))
     n_genes <- length(unique(fDE$gene_id))
     if (verbose == TRUE) message("- Nr unique genes after removing padj=NA: ", n_genes)
   } else {
-    fDE <- fDE |> mutate(isDE = ifelse(is.na(isDE), FALSE, TRUE))
+    # Otherwise, turn NAs to FALSE (not DE)
+    fDE <- fDE |> mutate(isDE = ifelse(is.na(isDE), FALSE, isDE))
   }
 
   DE_vec <- fDE$isDE
   names(DE_vec) <- fDE$gene_id
+  
+  if (verbose == TRUE) print(table(DE_vec))
+    
   return(DE_vec)
 }
 
