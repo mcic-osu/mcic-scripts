@@ -412,8 +412,9 @@ ls -lh "$asm_aa_out"
 echo -e "\n===================================================================="
 echo "# Finalizing the output annotation file..."
 
-# Remove the full paths from the DIAMOND DB origin column
+# First get the header
 cat "$annot_header" > "$annot_out"
+# Remove the full paths from the DIAMOND DB origin column, append to final file
 awk -F"\t" -v OFS="\t" '{sub(/.*\//, "", $16)}1' "$annot_tmp3" >> "$annot_out" 
 
 echo -e "\n# Final annotation file:"
