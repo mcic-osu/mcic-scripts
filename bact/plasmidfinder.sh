@@ -25,9 +25,9 @@ readonly TOOL_DOCS="https://bitbucket.org/genomicepidemiology/plasmidfinder/src/
 readonly TOOL_PAPER="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4068535"
 
 # Option defaults
-get_db=false           # Don't download/update the PlasmidFinder database
+get_db=true            # Don't download/update the PlasmidFinder database
 min_cov=0.60           # Coverage threshold for BLAST hits - same as PlasmidFinder default
-min_id=0.95            # Identity threshold for BLAST hits - same as webserver default; CLI default is 0.90!
+min_id=0.90            # Identity threshold for BLAST hits - same as CLI default; webserver default is 0.95!
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -48,9 +48,11 @@ script_help() {
     echo "  -o/--outdir     <dir>   Output dir (use a separate dir per assembly)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --get_db                Download/update the PlasmidFinder DB before running PlasmidFinder"
-    echo "  --min_cov       <num>   Coverage threshold            [default: 0.60]"
-    echo "  --min_id        <num>   Identity threshold            [default: 0.95]"
+    echo "  --dont_get_db           Don't download the PlasmidFinder DB before running PlasmidFinder."
+    echo "                          You'll have to specify 'db_dir' in this case."
+    echo "  --db_dir        <dir>   Dir for/with the PlasmidFinder DB           [default: <outdir>/plasmid_db]"
+    echo "  --min_cov       <num>   Coverage threshold                          [default: 0.60]"
+    echo "  --min_id        <num>   Identity threshold                          [default: 0.95]"
     echo "                          NOTE: This is the same as the default on the PlasmidFinder webserver,"
     echo "                          whereas the default for the command-line program is 0.90."
     echo "  --more_args     <str>   Quoted string with more argument(s) for $TOOL_NAME"
@@ -63,6 +65,11 @@ script_help() {
     echo
     echo "EXAMPLE COMMANDS:"
     echo "  $0 -i results/spades/assembly.fa -o results/plasmidfinder"
+    echo
+    echo "  for asm in results/assemblies/*fasta; do"
+    echo "      outdir=results/plasmidfinder/$(basename "$asm" .fasta)"
+    echo "      sbatch mcic-scripts/bact/plasmidfinder.sh -i "$asm" -o "$outdir""
+    echo "  done"
     echo
     echo "TOOL DOCUMENTATION:"
     echo "  - Docs: $TOOL_DOCS"
@@ -90,7 +97,6 @@ die() {
     local error_args=${2-none}
     
     echo -e "\n============================================================" >&2
-    printf "$(pt) $0: ERROR: %s\n" "$error_message" >&2
     log_time "$0: ERROR: $error_message" >&2
     log_time "For help, run this script with the '-h' option" >&2
     if [[ "$error_args" != "none" ]]; then
@@ -123,7 +129,7 @@ tool_version() {
 # Print the tool's help
 tool_help() {
     load_tool_conda
-    "$TOOL_BINARY" --help #TODO check that this works
+    "$TOOL_BINARY" --help
 }
 
 # Print SLURM job resource usage info
@@ -178,6 +184,7 @@ runstats() {
 # Initiate variables
 infile=
 outdir=
+db_dir=
 more_args=
 
 # Parse command-line args
@@ -188,7 +195,8 @@ while [ "$1" != "" ]; do
         -o | --outdir )     shift && readonly outdir=$1 ;;
         --min_cov )         shift && readonly min_cov=$1 ;;
         --min_id )          shift && readonly min_id=$1 ;;
-        --get_db )          readonly get_db=true ;;
+        --db_dir )          shift && readonly db_dir=$1 ;;
+        --dont_get_db )     readonly get_db=false ;;
         --more_args )       shift && readonly more_args=$1 ;;
         -v )                script_version; exit 0 ;;
         -h )                script_help; exit 0 ;;
@@ -203,6 +211,8 @@ done
 [[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_args"
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_args"
 [[ ! -f "$infile" ]] && die "Input file $infile does not exist"
+[[ -n "$db_dir" && ! -d "$db_dir" ]] && die "DB dir $db_dir does not exist"
+[[ "$get_db" == false && -z "$db_dir" ]] && die "You have to specify a DB dir with --db_dir when using --dont_get_db"
 
 # ==============================================================================
 #                          OTHER SETUP
@@ -224,6 +234,9 @@ set_threads
 readonly version_file="$outdir"/logs/version.txt
 readonly log_dir="$outdir"/logs
 
+# Database dir
+[[ -z "$db_dir" ]] && readonly db_dir="$outdir"/plasmid_db
+
 # ==============================================================================
 #                               REPORT
 # ==============================================================================
@@ -232,6 +245,7 @@ echo "==========================================================================
 echo "All arguments to this script:             $all_args"
 echo "Input genome assembly FASTA file:         $infile"
 echo "Output dir:                               $outdir"
+echo "Database dir:                             $db_dir"
 echo "Download or update Plasmidfinder db?:     $get_db"
 echo "Min. coverage threshold:                  $min_cov"
 echo "Min. identity threshold:                  $min_id"
@@ -246,12 +260,12 @@ ls -lh "$infile"
 # ==============================================================================
 # Create the output directory
 log_time "Creating the output directories..."
-mkdir -pv "$log_dir"
+mkdir -pv "$log_dir" "$db_dir"
 
-# Download/update the database - will by default go to Conda env
+# Download/update the database
 if [[ "$get_db" == true ]]; then
     log_time "Downloading the database..."
-    download-db.sh
+    download-db.sh "$db_dir"
 fi
 
 # Run
@@ -259,6 +273,7 @@ log_time "Running $TOOL_NAME..."
 runstats "$TOOL_BINARY" \
     -i "$infile" \
     -o "$outdir" \
+    --databasePath "$db_dir" \
     --mincov "$min_cov" \
     --threshold "$min_id" \
     --extented_output \

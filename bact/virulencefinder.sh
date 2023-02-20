@@ -25,7 +25,7 @@ readonly TOOL_DOCS="https://bitbucket.org/genomicepidemiology/virulencefinder/sr
 readonly TOOL_PAPER=""
 
 # Option defaults
-get_db=false           # Don't download/update the PlasmidFinder database
+get_db=true            # Don't download/update the VirulenceFinder database
 min_cov=0.60           # Coverage threshold for BLAST hits - same as VirulenceFinder default
 min_id=0.90            # Identity threshold for BLAST hits - same as VirulenceFinder default
 
@@ -48,8 +48,11 @@ script_help() {
     echo "  -o/--outdir     <dir>   Output dir (use a separate dir per assembly)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --min_cov       <num>   Coverage threshold            [default: 0.60]"
-    echo "  --min_id        <num>   Identity threshold            [default: 0.90]"
+    echo "  --dont_get_db           Don't download the VirulenceFinder DB before running VirulenceFinder"
+    echo "                          You'll have to specify 'db_dir' in this case."
+    echo "  --db_dir        <dir>   Dir for/with the VirulenceFinder DB         [default: <outdir>/virulencefinder_db]"
+    echo "  --min_cov       <num>   Coverage threshold                          [default: 0.60]"
+    echo "  --min_id        <num>   Identity threshold                          [default: 0.90]"
     echo "  --more_args     <str>   Quoted string with more argument(s) for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -60,6 +63,11 @@ script_help() {
     echo
     echo "EXAMPLE COMMANDS:"
     echo "  $0 -i results/spades/assembly.fa -o results/virulencefinder"
+    echo
+    echo "  for asm in result/assemblies/*fasta; do"
+    echo "      outdir=results/virulencefinder/$(basename "$asm" .fasta)"
+    echo "      sbatch mcic-scripts/bact/virulencefinder.sh -i "$asm" -o "$outdir""
+    echo "  done"
     echo
     echo "TOOL DOCUMENTATION:"
     echo "  - Docs: $TOOL_DOCS"
@@ -87,7 +95,6 @@ die() {
     local error_args=${2-none}
     
     echo -e "\n============================================================" >&2
-    printf "$(pt) $0: ERROR: %s\n" "$error_message" >&2
     log_time "$0: ERROR: $error_message" >&2
     log_time "For help, run this script with the '-h' option" >&2
     if [[ "$error_args" != "none" ]]; then
@@ -120,7 +127,7 @@ tool_version() {
 # Print the tool's help
 tool_help() {
     load_tool_conda
-    "$TOOL_BINARY" --help #TODO check that this works
+    "$TOOL_BINARY" --help
 }
 
 # Print SLURM job resource usage info
@@ -175,6 +182,7 @@ runstats() {
 # Initiate variables
 infile=
 outdir=
+db_dir=
 more_args=
 
 # Parse command-line args
@@ -185,6 +193,8 @@ while [ "$1" != "" ]; do
         -o | --outdir )     shift && outdir=$1 ;;
         --min_cov )         shift && readonly min_cov=$1 ;;
         --min_id )          shift && readonly min_id=$1 ;;
+        --db_dir )          shift && db_dir=$1 ;;
+        --dont_get_db )     readonly get_db=false ;;
         --more_args )       shift && readonly more_args=$1 ;;
         -v )                script_version; exit 0 ;;
         -h )                script_help; exit 0 ;;
@@ -199,6 +209,8 @@ done
 [[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_args"
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_args"
 [[ ! -f "$infile" ]] && die "Input file $infile does not exist"
+[[ -n "$db_dir" && ! -d "$db_dir" ]] && die "DB dir $db_dir does not exist"
+[[ "$get_db" == false && -z "$db_dir" ]] && die "You have to specify a DB dir with --db_dir when using --dont_get_db"
 
 # ==============================================================================
 #                          OTHER SETUP
@@ -224,6 +236,9 @@ infile=$(realpath "$infile")
 readonly version_file="$outdir"/logs/version.txt
 readonly log_dir="$outdir"/logs
 
+# Database dir
+[[ -z "$db_dir" ]] && readonly db_dir="$outdir"/virulencefinder_db
+
 # ==============================================================================
 #                               REPORT
 # ==============================================================================
@@ -232,6 +247,8 @@ echo "==========================================================================
 echo "All arguments to this script:             $all_args"
 echo "Input genome assembly FASTA file:         $infile"
 echo "Output dir:                               $outdir"
+echo "Database dir:                             $db_dir"
+echo "Download the or virulencefinder db?:      $get_db"
 echo "Min. coverage threshold:                  $min_cov"
 echo "Min. identity threshold:                  $min_id"
 [[ $more_args != "" ]] && echo "Other arguments for $TOOL_NAME:   $more_args"
@@ -252,8 +269,11 @@ mkdir -pv "$log_dir"
 cd "$outdir" || die "Can't move to outdir $outdir"
 
 # Download the database to 'virulencefinder_db' in working dir
-log_time "Downloading the database..."
-download-virulence-db.sh
+if [[ "$get_db" == true ]]; then
+    log_time "Downloading the database..."
+    download-virulence-db.sh
+    [[ "$db_dir" != "$outdir"/virulencefinder_db ]] && mv -v virulencefinder_db "$db_dir"
+fi
 
 # Run
 log_time "Running $TOOL_NAME..."
@@ -264,7 +284,7 @@ runstats virulencefinder.py \
     --mincov "$min_cov" \
     --threshold "$min_id" \
     --extented_output \
-    --databasePath virulencefinder_db \
+    --databasePath "$db_dir" \
     $more_args
 
 # Notes
