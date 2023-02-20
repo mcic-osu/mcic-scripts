@@ -132,7 +132,7 @@ while [ "$1" != "" ]; do
         -x | --debug )          debug=true ;;
         -r | --no_resume )      resume=false ;;
         -h | --help )           Help && exit ;;
-        * )                     Die "Invalid option $1" && exit 1 ;;
+        * )                     Die "Invalid option $1" ;;
     esac
     shift
 done
