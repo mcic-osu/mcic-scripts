@@ -105,7 +105,7 @@ tool_help() {
 die() {
     local error_message=${1}
     local error_args=${2-none}
-    log_time "$0: ERROR: $error_message" >&2
+    log_time "ERROR: $error_message" >&2
     log_time "For help, run this script with the '-h' option" >&2
     if [[ "$error_args" != "none" ]]; then
         log_time "Arguments passed to the script:" >&2
@@ -169,8 +169,8 @@ while [ "$1" != "" ]; do
 done
 
 # Check input
-[[ "$indir" = "" ]] && die "Please specify an input dir with -i/--indir"
-[[ "$species" = "" ]] && die "Please specify a species with -s/--species"
+[[ "$indir" = "" ]] && die "Please specify an input dir with -i/--indir" "$all_args"
+[[ "$species" = "" ]] && die "Please specify a species with -s/--species" "$all_args"
 [[ ! -d "$indir" ]] && die "Input dir $indir does not exist"
 
 # ==============================================================================
