@@ -52,9 +52,9 @@ script_help() {
     echo "                          You'll have to specify 'db_dir' in this case."
     echo "  --db_dir        <dir>   Dir for/with the PlasmidFinder DB           [default: <outdir>/plasmid_db]"
     echo "  --min_cov       <num>   Coverage threshold                          [default: 0.60]"
-    echo "  --min_id        <num>   Identity threshold                          [default: 0.95]"
-    echo "                          NOTE: This is the same as the default on the PlasmidFinder webserver,"
-    echo "                          whereas the default for the command-line program is 0.90."
+    echo "  --min_id        <num>   Identity threshold                          [default: 0.90]"
+    echo "                          NOTE: This is the same as the command-line program,"
+    echo "                          whereas the default on the PlasmidFinder webserver is 0.95"
     echo "  --more_args     <str>   Quoted string with more argument(s) for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
