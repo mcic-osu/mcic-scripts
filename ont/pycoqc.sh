@@ -27,15 +27,13 @@ Print_help() {
     echo "REQUIRED OPTIONS:"
     echo "  -i/--infile     <file>  Input 'sequencing summary' file"
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
-    echo "  --min_pass_qual <int>   Min. read length to PASS (should be the same as used for Guppy!)"
     echo
     echo "OTHER KEY OPTIONS:"
+    echo "  --min_pass_qual <int>   Min. read length to PASS (should be the same as used for Guppy!)"
     echo "  --min_pass_len  <int>   Min. read length to PASS                    [default: 0]"
     echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to PycoQC"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                 Run the script in debug mode (print all code)"
     echo "  -h                      Print this help message and exit"
     echo "  --help                  Print the help for PycoQC and exit"
     echo "  -v/--version            Print the version of PycoQC and exit"
@@ -75,8 +73,7 @@ Print_help_program() {
 # Print SLURM job resource usage info
 Resource_usage() {
     echo
-    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
-        grep -Ev "ba|ex"
+    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
     echo
 }
 
@@ -128,8 +125,6 @@ Die() {
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Option defaults
-debug=false
-dryrun=false && e=""
 slurm=true
 
 
@@ -137,10 +132,10 @@ slurm=true
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Placeholder defaults
-infile=""
-outdir=""
-min_pass_qual=""
-min_pass_len="" && min_pass_len_arg=""
+infile=
+outdir=
+min_pass_qual= && qual_arg=""
+min_pass_len= && len_arg=
 more_args=""
 
 # Parse command-line args
@@ -156,8 +151,6 @@ while [ "$1" != "" ]; do
         -v | --version )    Print_version; exit 0 ;;
         -h )                Print_help; exit 0 ;;
         --help )            Print_help_program; exit 0;;
-        --dryrun )          dryrun=true && e="echo ";;
-        --debug )           debug=true ;;
         * )                 Die "Invalid option $1" "$all_args" ;;
     esac
     shift
@@ -170,14 +163,11 @@ done
 # Bash script settings
 set -euo pipefail
 
-# In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
-
 # Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
 # Load software and set nr of threads
-[[ "$dryrun" = false ]] && Load_software
+Load_software
 
 # Check the input
 [[ "$infile" = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
@@ -185,7 +175,8 @@ set -euo pipefail
 [[ ! -f "$infile" ]] && Die "Input file $infile does not exist"
 
 # Other args
-[[ "$min_pass_len" != "" ]] && min_pass_len_arg="--min_pass_len $min_pass_len"
+[[ -n "$min_pass_len" ]] && len_arg="--min_pass_len $min_pass_len"
+[[ -n "$min_pass_qual" ]] && qual_arg="--min_pass_qual $min_pass_qual"
 
 # Determine the output file name
 infile_noext=${infile%.*}
@@ -199,13 +190,11 @@ date
 echo "=========================================================================="
 echo "All arguments to this script:     $all_args"
 echo "Input file:                       $infile"
-echo "Output dir:                       $outdir"
 echo "Output file:                      $outfile"
 [[ $more_args != "" ]] && echo "Other arguments for PycoQC:       $more_args"
 echo
 echo "Listing the input file(s):"
 ls -lh "$infile"
-[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
 # Print reserved resources
@@ -216,17 +205,16 @@ echo "==========================================================================
 #                               RUN
 # ==============================================================================
 # Create the output directory
-${e}mkdir -p "$outdir"/logs
+mkdir -p "$outdir"/logs
 
 # Run
 echo -e "\n# Now running PycoQC..."
-${e}Time \
-    pycoQC \
-        -f "$infile" \
-        -o "$outfile" \
-        --min_pass_qual "$min_pass_qual" \
-        $min_pass_len_arg \
-        $more_args
+Time pycoQC \
+    -f "$infile" \
+    -o "$outfile" \
+    $qual_arg \
+    $len_arg \
+    $more_args
 
 
 # ==============================================================================
@@ -234,12 +222,10 @@ ${e}Time \
 # ==============================================================================
 echo
 echo "========================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing the output file:"
-    ls -lhd "$PWD"/"$outfile"
-    [[ "$slurm" = true ]] && Resource_usage
-fi
+echo "# Version used:"
+Print_version | tee "$outdir"/logs/version.txt
+echo -e "\n# Listing the output file:"
+ls -lhd "$PWD"/"$outfile"
+[[ "$slurm" = true ]] && Resource_usage
 echo "# Done with script"
 date
