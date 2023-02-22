@@ -5,20 +5,38 @@
 #SBATCH --gpus-per-node=2
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
+#SBATCH --mail-type=FAIL
 #SBATCH --job-name=guppy
 #SBATCH --output=slurm-guppy_gpu-%j.out
+
+# ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
+# Software
+readonly SCRIPT_NAME=guppy_gpu.sh
+readonly SCRIPT_VERSION="1.0"
+readonly SCRIPT_AUTHOR="Jelmer Poelstra"
+readonly REPO_URL=https://github.com/mcic-osu/mcic-scripts
+readonly GUPPY_DIR=/fs/project/PAS0471/jelmer/software/guppy-6.4.2
+readonly TOOL_BINARY="$GUPPY_DIR"/bin/guppy_basecaller
+readonly MODULE=cuda
+
+# Hardcoded parameters
+chunks_per_runner=256
+records_per_fastq=0
 
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
 # Help function
-Print_help() {
+script_help() {
     echo
-    echo "======================================================================"
-    echo "                            $0"
-    echo "      PERFORM FAST5 => FASTQ BASECALLING WITH GUPPY USING GPUS"
-    echo "======================================================================"
+    echo "        $0 (v. $SCRIPT_VERSION): Run $TOOL_NAME"
+    echo "        =============================================="
     echo
+    echo "DESCRIPTION:"
+    echo "  Perform FAST5 => FASTQ basecalling with Guppy using GPUs"
+    echo 
     echo "USAGE:"
     echo "  sbatch $0 -i <input file> -o <output dir> --config <config file> [...]"
     echo "  bash $0 --help"
@@ -26,7 +44,9 @@ Print_help() {
     echo "REQUIRED OPTIONS:"
     echo "  -i/--infile     <file>  Input FAST5 file"
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
-    echo "  --config        <str>   Config file name"
+    echo "  --config        <str>   Config file name. Find the appropriate config file by:"
+    echo "                            1) Running this script with option '--print_workflows' to find appropriate config name"
+    echo "                            2) Running this script with option '--list_configs' to find corresponding config file"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --barcode_kit   <str>   Barcode set                                 [default: none - no demultiplexing]"
@@ -34,8 +54,8 @@ Print_help() {
     echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to Guppy"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                 Run the script in debug mode (print all code)"
+    echo "  --print_workflows       List available config names by flowcell and kit ID"
+    echo "  --list_configs          List available config files"
     echo "  -h                      Print this help message and exit"
     echo "  --help                  Print the help for Guppy and exit"
     echo "  -v/--version            Print the version of Guppy and exit"
@@ -60,117 +80,106 @@ Print_help() {
     echo
 }
 
-# Print version
-Print_version() {
+# Load software
+load_tool() {
+    module load "$MODULE"
+}
+
+# Exit upon error with a message
+die() {
+    local error_message=${1}
+    local error_args=${2-none}
+    log_time "$0: ERROR: $error_message" >&2
+    log_time "For help, run this script with the '-h' option" >&2
+    if [[ "$error_args" != "none" ]]; then
+        log_time "Arguments passed to the script:" >&2
+        echo "$error_args" >&2
+    fi
+    log_time "EXITING..." >&2
+    exit 1
+}
+
+# Log messages that include the time
+log_time() { echo -e "\n[$(date +'%Y-%m-%d %H:%M:%S')]" ${1-""}; }
+
+# Print the script version
+script_version() {
+    echo "Run using $SCRIPT_NAME by $SCRIPT_AUTHOR, version $SCRIPT_VERSION ($REPO_URL)"
+}
+
+# Print the tool's version
+tool_version() {
     set +e
-    $GUPPY_BIN --version | head -1
+    load_tool
+    $TOOL_BINARY --version | head -1
     set -e
 }
 
-# Print help for the focal program
-Print_help_program() {
-    Load_software
-    $GUPPY_BIN --help
+# Print the tool's help
+tool_help() {
+    load_tool
+    "$TOOL_BINARY" --help
 }
 
 # Print SLURM job resource usage info
-Resource_usage() {
-    echo
+resource_usage() {
     sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
-    echo
 }
 
 # Print SLURM job requested resources
-Print_resources() {
+slurm_resources() {
     set +u
-    echo "# SLURM job information:"
-    echo "Account (project):    $SLURM_JOB_ACCOUNT"
-    echo "Job ID:               $SLURM_JOB_ID"
-    echo "Job name:             $SLURM_JOB_NAME"
-    echo "GPUs per node:        $SLURM_GPUS_PER_NODE"
-    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
-    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
-    echo "======================================================================"
-    echo
+    log_time "SLURM job information:"
+    echo "Account (project):                        $SLURM_JOB_ACCOUNT"
+    echo "Job ID:                                   $SLURM_JOB_ID"
+    echo "Job name:                                 $SLURM_JOB_NAME"
+    echo "Memory (MB per node):                     $SLURM_MEM_PER_NODE"
+    echo "CPUs (per task):                          $SLURM_CPUS_PER_TASK"
+    echo "Time limit:                               $SLURM_TIMELIMIT"
+    echo -e "=================================================================\n"
     set -u
 }
 
 # Set the number of threads/CPUs
-Set_threads() {
+set_threads() {
     set +u
-    if [[ "$slurm" = true ]]; then
-        if [[ -n "$SLURM_GPUS_PER_NODE" ]]; then
-            threads="$SLURM_GPUS_PER_NODE"
+    if [[ "$is_slurm" == true ]]; then
+        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
+            readonly threads="$SLURM_CPUS_PER_TASK"
+        elif [[ -n "$SLURM_NTASKS" ]]; then
+            readonly threads="$SLURM_NTASKS"
         else 
-            echo "WARNING: Can't detect nr of GPUs, setting to 1"
-            threads=1
+            log_time "WARNING: Can't detect nr of threads, setting to 1"
+            readonly threads=1
         fi
     else
-        threads=1
+        readonly threads=1
     fi
     set -u
 }
 
-# Resource usage information
-Time() {
+# Resource usage information for any process
+runstats() {
     /usr/bin/time -f \
-        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
+        "\n# Ran the command: \n%C
+        \n# Run stats by /usr/bin/time:
+        Time: %E   CPU: %P    Max mem: %M K    Exit status: %x \n" \
         "$@"
-}   
-
-# Exit upon error with a message
-Die() {
-    error_message=${1}
-    error_args=${2-none}
-    
-    echo >&2
-    echo "=====================================================================" >&2
-    printf "$0: ERROR: %s\n" "$error_message" >&2
-    echo -e "\nFor help, run this script with the '-h' option" >&2
-    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
-    if [[ "$error_args" != "none" ]]; then
-        echo -e "\nArguments passed to the script:" >&2
-        echo "$error_args" >&2
-    fi
-    echo -e "\nEXITING..." >&2
-    echo "=====================================================================" >&2
-    echo >&2
-    exit 1
 }
-
-
-# ==============================================================================
-#                          CONSTANTS AND DEFAULTS
-# ==============================================================================
-# Software
-GUPPY_DIR=/fs/project/PAS0471/jelmer/software/guppy-6.4.2 # https://community.nanoporetech.com/downloads
-GUPPY_BIN="$GUPPY_DIR"/bin/guppy_basecaller
-module load cuda
-
-# Hardcoded parameters
-chunks_per_runner=256
-records_per_fastq=0
-
-# Option defaults
-debug=false
-dryrun=false && e=""
-slurm=true
-
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Placeholder defaults
-infile=""
-outdir=""
-config=""
-min_qscore="" && qscore_arg=""
-barcode_kit="" && barcode_arg=""
-more_args=""
+infile=
+outdir=
+config=
+min_qscore= && qscore_arg=
+barcode_kit= && barcode_arg=
+more_args=
 
 # Parse command-line args
 all_args="$*"
-
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
@@ -179,31 +188,40 @@ while [ "$1" != "" ]; do
         --barcode_kit )     shift && barcode_kit=$1 ;;
         --min_qscore )      shift && min_qscore=$1 ;;
         --more_args )       shift && more_args=$1 ;;
-        -v | --version )    Print_version; exit 0 ;;
-        -h )                Print_help; exit 0 ;;
-        --help )            Print_help_program; exit 0;;
-        --dryrun )          dryrun=true && e="echo ";;
-        --debug )           debug=true ;;
-        * )                 Die "Invalid option $1" "$all_args" ;;
+        --print_workflows ) print_workflows; exit 0 ;;
+        --list_configs )    list_configs; exit 0 ;;
+        -v | --version )    tool_version; exit 0 ;;
+        -h )                script_help; exit 0 ;;
+        --help )            tool_help; exit 0;;
+        * )                 die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
 
+# Check input
+[[ -z "$infile" ]] && die "Please specify an input FAST5 file with -i/--infile" "$all_args"
+[[ -z "$outdir" ]] && die "Please specify an output dir with -o/--outdir" "$all_args"
+[[ -z "$config" ]] && die "Please specify an input config name with --config" "$all_args"
+[[ ! -f "$infile" ]] && die "Input FAST5 file $infile does not exist"
 
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-# In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
-
 # Check if this is a SLURM job
-[[ -z "$SLURM_JOB_ID" ]] && slurm=false
+if [[ -z "$SLURM_JOB_ID" ]]; then is_slurm=false; else is_slurm=true; fi
 
 # Bash script settings
 set -euo pipefail
 
 # Set nr of threads
-Set_threads
+set_threads
+
+# ==============================================================================
+#              DEFINE OUTPUTS AND DERIVED INPUTS, BUILD ARGS
+# ==============================================================================
+# Define outputs based on script parameters
+readonly version_file="$outdir"/logs/version.txt
+readonly log_dir="$outdir"/logs
 
 # Build input argument
 indir=$(dirname "$infile")
@@ -212,20 +230,13 @@ fofn="$outdir"/tmp/"$infile_base".fofn
 infile_arg="--input_file_list $fofn"
 
 # Optional parameters
-[[ $barcode_kit != "" ]] && barcode_arg="--barcode_kits $barcode_kit --trim_barcodes"
-[[ $min_qscore != "" ]] && qscore_arg="--qscore_arg $min_qscore"
+[[ -n "$barcode_kit" ]] && barcode_arg="--barcode_kits $barcode_kit --trim_barcodes"
+[[ -n "$min_qscore" ]] && qscore_arg="--min_qscore $min_qscore"
 
-# Check input
-[[ "$infile" = "" ]] && Die "Please specify an input FAST5 file with -i/--infile" "$all_args"
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
-[[ "$config" = "" ]] && Die "Please specify an input config name with --config" "$all_args"
-[[ ! -f "$infile" ]] && Die "Input FAST5 file $infile does not exist"
-
-# Report
-echo
-echo "=========================================================================="
-echo "                    STARTING SCRIPT GUPPY_GPU.SH"
-date
+# ==============================================================================
+#                               REPORT
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All arguments to this script:     $all_args"
 echo "Input file:                       $infile"
@@ -236,27 +247,24 @@ echo "ONT config name:                  $config"
 [[ $more_args != "" ]] && echo "Other arguments for Guppy:        $more_args"
 echo "Number of threads/cores:          $threads"
 echo
-echo "Listing the input file(s):"
+log_time "Listing the input file(s):"
 ls -lh "$infile"
-[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
-echo "=========================================================================="
-
-# Print reserved resources
-[[ "$slurm" = true ]] && Print_resources
-
+[[ "$is_slurm" = true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Create the output directory if it doesn't already exist
-${e}mkdir -p "$outdir"/tmp "$outdir"/logs
+# Create the output directories
+log_time "Creating the output directories..."
+mkdir -pv "$outdir"/tmp "$log_dir"
 
 # Create fofn
+log_time "Creating the input FOFN file..."
 echo "$infile_base" > "$fofn"
 
 # Run Guppy
-echo "Now running Guppy..."
-${e}Time $GUPPY_BIN \
+log_time "Running Guppy..."
+runstats $TOOL_BINARY \
     --input_path "$indir" \
     $infile_arg \
     --save_path "$outdir" \
@@ -279,23 +287,19 @@ ${e}Time $GUPPY_BIN \
 
 #? To print config names for flowcell + kit combs:
 #$ guppy_basecaller --print_workflows
-# - For kit LSK109 and flowcell FLO-MIN106, this is dna_r9.4.1_450bps_hac
-# - See also the available config files is /fs/ess/PAS0471/jelmer/software/guppy-6.4.2/data/
-
+# - For kit LSK109 and flowcell FLO-MIN106:         dna_r9.4.1_450bps_hac
+# - For kit SQK-LSK114 and flowcell FLO-MIN114:     dna_r10.4.1_e8.2_260bps_hac
+# - See also the available config files in /fs/ess/PAS0471/jelmer/software/guppy-6.4.2/data/
 
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
+printf "\n======================================================================"
+log_time "Versions used:"
+tool_version | tee "$version_file"
+script_version | tee -a "$version_file" 
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/*
+[[ "$is_slurm" = true ]] && echo && resource_usage
+log_time "Done with script $SCRIPT_NAME"
 echo
-echo "========================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
-    echo -e "\n# Listing the 'pass' FASTQ file:"
-    ls -lh "$PWD"/"$outdir"/pass
-    [[ "$slurm" = true ]] && Resource_usage
-fi
-echo "# Done with script"
-date
