@@ -32,18 +32,16 @@ Print_help() {
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --organism      <str>   Organism name                      [default: none]"
+    echo "  --organism      <str>   Organism name                               [default: none]"
     echo "                          For a list of options, run 'amrfinder -l'"
     echo "                          See https://github.com/ncbi/amr/wiki/Running-AMRFinderPlus#--organism-option"
-    echo "  --annotation_format <str> Which program produced the annotation?    [default: 'prokka']"
+    echo "  --annot_format <str>    Which program produced the annotation?    [default: 'prokka']"
     echo "                          Options include 'bakta', 'patric', 'prokka', and 'rast'"
     echo "                          See https://github.com/ncbi/amr/wiki/Running-AMRFinderPlus#the---annotation_format-format-option"
-    echo "  --no_update_db          Don't attempt to update the database (may be needed when running many jobs in parallel)"
+    echo "  --update_db             Download/update the database"
     echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to AMRFinderPlus"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                 Run the script in debug mode (print all code)"
     echo "  -h                      Print this help message and exit"
     echo "  --help                  Print the help for AMRFinderPlus and exit"
     echo "  -v/--version            Print the version of AMRFinderPlus and exit"
@@ -155,10 +153,8 @@ Die() {
 # ==============================================================================
 # Option defaults
 annotation_format="prokka"
-update_db=true
+update_db=false
 
-debug=false
-dryrun=false && e=""
 slurm=true
 
 
@@ -184,12 +180,10 @@ while [ "$1" != "" ]; do
         --organism )            shift && organism=$1 ;;
         --annotation_format )   shift && annotation_format=$1 ;;
         --more_args )           shift && more_args=$1 ;;
-        --no_update_db )        update_db=false ;;      
+        --update_db )           update_db=true ;;      
         -v | --version )        Print_version; exit 0 ;;
         -h )                    Print_help; exit 0 ;;
         --help )                Print_help_program; exit 0;;
-        --dryrun )              dryrun=true && e="echo ";;
-        --debug )               debug=true ;;
         * )                     Die "Invalid option $1" "$all_args" ;;
     esac
     shift
@@ -198,9 +192,6 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-# In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
-
 # Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
@@ -208,7 +199,7 @@ done
 set -euo pipefail
 
 # Load software and set nr of threads
-[[ "$dryrun" = false ]] && Load_software
+Load_software
 Set_threads
 
 # Check input
@@ -222,9 +213,9 @@ Set_threads
 
 # Define output files etc
 asm_basename=$(basename "$assembly_fna")
-sampleID=${asm_basename%.*}
-outfile="$outdir"/"$sampleID".txt
-mutation_report="$outdir"/"$sampleID"_mutation-report.txt
+sample_id=${asm_basename%.*}
+outfile="$outdir"/"$sample_id".txt
+mutation_report="$outdir"/"$sample_id"_mutation-report.txt
 
 # Build organism argument
 [[ $organism != "" ]] && organism_arg="--organism $organism"
@@ -249,7 +240,6 @@ echo "Number of threads/cores:          $threads"
 echo
 echo "Listing the input file(s):"
 ls -lh "$assembly_fna" "$assembly_faa" "$gff"
-[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
 # Print reserved resources
@@ -261,17 +251,18 @@ echo "==========================================================================
 # ==============================================================================
 # Create the output directory
 echo "# Creating the output directories..."
-${e}mkdir -pv "$outdir"/logs
+mkdir -pv "$outdir"/logs
 
 # Download latest database, if there's an update
 if [[ "$update_db" = true ]]; then
     echo -e "\n# Checking for (& downloading) database updates...."
-    ${e}Time amrfinder -u
+    Time amrfinder --update
+    # Since we can't change the DB dir, this will only work if you have write access to the Conda env
 fi
 
 # Run
 echo -e "\n# Running AmrfinderPlus...."
-${e}Time amrfinder \
+Time amrfinder \
     --nucleotide "$assembly_fna" \
     --protein "$assembly_faa" \
     --gff "$gff" \
@@ -279,7 +270,7 @@ ${e}Time amrfinder \
     --threads "$threads" \
     -o "$outfile" \
     --mutation_all "$mutation_report" \
-    --name "$sampleID" \
+    --name "$sample_id" \
     $organism_arg \
     $more_args
 
@@ -289,13 +280,11 @@ ${e}Time amrfinder \
 # ==============================================================================
 echo
 echo "========================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$(realpath "$outdir")"/"$sampleID"*
-    [[ "$slurm" = true ]] && Resource_usage
-fi
+echo "# Version used:"
+Print_version | tee "$outdir"/logs/version.txt
+echo -e "\n# Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/"$sample_id"*
+[[ "$slurm" = true ]] && Resource_usage
 echo "# Done with script"
 date
 echo
