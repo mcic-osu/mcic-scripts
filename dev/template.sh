@@ -19,6 +19,8 @@
 readonly SCRIPT_NAME=#TODO #This is necessary because Slurm will copy&rename the script
 readonly SCRIPT_VERSION="1.0"
 readonly SCRIPT_AUTHOR="Jelmer Poelstra"
+readonly SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
+readonly MODULE=miniconda3/4.12.0-py39
 readonly CONDA_ENV=#TODO
 readonly TOOL_BINARY=#TODO
 readonly TOOL_NAME=#TODO
@@ -71,7 +73,7 @@ script_help() {
 # Load software
 load_tool_conda() {
     set +u
-    module load miniconda3/4.12.0-py39 # Load the OSC Conda module
+    module load "$MODULE" # Load the OSC Conda module
     # Deactivate any active Conda environments:
     if [[ -n "$CONDA_SHLVL" ]]; then
         for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
@@ -99,7 +101,7 @@ log_time() { echo -e "\n[$(date +'%Y-%m-%d %H:%M:%S')]" ${1-""}; }
 
 # Print the script version
 script_version() {
-    echo "Run using $SCRIPT_NAME by $SCRIPT_AUTHOR, version $SCRIPT_VERSION (https://github.com/mcic-osu/mcic-scripts)"
+    echo "Run using $SCRIPT_NAME by $SCRIPT_AUTHOR, version $SCRIPT_VERSION ($SCRIPT_URL)"
 }
 
 # Print the tool's version
