@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=PAS0471
+#SBATCH --account=PAS2380
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
@@ -12,6 +12,9 @@
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
+# Check if this is a SLURM job
+if [[ -z "$SLURM_JOB_ID" ]]; then is_slurm=false; else is_slurm=true; fi
+
 # Constants
 readonly SCRIPT_NAME=nf_ontreadprep.sh
 readonly SCRIPT_VERSION="1.0"
@@ -24,15 +27,20 @@ readonly CONDA_ENV=/fs/ess/PAS0471/jelmer/conda/nextflow
 readonly TOOL_BINARY=nextflow
 readonly TOOL_DOCS=https://github.com/jelmerp/nf_ontreadprep
 
-#readonly WORKFLOW_REPO=https://github.com/jelmerp/nf_ontreadprep
-WORKFLOW_REPO=workflows/ontreadprep/main.nf
+#readonly WORKFLOW_REPO=https://github.com/jelmerp/nf_ontreadprep #TODO
+WORKFLOW_REPO=/fs/project/PAS2380/assembly/jelmer/workflows/ontreadprep/main.nf
 readonly OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config
 
 # Option defaults
 osc_config=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present here
 container_dir=/fs/project/PAS0471/containers
-work_dir=/fs/scratch/PAS0471/$USER/$TOOL_NAME
 profile="conda,normal"
+if [[ "$is_slurm" == true ]]; then
+    PROJ=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
+    work_dir=/fs/scratch/$PROJ/$USER/$TOOL_NAME
+else
+    work_dir=
+fi
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -55,9 +63,17 @@ script_help() {
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --ref_assembly  <file>  Reference genome assembly nucleotide FASTA file"
-    echo "  --organel_contigs <str> Comma-separated list of contigs to remove reads for"
+    echo "  --contig_blacklist<str> Comma-separated list of contigs to remove reads for"
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo "  --more_args     <str>   Quoted string with more argument(s) for $TOOL_NAME"
+    echo
+    echo "NEXTFLOW-RELATED OPTIONS:"
+    echo "  -profile        <str>  Profile(s) to use from config files          [default: 'singularity']"
+    echo "  -work-dir       <dir>  Scratch (work) dir for the workflow          [default: '/fs/scratch/<OSC-proj>/<user>/ont_readprep']"
+    echo "  -c/-config      <file  Additional config file                       [default: none]"
+    echo "                           - Settings in this file will override default settings"
+    echo "                           - Note that the mcic-scripts OSC config file will always be included, too"
+    echo "                             (https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config)"
     echo
     echo "UTILITY OPTIONS:"
     echo "  -h                      Print this help message and exit"
@@ -143,10 +159,10 @@ runstats() {
 # ==============================================================================
 # Initiate variables
 fast5_dir=
-ref_assembly=
 guppy_config=
-organel_contigs=
-outdir=
+ref_assembly= && ref_arg=
+contig_blacklist= && contig_arg=
+outdir= && outdir_arg=
 extra_config_file=
 more_args=
 
@@ -158,7 +174,7 @@ while [ "$1" != "" ]; do
         -o | --outdir )     shift && readonly outdir=$1 ;;
         --guppy_config )    shift && guppy_config=$1 ;;
         --ref_assembly )    shift && ref_assembly=$1 ;;
-        --organel_contigs ) shift && organel_contigs=$1 ;;
+        --contig_blacklist ) shift && contig_blacklist=$1 ;;
         --container_dir )   shift && container_dir=$1 ;;
         -work-dir )         shift && work_dir=$1 ;;
         -profile )          shift && profile=$1 ;;
@@ -183,9 +199,6 @@ done
 # ==============================================================================
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
-# Check if this is a SLURM job
-if [[ -z "$SLURM_JOB_ID" ]]; then is_slurm=false; else is_slurm=true; fi
-
 # Strict bash settings
 set -euo pipefail
 
@@ -199,21 +212,16 @@ load_tool_conda
 readonly version_file="$outdir"/logs/version.txt
 readonly log_dir="$outdir"/logs
 
-# Get the OSC config file
-if [[ ! -f "$osc_config" ]]; then
-    wget -q "$OSC_CONFIG_URL"
-    osc_config=$(basename "$OSC_CONFIG_URL")
-fi
-
 # Build the config argument
 [[ ! -f "$osc_config" ]] && osc_config="$outdir"/$(basename "$OSC_CONFIG_URL")
 config_arg="-c $osc_config"
 [[ -n "$extra_config_file" ]] && config_arg="$config_arg -c ${extra_config_file/,/ -c }"
+[[ -n "$work_dir" ]] && work_dir_arg="-work-dir $work_dir"
 
 # Build other args
 [[ -n "$outdir" ]] && outdir_arg="--outdir $outdir"
 [[ -n "$ref_assembly" ]] && ref_arg="--ref_assembly $ref_assembly"
-[[ -n "$organel_contigs" ]] && organel_arg="--organel_contigs $organel_contigs"
+[[ -n "$contig_blacklist" ]] && contig_arg="--contig_blacklist $contig_blacklist"
 
 # Count the nr of input files
 nfile=$(ls -1 "$fast5_dir"/*fast5 | wc -l)
@@ -228,14 +236,14 @@ echo
 echo "Input FAST5 dir ($nfile files):         $fast5_dir"
 echo "Guppy config file:                    $guppy_config"
 [[ -n "$ref_assembly" ]] && echo "Reference assembly file:              $ref_assembly"
-[[ -n "$organel_contigs" ]] && echo "Organel contigs:                      $organel_contigs" 
+[[ -n "$contig_blacklist" ]] && echo "Contig_blacklist:                     $contig_blacklist" 
 [[ -n "$outdir" ]] && echo "Output dir:                           $outdir"
 [[ -n "$more_args" ]] && echo "Other arguments for $TOOL_NAME:       $more_args"
 echo
 echo "Nextflow workflow file:               $WORKFLOW_REPO"
 echo "Container dir:                        $container_dir"
-echo "Scratch (work) dir:                   $work_dir"
 echo "Config file argument:                 $config_arg"
+[[ -n "$work_dir" ]] && echo "Scratch (work) dir:                   $work_dir"
 [[ -n "$extra_config_file" ]] && echo "Additional config file:               $extra_config_file"
 echo
 
@@ -247,7 +255,10 @@ log_time "Creating the output directories..."
 mkdir -pv "$log_dir" "$work_dir" "$container_dir"
 
 # Download the OSC config file
-[[ ! -f "$osc_config" ]] && wget -q -O "$osc_config" "$OSC_CONFIG_URL"
+if [[ ! -f "$osc_config" && ! -f osc.config ]]; then
+    log_time "Downloading the OSC Nextflow config file from $OSC_CONFIG_URL..."
+    wget -qf -O "$osc_config" "$OSC_CONFIG_URL"
+fi
 
 # Run
 echo
@@ -257,7 +268,8 @@ runstats "$TOOL_BINARY" run \
     --guppy_config "$guppy_config" \
     $outdir_arg \
     $ref_arg \
-    $organel_arg \
+    $contig_arg \
+    $work_dir_arg \
     -profile "$profile" \
     -resume \
     -ansi-log false \
