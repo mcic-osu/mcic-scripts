@@ -80,6 +80,17 @@ script_help() {
     echo
 }
 
+# Print the tool's help
+list_configs() {
+    load_tool
+    ls -1 "$GUPPY_DIR"/data/*cfg
+}
+
+print_workflows() {
+    load_tool
+    $TOOL_BINARY --print_workflows
+}
+
 # Load software
 load_tool() {
     module load "$MODULE"
@@ -109,10 +120,8 @@ script_version() {
 
 # Print the tool's version
 tool_version() {
-    set +e
     load_tool
     $TOOL_BINARY --version | head -1
-    set -e
 }
 
 # Print the tool's help
