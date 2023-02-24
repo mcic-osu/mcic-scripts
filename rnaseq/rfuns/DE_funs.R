@@ -1,3 +1,6 @@
+if(!require(janitor)) install.packages("janitor")
+if(!require(tidyverse)) install.packages("tidyverse")
+
 # Run DE analysis
 run_DE <- function(
   dds,
@@ -139,7 +142,7 @@ shrink_lfc <- function(
 # Function to normalize counts
 norm_counts <- function(
     dds,                     # DESeq object
-    transform = "rlog",      # Normalization/transformation method
+    transform = "rlog",      # Normalization/transformation method: either 'vst', 'rlog', or 'lib_size'
     annot = NULL,            # Gene ID column should be named 'gene'
     return_matrix = FALSE    # Don't transform to tidy format & don't add metadata
     ) {
@@ -147,11 +150,10 @@ norm_counts <- function(
   # Normalize the counts
   if (transform == "vst") count_mat <- assay(vst(dds, blind = TRUE))
   if (transform == "rlog") count_mat <- assay(rlog(dds, blind = TRUE))
-  
-  # (Old way)
-  #dds <- estimateSizeFactors(dds)
-  #counts_raw <- dds@assays@data$counts
-  #count_mat <- sweep(counts_raw, 2, sizeFactors(dds), "/")
+  if (transform == "lib_size") {
+    dds <- estimateSizeFactors(dds)
+    count_mat <- sweep(assay(dds), 2, sizeFactors(dds), "/")
+  }
 
   # Stop here if there's no metadata
   if (return_matrix == TRUE) return(count_mat)
@@ -259,9 +261,12 @@ pMA <- function(
 # Volcano plot
 pvolc <- function(DE_df,
                   sig_only = TRUE,
-                  contrasts = NULL,
-                  cols = NULL,
+                  contrasts = "all",
+                  colors = NULL,
                   interactive = FALSE,
+                  plot_grid = FALSE,
+                  grid_rows = NULL,
+                  grid_cols = NULL,
                   facet_scales = "fixed") {
 
   fcontrasts <- contrasts
@@ -318,16 +323,21 @@ pvolc <- function(DE_df,
   if (is.null(cols)) {
     p <- p + scale_fill_brewer(palette = "Dark2")
   } else {
-    p <- p + scale_fill_manual(values = cols)
+    p <- p + scale_fill_manual(values = colors)
   }
 
   # When no focal contrast is specified, show all with a facet
-  if (length(fcontrasts) > 1 || fcontrasts[1] == "all") {
+  if ((length(fcontrasts) > 1 || fcontrasts[1] == "all") & plot_grid == FALSE) {
     p <- p + facet_wrap(vars(contrast),
                         nrow = 1,
                         scales = facet_scales)
   }
-
+  if (plot_grid == TRUE) {
+    p <- p + facet_grid(rows = vars(!!sym(grid_rows)),
+                        cols = vars(!!sym(grid_cols)),
+                        scales = facet_scales)
+  }
+  
   if (interactive == TRUE) ggplotly(p, tooltip = "text")
 
   return(p)
@@ -353,7 +363,7 @@ pheat <- function(genes,
   fmeta <- meta_df[, groups, drop = FALSE]
   #fmeta <- fmeta |> mutate(across(everything(), as.character))
 
-  ## Arrange metadata according to the columns with included factors
+  # Arrange metadata according to the columns with included factors
   if (length(groups) == 1) fmeta <- fmeta |> arrange(.data[[groups[1]]])
   if (length(groups) == 2) fmeta <- fmeta |> arrange(.data[[groups[1]]],
                                                       .data[[groups[2]]])
@@ -361,33 +371,35 @@ pheat <- function(genes,
                                                       .data[[groups[2]]],
                                                       .data[[groups[3]]])
 
-  ## Select and arrange count matrix
+  # Select and arrange count matrix
   fcount_mat <- count_mat[match(genes, rownames(count_mat)),
                           match(rownames(fmeta), colnames(count_mat))]
   fcount_mat <- as.matrix(fcount_mat)
 
-  ## Log-transform
+  # Log-transform
   if (logtrans == TRUE) {
     fcount_mat <- log10(fcount_mat)
     fcount_mat[fcount_mat == -Inf] <- 0
   }
 
-  ## If few features are included, reduce the cell (row) height
+  # If few features are included, reduce the cell (row) height
   cellheight <- ifelse(length(genes) > 20, NA, 20)
   id_labsize <- ifelse(length(genes) > 40, 6, id_labsize)
 
-  ## Truncate long taxon names
+  # Truncate long taxon names
   row.names(fcount_mat) <- str_trunc(row.names(fcount_mat),
                                      width = 20, ellipsis = "")
 
-  ## Function to create the plot
-  p <- pheatmap(fcount_mat, annotation_col = fmeta,
-           cluster_rows = cluster_rows, cluster_cols = FALSE,
-           show_rownames = show_rownames, show_colnames = show_colnames,
-           annotation_colors = annotation_colors,
-           cellheight = cellheight,
-           fontsize = 9, fontsize_row = id_labsize, cex = 1,
-           ...)
+  # Function to create the plot
+  p <- pheatmap(
+    fcount_mat,
+    annotation_col = fmeta,
+    cluster_rows = cluster_rows, cluster_cols = FALSE,
+    show_rownames = show_rownames, show_colnames = show_colnames,
+    annotation_colors = annotation_colors,
+    cellheight = cellheight,
+    fontsize = 9, fontsize_row = id_labsize, cex = 1,
+    ...)
 
   return(p)
 }
@@ -403,6 +415,7 @@ pbox <- function(
     cols = NULL,
     log_scale = FALSE,
     theme_base_size = 13,
+    ymin = NA,
     save_plot = FALSE,
     plotdir = "results/figures/geneplots"
     ) {
@@ -410,13 +423,18 @@ pbox <- function(
   fgene <- gene
 
   if (!is.null(annot)) {
+    annot <- annot |> janitor::clean_names()  
+    id_col_name <- colnames(annot)[1] 
+    
     g_descrip <- annot |>
-      filter(gene == fgene) |>
+      filter(.data[[id_col_name]] == fgene) |>
       pull(description) |>
       str_trunc(width = 50)
 
     if ("gene_name" %in% colnames(annot)) {
-      g_name <- annot |> filter(gene == fgene) |> pull(gene_name)
+      g_name <- annot |>
+        filter(.data[[id_col_name]] == fgene) |>
+        pull(gene_name)
       ptitle <- g_name
       psub <- paste0(g_descrip, "\n", fgene)
     } else {
@@ -433,10 +451,23 @@ pbox <- function(
 
   # Make the plot
   p <- ggplot(count_df) +
-    aes(y = count, x = .data[[x_by]], color = .data[[col_by]]) +
+    aes(y = count, x = .data[[x_by]])
+  
+  if (!is.null(col_by)) {
+    # With color-aesthetic, use jitter-doge and smaller points:
+    p <- p +
+      aes(color = .data[[col_by]]) +
+      geom_point(position = position_jitterdodge(jitter.width = 0.1, jitter.height = 0),
+                 size = 1.5)
+  } else {
+    # Withour color aesthetic
+    p <- p +
+      geom_point(position = position_jitter(width = 0.1, height = 0),
+                 size = 2.5)
+  }
+  
+  p <- p +
     geom_boxplot(outlier.shape = NA) +
-    geom_point(position = position_jitterdodge(jitter.width = 0.1, jitter.height = 0),
-               size = 1.5) +
     labs(title = ptitle,
          subtitle = psub,
          x = NULL) +
@@ -448,7 +479,8 @@ pbox <- function(
           panel.grid.minor.y = element_blank(),
           plot.margin = unit(c(0.5, 0.5, 1, 0.5), "cm"))
 
-  if (x_by == col_by) p <- p + guides(color = "none")
+  # No legend needed if color-aes is same as x-aes
+  if (!is.null(col_by)) if (x_by == col_by) p <- p + guides(color = "none")
 
   if (log_scale == TRUE) {
     p <- p +
@@ -457,8 +489,8 @@ pbox <- function(
   } else {
     p <- p +
       scale_y_continuous(labels = scales::comma,
-                         limits = c(0, NA),
-                         expand = expansion(mult = c(0.01, 0.02))) +
+                         limits = c(ymin, NA),
+                         expand = expansion(mult = c(0.03, 0.03))) +
       labs(y = "Normalized count")
   }
 
@@ -475,7 +507,6 @@ pbox <- function(
            width = 6, height = 6, dpi = "retina")
   }
 
-  print(p)
   return(p)
 }
 
@@ -573,6 +604,7 @@ pca_plot <- function(
     x = "PC1",                    # Principal component to plot on the x-axis
     y = "PC2",                    # Principal component to plot on the y-axis
     col = NULL,                   # Vary point color by this variable from the metadata
+    fill = NULL,
     shape = NULL,                 # Vary point shape by this variable from the metadata
     pt_size = 5,
     add_ids = FALSE,              # Add sample names to points TRUE/FALSE
@@ -617,6 +649,11 @@ pca_plot <- function(
     p <- p +
       aes(color = .data[[col]]) +
       scale_color_brewer(palette = "Dark2")
+  }
+  if (!is.null(fill)) {
+    p <- p +
+      aes(fill = .data[[fill]]) +
+      scale_fill_brewer(palette = "Dark2")
   }
   if (!is.null(shape)) p <- p + aes(shape = .data[[shape]])
   
