@@ -1,67 +1,3 @@
-## Function to make an exportable datatable
-make_dt <- function(df, caption = NULL,
-                    filter = filter, pageLength = 10,
-                    numr_cols = "auto", big_cols = NULL,
-                    simple_mode = FALSE, center = "all") {
-  
-  if (simple_mode == TRUE) {
-    dom <- "t"
-    paging <- FALSE
-    filter <- "none"
-  } else {
-    dom <- "Blfrtip"
-    paging <- TRUE
-    filter <- "top"
-  }
-  
-  integer_idx <- as.integer(which(sapply(df, class) == "integer"))
-  char_idx <- as.integer(which(sapply(df, class) == "character"))
-  numr_idx <- as.integer(which(sapply(df, class) == "character"))
-  if(center == "integer") center_idx <- integer_idx
-  if(center == "all") center_idx <- c(integer_idx, char_idx, numr_idx)
-  
-  dt <- datatable(
-    df,
-    filter = filter,
-    class = "compact row-border stripe hover nowrap",
-    extensions = "Buttons",
-    caption = htmltools::tags$caption(
-      style = 'caption-side: bottom; text-align: center;', caption
-    ),
-    options = list(
-      scrollX = TRUE,
-      paging = paging,
-      pageLength = pageLength,
-      autoWidth = TRUE,
-      dom = dom,
-      buttons = c("copy", "csv", "excel"),
-      columnDefs = list(list(className = 'dt-center', targets = center_idx))
-    )
-  )
-  if (numr_cols == "auto") {
-    numr_cols <- names(df)[which(sapply(df, class) == "numeric")]
-  }
-  if (!is.null(numr_cols) & length(numr_cols) > 0) {
-    dt <- dt %>% formatSignif(numr_cols, digits = 3)
-  }
-  
-  ## 1000-separator
-  if (!is.null(big_cols)) {
-    dt <- dt %>% formatCurrency(
-      big_cols, currency = "", interval = 3, mark = ",", digits = 0
-    )
-  }
-  
-  return(dt)
-}
-
-## Function to make a kable table
-make_kable <- function(df) {
-  df %>%
-    kable(format.args = list(big.mark = ",")) %>%
-    kable_styling(full_width = FALSE, bootstrap_options = "striped")
-}
-
 ## Function to make a boxplot showing abundance of an ASV/genus/etc
 plot_abund <- function(
   ID,
@@ -162,7 +98,7 @@ plot_heatmap <- function(IDs,
   
   if (!dir.exists(plotdir)) dir.create(plotdir, recursive = TRUE)
   
-  ## If a phyloseq object is provided, take the count data and metadata from there
+  ## If a DESeq object is provided, take the count data and metadata from there
   if (!is.null(dds)) {
     if (is.null(meta_df)) meta_df <- as.data.frame(colData(dds))
     if (is.null(count_mat)) count_mat <- assay(normTransform(dds))
