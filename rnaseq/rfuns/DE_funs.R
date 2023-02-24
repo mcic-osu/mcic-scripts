@@ -45,44 +45,59 @@ extract_DE <- function(
 
   # Include mean normalized counts
   if (!is.null(count_df)) {
-    fcount_df <- count_df |>
-      filter(.data[[fac]] %in% comp) |>
-      group_by(gene, tissue) |>
+    fcount_df <- count_df |> filter(.data[[fac]] %in% comp)
+    
+    group_means <- fcount_df |>
+      group_by(gene, .data[[fac]]) |>
       summarize(mean = mean(count), .groups = "drop") |>
-      pivot_wider(id_cols = gene, values_from = mean, names_from = tissue)
-    colnames(fcount_df)[2:3] <- c("mean_A", "mean_B")
-    fcount_df <- fcount_df |> mutate(mean = (mean_A + mean_B) / 2)
-    res <- res |> left_join(fcount_df, by = "gene")
+      pivot_wider(id_cols = gene, values_from = mean, names_from = .data[[fac]])
+    colnames(group_means)[2:3] <- c("mean_A", "mean_B")
+    
+    overall_means <- fcount_df |>
+      group_by(gene) |>
+      summarize(mean = mean(count), .groups = "drop")
+    
+    fcount_df <- left_join(group_means, overall_means, by = "gene")
+    
+    res <- left_join(select(res, -mean), fcount_df, by = "gene")
 
     # Determine whether a gene is DE
     res <- res |>
-      mutate(isDE = ifelse(
-        padj < p_tres & abs(lfc) > lfc_tres & (mean_A > mean_tres | mean_B > mean_tres),
-        TRUE, FALSE)
-    )
+      mutate(
+        isDE = ifelse(padj < p_tres & abs(lfc) > lfc_tres & (mean_A > mean_tres | mean_B > mean_tres),
+                      TRUE, FALSE)
+        )
+  } else {
+    # Determine whether a gene is DE
+    res <- res |>
+      mutate(
+        isDE = ifelse(padj < p_tres & abs(lfc) > lfc_tres & mean > mean_tres,
+                      TRUE, FALSE)
+        )
   }
 
-  # Determine whether a gene is DE
-  res <- res |> mutate(
-    isDE = ifelse(padj < p_tres & abs(lfc) > lfc_tres & mean > mean_tres, TRUE, FALSE)
-    )
-  # Only take significant genes
+  # Only keep significant genes
   if (sig_only == TRUE) res <- res |> filter(isDE == TRUE)
 
   # Add gene annotation
   if (!is.null(annot)) {
     res <- res |>
-      left_join(select(annot, gene, gene_name, description), res, by = "gene") |>
-      arrange(padj)
+      left_join(res,
+                select(annot, gene, gene_name, description),
+                by = "gene")
   }
 
+  # Arrange by p-value, remove pvalue column
+  res <- res |>
+    select(-pvalue) |> 
+    arrange(padj)
+  
   # Report
   nsig <- sum(res$isDE, na.rm = TRUE)
   message(comp[1], " vs ", comp[2], " - Nr DEGs: ", nsig)
   
   return(res)
 }
-
 
 # Function to provide shrunken LFC estimates
 shrink_lfc <- function(
@@ -348,7 +363,7 @@ pvolc <- function(DE_df,
 pheat <- function(genes,
                   count_mat,
                   meta_df,
-                  groups,
+                  groups = NULL,
                   show_rownames = TRUE,
                   show_colnames = FALSE,
                   cluster_rows = TRUE,
@@ -359,23 +374,21 @@ pheat <- function(genes,
 
   library(pheatmap)
 
-  # Select groups and genes
-  fmeta <- meta_df[, groups, drop = FALSE]
-  #fmeta <- fmeta |> mutate(across(everything(), as.character))
-
   # Arrange metadata according to the columns with included factors
-  if (length(groups) == 1) fmeta <- fmeta |> arrange(.data[[groups[1]]])
-  if (length(groups) == 2) fmeta <- fmeta |> arrange(.data[[groups[1]]],
-                                                      .data[[groups[2]]])
-  if (length(groups) == 3) fmeta <- fmeta |> arrange(.data[[groups[1]]],
-                                                      .data[[groups[2]]],
-                                                      .data[[groups[3]]])
+  if (!is.null(groups)) {
+    meta_df <- meta_df |>
+      select(all_of(groups)) |>
+      arrange(across(all_of(groups)))
+  }
 
   # Select and arrange count matrix
   fcount_mat <- count_mat[match(genes, rownames(count_mat)),
-                          match(rownames(fmeta), colnames(count_mat))]
+                          match(rownames(meta_df), colnames(count_mat))]
   fcount_mat <- as.matrix(fcount_mat)
-
+  
+  # Don't include metadata if no groups are provided
+  if (is.null(groups)) meta_df <- NA
+  
   # Log-transform
   if (logtrans == TRUE) {
     fcount_mat <- log10(fcount_mat)
@@ -393,13 +406,18 @@ pheat <- function(genes,
   # Function to create the plot
   p <- pheatmap(
     fcount_mat,
-    annotation_col = fmeta,
-    cluster_rows = cluster_rows, cluster_cols = FALSE,
-    show_rownames = show_rownames, show_colnames = show_colnames,
+    annotation_col = meta_df,
+    cluster_rows = cluster_rows,
+    cluster_cols = FALSE,
+    show_rownames = show_rownames,
+    show_colnames = show_colnames,
     annotation_colors = annotation_colors,
     cellheight = cellheight,
-    fontsize = 9, fontsize_row = id_labsize, cex = 1,
-    ...)
+    fontsize = 9,
+    fontsize_row = id_labsize,
+    cex = 1,
+    ...
+    )
 
   return(p)
 }
