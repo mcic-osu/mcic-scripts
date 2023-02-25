@@ -425,7 +425,7 @@ get_DE_vec <- function(
 # Function to plot the GO results
 enrich_plot <- function(
   enrich_res,                   # Enrichment results
-  contrasts,                    # One or more contrasts
+  contrasts = NULL,             # One or more contrasts (default: all)
   DE_directions = c("up", "down", "either"),  # One or more DE directions
   plot_ontologies = TRUE,       # Show BP/CC/MF ontologies separately (should be FALSE for KEGG results)
   x_var = "contrast",           # What to plot along the x-axis (refer to column in `enrich_res`)
@@ -434,7 +434,7 @@ enrich_plot <- function(
   label_count = TRUE,           # Print nrDEInCat genes in the box
   label_count_size = 2,         # Size of nrDEInCat label in the box
   padj_tres = 1,                # Further subset categories: only those with padj below this value
-  n_tres = 0,                   # Further subset categories: only those with nrDEInCat at or above this value
+  n_tres = 2,                   # Further subset categories: only those with nrDEInCat at or above this value
   xlabs = NULL,
   ylab_size = 10,
   xlab_size = 14,
@@ -444,24 +444,20 @@ enrich_plot <- function(
   just_df = FALSE               # If true, don't make plot, just return modified df
   ) {
 
-  # Columns to select
-  vars <- c("category", "ontology", "description",
-            "contrast", "DE_direction", "padj")
-
+  if (is.null(contrasts)) contrasts <- unique(enrich_res$contrast)
+  
   # Prep the df
   enrich_res <- enrich_res |>
-    #select(any_of(vars)) |>
     filter(contrast %in% contrasts,
            DE_direction %in% DE_directions) |>
     mutate(numDEInCat = ifelse(padj >= 0.05, NA, numDEInCat),
            contrast = sub("padj_", "", contrast),
            padj = ifelse(sig == FALSE, NA, padj),
-           padj_log = -log10(padj)) |>
+           padj_log = -log10(padj)) %>%
     # Only take GO categories with at least one significant contrast
-    filter(category %in% (filter(., sig == TRUE) |> pull(category))) |>
+    filter(category %in% (filter(., sig == TRUE) |> pull(category))) %>%
     # Only take GO categories with at least one significant contrast
-    filter(category %in% (filter(., padj < padj_tres & numDEInCat >= n_tres) |>
-                            pull(category))) |>
+    filter(category %in% (filter(., padj < padj_tres & numDEInCat >= n_tres) |> pull(category))) %>%
     # Only take contrasts with at least one significant category
     filter(contrast %in% (filter(., sig == TRUE) |> pull(contrast))) |>
     mutate(description = paste0(category, " - ", description),
