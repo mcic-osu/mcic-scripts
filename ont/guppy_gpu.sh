@@ -22,8 +22,12 @@ readonly TOOL_BINARY="$GUPPY_DIR"/bin/guppy_basecaller
 readonly MODULE=cuda
 
 # Hardcoded parameters
-chunks_per_runner=256
-records_per_fastq=0
+CHUNKS_PER_RUNNER=256
+RECORDS_PER_FASTQ=0      # 0 => no limit
+
+# Defaults
+trim_adapters=true
+trim_primers=true
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -49,8 +53,11 @@ script_help() {
     echo "                            2) Running this script with option '--list_configs' to find corresponding config file"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --barcode_kit   <str>   Barcode set                                 [default: none - no demultiplexing]"
+    echo "  --keep_adapters         Don't remove adapters                       [default: remove adapters]"
+    echo "                          NOTE: It doesn't seem like any adapters are actually removed by Guppy either way!"
+    echo "  --keep_primers          Don't remove primers                        [default: remove primers]"
     echo "  --min_qscore    <int>   Minimum quality-score                       [default: whatever is specified in the focal config file]"
+    echo "  --barcode_kit   <str>   Barcode set                                 [default: none - no demultiplexing]"
     echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to Guppy"
     echo
     echo "UTILITY OPTIONS:"
@@ -186,6 +193,8 @@ config=
 min_qscore= && qscore_arg=
 barcode_kit= && barcode_arg=
 more_args=
+adapter_arg=
+primer_arg=
 
 # Parse command-line args
 all_args="$*"
@@ -194,6 +203,8 @@ while [ "$1" != "" ]; do
         -i | --infile )     shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
         --config )          shift && config=$1 ;;
+        --keep_adapters )   trim_adapters=false ;;
+        --keep_primers )    trim_primers=false ;;
         --barcode_kit )     shift && barcode_kit=$1 ;;
         --min_qscore )      shift && min_qscore=$1 ;;
         --more_args )       shift && more_args=$1 ;;
@@ -241,6 +252,9 @@ infile_arg="--input_file_list $fofn"
 # Optional parameters
 [[ -n "$barcode_kit" ]] && barcode_arg="--barcode_kits $barcode_kit --trim_barcodes"
 [[ -n "$min_qscore" ]] && qscore_arg="--min_qscore $min_qscore"
+[[ "$trim_adapters" == true ]] && adapter_arg="--trim_adapters"
+[[ "$trim_primers" == true ]] && primer_arg="--trim_primers"
+
 
 # ==============================================================================
 #                               REPORT
@@ -251,6 +265,8 @@ echo "All arguments to this script:     $all_args"
 echo "Input file:                       $infile"
 echo "Output dir:                       $outdir"
 echo "ONT config name:                  $config"
+echo "Trim adapters?                    $trim_adapters"
+echo "Trim primers?                     $trim_primers"
 [[ $min_qscore != "" ]] && echo "Minimum qual score to PASS:       $min_qscore"
 [[ $barcode_kit != "" ]] && echo "Barcode kit name:                 $barcode_kit"
 [[ $more_args != "" ]] && echo "Other arguments for Guppy:        $more_args"
@@ -279,12 +295,14 @@ runstats $TOOL_BINARY \
     --save_path "$outdir" \
     --config "$config" \
     --compress_fastq \
-    --records_per_fastq "$records_per_fastq" \
+    --records_per_fastq "$RECORDS_PER_FASTQ" \
     --gpu_runners_per_device "$threads" \
     --as_gpu_runners_per_device "$threads" \
-    --chunks_per_runner "$chunks_per_runner" \
+    --chunks_per_runner "$CHUNKS_PER_RUNNER" \
     --num_callers "$threads" \
     --device "cuda:0" \
+    $adapter_arg \
+    $primer_arg \
     $qscore_arg \
     $barcode_arg \
     $more_args
