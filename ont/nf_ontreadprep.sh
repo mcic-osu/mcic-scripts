@@ -34,12 +34,12 @@ readonly OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/
 # Option defaults
 osc_config=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present here
 container_dir=/fs/project/PAS0471/containers
-profile="conda,normal"
+profile="conda"
 if [[ "$is_slurm" == true ]]; then
     PROJ=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
     work_dir=/fs/scratch/$PROJ/$USER/$TOOL_NAME
 else
-    work_dir=
+    work_dir= && work_dir_arg=
 fi
 
 # ==============================================================================
@@ -62,13 +62,14 @@ script_help() {
     echo "  --guppy_config  <file>  Guppy config file"
     echo
     echo "OTHER KEY OPTIONS:"
+    echo "  --run_id        <str>   Run ID to name output files"
     echo "  --ref_assembly  <file>  Reference genome assembly nucleotide FASTA file"
     echo "  --contig_blacklist<str> Comma-separated list of contigs to remove reads for"
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo "  --more_args     <str>   Quoted string with more argument(s) for $TOOL_NAME"
     echo
     echo "NEXTFLOW-RELATED OPTIONS:"
-    echo "  -profile        <str>  Profile(s) to use from config files          [default: 'singularity']"
+    echo "  -profile        <str>  Profile(s) to use from config files          [default: 'conda']"
     echo "  -work-dir       <dir>  Scratch (work) dir for the workflow          [default: '/fs/scratch/<OSC-proj>/<user>/ont_readprep']"
     echo "  -c/-config      <file  Additional config file                       [default: none]"
     echo "                           - Settings in this file will override default settings"
@@ -84,8 +85,9 @@ script_help() {
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 -i data/fast5 --guppy_config config/dna_r10.4.1_e8.2_260bps_sup.cfg"
     echo
-    echo "OUTPUT:" #TODO
-    echo "  - " 
+    echo "MAIN OUTPUT FILES:"
+    echo "  - PycoQC HTML reports in the folder pycoqc "
+    echo "  - A single processed gzipped FASTQ file" 
     echo
     echo "TOOL DOCUMENTATION:"
     echo "  - Docs: $TOOL_DOCS"
@@ -158,6 +160,7 @@ runstats() {
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
+run_id=
 fast5_dir=
 guppy_config=
 ref_assembly= && ref_arg=
@@ -170,6 +173,7 @@ more_args=
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
+        --run_id )          shift && readonly run_id=$1 ;;    
         -i | --fast5_dir )  shift && readonly fast5_dir=$1 ;;
         -o | --outdir )     shift && readonly outdir=$1 ;;
         --guppy_config )    shift && guppy_config=$1 ;;
@@ -190,6 +194,7 @@ while [ "$1" != "" ]; do
 done
 
 # Check input
+[[ -z "$run_id" ]] && die "No run ID specified, do so with --run_id" "$all_args"
 [[ -z "$fast5_dir" ]] && die "No input file specified, do so with -i/--fast5_dir" "$all_args"
 [[ -z "$guppy_config" ]] && die "No guppy_config file specified, do so with --guppy_config" "$all_args"
 [[ ! -d "$fast5_dir" ]] && die "Input dir $fast5_dir does not exist"
@@ -233,6 +238,7 @@ log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All arguments to this script:         $all_args"
 echo
+echo "Run ID:                               $run_id"
 echo "Input FAST5 dir ($nfile files):         $fast5_dir"
 echo "Guppy config file:                    $guppy_config"
 [[ -n "$ref_assembly" ]] && echo "Reference assembly file:              $ref_assembly"
@@ -252,7 +258,7 @@ echo
 # ==============================================================================
 # Create the output directories
 log_time "Creating the output directories..."
-mkdir -pv "$log_dir" "$work_dir" "$container_dir"
+mkdir -pv "$log_dir" "$container_dir"
 
 # Download the OSC config file
 if [[ ! -f "$osc_config" && ! -f osc.config ]]; then
@@ -264,6 +270,7 @@ fi
 echo
 runstats "$TOOL_BINARY" run \
     $WORKFLOW_REPO \
+    --run_id "$run_id" \
     --fast5_dir "$fast5_dir" \
     --guppy_config "$guppy_config" \
     $outdir_arg \
