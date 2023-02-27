@@ -263,7 +263,7 @@ mkdir -pv "$log_dir" "$container_dir"
 # Download the OSC config file
 if [[ ! -f "$osc_config" && ! -f osc.config ]]; then
     log_time "Downloading the OSC Nextflow config file from $OSC_CONFIG_URL..."
-    wget -qf -O "$osc_config" "$OSC_CONFIG_URL"
+    wget -q -O "$osc_config" "$OSC_CONFIG_URL"
 fi
 
 # Run
