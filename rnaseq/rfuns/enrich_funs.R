@@ -590,7 +590,6 @@ GO_dotplot <- function(df, type = "GO") {
 
 
 # KEGG DATABASE FUNCTIONS ------------------------------------------------------
-
 # Function to get the description (technically: 'Name') of a KEGG pathway,
 # given its pathway ID ('ko' or 'map' IDs).
 # Needs tryCatch because come IDs fail (example of a failing pathway ID: "ko01130"),
@@ -651,6 +650,18 @@ get_pathway <- function(K_term, outdir) {
   )
 }
 
+# Get the KO numbers associated with a module,
+# straight from the KEGG database
+get_kos_in_mod <- function(idx, modules) {
+  module <- names(modules)[idx]
+  mod_vec <- keggGet(module)[[1]]$ORTHOLOGY
+  mod_df <- data.frame(KO_id = names(mod_vec), KO_descrip = mod_vec,
+                       module = module, module_descrip = modules[idx],
+                       row.names = NULL)
+  return(mod_df)
+}
+
+# Get NCBI ID for a gene ID
 get_NCBI_id <- function(geneID) {
   geneID_NCBI <- entrez_search(db = "gene", term = geneID)$ids
   message(geneID, " - ", geneID_NCBI)
