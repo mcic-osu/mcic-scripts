@@ -6,33 +6,52 @@
 #SBATCH --mem=4G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --job-name=concat_fq
-#SBATCH --output=slurm-concat_fq-%j.out
+#SBATCH --job-name=fqcat
+#SBATCH --output=slurm-fqcat-%j.out
+
+# ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
+# Constants
+readonly SCRIPT_NAME=fqcat.sh
+readonly SCRIPT_VERSION="1.0"
+readonly SCRIPT_AUTHOR="Jelmer Poelstra"
+readonly SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
+
+# Option defaults
+extension="fastq.gz"
+skip_count=false
 
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
 # Help function
-Print_help() {
+script_help() {
     echo
-    echo "======================================================================"
-    echo "                       $0"
-    echo "                  CONCATENATE FASTQ FILES"
-    echo "======================================================================"
+    echo "        $0 (v. $SCRIPT_VERSION): Run $TOOL_NAME"
+    echo "        =============================================="
+    echo "DESCRIPTION:"
+    echo "  Concatenate FASTQ files"
     echo
     echo "USAGE:"
-    echo "  sbatch $0 -o <output file> [ -i <input dir> | <infile1> <infile2> ... ]"
+    echo "  sbatch $0 -o <output-dir> [ -i <input dir> | <infile1> <infile2> ... ]"
     echo "  bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--indir     <dir>    Input dir with FASTQ files (OR: pass files as positional args after all options)"
     echo "  -o/--outfile   <file>   Output file (its dir will be created if needed)"
     echo
-    echo "OTHER KEY OPTIONS"
+    echo "OTHER KEY OPTIONS:"
     echo "  --subdir       <dir>    Subdir which may or may not be one layer removed from the indir specified by -i/--indir"
     echo "                          This can be useful if FASTQ files are inside sample-specific folders"
     echo "  --extension    <str>    Input file extension                        [default: 'fastq.gz']"
     echo "  --skip_count            Don't count nr of reads in output file (useful for very large files)"
+    echo
+    echo "UTILITY OPTIONS:"
+    echo "  -h                      Print this help message and exit"
+    echo "  --help                  Print the help for $TOOL_NAME and exit"
+    echo "  -v                      Print the version of this script and exit"
+    echo "  -v/--version            Print the version of $TOOL_NAME and exit"
     echo
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 -i data/fastq -o data/R1_concat.fastq.gz --extension '_R1.fastq.gz'"
@@ -40,74 +59,34 @@ Print_help() {
     echo "  sbatch $0 -i data/fastq -o data/concat.fastq.gz --subdir 'pass'"
     echo "  sbatch $0 -o data/concat.fastq.gz data/A.fastq.gz data/B.fastq.gz data/C.fastq.gz"
     echo
-    echo "UTILITY OPTIONS:"
-    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                 Run the script in debug mode (print all code)"
-    echo "  -h                      Print this help message and exit"
-    echo
 }
-
-# Print SLURM job resource usage info
-Resource_usage() {
-    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
-        grep -Ev "ba|ex"
-}
-
-# Print SLURM job requested resources
-Print_resources() {
-    set +u
-    echo "# SLURM job information:"
-    echo "Account (project):    $SLURM_JOB_ACCOUNT"
-    echo "Job ID:               $SLURM_JOB_ID"
-    echo "Job name:             $SLURM_JOB_NAME"
-    echo "Memory (per node):    $SLURM_MEM_PER_NODE"
-    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
-    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
-    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
-    echo "======================================================================"
-    echo
-    set -u
-}
-
-# Recource usage information
-Time() {
-    /usr/bin/time -f \
-        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Avg Mem: %t K    Exit status: %x \n' \
-        "$@"
-}   
 
 # Exit upon error with a message
-Die() {
-    error_message=${1}
-    error_args=${2-none}
-    
-    echo
-    echo "====================================================================="
-    printf "$0: ERROR: %s\n" "$error_message" >&2
-    echo -e "\nFor help, run this script with the '-h' option"
-    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h"
+die() {
+    local error_message=${1}
+    local error_args=${2-none}
+    log_time "$0: ERROR: $error_message" >&2
+    log_time "For help, run this script with the '-h' option" >&2
     if [[ "$error_args" != "none" ]]; then
-        echo -e "\nArguments passed to the script:"
-        echo "$error_args"
+        log_time "Arguments passed to the script:" >&2
+        echo "$error_args" >&2
     fi
-    echo -e "\nEXITING..." >&2
-    echo "====================================================================="
-    echo
+    log_time "EXITING..." >&2
     exit 1
 }
 
+# Log messages that include the time
+log_time() { echo -e "\n[$(date +'%Y-%m-%d %H:%M:%S')]" ${1-""}; }
 
-# ==============================================================================
-#                          CONSTANTS AND DEFAULTS
-# ==============================================================================
-# Option defaults
-extension="fastq.gz"
-skip_count=false
+# Print the script version
+script_version() {
+    echo "Run using $SCRIPT_NAME by $SCRIPT_AUTHOR, version $SCRIPT_VERSION ($SCRIPT_URL)"
+}
 
-debug=false
-dryrun=false && e=""
-slurm=true
-
+# Print SLURM job resource usage info
+resource_usage() {
+    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
+}
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
@@ -128,99 +107,82 @@ while [ "$1" != "" ]; do
         --subdir )              shift && subdir=$1 ;;
         --extension )           shift && extension=$1 ;;
         --skip_count )          skip_count=true ;;
-        -h )                    Print_help; exit 0;;
-        --dryrun )              dryrun=true && e="echo ";;
-        --debug )               debug=true ;;
+        -h )                    script_help; exit 0;;
         * )                     infiles[count]=$1 && count=$(( count + 1 )) ;;
     esac
     shift
 done
 
-
-# ==============================================================================
-#                          OTHER SETUP
-# ==============================================================================
-# In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
-
-# Check if this is a SLURM job
-[[ -z "$SLURM_JOB_ID" ]] && slurm=false
-
-# Bash script settings
-set -euo pipefail
-
 # Check input
 if [[ $indir = "" && ${#infiles[@]} -eq 0 ]]; then
-    Die "Please specify input dir/files with -i or positional args" "$all_args"
+    die "Please specify input dir/files with -i or positional args" "$all_args"
 fi
-[[ $outfile = "" ]] && Die "Please specify an output file with -o" "$all_args"
-[[ $indir != "" && ! -d $indir ]] && Die "Input dir $indir does not exist"
+[[ $outfile = "" ]] && die "Please specify an output file with -o" "$all_args"
+[[ $indir != "" && ! -d $indir ]] && die "Input dir $indir does not exist"
 
-# Get input files
-[[ "$indir" != "" ]] && mapfile infiles < <(find "$indir" -type f)
+# ==============================================================================
+#                          INFRASTRUCTURE SETUP
+# ==============================================================================
+# Check if this is a SLURM job
+if [[ -z "$SLURM_JOB_ID" ]]; then is_slurm=false; else is_slurm=true; fi
+
+# Strict bash settings
+set -euo pipefail
 
 # Determine outdir
 outdir=$(dirname "$outfile")
 
-# Report
-echo
+# ==============================================================================
+#                               REPORT
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "                    STARTING SCRIPT CONCAT_FQ.SH"
-date
-echo "=========================================================================="
-echo "All arguments to this script:     $all_args"
-echo "Input dir:                        $indir"
-echo "File extension:                   $extension"
-echo "Skip counting reads?              $skip_count"
-[[ $subdir != "" ]] && echo "Input subdir:                     $subdir"
-echo "Output file:                      $outfile"
-[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
-echo "=========================================================================="
-
-# Print reserved resources
-[[ "$slurm" = true ]] && Print_resources
+echo "All arguments to this script:         $all_args"
+echo "Skip counting reads?                  $skip_count"
+[[ -n "$indir" ]] && echo "Input dir:                            $indir"
+[[ -n "$indir" ]] && echo "File extension:                       $extension"
+[[ -n "$subdir" ]] && echo "Input subdir:                         $subdir"
+echo "Output file:                          $outfile"
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
 # Create the output directory
-${e}mkdir -p "$outdir"/logs
+log_time "Creating the output directories..."
+mkdir -p "$outdir"/logs
 
 # Find the FASTQ files
-if [[ $subdir != "" ]]; then
-    mapfile -t fq_files < <(find "$indir"/*/"$subdir" -name "*$extension" | sort)
-else
-    mapfile -t fq_files < <(find "$indir" -name "*$extension" | sort)
-fi
-
-echo -e "\n# Number of FASTQ files found: ${#fq_files[@]}"
-[[ ${#fq_files[@]} -eq 0 ]] && Die "No FASTQ files were found..."
-
-if [[ "$dryrun" = false ]]; then
-    # Concatenate the FASTQ files
-    echo -e "\n# Now concatenating the FASTQ files..."
-    Time cat "${fq_files[@]}" > "$outfile"
-
-    # Count the number of sequences in the output file
-    if [[ "$skip_count" = false ]]; then
-        echo -e "\n# Now counting the number of sequences..."
-        nseqs=$(zcat "$outfile" | awk '{l++}END{print l/4}')
-        echo -e "# Number of sequences in output file: $nseqs"
+if [[ -n "$indir" ]]; then
+    log_time "Searching for FASTQ files..."
+    if [[ $subdir != "" ]]; then
+        mapfile -t infiles < <(find "$indir"/*/"$subdir" -name "*$extension" | sort)
+    else
+        mapfile -t infiles < <(find "$indir" -name "*$extension" | sort)
     fi
 fi
+log_time "Listing the input file(s):"
+ls -lh "${infiles[@]}"
 
+log_time "Number of FASTQ files found: ${#infiles[@]}"
+[[ ${#infiles[@]} -eq 0 ]] && die "No input FASTQ files..."
+
+# Concatenate the FASTQ files
+log_time "Now concatenating the FASTQ files..."
+cat "${infiles[@]}" > "$outfile"
+
+if [[ "$skip_count" == false ]]; then
+    log_time "Counting the number of sequences in the output file..."
+    nseqs=$(zcat "$outfile" | awk '{l++}END{print l/4}')
+    log_time "Number of sequences in output file: $nseqs"
+fi
 
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
+printf "\n======================================================================"
+log_time "Versions used:"
+log_time "Listing files in the output dir:"
+ls -lh "$(realpath "$outfile")"
+[[ "$is_slurm" = true ]] && echo && resource_usage
+log_time "Done with script $SCRIPT_NAME"
 echo
-echo "========================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo -e "\n# Listing the output file:"
-    ls -lh "$outfile"
-    echo
-    [[ "$slurm" = true ]] && Resource_usage
-    echo
-fi
-echo "# Done with script"
-date
