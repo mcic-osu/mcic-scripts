@@ -1,5 +1,8 @@
+# Packages
 if(!require(janitor)) install.packages("janitor")
 if(!require(tidyverse)) install.packages("tidyverse")
+library(janitor)
+library(tidyverse)
 
 # Run DE analysis
 run_DE <- function(
@@ -39,13 +42,13 @@ extract_DE <- function(
     mutate(group1 = comp[1],
            group2 = comp[2],
            contrast = paste0(comp, collapse = "_")) |>
-    select(-lfcSE, -stat) |>
+    dplyr::select(-lfcSE, -stat) |>
     arrange(padj) |>
     as_tibble()
 
   # Include mean normalized counts
   if (!is.null(count_df)) {
-    fcount_df <- count_df |> filter(.data[[fac]] %in% comp)
+    fcount_df <- count_df |> dplyr::filter(.data[[fac]] %in% comp)
     
     group_means <- fcount_df |>
       group_by(gene, .data[[fac]]) |>
@@ -57,9 +60,9 @@ extract_DE <- function(
       group_by(gene) |>
       summarize(mean = mean(count), .groups = "drop")
     
-    fcount_df <- left_join(group_means, overall_means, by = "gene")
+    fcount_df <- dplyr::left_join(group_means, overall_means, by = "gene")
     
-    res <- left_join(select(res, -mean), fcount_df, by = "gene")
+    res <- dplyr::left_join(dplyr::select(res, -mean), fcount_df, by = "gene")
 
     # Determine whether a gene is DE
     res <- res |>
@@ -77,19 +80,19 @@ extract_DE <- function(
   }
 
   # Only keep significant genes
-  if (sig_only == TRUE) res <- res |> filter(isDE == TRUE)
+  if (sig_only == TRUE) res <- res |> dplyr::filter(isDE == TRUE)
 
   # Add gene annotation
   if (!is.null(annot)) {
     res <- res |>
-      left_join(res,
-                select(annot, gene, gene_name, description),
-                by = "gene")
+      dplyr::left_join(res,
+                       dplyr::select(annot, gene, gene_name, description),
+                       by = "gene")
   }
 
   # Arrange by p-value, remove pvalue column
   res <- res |>
-    select(-pvalue) |> 
+    dplyr::select(-pvalue) |> 
     arrange(padj)
   
   # Report
@@ -130,7 +133,7 @@ shrink_lfc <- function(
     rownames_to_column("gene") |>
     dplyr::rename(mean = baseMean,
                   lfc = log2FoldChange) |>
-    select(-lfcSE) |>
+    dplyr::select(-lfcSE) |>
     mutate(group1 = comp[1],
            group2 = comp[2],
            contrast = paste0(comp, collapse = "_"))
@@ -182,11 +185,11 @@ norm_counts <- function(
   count_df <- as.data.frame(count_mat) |>
     rownames_to_column("gene") |>
     pivot_longer(-gene, names_to = "sample", values_to = "count") |>
-    left_join(meta_df, by = "sample")
+    dplyr::left_join(meta_df, by = "sample")
 
   if (!is.null(annot)) {
     count_df <- count_df |>
-      left_join(annot, by = "gene")
+      dplyr::left_join(annot, by = "gene")
   }
   
   return(count_df)
@@ -287,20 +290,20 @@ pvolc <- function(DE_df,
   fcontrasts <- contrasts
 
   # Remove genes with NA as the adj. pvalue
-  DE_df <- DE_df |> filter(!is.na(padj))
+  DE_df <- DE_df |> dplyr::filter(!is.na(padj))
 
   # Remove non-significant genes
-  if (sig_only == TRUE) DE_df <- DE_df |> filter(isDE == TRUE)
+  if (sig_only == TRUE) DE_df <- DE_df |> dplyr::filter(isDE == TRUE)
 
   # Get log10 of padj to remove Infinite values
   DE_df <- DE_df |>
     mutate(padj = -log10(padj)) |>
-    filter(!is.infinite(padj))
+    dplyr::filter(!is.infinite(padj))
 
   # Only take results for the the focal contrast
   if (!is.null(fcontrasts) && fcontrasts[1] != "all") {
     message("Selecting only the focal contrasts...")
-    DE_df <- DE_df |> filter(contrast %in% fcontrasts)
+    DE_df <- DE_df |> dplyr::filter(contrast %in% fcontrasts)
   }
 
   # Interactive text
@@ -321,10 +324,10 @@ pvolc <- function(DE_df,
     aes(x = lfc,
         y = padj,
         text = glue_string) +
-    geom_point(data = filter(DE_df, isDE == FALSE),
+    geom_point(data = dplyr::filter(DE_df, isDE == FALSE),
                fill = "grey80",
                size = 2, shape = 21, color = "grey40", alpha = 0.3) +
-    geom_point(data = filter(DE_df, isDE == TRUE),
+    geom_point(data = dplyr::filter(DE_df, isDE == TRUE),
                aes(fill = contrast),
                size = 2, shape = 21, color = "grey20", alpha = 0.5) +
     geom_vline(xintercept = 0, color = "grey30") +
@@ -377,7 +380,7 @@ pheat <- function(genes,
   # Arrange metadata according to the columns with included factors
   if (!is.null(groups)) {
     meta_df <- meta_df |>
-      select(all_of(groups)) |>
+      dplyr::select(all_of(groups)) |>
       arrange(across(all_of(groups)))
   }
 
@@ -445,13 +448,13 @@ pbox <- function(
     id_col_name <- colnames(annot)[1] 
     
     g_descrip <- annot |>
-      filter(.data[[id_col_name]] == fgene) |>
+      dplyr::filter(.data[[id_col_name]] == fgene) |>
       pull(description) |>
       str_trunc(width = 50)
 
     if ("gene_name" %in% colnames(annot)) {
       g_name <- annot |>
-        filter(.data[[id_col_name]] == fgene) |>
+        dplyr::filter(.data[[id_col_name]] == fgene) |>
         pull(gene_name)
       ptitle <- g_name
       psub <- paste0(g_descrip, "\n", fgene)
@@ -465,7 +468,7 @@ pbox <- function(
   }
 
   # Filter to contain only focal ID
-  count_df <- count_df |> filter(gene %in% fgene)
+  count_df <- count_df |> dplyr::filter(gene %in% fgene)
 
   # Make the plot
   p <- ggplot(count_df) +
@@ -561,13 +564,6 @@ p4box <- function(genes, count_df,
   print(p)
 }
 
-# Packages
-library(tidyverse)
-if (!require(PCAtools)) {
-  biocManager::install("PCAtools")
-  library(PCAtools)
-}
-
 # Function to create a PCA the same way as the DESeq2 function
 # (The DEseq function uses `prcomp()` under the hood)
 pca_prcomp <- function(
@@ -604,6 +600,12 @@ pca_pcatools <- function(
     remove_prop = 0.1    # Remove this proportion of variables (genes) with the lowest variance
 ) {
   
+  # Install/load the PCAtools package
+  if (!require(PCAtools)) {
+    BiocManager::install("PCAtools")
+    library(PCAtools)
+  }
+  
   # Normalize the data
   if (transform == "vst") mat_norm <- assay(vst(dds, blind = TRUE))
   if (transform == "rlog") mat_norm <- assay(rlog(dds, blind = TRUE))
@@ -636,7 +638,7 @@ pca_plot <- function(
     
     df <- as.data.frame(pca_res$rotated) |>
       rownames_to_column("sample") |>
-      left_join(meta, by = "sample")
+      dplyr::left_join(meta, by = "sample")
     
     percent_var <- round(pca_res$variance, 2)
     
