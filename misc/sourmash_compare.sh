@@ -9,11 +9,10 @@
 #SBATCH --job-name=sourmash_compare
 #SBATCH --output=slurm-sourmash-compare-%j.out
 
-
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-## Help function
+# Help function
 Print_help() {
     echo
     echo "======================================================================"
@@ -42,8 +41,6 @@ Print_help() {
     echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to Sourmash compare"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                 Run the script in debug mode (print all code)"
     echo "  -h                      Print this help message and exit"
     echo "  --help                  Print the help for Sourmash Compare and exit"
     echo "  -v/--version            Print the version of Sourmash Compare and exit"
@@ -57,8 +54,7 @@ Print_help() {
     echo
 }
 
-
-## Load software
+# Load software
 Load_software() {
     set +u
     module load miniconda3/4.12.0-py39
@@ -67,7 +63,7 @@ Load_software() {
     set -u
 }
 
-## Print version
+# Print version
 Print_version() {
     set +e
     Load_software
@@ -75,21 +71,21 @@ Print_version() {
     set -e
 }
 
-## Print help for the focal program
+# Print help for the focal program
 Print_help_program() {
     Load_software
     sourmash compare --help
 }
 
-## Print SLURM job resource usage info
+# Print SLURM job resource usage info
 Resource_usage() {
     echo
-    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
+    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
         grep -Ev "ba|ex"
     echo
 }
 
-## Print SLURM job requested resources
+# Print SLURM job requested resources
 Print_resources() {
     set +u
     echo "# SLURM job information:"
@@ -105,7 +101,7 @@ Print_resources() {
     set -u
 }
 
-## Set the number of threads/CPUs
+# Set the number of threads/CPUs
 Set_threads() {
     set +u
     if [[ "$slurm" = true ]]; then
@@ -123,14 +119,14 @@ Set_threads() {
     set -u
 }
 
-## Resource usage information
+# Resource usage information
 Time() {
     /usr/bin/time -f \
         '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
         "$@"
 }   
 
-## Exit upon error with a message
+# Exit upon error with a message
 Die() {
     error_message=${1}
     error_args=${2-none}
@@ -154,14 +150,18 @@ Die() {
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-## Option defaults
+# Option defaults
 kmer_size=31
-ani=false && ani_arg=""
+ani=false && ani_arg=
 prefix="compare"           # Output filename prefix
-indir=""
-outdir=""
+slurm=true
 
-## Parse command-line args
+# Placeholder defaults
+indir=
+outdir=
+more_args=
+
+# Parse command-line args
 all_args="$*"
 
 while [ "$1" != "" ]; do
@@ -174,43 +174,37 @@ while [ "$1" != "" ]; do
         -v | --version )    Print_version; exit 0 ;;
         -h )                Print_help; exit 0 ;;
         --help )            Print_help_program; exit 0;;
-        --dryrun )          dryrun=true && e="echo ";;
-        --debug )           debug=true ;;
         * )                 Die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
 
-
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-## In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
-
-## Check if this is a SLURM job
+# Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Load software and set nr of threads
-[[ "$dryrun" = false ]] && Load_software
+# Load software and set nr of threads
+Load_software
 Set_threads
 
-## Bash script settings
+# Bash script settings
 set -euo pipefail
 
-## Determine output file names
+# Determine output file names
 [[ "$ani" = true ]] && prefix=ani
 csv_out="$outdir"/output/"$prefix".csv     # distance/ANI matrix in CSV format
 cmp_out="$outdir"/output/"$prefix".cmp     # distance/ANI matrix in Python format for sourmash plotting
 
-## Create array with input FASTA files
+# Create array with input FASTA files
 mapfile -t fastas < <(find "$indir" -iname '*fasta' -or -iname '*fa' -or -iname '*fna' -or -iname '*fna.gz')
 
-## Check input
+# Check input
 [[ "$indir" = "" ]] && Die "Please specify an input dir with -i/--indir" "$all_args"
 [[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
 
-## Report
+# Report
 echo
 echo "=========================================================================="
 echo "                STARTING SCRIPT SOURMASH_COMPARE.SH"
@@ -227,43 +221,39 @@ echo
 echo "Number of FASTA files:            ${#fastas[@]}"
 echo "Listing the input FASTA file(s):"
 for fasta in "${fastas[@]}"; do ls -lh "$fasta"; done
-[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
-
-## Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
-
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-## Create output dirs
+# Create output dirs
 mkdir -p "$outdir"/signatures "$outdir"/sig_renamed "$outdir"/output "$outdir"/logs
 
-## Create a signature for each FASTA file
+# Create a signature for each FASTA file
 echo "# Creating sourmash signatures..."
-${e}sourmash sketch dna \
+sourmash sketch dna \
     -p k="$kmer_size" \
     --outdir "$outdir"/signatures \
     "${fastas[@]}"
 
-## Rename signatures so they have short names
+# Rename signatures so they have short names
 echo -e "--------------------\n"
 echo "# Renaming sourmash signatures..."
 for sig in "$outdir"/signatures/*sig; do
     newname=$(basename "$sig" .fasta.sig | sed 's/^Spades//')
     newfile="$outdir"/sig_renamed/"$(basename "$sig")"
 
-    ${e}sourmash signature rename \
+    sourmash signature rename \
         "$sig" \
         "$newname" \
         -o "$newfile"
 done
 
-## Compare genomes
+# Compare genomes
 echo -e "--------------------\n"
-echo "## Comparing genomes..."
-${e}Time sourmash compare \
+echo "# Comparing genomes..."
+Time sourmash compare \
     -k"$kmer_size" \
     $ani_arg \
     --from-file <(ls "$outdir"/sig_renamed/*) \
@@ -271,23 +261,20 @@ ${e}Time sourmash compare \
     $more_args \
     -o "$cmp_out"
 
-## Make plots - run separately for PNG and PDF output
+# Make plots - run separately for PNG and PDF output
 echo -e "\n# Creating plots..."
-${e}sourmash plot --labels --output-dir "$outdir"/output "$cmp_out"
-${e}sourmash plot --labels --pdf --output-dir "$outdir"/output "$cmp_out"
-
+sourmash plot --labels --output-dir "$outdir"/output "$cmp_out"
+sourmash plot --labels --pdf --output-dir "$outdir"/output "$cmp_out"
 
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
 echo
 echo "========================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/output/*
-    [[ "$slurm" = true ]] && Resource_usage
-fi
+echo "# Version used:"
+Print_version | tee "$outdir"/logs/version.txt
+echo -e "\n# Listing files in the output dir:"
+ls -lhd "$PWD"/"$outdir"/output/*
+[[ "$slurm" = true ]] && Resource_usage
 echo "# Done with script"
 date
