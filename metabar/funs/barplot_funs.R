@@ -19,7 +19,11 @@ pbar <- function(ps, taxrank,
   
   ## Set colors
   ntax <- length(unique(na.omit(df[[taxrank]])))
-  if (is.null(cols)) cols <- palette(rainbow(ntax)) else cols <- cols[1:ntax]
+  if (is.null(cols)) {
+    cols <- randomcoloR::distinctColorPalette(k = ntax)
+  } else {
+    cols <- cols[1:ntax]
+  }
   
   ## Set last color ('other' category) to grey:
   if (any(df[[taxrank]] == "other (rare)")) {
@@ -48,8 +52,7 @@ pbar <- function(ps, taxrank,
     theme(panel.grid.major.x = element_blank(),
           panel.grid.minor = element_blank())
   
-  ## If plotting by sample, always facet by a grouping variable
-  if (xvar == "Sample" | !is.null(facetvar)) {
+  if (!is.null(facetvar)) {
     p <- p +
       facet_grid(cols = vars(.data[[facetvar]]),
                  scales = "free_x", space = "free")
@@ -70,14 +73,16 @@ abund_stats <- function(ps, taxrank,
   
   ## Turn the phyloseq object into a dataframe
   df <- psmelt(ps)
+  meta <- as(sample_data(ps), "data.frame") |> rownames_to_column("Sample")
   
   ## Merge different NA taxa
   if (any(is.na(df[[taxrank]]))) {
+    
     NAs <- df %>%
       filter(is.na(.data[[taxrank]])) %>%
       group_by(Sample) %>%
       summarize(Abundance = sum(Abundance)) %>%
-      left_join(sample_data(ps), by = c("Sample" = "sampleID"))
+      left_join(meta, by = "Sample")
     NAs[[taxrank]] <- NA
     df <- df %>%
       filter(!is.na(.data[[taxrank]])) %>%
@@ -91,7 +96,7 @@ abund_stats <- function(ps, taxrank,
       summarize(Abundance = mean(Abundance), .groups = "drop")
     
     if (groupby[1] == "Sample")
-      df <- df %>% left_join(sample_data(ps), by = c("Sample" = "sampleID"))
+      df <- df %>% left_join(meta, by = "Sample")
   }
   
   ## Change low-abundance taxa to "other"
@@ -112,7 +117,7 @@ abund_stats <- function(ps, taxrank,
       summarize(Abundance = sum(Abundance))
     
     if (groupby[1] == "Sample")
-      other <- other %>% left_join(sample_data(ps), by = c("Sample" = "sampleID"))
+      other <- other %>% left_join(meta, by = "Sample")
     
     other[[taxrank]] <- "other (rare)"
     
