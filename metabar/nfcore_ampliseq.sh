@@ -1,5 +1,4 @@
 #!/bin/bash
-
 #SBATCH --account=PAS0471
 #SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=1
@@ -22,7 +21,8 @@ Print_help() {
     echo "======================================================================================="
     echo
     echo "ABOUT:"
-    echo "  - All workflow parameter defaults in this script are the same as in the https://nf-co.re/ampliseq pipeline"
+    echo "  - All workflow parameter defaults in this script are the same as in the https://nf-co.re/ampliseq pipeline,"
+    echo "    except that '--ignore_failed_trimming' is always used so the pipeline will keep running when some samples have too small filesizes after trimming."
     echo "  - Different from the Nextflow default, this script will try to 'resume' (rather than restart) a previous incomplete run by default"
     echo "  - This workflow can be used for both 16S and ITS data (use the '--its' flag for the latter)"
     echo "  - Not all nf-core/ampliseq parameters are present as options to this script, use '--more_args' for parameters that aren't listed"
@@ -69,8 +69,6 @@ Print_help() {
     echo "  --more_args         <str>   Additional arguments, all in a single quoted string, to pass to 'nextflow run'"
     echo "  --workflow_dir      <dir>   Dir with the nfcore/ampliseq workflow   [default: 'workflows/nfcore-ampliseq']"
     echo "                                - Will be downloaded if needed."
-    echo "  --debug                     Turn on debugging mode: print all commands"
-    echo "  --dryrun                    Dry run: print info and main commands but don't run"
     echo "  -h/--help                   Print this help message and exit"
     echo 
     echo "NEXTFLOW OPTIONS:"
@@ -108,7 +106,7 @@ Load_software() {
 # Print SLURM job resource usage info
 Resource_usage() {
     echo
-    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
+    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
     echo
 }
 
@@ -138,10 +136,12 @@ Die() {
     exit 1
 }
 
-
 # ==============================================================================
 #                     CONSTANTS AND DEFAULTS
 # ==============================================================================
+# Constants
+WORKFLOW_VERSION=2.5.0  # Only applied if workflow dir isn't present and workflow will be downloaded
+
 # Option defaults - workflow parameters
 is_ITS=false && ITS_arg=""
 
@@ -153,14 +153,11 @@ profile="singularity"
 resume=true && resume_arg="-resume"
 
 # Option defaults - utitilites
-debug=false
-dryrun=false && e=""
 slurm=true
 
 # URL to OSC Nextflow config file
 OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config
 osc_config=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present here
-
 
 # ==============================================================================
 #                     PARSE COMMAND-LINE OPTIONS
@@ -215,22 +212,17 @@ while [ "$1" != "" ]; do
         -p | -profile )                 shift && profile=$1 ;;
         -w | -work-dir )                shift && work_dir=$1 ;;
         -r | -no-resume )               resume=false ;;
-        --debug )                       debug=true ;;
-        --dryrun )                      dryrun=true ;;
         -h | --help )                   Print_help; exit ;;
         * )                             Print_help; Die "Invalid option $1";;
     esac
     shift
 done
 
-
 # ==============================================================================
 #                              OTHER SETUP
 # ==============================================================================
-[[ "$debug" = true ]] && set -o xtrace
-
 # Load Conda environment
-[[ "$dryrun" = false ]] && Load_software
+Load_software
 
 # Bash strict settings
 set -ueo pipefail
@@ -267,6 +259,7 @@ fi
 [[ "$min_frequency" != "" ]] && min_frequency_arg="--min_frequency $min_frequency"
 [[ "$filter_ssu" != "" ]] && filter_ssu_arg="--filter_ssu $filter_ssu"
 [[ "$extension" != "" ]] && extension_arg="--extension $extension"
+[[ "$exclude_taxa" != "" ]] && exclude_taxa_arg="--exclude_taxa $exclude_taxa"
 
 # Get the OSC config file
 if [[ ! -f "$osc_config" ]]; then
@@ -325,50 +318,46 @@ echo "Nextflow workflow dir:                        $workflow_dir"
 echo "Config 'profile':                             $profile"
 echo "Config file argument:                         $config_arg"
 [[ "$config_file" != "" ]] && echo "Additional config file:                       $config_file"
-[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 echo
 
 # ==============================================================================
 #                              RUN
 # ==============================================================================
-if [[ "$dryrun" = false ]]; then
-    # Make necessary dirs
-    mkdir -p "$work_dir" "$container_dir" "$outdir"/logs "$trace_dir"
+# Make necessary dirs
+mkdir -p "$work_dir" "$container_dir" "$outdir"/logs "$trace_dir"
 
-    # Remove old trace files
-    [[ -f "$trace_dir"/report.html ]] && rm "$trace_dir"/report.html
-    [[ -f "$trace_dir"/trace.txt ]] && rm "$trace_dir"/trace.txt
-    [[ -f "$trace_dir"/timeline.html ]] && rm "$trace_dir"/timeline.html
-    [[ -f "$trace_dir"/dag.png ]] && rm "$trace_dir"/dag.png
+# Remove old trace files
+[[ -f "$trace_dir"/report.html ]] && rm "$trace_dir"/report.html
+[[ -f "$trace_dir"/trace.txt ]] && rm "$trace_dir"/trace.txt
+[[ -f "$trace_dir"/timeline.html ]] && rm "$trace_dir"/timeline.html
+[[ -f "$trace_dir"/dag.png ]] && rm "$trace_dir"/dag.png
 
-    # Download workflow, if needed
-    nf_file="$workflow_dir"/workflow/main.nf
+# Download workflow, if needed
+nf_file="$workflow_dir"/workflow/main.nf
 
-    if [[ ! -d "$workflow_dir" ]]; then
-        echo "# Downloading workflow to $workflow_dir"
-        nf-core download ampliseq \
-            --revision 2.4.1 \
-            --compress none \
-            --container singularity \
-            --outdir "$workflow_dir"
-        echo
-    elif [[ ! -f "$nf_file" ]]; then
-        Die "Can't find workflow file $nf_file inside workflow dir $workflow_dir"
-    fi
+if [[ ! -d "$workflow_dir" ]]; then
+    echo "# Downloading workflow to $workflow_dir"
+    nf-core download ampliseq \
+        --compress none \
+        --container singularity \
+        --outdir "$workflow_dir" \
+        --revision $WORKFLOW_VERSION
+    echo
+elif [[ ! -f "$nf_file" ]]; then
+    Die "Can't find workflow file $nf_file inside workflow dir $workflow_dir"
 fi
 
 # Define the workflow command
 echo -e "# Starting the workflow...\n"
-[[ "$dryrun" = false ]] && set -o xtrace
-
-${e}Time nextflow run \
+Time nextflow run \
     "$nf_file" \
     --input "$fastq_dir" \
     $extension_arg \
     --outdir "$outdir" \
     --FW_primer "$FW_primer" \
     --RV_primer "$RV_primer" \
+    --ignore_failed_trimming \
     $ITS_arg \
     $dada_ref_taxonomy_arg \
     $trunclenf_arg \
@@ -378,6 +367,7 @@ ${e}Time nextflow run \
     $max_len_asv_arg \
     $min_frequency_arg \
     $filter_ssu_arg \
+    $exclude_taxa_arg \
     $metadata_arg \
     -work-dir "$work_dir" \
     -with-report "$trace_dir"/report.html \
@@ -390,18 +380,13 @@ ${e}Time nextflow run \
     $resume_arg \
     $more_args
 
-[[ "$debug" = false ]] && set +o xtrace
-
-
 # ==============================================================================
 #                              WRAP UP
 # ==============================================================================
 echo
 echo "========================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
-    [[ "$slurm" = true ]] && Resource_usage
-fi
-echo "# Done with script"
+echo -e "\n# Listing files in the output dir:"
+ls -lhd "$PWD"/"$outdir"/*
+[[ "$slurm" = true ]] && Resource_usage
+echo "# Done with script nfcore_ampliseq.sh"
 date
