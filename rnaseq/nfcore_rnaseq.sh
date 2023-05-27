@@ -6,6 +6,7 @@
 #SBATCH --mem=4G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
+#SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=nfcore_rnaseq
 #SBATCH --output=slurm-nfcore_rnaseq-%j.out
 
@@ -28,7 +29,6 @@ Print_help() {
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--samplesheet <file>    Sample sheet containing paths to FASTQ files and sample info"
-    echo "                             (See below and https://nf-co.re/rnaseq/3.9/usage#samplesheet-input)"
     echo "  -o/--outdir     <dir>      Output directory (will be created if needed)"
     echo "  --ref_fasta     <file>     Reference genome FASTA file"
     echo "  --ref_annot     <file>     Reference genome annotation file (GTF/GFF - GTF format preferred)"
@@ -50,7 +50,6 @@ Print_help() {
     echo "  --container_dir <dir>       Singularity container dir                                 [default: '/fs/project/PAS0471/containers']"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --debug                     Turn on debugging mode: print all commands"
     echo "  -h/--help                   Print this help message and exit"
     echo
     echo "EXAMPLE COMMANDS:"
@@ -130,12 +129,14 @@ Die() {
     exit 1
 }
 
-
 # ==============================================================================
 #                     CONSTANTS AND DEFAULTS
 # ==============================================================================
-# URL to OSC Nextflow config file
+# Constants
+WORKFLOW_VERSION=3.11.2
 OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config
+
+# URL to OSC Nextflow config file
 osc_config=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present here
 
 # Option defaults
@@ -144,8 +145,6 @@ container_dir=/fs/project/PAS0471/containers
 work_dir=/fs/scratch/PAS0471/$USER/nfc_rnaseq
 profile="singularity"
 resume=true && resume_arg="-resume"
-debug=false
-
 
 # ==============================================================================
 #                     PARSE COMMAND-LINE OPTIONS
@@ -172,7 +171,6 @@ while [ "$1" != "" ]; do
         -profile )              shift && profile=$1 ;;
         -work-dir )             shift && work_dir=$1 ;;
         -no-resume )            resume=false ;;
-        --debug )               debug=true ;;
         -h | --help )           Print_help; exit ;;
         * )                     Print_help; Die "Invalid option $1";;
     esac
@@ -183,14 +181,11 @@ done
 # ==============================================================================
 #                              OTHER SETUP
 # ==============================================================================
-# Bash strict settings
-set -ueo pipefail
-
-# In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
-
 # Load Conda environment
 Load_software
+
+# Bash strict settings
+set -ueo pipefail
 
 # Check input
 [[ "$samplesheet" = "" ]] && Die "Please specify a samplesheet with -i" "$all_args"
@@ -264,16 +259,16 @@ mkdir -pv "$work_dir" "$container_dir" "$outdir"/logs "$trace_dir"
 if [[ ! -f "$nf_file" ]]; then
     workflow_dir="$(dirname "$(dirname "$nf_file")")"
     mkdir -p "$(dirname "$workflow_dir")"
-    echo "# Downloading workflow to $workflow_dir"
+    echo -e "\n# Downloading workflow to $workflow_dir"
     nf-core download rnaseq \
-        --revision 3.9 \
+        --revision "$WORKFLOW_VERSION" \
         --compress none \
         --container singularity \
         --outdir "$workflow_dir"
     echo
 fi
 
-# Define the workflow command
+# Run the workflow
 echo -e "# Starting the workflow...\n"
 Time nextflow run \
     "$nf_file" \
