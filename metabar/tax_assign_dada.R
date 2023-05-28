@@ -98,7 +98,7 @@ qc_tax <- function(taxa_df, tax_levels = NULL) {
     prop <- round(n / nrow(taxa_df), 4)
     
     if (is.null(tax_levels)) tax_levels <- names(prop)
-    colnames(taxa) <- tax_levels
+    colnames(taxa_df) <- tax_levels
     
     data.frame(n, prop) %>%
         rownames_to_column("tax_level") %>%
@@ -153,7 +153,9 @@ p <- ggplot(prop_assigned) +
     scale_y_continuous(limits = c(0, 1), expand = c(0, 0)) +
     labs(y = "Proportion of ASVs assigned", x = NULL) +
     guides(fill = "none") +
-    theme_bw(base_size = 14)
+    theme_bw(base_size = 14) +
+    theme(panel.grid.minor = element_blank(),
+          panel.grid.major.x = element_blank())
 ggsave(plot_file, p, width = 7, height = 7)
 
 
