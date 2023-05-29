@@ -53,7 +53,7 @@ extract_DE <- function(
     group_means <- fcount_df |>
       group_by(gene, .data[[fac]]) |>
       summarize(mean = mean(count), .groups = "drop") |>
-      pivot_wider(id_cols = gene, values_from = mean, names_from = .data[[fac]])
+      pivot_wider(id_cols = gene, values_from = mean, names_from = all_of(fac))
     colnames(group_means)[2:3] <- c("mean_A", "mean_B")
     
     overall_means <- fcount_df |>
@@ -474,10 +474,15 @@ pbox <- function(
   p <- ggplot(count_df) +
     aes(y = count, x = .data[[x_by]])
   
+  if (!is.null(col_by)) p <- p + aes(color = .data[[col_by]])
+  
+  # Add boxplot
+  p <- p + geom_boxplot(outlier.shape = NA)
+  
+  # Add points
   if (!is.null(col_by)) {
     # With color-aesthetic, use jitter-doge and smaller points:
     p <- p +
-      aes(color = .data[[col_by]]) +
       geom_point(position = position_jitterdodge(jitter.width = 0.1, jitter.height = 0),
                  size = 1.5)
   } else {
@@ -487,8 +492,8 @@ pbox <- function(
                  size = 2.5)
   }
   
+  # Plot formatting
   p <- p +
-    geom_boxplot(outlier.shape = NA) +
     labs(title = ptitle,
          subtitle = psub,
          x = NULL) +
