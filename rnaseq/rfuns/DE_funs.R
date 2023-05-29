@@ -166,8 +166,13 @@ norm_counts <- function(
     ) {
   
   # Normalize the counts
-  if (transform == "vst") count_mat <- assay(vst(dds, blind = TRUE))
-  if (transform == "rlog") count_mat <- assay(rlog(dds, blind = TRUE))
+  if (transform == "vst") {
+    count_mat <- assay(vst(dds, blind = TRUE))
+  }
+  if (transform == "rlog") {
+    # Suppress meesages to avoid "vst is much faster transformation - message"
+    count_mat <- suppressMessages(assay(rlog(dds, blind = TRUE)))
+  }
   if (transform == "lib_size") {
     dds <- estimateSizeFactors(dds)
     count_mat <- sweep(assay(dds), 2, sizeFactors(dds), "/")
