@@ -47,8 +47,6 @@ Print_help() {
     echo "  --unclassified-out              Write 'unclassified' sequences to file in '<outdir>/unclassified' dir [default: don't write]"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                 Run the script in debug mode (print all code)"
     echo "  -h                      Print this help message and exit"
     echo "  --help                  Print the help for Kraken and exit"
     echo "  -v/--version            Print the version of Kraken and exit"
@@ -143,7 +141,6 @@ Die() {
     exit 1
 }
 
-
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
@@ -154,8 +151,6 @@ add_names=false && names_arg=""
 use_ram=true && mem_map_arg=""
 single_end=false
 
-debug=false
-dryrun=false && e=""
 slurm=true
 
 
@@ -180,7 +175,7 @@ while [ "$1" != "" ]; do
         -c | --confidence )         shift && min_conf=$1 ;;
         -q | --minimum-base-quality )   shift && min_q=$1 ;;
         --use-names )               add_names=true ;;
-        -s | --single_end )         single_end=true ;;
+        -s | --single-end )         single_end=true ;;
         -w | --classified-out )     write_classif=true ;;
         -W | --unclassified-out )   write_unclassif=true ;;   
         --memory-mapping )          use_ram=false ;;
@@ -188,20 +183,14 @@ while [ "$1" != "" ]; do
         -v | --version )            Print_version; exit 0 ;;
         -h )                        Print_help; exit 0 ;;
         --help )                    Print_help_program; exit 0;;
-        --dryrun )                  dryrun=true && e="echo ";;
-        --debug )                   debug=true ;;
         * )                         Die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
 
-
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-# In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
-
 # Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
@@ -209,7 +198,7 @@ done
 set -euo pipefail
 
 # Load software and set nr of threads
-[[ "$dryrun" = false ]] && Load_software
+Load_software
 Set_threads
 
 # Check input
@@ -251,15 +240,15 @@ if [[ "$infile" =~ \.fa?s?t?q.gz$ ]]; then
     R1_suffix=$(echo "$R1_basename" | sed -E 's/.*(_R?[12]).*/\1/')
     
     if [[ "$single_end" = false ]]; then
-        echo "Input type is:                    paired-end FASTQ"
+        echo "Input type is:                paired-end FASTQ"
         file_type=pe
         R2_suffix=${R1_suffix/1/2}
         R2_in=${R1_in/$R1_suffix/$R2_suffix}
         sample_ID=${R1_basename/"$R1_suffix"/}
         infile_arg="--gzip-compressed --paired $R1_in $R2_in"
 
-        echo "Input FASTQ file - R1:            $R1_in"
-        echo "Input FASTQ file - R2:            $R2_in"
+        echo "Input FASTQ file - R1:        $R1_in"
+        echo "Input FASTQ file - R2:        $R2_in"
 
         [[ ! -f "$R2_in" ]] && Die "R2 file $R2_in does not exist"
         [[ "$R1_in" = "$R2_in" ]] && Die "R1 file $R1_in is the same as R2 file $R2_in"
@@ -272,7 +261,7 @@ if [[ "$infile" =~ \.fa?s?t?q.gz$ ]]; then
         fi
 
     else
-        echo "Input type is:                    single-end FASTQ"
+        echo "Input type is:                single-end FASTQ"
         file_type=se
         sample_ID=$(basename "$R1_in" .fastq.gz)
         infile_arg="--gzip-compressed $R1_in"
@@ -287,7 +276,7 @@ if [[ "$infile" =~ \.fa?s?t?q.gz$ ]]; then
     fi
 
 elif [[ "$infile" =~ \.fn?a?s?t?a$ ]]; then
-    echo -e "Input type is:                  FASTA"
+    echo -e "Input type is:              FASTA"
     file_type=fasta
     infile_basename=$(basename "$infile")
     sample_ID=${infile_basename%%.*}
@@ -318,72 +307,65 @@ echo "Output file - report:           $outfile_report"
 echo
 echo "Listing the input file(s):"
 ls -lh "$infile"
-[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 echo
 
 # Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
 
-
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-if [[ "$dryrun" = false ]]; then
-    # Create output dirs
-    echo -e "\n# Creating the output directories..."
-    [[ "$write_classif" = true ]] && mkdir -pv "$outdir"/classified
-    [[ "$write_unclassif" = true ]] && mkdir -pv "$outdir"/unclassified
-    mkdir -pv "$outdir"/logs
+# Create output dirs
+echo -e "\n# Creating the output directories..."
+[[ "$write_classif" = true ]] && mkdir -pv "$outdir"/classified
+[[ "$write_unclassif" = true ]] && mkdir -pv "$outdir"/unclassified
+mkdir -pv "$outdir"/logs
 
-    # Run Kraken
-    echo -e "\n# Starting Kraken2 run..."
-    Time kraken2 ${more_args}${names_arg}--threads "$threads" \
-        ${mem_map_arg}--minimum-base-quality "$min_q" \
-        --confidence "$min_conf" \
-        --report-minimizer-data \
-        ${unclass_out_arg}--db "$db_dir" \
-        ${class_out_arg}--report "$outfile_report" \
-        ${infile_arg}> "$outfile_main"
+# Run Kraken
+echo -e "\n# Starting Kraken2 run..."
+Time kraken2 ${more_args}${names_arg}--threads "$threads" \
+    ${mem_map_arg}--minimum-base-quality "$min_q" \
+    --confidence "$min_conf" \
+    --report-minimizer-data \
+    ${unclass_out_arg}--db "$db_dir" \
+    ${class_out_arg}--report "$outfile_report" \
+    ${infile_arg}> "$outfile_main"
 
-    #? report-minimizer-data: see https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#distinct-minimizer-count-information
+#? report-minimizer-data: see https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#distinct-minimizer-count-information
 
-    # Rename and zip FASTQ files - only implemented for PE FASTQ
-    if  [[ "$file_type" = "pe" ]]; then
-        if [[ "$write_classif" = true ]]; then
-            echo -e "\n# Zipping FASTQ files with classified reads..."
-            mv "$outdir"/classified/"$sample_ID"_1.fastq "$outdir"/classified/"$sample_ID"_R1.fastq
-            gzip -f "$outdir"/classified/"$sample_ID"_R1.fastq
+# Rename and zip FASTQ files - only implemented for PE FASTQ
+if  [[ "$file_type" = "pe" ]]; then
+    if [[ "$write_classif" = true ]]; then
+        echo -e "\n# Zipping FASTQ files with classified reads..."
+        mv "$outdir"/classified/"$sample_ID"_1.fastq "$outdir"/classified/"$sample_ID"_R1.fastq
+        gzip -f "$outdir"/classified/"$sample_ID"_R1.fastq
 
-            mv "$outdir"/classified/"$sample_ID"_2.fastq "$outdir"/classified/"$sample_ID"_R2.fastq
-            gzip -f "$outdir"/classified/"$sample_ID"_R2.fastq
-        fi
+        mv "$outdir"/classified/"$sample_ID"_2.fastq "$outdir"/classified/"$sample_ID"_R2.fastq
+        gzip -f "$outdir"/classified/"$sample_ID"_R2.fastq
+    fi
 
-        if [[ "$write_unclassif" = true ]]; then
-            echo -e "\n# Zipping FASTQ files with unclassified reads..."
-            mv "$outdir"/unclassified/"$sample_ID"_1.fastq "$outdir"/unclassified/"$sample_ID"_R1.fastq
-            gzip -f "$outdir"/unclassified/"$sample_ID"_R1.fastq
+    if [[ "$write_unclassif" = true ]]; then
+        echo -e "\n# Zipping FASTQ files with unclassified reads..."
+        mv "$outdir"/unclassified/"$sample_ID"_1.fastq "$outdir"/unclassified/"$sample_ID"_R1.fastq
+        gzip -f "$outdir"/unclassified/"$sample_ID"_R1.fastq
 
-            mv "$outdir"/unclassified/"$sample_ID"_2.fastq "$outdir"/unclassified/"$sample_ID"_R2.fastq
-            gzip -f "$outdir"/unclassified/"$sample_ID"_R2.fastq
-        fi
+        mv "$outdir"/unclassified/"$sample_ID"_2.fastq "$outdir"/unclassified/"$sample_ID"_R2.fastq
+        gzip -f "$outdir"/unclassified/"$sample_ID"_R2.fastq
     fi
 fi
-
 
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
 echo
 echo "========================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo -e "\n# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing output files:"
-    ls -lh "$outfile_main" "$outfile_report"
-    [[ "$write_classif" = true ]] && ls -lh "$outdir"/classified/"$sample_ID"*
-    [[ "$write_unclassif" = true ]] && ls -lh "$outdir"/unclassified/"$sample_ID"*
-    [[ "$slurm" = true ]] && Resource_usage
-fi
+echo -e "\n# Version used:"
+Print_version | tee "$outdir"/logs/version.txt
+echo -e "\n# Listing output files:"
+ls -lh "$outfile_main" "$outfile_report"
+[[ "$write_classif" = true ]] && ls -lh "$outdir"/classified/"$sample_ID"*
+[[ "$write_unclassif" = true ]] && ls -lh "$outdir"/unclassified/"$sample_ID"*
+[[ "$slurm" = true ]] && Resource_usage
 echo "# Done with script"
 date
