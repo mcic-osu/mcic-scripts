@@ -222,7 +222,7 @@ echo "==========================================================================
 echo "All arguments to this script:             $all_args"
 echo "Input file:                               $infile"
 echo "Output dir:                               $outdir"
-[[ $more_args != "" ]] && echo "Other arguments for $TOOL_NAME:   $more_args"
+[[ -n $more_args ]] && echo "Other arguments for $TOOL_NAME:   $more_args"
 echo "Number of threads/cores:                  $threads"
 echo
 log_time "Listing the input file(s):"
@@ -238,7 +238,7 @@ mkdir -pv "$log_dir"
 
 # Run the tool
 log_time "Running $TOOL_NAME..."
-runstats "$TOOL_BINARY" \
+runstats $TOOL_BINARY \
     -t "$threads" \
     $more_args
 
