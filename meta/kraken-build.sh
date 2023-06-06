@@ -3,284 +3,291 @@
 #SBATCH --account=PAS0471
 #SBATCH --time=24:00:00
 #SBATCH --mem=100G
-#SBATCH --cpus-per-task=20
-#SBATCH --output=slurm-kraken-build-custom-%j.out
+#SBATCH --mail-type=END,FAIL
+#SBATCH --job-name=kraken-build
+#SBATCH --output=slurm-kraken-build-%j.out
 
+#TODO - Process ref_libs argument!
 
-# GET OPTIONS ------------------------------------------------------------------
-## Help function
-Help() {
+# ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
+# Constants
+readonly SCRIPT_NAME=kraken-build.sh
+readonly SCRIPT_VERSION="1.0"
+readonly SCRIPT_AUTHOR="Jelmer Poelstra"
+readonly SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
+readonly MODULE=miniconda3/4.12.0-py39
+readonly CONDA_ENV=/fs/ess/PAS0471/jelmer/conda/kraken2-2.1.2
+readonly TOOL_BINARY=kraken2-build
+readonly TOOL_NAME=Kraken-build
+readonly TOOL_DOCS=https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown
+readonly TOOL_PAPER=https://genomebiology.biomedcentral.com/articles/10.1186/s13059-019-1891-0
+
+# Option defaults
+ref_libs=false
+
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
+# Help function
+script_help() {
     echo
-    echo "## $0: Build a custom Kraken db."
+    echo "        $0 (v. $SCRIPT_VERSION): Run $TOOL_NAME"
+    echo "        =============================================="
+    echo "DESCRIPTION:"
+    echo "  Build a custom Kraken database"
+    echo "  Note: Standard Kraken databases can be downloaded from https://benlangmead.github.io/aws-indexes/"
     echo
-    echo "## Syntax: $0 -d <kraken-db-dir> ..."
-    echo 
-    echo "## Required options:"
-    echo "## -d STRING      Dir for Kraken db"
+    echo "USAGE:"
+    echo "  sbatch $0 -i <input-file> -o <output-dir> [...]"
+    echo "  bash $0 -h"
     echo
-    echo "## Other options:"
-    echo "## -i STRING      Taxonomic groups to include (default: 'abvdhc')"
-    echo "                  a=archaea, b=bacteria, v=viral, d=plasmid, h=human, c=univec_core, f=fungi, p=plants, z=protozoa"
-    echo "                  Use a string like 'ab' for archae + bacteria OR 'all' for all groups"
-    echo "## -g STRING      Custom genome FASTA file to be added to the db"
-    echo "## -G STRING      Dir _with_ (if files are already present) or _for_ (if files are to be downloaded) custom genome FASTA files"
-    echo "## -u STRING      URL for genome FASTA file to be downloaded and added to the db"
-    echo "## -U STRING      File with URLs for genome FASTA files to be downloaded and added to the db"
-    echo "## -h             Print this help message and exit"
+    echo "REQUIRED OPTIONS:"
+    echo "  -o/--db_dir     <dir>   Dir for Kraken DB"
     echo
-    echo "## Example: $0 -d refdata/kraken/my-db -g refdata/kraken/my-db/genomes -u https://genome.fa"
-    echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
+    echo "OTHER KEY OPTIONS:"
+    echo "  --ref_libs      <str>   Comma-separated list of reference libraries to include [default:none]"
+    echo "                          Options: 'archaea', 'bacteria', 'viral', 'plasmid', 'human', 'fungi', 'plants', 'protozoa',"
+    echo "                                    'UniVec', 'Univec_Core', 'nr', 'nt' -- see https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#custom-databases"
+    echo "  --genome_fa     <file>  Custom genome FASTA file to be added to the db"
+    echo "  --genome_dir    <dir>   Dir with custom genome FASTA files"
+    echo "  --more_args     <str>   Quoted string with more argument(s) for $TOOL_NAME"
+    echo
+    echo "UTILITY OPTIONS:"
+    echo "  -h                      Print this help message and exit"
+    echo "  --help                  Print the help for $TOOL_NAME and exit"
+    echo "  -v                      Print the version of this script and exit"
+    echo "  -v/--version            Print the version of $TOOL_NAME and exit"
+    echo
+    echo "EXAMPLE COMMANDS:"
+    echo "  sbatch $0 -o refdata/kraken/my_db --genome_dir refdata/kraken/my_db/genomes"
+    echo
+    echo "TOOL DOCUMENTATION:"
+    echo "  - Docs: $TOOL_DOCS"
+    echo "  - Paper: $TOOL_PAPER"
     echo
 }
 
-## Option defaults
+# Load software
+load_tool_conda() {
+    set +u
+    module load "$MODULE" # Load the OSC Conda module
+    # Deactivate any active Conda environments:
+    if [[ -n "$CONDA_SHLVL" ]]; then
+        for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
+    fi
+    source activate "$CONDA_ENV" # Activate the focal environment
+    set -u
+}
+
+# Exit upon error with a message
+die() {
+    local error_message=${1}
+    local error_args=${2-none}
+    log_time "$0: ERROR: $error_message" >&2
+    log_time "For help, run this script with the '-h' option" >&2
+    if [[ "$error_args" != "none" ]]; then
+        log_time "Arguments passed to the script:" >&2
+        echo "$error_args" >&2
+    fi
+    log_time "EXITING..." >&2
+    exit 1
+}
+
+# Log messages that include the time
+log_time() { echo -e "\n[$(date +'%Y-%m-%d %H:%M:%S')]" ${1-""}; }
+
+# Print the script version
+script_version() {
+    echo "Run using $SCRIPT_NAME by $SCRIPT_AUTHOR, version $SCRIPT_VERSION ($SCRIPT_URL)"
+}
+
+# Print the tool's version
+tool_version() {
+    set +e
+    load_tool_conda
+    "$TOOL_BINARY" --version
+    set -e
+}
+
+# Print the tool's help
+tool_help() {
+    load_tool_conda
+    "$TOOL_BINARY" --help
+}
+
+# Print SLURM job resource usage info
+resource_usage() {
+    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
+}
+
+# Print SLURM job requested resources
+slurm_resources() {
+    set +u
+    log_time "SLURM job information:"
+    echo "Account (project):                        $SLURM_JOB_ACCOUNT"
+    echo "Job ID:                                   $SLURM_JOB_ID"
+    echo "Job name:                                 $SLURM_JOB_NAME"
+    echo "Memory (MB per node):                     $SLURM_MEM_PER_NODE"
+    echo "CPUs (per task):                          $SLURM_CPUS_PER_TASK"
+    echo "Time limit:                               $SLURM_TIMELIMIT"
+    echo -e "=================================================================\n"
+    set -u
+}
+
+# Set the number of threads/CPUs
+set_threads() {
+    set +u
+    if [[ "$is_slurm" == true ]]; then
+        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
+            readonly threads="$SLURM_CPUS_PER_TASK"
+        elif [[ -n "$SLURM_NTASKS" ]]; then
+            readonly threads="$SLURM_NTASKS"
+        else 
+            log_time "WARNING: Can't detect nr of threads, setting to 1"
+            readonly threads=1
+        fi
+    else
+        readonly threads=1
+    fi
+    set -u
+}
+
+# Resource usage information for any process
+runstats() {
+    /usr/bin/time -f \
+        "\n# Ran the command: \n%C
+        \n# Run stats by /usr/bin/time:
+        Time: %E   CPU: %P    Max mem: %M K    Exit status: %x \n" \
+        "$@"
+}
+
+
+# ==============================================================================
+#                          PARSE COMMAND-LINE ARGS
+# ==============================================================================
+# Initiate variables
 db_dir=""
-genome_dir=""
-genome_url=""
-genome_url_file=""
-genome_dir_all=false
 genome_fa=""
-include_taxa="abvdhc"
+genome_dir=""
+more_args=""
 
-include_archaea=false
-include_viral=false
-include_bacteria=false
-include_plasmid=false
-include_human=false
-include_univec=false
-include_fungi=false
-include_plants=false
-include_protozoa=false
-
-## Get command-line options
-while getopts ':d:u:U:g:G:i:h' flag; do
-    case "${flag}" in
-    d) db_dir="$OPTARG" ;;
-    g) genome_fa="$OPTARG" ;;
-    G) genome_dir="$OPTARG" ;;
-    u) genome_url="$OPTARG" ;;
-    U) genome_url_file="$OPTARG" ;;
-    i) include_taxa="$OPTARG" ;;
-    h) Help && exit 0 ;;
-    \?) echo "## ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
-    :) echo "## ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
+# Parse command-line args
+all_args="$*"
+while [ "$1" != "" ]; do
+    case "$1" in
+        -o | --db_dir )     shift && readonly db_dir=$1 ;;
+        --genome_fa )       shift && readonly genome_fa=$1 ;;
+        --genome_dir )      shift && readonly genome_dir=$1 ;;
+        --ref_libs )        shift && readonly ref_libs=$1 ;;
+        --more_args )       shift && readonly more_args=$1 ;;
+        -v )                script_version; exit 0 ;;
+        -h )                script_help; exit 0 ;;
+        --version )         tool_version; exit 0 ;;
+        --help )            tool_help; exit 0;;
+        * )                 die "Invalid option $1" "$all_args" ;;
     esac
+    shift
 done
 
-## Check input
-[[ "$db_dir" = "" ]] && echo -e "\n## ERROR: must specify a db dir with -d" && exit 1
-[[ "$genome_url" != "" ]] && [[ "$genome_url_file" != "" ]] && \
-    echo -e "\n## ERROR: Use either -u (genome URL) or -U (URL file), not both" && exit 1
+# Check input
+[[ -z "$db_dir" ]] && die "No input file specified, do so with -i/--infile" "$all_args"
 
+# ==============================================================================
+#                          INFRASTRUCTURE SETUP
+# ==============================================================================
+# Check if this is a SLURM job
+if [[ -z "$SLURM_JOB_ID" ]]; then is_slurm=false; else is_slurm=true; fi
 
-# SET-UP -----------------------------------------------------------------------
-## Report
-echo -e "\n## Starting script kraken-build-custom-db.sh..."
-date
-
-## Software
-module load python/3.6-conda5.2
-source activate /users/PAS0471/jelmer/miniconda3/envs/kraken2-env
-
-## Bash strict mode
+# Strict bash settings
 set -euo pipefail
 
-## If no URLs/FASTA files were specified, but a genome dir was specified, then use all genomes in the genome dir 
-[[ "$genome_url" = "" ]] && [[ "$genome_url_file" = "" ]] && [[ "$genome_fa" = "" ]] && [[ "$genome_dir" != "" ]] && \
-    genome_dir_all=true && \
-    echo -e "\n## NOTE: Using all genomes in genome dir $genome_dir"
+# Load software and set nr of threads
+load_tool_conda
+set_threads
 
-## Derived parameters
-lib_dir="$db_dir"/library
+# ==============================================================================
+#              DEFINE OUTPUTS AND DERIVED INPUTS, BUILD ARGS
+# ==============================================================================
+# Define outputs based on script parameters
+readonly version_file="$db_dir"/logs/version.txt
+readonly log_dir="$db_dir"/logs
 
-## Figure out which taxa to use
-if [[ "$include_taxa" = "all" ]]; then
-    include_archaea=true
-    include_viral=true
-    include_bacteria=true
-    include_plasmid=true
-    include_human=true
-    include_univec=true
-    include_fungi=true
-    include_plants=true
-    include_protozoa=true
-else
-    [[ "$include_taxa" = *a* ]] && include_archaea=true
-    [[ "$include_taxa" = *b* ]] && include_viral=true
-    [[ "$include_taxa" = *v* ]] && include_bacteria=true
-    [[ "$include_taxa" = *d* ]] && include_plasmid=true
-    [[ "$include_taxa" = *h* ]] && include_human=true
-    [[ "$include_taxa" = *c* ]] && include_univec=true
-    [[ "$include_taxa" = *f* ]] && include_fungi=true
-    [[ "$include_taxa" = *p* ]] && include_plants=true
-    [[ "$include_taxa" = *z* ]] && include_protozoa=true
-fi
+# ==============================================================================
+#                               REPORT
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
+echo "=========================================================================="
+echo "All arguments to this script:             $all_args"
+echo "Output database dir:                      $db_dir"
+[[ -n $genome_fa ]] && echo "Genome to be added to DB:                 $genome_fa"
+[[ -n $genome_dir ]] && echo "Dir with genomes to be added to DB:       $genome_dir"
+[[ -n $more_args ]] && echo "Libraries to download:                    $more_args"
+[[ -n $more_args ]] && echo "Other arguments for $TOOL_NAME:           $more_args"
+echo "Number of threads/cores:                  $threads"
+[[ -n $genome_fa || -n "$genome_dir" ]] && echo -e "\nListing the input genome(s):"
+[[ -n $genome_fa ]] && ls -lh "$genome_fa"
+[[ -n $genome_dir ]] && ls -lh "$genome_dir"
+[[ "$is_slurm" = true ]] && slurm_resources
 
-## Report
-echo
-echo "## Database dir:                 $db_dir"
-[[ "$genome_dir" != "" ]] && echo "## Genome dir:                   $genome_dir"
-[[ "$genome_fa" != "" ]] && echo "## Custom genome FASTA:          $genome_fa"
-[[ "$genome_url" != "" ]] && echo "## Custom genome URL:            $genome_url"
-[[ "$genome_url_file" != "" ]] && echo "## Custom genome URL file:       $genome_url_file"
-echo
-echo "## Including taxa:"
-[[ "$include_archaea" = true ]] && echo "archaea"
-[[ "$include_viral" = true ]] && echo "viral"
-[[ "$include_bacteria" = true ]] && echo "bacteria"
-[[ "$include_plasmid" = true ]] && echo "plasmid"
-[[ "$include_human" = true ]] && echo "human"
-[[ "$include_univec" = true ]] && echo "univec"
-[[ "$include_fungi" = true ]] && echo "fungi"
-[[ "$include_plants" = true ]] && echo "plants"
-[[ "$include_protozoa" = true ]] && echo "protozoa"
-echo -e "---------------\n"
+# ==============================================================================
+#                               RUN
+# ==============================================================================
+# Create the output directories
+log_time "Creating the output directories..."
+mkdir -pv "$log_dir" "$db_dir"
 
-## Make DB directory
-mkdir -p "$db_dir"
-
-
-# DOWNLOAD CUSTOM GENOME(S) ----------------------------------------------------
-if [ "$genome_url" != "" ]; then
-    genome_fa="$genome_dir"/"$(basename "$genome_url")"
-    genome_fa=${genome_fa%.*}  # Remove .gz
-
-    if [ ! -f "$genome_fa" ]; then
-        echo "## Custom genome not present, will download..."
-        wget -q -P "$genome_dir" "$genome_url"
-        echo "## Unzipping custom genome..."
-        gunzip "$genome_fa".gz
-    else
-        echo "## Custom genome already present."
-    fi
-
-    echo "## Listing custom genome:"
-    ls -lh "$genome_fa"
-fi
-
-if [ "$genome_url_file" != "" ]; then
-    while read -r genome_url; do
-        genome_fa_one="$genome_dir"/"$(basename "$genome_url")"
-        genome_fa_one=${genome_fa_one%.*}  # Remove .gz
-
-        echo "## Custom genome: $genome_fa_one"
-
-        if [ ! -f "$genome_fa_one" ]; then
-            echo "## Custom genome not present, will download..."
-            wget -q -P "$genome_dir" "$genome_url"
-            echo "## Unzipping custom genome..."
-            gunzip "$genome_fa_one".gz
-        else
-            echo "## Custom genome already present."
-        fi
-
-        echo "## Listing custom genome:"
-        ls -lh "$genome_fa_one"
-        echo
-    done<"$genome_url_file"
-fi
-
-
-# DOWNLOAD NCBI TAXONOMY -------------------------------------------------------
+# Download taxonomy
 if [ ! -d "$db_dir"/taxonomy ]; then
-    echo -e "\n## Downloading taxonomy..."
-    kraken2-build --download-taxonomy --db "$db_dir"
+    log_time "Downloading taxonomy..."
+    runstats $TOOL_BINARY --download-taxonomy --db "$db_dir"
 fi
 
-
-# DOWNLOAD TAXON-SPECIFIC LIBRARIES --------------------------------------------
-if [ ! -d "$lib_dir"/archaea ] && [ "$include_archaea" = true ]; then
-    echo -e "\n## Downloading library: archaea..."
-    kraken2-build --download-library archaea --db "$db_dir"
+# Download libraries
+if [[ "$ref_libs" != "false" ]]; then
+    libs=() #TODO
+    for lib in "${libs[@]}"; do
+        log_time "Downloading library: $lib..."
+        $TOOL_BINARY --download-library "$lib" --db "$db_dir"
+    done
 fi
 
-if [ ! -d "$lib_dir"/bacteria ] && [ "$include_bacteria" = true ]; then
-    echo -e "\n## Downloading library: bacteria..."
-    kraken2-build --download-library bacteria --db "$db_dir"
-fi
-
-if [ ! -d "$lib_dir"/plasmid ] && [ "$include_plasmid" = true ]; then
-    echo -e "\n## Downloading library: plasmid..."
-    kraken2-build --download-library plasmid --db "$db_dir"
-fi
-
-if [ ! -d "$lib_dir"/viral ] && [ "$include_viral" = true ]; then
-    echo -e "\n## Downloading library: viral..."
-    kraken2-build --download-library viral --db "$db_dir"
-fi
-
-if [ ! -d "$lib_dir"/human ] && [ "$include_human" = true ]; then
-    echo -e "\n## Downloading library: human..."
-    kraken2-build --download-library human --db "$db_dir"
-fi
-
-if [ ! -d "$lib_dir"/fungi ] && [ "$include_fungi" = true ]; then
-    echo -e "\n## Downloading library: fungi..."
-    kraken2-build --download-library fungi --db "$db_dir"
-fi
-
-if [ ! -d "$lib_dir"/plant ] && [ "$include_plants" = true ]; then
-    echo -e "\n## Downloading library: plant..."
-    kraken2-build --download-library plant --db "$db_dir"
-fi
-
-if [ ! -d "$lib_dir"/protozoa ] && [ "$include_protozoa" = true ]; then
-    echo -e "\n## Downloading library: protozoa..."
-    kraken2-build --download-library protozoa --db "$db_dir"
-fi
-
-if [ ! -d "$lib_dir"/UniVec_Core ] && [ "$include_univec" = true ]; then
-    echo -e "\n## Downloading library: UniVec_Core..."
-    kraken2-build --download-library UniVec_Core --db "$db_dir"
-fi
-
-
-# ADD CUSTOM GENOMES -----------------------------------------------------------
-if [ "$genome_fa" != "" ]; then
-    
-    ## If there is a single genome to be added
-    echo -e "\n## Adding custom genome $genome_fa to Kraken library..."
-    kraken2-build --add-to-library "$genome_fa" --db "$db_dir"
-
-elif [ "$genome_dir_all" = true ]; then
-    
-    ## If all genomes in a dir should be added
+# Add custom genoms
+if [[ -n "$genome_fa" ]]; then
+    # If there is a single genome to be added
+    log_time "Adding custom genome $genome_fa to Kraken library..."
+    $TOOL_BINARY --add-to-library "$genome_fa" --db "$db_dir"
+elif [[ -n "$genome_dir" ]]; then
+    # If all genomes in a dir should be added
     shopt -s nullglob
     for genome_fa in "$genome_dir"/*.{fa,fasta,fna}; do
-        echo -e "\n## Adding custom genome $genome_fa to Kraken library..."
-        kraken2-build --add-to-library "$genome_fa" --db "$db_dir"
+        log_time "Adding custom genome $genome_fa to Kraken library..."
+        $TOOL_BINARY --add-to-library "$genome_fa" --db "$db_dir"
     done
     shopt -u nullglob
-
-elif [ "$genome_url_file" != "" ]; then
-    
-    ## If a file with URLs was provided
-    while read -r genome_url; do
-        genome_fa="$genome_dir"/"$(basename "$genome_url")"
-        genome_fa=${genome_fa%.*}  # Remove .gz
-
-        echo -e "\n## Adding custom genome $genome_fa to Kraken library..."
-        kraken2-build --add-to-library "$genome_fa" --db "$db_dir"
-    done<"$genome_url_file"
-
 else
-    echo -e "\n## Not adding any custom genomes..."
+    log_time "Not adding any custom genomes"
 fi
 
-
-# BUILD THE KRAKEN2 DATABASE ---------------------------------------------------
-echo -e "\n## Building the final database..."
-kraken2-build \
+# Run the tool
+log_time "Building the database with $TOOL_NAME..."
+runstats $TOOL_BINARY \
     --build \
     --db "$db_dir" \
-    --threads "$SLURM_CPUS_ON_NODE"
+    -t "$threads" \
+    $more_args
 
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
+printf "\n======================================================================"
+log_time "Versions used:"
+tool_version | tee "$version_file"
+script_version | tee -a "$version_file" 
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$db_dir")"/*
+[[ "$is_slurm" = true ]] && echo && resource_usage
+log_time "Done with script $SCRIPT_NAME"
+echo
 
-# WRAP UP ----------------------------------------------------------------------
-echo -e "\n## Listing file in DB dir:"
-ls -lh "$db_dir"
-echo -e "\n## Done with script kraken-build-custom-db.sh"
-date
-echo
-sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
-echo
