@@ -1,8 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=24:00:00
-#SBATCH --ntasks=1
+#SBATCH --time=32:00:00
 #SBATCH --cpus-per-task=15
 #SBATCH --mem=100G
 #SBATCH --nodes=1
@@ -53,8 +52,9 @@ script_help() {
     echo "  --species           <str>   Species name (without space, e.g. 'homo_sapiens')"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --rnaseq_bamdir     <dir>   Directory/ies with RNAseq FASTQ or BAM files"
-    echo "  --prot_seq          <file>  FASTA with reference proteins. For info on how to create this file:"
+    echo "  --rnaseq_fqdir      <dir>   Directory with RNAseq FASTQ files"
+    echo "                              NOTE: FASTQs should be unzipped, and end in '_1.fastq' / '_2.fastq' for R1/R2 reads"
+    echo "  --prot_seq          <file>  FASTA file with reference proteins. For info on how to create this file:"
     echo "                              https://github.com/gatech-genemark/ProtHint#protein-database-preparation"
     echo " --rebuild_container          Rebuild the container from docker://teambraker/braker3:latest, e.g. to update to latest version"
     echo " --container_path     <file>  Use the specified container SIF file    [default: use /fs/ess/PAS0471/containers/braker3.sif]"
@@ -172,7 +172,7 @@ assembly=""
 species=""
 outdir=""
 prot_seq="" && prot_seq_arg=""
-rnaseq_bamdir="" && rna_seq_arg=""
+fqdir="" && rna_seq_arg=""
 more_args=""
 
 # Parse command-line args
@@ -183,7 +183,7 @@ while [ "$1" != "" ]; do
         -o | --outdir )         shift && outdir=$1 ;;
         --species )             shift && species=$1 ;;
         --prot_seq )            shift && prot_seq=$1 ;;
-        --rnaseq_bamdir )       shift && rnaseq_bamdir=$1 ;;
+        --rnaseq_fqdir )        shift && fqdir=$1 ;;
         --rebuild_container )   readonly rebuild_container=true ;;
         --container_path )      readonly container_path=$1 ;;
         --more_args )           shift && readonly more_args=$1 ;;
@@ -218,7 +218,7 @@ set_threads
 # Make input paths absolute
 [[ ! $assembly =~ ^/ ]] && assembly=$(realpath "$assembly")
 [[ -n "$prot_seq" ]] && [[ ! $prot_seq =~ ^/ ]] && prot_seq=$(realpath "$prot_seq")
-[[ -n "$rnaseq_bamdir" ]] && [[ ! $rnaseq_bamdir =~ ^/ ]] && rnaseq_bamdir=$(realpath "$rnaseq_bamdir")
+[[ -n "$fqdir" && ! $fqdir =~ ^/ ]] && fqdir=$(realpath "$fqdir")
 
 # ==============================================================================
 #              DEFINE OUTPUTS AND DERIVED INPUTS, BUILD ARGS
@@ -227,9 +227,9 @@ set_threads
 [[ -n "$prot_seq" ]] && prot_seq_arg="--prot_seq=$prot_seq"
 
 # RNAseq BAM files
-if [[ -n "$rnaseq_bamdir" ]]; then
-    bam_list=$(find "$rnaseq_bamdir" -name "*bam" | tr "\n" "," | sed 's/,$/\n/')
-    rna_seq_arg="--bam=$bam_list"
+if [[ -n "$fqdir" ]]; then
+    fq_ids=$(ls "$fqdir" | sed 's/_[12].fastq//' | sort | uniq | tr "\n" "," | sed 's/,$/\n/')
+    rna_seq_arg="--rnaseq_sets_dirs=$fqdir --rnaseq_sets_ids=$fq_ids"
 fi
 
 # Augustus config dir
@@ -251,14 +251,14 @@ echo "Output dir:                               $outdir"
 echo "Input file:                               $assembly"
 echo "Species:                                  $species"
 [[ -n "$prot_seq" ]] && echo "Reference protein FASTA:                  $prot_seq"
-[[ -n "$rnaseq_bamdir" ]] && echo "RNAseq data dir:                          $rnaseq_bamdir"
+[[ -n "$fqdir" ]] && echo "RNAseq FASTQ dir:                         $fqdir"
 [[ $more_args != "" ]] && echo "Other arguments for $TOOL_NAME:           $more_args"
 echo "Number of threads/cores:                  $threads"
 echo
 echo "Listing the input file(s):"
 ls -lh "$assembly"
 [[ -n "$prot_seq" ]] && ls -lh "$prot_seq"
-[[ -n "$rnaseq_bamdir" ]] && ls -lh "$rnaseq_bamdir"
+[[ -n "$fqdir" ]] && ls -lh "$fqdir"
 [[ "$is_slurm" = true ]] && slurm_resources
 
 # ==============================================================================
