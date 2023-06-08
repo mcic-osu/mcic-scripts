@@ -46,7 +46,6 @@ Print_help() {
     echo
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --debug                     Run the script in debug mode (print all code)"
     echo "  -h                          Print this help message and exit"
     echo "  --help                      Print the help for START and exit"
     echo "  -v/--version                Print the version of STAR and exit"
@@ -151,8 +150,6 @@ Die() {
     exit 1
 }
 
-
-
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
@@ -166,10 +163,7 @@ samtools_sort=false
 index_bam=false
 output_unmapped=false && unmapped_arg=""
 paired_end=true
-
-debug=false
 slurm=true
-
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
@@ -206,19 +200,14 @@ while [ "$1" != "" ]; do
         -v | --version )        Print_version; exit 0 ;;
         -h )                    Print_help; exit 0 ;;
         --help )                Print_help_program; exit 0;;
-        --debug )               debug=true ;;
         * )                     Die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
 
-
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-# In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
-
 # Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
@@ -346,7 +335,6 @@ echo "==========================================================================
 # Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
 
-
 # ==============================================================================
 #                               RUN
 # ==============================================================================
@@ -446,8 +434,7 @@ if [ "$count" = true ]; then
     ls -lh "$outdir"/"$sampleID"*ReadsPerGene.out.tab
 fi
 
-echo
-echo "# STAR version used:"
+echo -e "\n# STAR version used:"
 Print_version | tee "$outdir"/logs/version.txt
 echo
 [[ "$slurm" = true ]] && Resource_usage
