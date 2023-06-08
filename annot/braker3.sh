@@ -54,6 +54,7 @@ script_help() {
     echo "OTHER KEY OPTIONS:"
     echo "  --rnaseq_fqdir      <dir>   Directory with RNAseq FASTQ files"
     echo "                              NOTE: FASTQs should be unzipped, and end in '_1.fastq' / '_2.fastq' for R1/R2 reads"
+    echo "  --sra_ids           <str>   Comma-separated list of SRA IDs, e.g. 'SRR5506722,SRR6942483,SRR21195554'"
     echo "  --prot_seq          <file>  FASTA file with reference proteins. For info on how to create this file:"
     echo "                              https://github.com/gatech-genemark/ProtHint#protein-database-preparation"
     echo " --rebuild_container          Rebuild the container from docker://teambraker/braker3:latest, e.g. to update to latest version"
@@ -68,7 +69,9 @@ script_help() {
     echo
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 -i results/genome.fa -o results/braker --prot_seq data/ref/proteins.faa --species homo_sapiens"
-    echo "  sbatch $0 -i results/genome.fa -o results/braker --prot_seq data/ref/proteins.faa --species homo_sapiens --more_args '--fungus'"
+    echo "  sbatch $0 -i results/genome.fa -o results/braker --prot_seq data/ref/proteins.faa --species candida_albicans --more_args '--fungus'"
+    echo "  sbatch $0 -i results/genome.fa -o results/braker --rnaseq_fqdir data/rnaseq --species candi --more_args '--fungus'"
+    echo "  sbatch $0 -i results/genome.fa -o results/braker --sra_ids SRR5506722,SRR6942483,SRR21195554 --species homo_sapiens"
     echo
     echo "HARDCODED PARAMETERS:"
     echo "  - '--verbosity=3'           Set Braker verbosity level to 3"
@@ -173,6 +176,7 @@ species=""
 outdir=""
 prot_seq="" && prot_seq_arg=""
 fqdir="" && rna_seq_arg=""
+sra_ids=""
 more_args=""
 
 # Parse command-line args
@@ -184,6 +188,7 @@ while [ "$1" != "" ]; do
         --species )             shift && species=$1 ;;
         --prot_seq )            shift && prot_seq=$1 ;;
         --rnaseq_fqdir )        shift && fqdir=$1 ;;
+        --sra_ids )             shift && sra_ids=$1 ;;
         --rebuild_container )   readonly rebuild_container=true ;;
         --container_path )      readonly container_path=$1 ;;
         --more_args )           shift && readonly more_args=$1 ;;
@@ -226,10 +231,12 @@ set_threads
 # Protein sequence file
 [[ -n "$prot_seq" ]] && prot_seq_arg="--prot_seq=$prot_seq"
 
-# RNAseq BAM files
+# RNAseq data argument
 if [[ -n "$fqdir" ]]; then
     fq_ids=$(ls "$fqdir" | sed 's/_[12].fastq//' | sort | uniq | tr "\n" "," | sed 's/,$/\n/')
     rna_seq_arg="--rnaseq_sets_dirs=$fqdir --rnaseq_sets_ids=$fq_ids"
+elif [[ -n "$sra_ids" ]]; then
+    rna_seq_arg="--rnaseq_sets_ids=$sra_ids"
 fi
 
 # Augustus config dir
@@ -252,6 +259,7 @@ echo "Input file:                               $assembly"
 echo "Species:                                  $species"
 [[ -n "$prot_seq" ]] && echo "Reference protein FASTA:                  $prot_seq"
 [[ -n "$fqdir" ]] && echo "RNAseq FASTQ dir:                         $fqdir"
+[[ -n "$sra_ids" ]] && echo "RNAseq SRA IDs:                           $sra_ids"
 [[ $more_args != "" ]] && echo "Other arguments for $TOOL_NAME:           $more_args"
 echo "Number of threads/cores:                  $threads"
 echo
