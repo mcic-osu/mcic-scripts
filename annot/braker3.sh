@@ -276,10 +276,6 @@ ls -lh "$assembly"
 log_time "Creating the output directories..."
 mkdir -pv "$log_dir"
 
-# Move into the output dir
-#log_time "Moving into the output dir $outdir..."
-#cd "$outdir" || exit 1
-
 # Rebuild the container SIF if needed
 if [[ "$rebuild_container" == "true" ]]; then
     log_time "Rebuilding container SIF file from the internet..."
@@ -306,10 +302,23 @@ runstats \
     --threads="$threads" \
     $more_args
 
-# Other useful options:
+# Report
+if [[ -f "$outdir"/braker.gtf ]]; then
+    ngenes=$(awk '$3 == "gene"' "$outdir"/braker.gtf | wc -l)
+    log_time "Number of genes in the output:        $ngenes"
+else
+    log_time "NOTE: Can't find output file $outdir/braker.gtf to count the nr of genes"
+fi
+if [[ -f "$outdir"/braker.aa ]]; then
+    ntrans=$(grep -c "^>" "$outdir"/braker.aa)
+    log_time "Number of transcripts in the output:  $ntrans"
+else
+    log_time "NOTE: Can't find output file $outdir/braker.aa to count the nr of transcripts"
+fi
+
+#? Other useful Braker options:
 #  --gff3               Output a GFF3 instead of a GTF file
-#  --fungus             GeneMark-EX option: run algorithm with branch point model
-#                       (most useful for fungal genomes)
+#  --fungus             GeneMark-EX option: run algorithm with branch point model (most useful for fungal genomes)
 #  --useexisting        Use the present config and parameter files if they exist for 'species'; 
 #                       will overwrite original parameters if BRAKER performs an AUGUSTUS training.
 

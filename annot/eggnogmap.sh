@@ -1,5 +1,4 @@
 #!/bin/bash
-
 #SBATCH --account=PAS0471
 #SBATCH --time=6:00:00
 #SBATCH --cpus-per-task=10
@@ -9,6 +8,16 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=eggnogmap
 #SBATCH --output=slurm-eggnogmap-%j.out
+
+# ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
+# Option defaults
+search_method=diamond           # Also the EggNOGmapper default
+go_evidence="non-electronic"    # Also the EggNOGmapper default
+sensmode="more-sensitive"       # EggNOGmapper default is 'sensitive'
+tax_scope="auto"                # Also the EggNOGmapper default
+slurm=true
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -39,8 +48,6 @@ Print_help() {
     echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to EggNOGmapper"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                 Run the script in debug mode (print all code)"
     echo "  -h                      Print this help message and exit"
     echo "  --help                  Print the help for EggNOGmapper and exit"
     echo "  -v/--version            Print the version of EggNOGmapper and exit"
@@ -63,9 +70,7 @@ Load_software() {
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /users/PAS0471/jelmer/miniconda3/envs/eggnogg-env
-
     export EGGNOG_DATA_DIR="$db_dir"
-    
     set -u
 }
 
@@ -152,21 +157,6 @@ Die() {
     exit 1
 }
 
-
-# ==============================================================================
-#                          CONSTANTS AND DEFAULTS
-# ==============================================================================
-# Option defaults
-search_method=diamond           # Also the EggNOGmapper default
-go_evidence="non-electronic"    # Also the EggNOGmapper default
-sensmode="more-sensitive"       # EggNOGmapper default is 'sensitive'
-tax_scope="auto"                # Also the EggNOGmapper default
-
-debug=false
-dryrun=false && e=""
-slurm=true
-
-
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
@@ -192,20 +182,14 @@ while [ "$1" != "" ]; do
         -v | --version )    Print_version; exit 0 ;;
         -h )                Print_help; exit 0 ;;
         --help )            Print_help_program; exit 0;;
-        --dryrun )          dryrun=true && e="echo ";;
-        --debug )           debug=true ;;
         * )                 Die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
 
-
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-# In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
-
 # Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
@@ -213,7 +197,7 @@ done
 set -euo pipefail
 
 # Load software and set nr of threads
-[[ "$dryrun" = false ]] && Load_software
+Load_software
 Set_threads
 
 # Check input
@@ -238,6 +222,8 @@ else
     tempdir_arg="--temp_dir $temp_dir"
 fi
 
+# Get nr of genes in the input
+ngenes_in=$(grep -c "^>" "$proteins")
 
 # Report
 echo
@@ -257,25 +243,24 @@ echo "Scratch and temp dir argument:    $tempdir_arg"
 [[ $more_args != "" ]] && echo "Other arguments for EggNOGmapper: $more_args"
 echo "Number of threads/cores:          $threads"
 echo
+echo "Nr of genes/entries in the input: $ngenes_in" 
 echo "Listing the input file(s):"
 ls -lh "$proteins"
-[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
 # Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
-
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
 # Create the output directory
 echo -e "\n# Creating the output directories..."
-${e}mkdir -pv "$outdir"/logs "$temp_dir"
+mkdir -pv "$outdir"/logs "$temp_dir"
 
 # Run
 echo -e "\n# Running eggNOGmapper..."
-${e}Time \
+Time \
     emapper.py \
         -i "$proteins" \
         --itype proteins \
@@ -291,31 +276,36 @@ ${e}Time \
         $tempdir_arg \
         $more_args
 
-#? Non-default options
+# Report
+ngenes_out=$(grep -cv "^#" "$outdir"/*emapper.annotations)
+ngenes_descrip=$(grep -v "^#" "$outdir"/*emapper.annotations | cut -f 8 | grep -cv "^-")
+echo
+echo "Nr of genes/entries in the input:         $ngenes_in"
+echo "Nr of genes/entries in the output:        $ngenes_out"
+echo "Nr of genes/entries with a description:   $ngenes_descrip"
+
+#? Non-default options for Eggnogmapper
 # --go_evidence all => default is to use only non-electronic terms (`non-electronic`), see https://github.com/eggnogdb/eggnog-mapper/wiki/eggNOG-mapper-v2.1.5-to-v2.1.8
 # --go_evidence {experimental,non-electronic,all}
 #                        Defines what type of GO terms should be used for annotation. experimental = Use only terms inferred from experimental evidence. non-electronic = Use only non-electronically curated terms
 # --override => Overwrite existing output files
 
-#? Other options
+#? Other options for Eggnogmapper
 # --pfam_realign denovo Needs some HMMer server setup
 #--list_taxa            List taxa available for --tax_scope/--tax_scope_mode, and exit
 #--tax_scope            ....
 #--resume               Resumes a previous emapper run, skipping results in existing output files.
-
 
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
 echo
 echo "========================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
-    [[ "$slurm" = true ]] && Resource_usage
-fi
+echo "# Version used:"
+Print_version | tee "$outdir"/logs/version.txt
+echo -e "\n# Listing files in the output dir:"
+ls -lhd "$PWD"/"$outdir"/*
+[[ "$slurm" = true ]] && Resource_usage
 echo "# Done with script"
 date
 echo
