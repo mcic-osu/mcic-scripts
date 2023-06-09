@@ -179,7 +179,6 @@ echo "Output text file with longest transcript IDS: $longtrans_file"
 echo
 log_time "Listing the input file(s):"
 ls -lh "$infile"
-[[ "$is_slurm" = true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
