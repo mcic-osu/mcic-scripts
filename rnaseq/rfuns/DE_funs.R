@@ -366,6 +366,119 @@ pvolc <- function(DE_df,
   return(p)
 }
 
+# Heatmap with ComplexHeatmap
+cheatmap <- function(
+    genes,
+    count_mat,
+    meta_df,
+    groups = NULL,
+    show_rownames = TRUE,
+    show_colnames = FALSE,
+    cluster_rows = TRUE,
+    scale = FALSE,
+    logtrans = FALSE,
+    heat_color_scheme = "blue_black_yellow",
+    heat_colors = NULL,
+    ...
+    ) {
+  
+  suppressPackageStartupMessages(library(ComplexHeatmap))
+  
+  # Set up 'groups' (factors) by which to group samples
+  if (!is.null(groups)) {
+    # Arrange metadata according to the columns with included factors
+    meta_df <- meta_df |>
+      dplyr::select(all_of(groups)) |>
+      arrange(across(all_of(groups)))
+    
+    # Set colors
+    col_list <- list()
+    palettes <- c("Dark2", "Set1", "Set2", "Set3")
+    for (i in seq_along(groups)) {
+      group <- groups[i]
+      palette <- palettes[i]
+      
+      if (is.factor(meta[[group]])) levs <- levels(meta[[group]])
+      if (!is.factor(meta[[group]])) levs <- unique(meta[[group]])
+      
+      cols <- suppressWarnings(
+        RColorBrewer::brewer.pal(n = length(levs), name = palette)[1:length(levs)]
+      )
+      col_list[[group]] <- cols
+      names(col_list[[group]]) <- levs
+    }
+    
+    # Set final annotation
+    annot <- HeatmapAnnotation(
+      df = meta_df,
+      col = col_list
+    )
+    
+  } else {
+    # Don't include metadata if no groups are provided
+    meta_df <- NA
+  }
+  
+  # Select and arrange count matrix
+  fmat <- count_mat[match(genes, rownames(count_mat)),
+                    match(rownames(meta_df), colnames(count_mat))]
+  fmat <- as.matrix(fmat)
+  
+  # Scale matrix
+  if (scale == TRUE) {
+    fmat <- t(scale(t(fmat)))
+  } else if (logtrans == TRUE) {
+    fmat <- log10(fmat)
+    fmat[fmat == -Inf] <- 0
+  }
+  
+  # Define expression-level colors
+  if (is.null(heat_colors)) {
+    if (heat_color_scheme == "blue_yellow_red") {
+      heat_colors <- colorRampPalette(rev(RColorBrewer::brewer.pal(n = 7, name = "RdYlBu")))(100)
+    } else if (heat_color_scheme == "blue_black_yellow") {
+      heat_colors <- colorRampPalette(c('dodgerblue', 'black', 'yellow'))(100)
+    } else {
+      stop("'heat_color_scheme' should be 'blue_yellow_red' or 'blue_black_yellow', or 'heat_colors' should be defined")
+    }
+  }
+  
+  if (scale == TRUE) {
+    # Set min. and max. expression counts for colors (avoid effects of outliers)
+    min_count <- -3
+    max_count <- 3
+  } else {
+    min_count <- quantile(fmat, probs = 0.01)
+    max_count <- quantile(fmat, probs = 0.99)
+  }
+  my_breaks <- seq(min_count, max_count, length.out = 100)
+  color_fun <- circlize::colorRamp2(my_breaks, heat_colors)
+  
+  # Truncate long names
+  row.names(fmat) <- str_trunc(row.names(fmat), width = 20, ellipsis = "")
+  
+  # Legend name
+  if (scale == TRUE) {
+    heat_legend_name <- "Normalized\n& scaled\ngene count"
+  } else if (logtrans == TRUE) {
+    heat_legend_name <- "Normalized &\nlog-transformed\ngene count"
+  } else {
+    heat_legend_name <- "Normalized\ngene count"
+  }
+  
+  # Create the heatmap
+  hm <- Heatmap(
+    matrix = fmat,
+    top_annotation = annot,
+    col = color_fun,
+    name = heat_legend_name,
+    cluster_columns = FALSE,
+    show_column_names = FALSE,
+    row_names_gp = gpar(fontsize = 10)
+    )
+  
+  draw(hm, merge_legend = TRUE)
+}
 
 # Heatmap plot showing abundances for multiple/many genes
 pheat <- function(genes,
@@ -375,7 +488,8 @@ pheat <- function(genes,
                   show_rownames = TRUE,
                   show_colnames = FALSE,
                   cluster_rows = TRUE,
-                  logtrans = TRUE,
+                  logtrans = FALSE,
+                  scale = "none",
                   annotation_colors = NULL,
                   id_labsize = 10,
                   ...) {
@@ -402,12 +516,12 @@ pheat <- function(genes,
     fcount_mat <- log10(fcount_mat)
     fcount_mat[fcount_mat == -Inf] <- 0
   }
-
+  
   # If few features are included, reduce the cell (row) height
   cellheight <- ifelse(length(genes) > 20, NA, 20)
   id_labsize <- ifelse(length(genes) > 40, 6, id_labsize)
 
-  # Truncate long taxon names
+  # Truncate long names
   row.names(fcount_mat) <- str_trunc(row.names(fcount_mat),
                                      width = 20, ellipsis = "")
 
@@ -424,6 +538,7 @@ pheat <- function(genes,
     fontsize = 9,
     fontsize_row = id_labsize,
     cex = 1,
+    scale = scale,
     ...
     )
 
