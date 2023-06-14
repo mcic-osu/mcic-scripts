@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
 #SBATCH --cpus-per-task=1
@@ -41,9 +40,14 @@ script_help() {
     echo "DESCRIPTION:"
     echo "  #TODO"
     echo
-    echo "USAGE:"
-    echo "  sbatch $0 -i <input-file> -o <output-dir> [...]"
-    echo "  bash $0 -h"
+    echo "USAGE / EXAMPLE COMMANDS:"
+    echo "  - Basic usage:"
+    echo "      sbatch $0 -i TODO -o results/TODO" #TODO
+    echo "  - To run the script using a different OSC project than PAS0471:"
+    echo "      sbatch -A PAS0001 $0 [...]"
+    echo "  - To just print the help message for this script (-h) or for $TOOL_NAME (--help)"
+    echo "      bash $0 -h"
+    echo "      bash $0 --help"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--infile     <file>  Input file"
@@ -57,9 +61,6 @@ script_help() {
     echo "  --help                  Print the help for $TOOL_NAME and exit"
     echo "  -v                      Print the version of this script and exit"
     echo "  -v/--version            Print the version of $TOOL_NAME and exit"
-    echo
-    echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i TODO -o results/TODO" #TODO
     echo
     echo "OUTPUT:" #TODO
     echo "  - " 
@@ -108,14 +109,14 @@ script_version() {
 tool_version() {
     set +e
     load_tool_conda
-    "$TOOL_BINARY" --version #TODO check that this works
+    $TOOL_BINARY --version #TODO check that this works
     set -e
 }
 
 # Print the tool's help
 tool_help() {
     load_tool_conda
-    "$TOOL_BINARY" --help #TODO check that this works
+    $TOOL_BINARY --help #TODO check that this works
 }
 
 # Print SLURM job resource usage info
