@@ -1,80 +1,79 @@
 #!/bin/bash
-
 #SBATCH --account=PAS0471
 #SBATCH --time=4:00:00
-#SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --job-name=busco
 #SBATCH --output=slurm-busco-%j.out
 
+# ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
+assembly_type=genome
 
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-## Help function
+# Help function
 Print_help() {
     echo
     echo "======================================================================"
     echo "                            $0"
-    echo "         Run BUSCO to check a transcriptome or genome assembly"
+    echo "  Run BUSCO to check a transcriptome or genome assembly or a proteome"
     echo "======================================================================"
     echo
-    echo "USAGE:"
-    echo "  sbatch $0 -i <input-FASTA> -o <output-dir> -d <db-name> ..."
+    echo "USAGE / EXAMPLE COMMANDS:"
+    echo "  sbatch $0 -i results/assembly.fa -o results/busco -d bacteria"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile     <file>      Input assembly FASTA file"
+    echo "  -i/--infile     <file>      Input assembly/proteome FASTA file"
     echo "  -o/--outdir     <dir>       Output dir (will be created if needed)"
     echo "  -d/--db         <string>    Busco database name (see https://busco.ezlab.org/list_of_lineages.html)"
+    echo "                              If you don't specify the odb version, Busco will use the latest one"
+    echo "                              E.g. instead of '-d nematoda_odb10.2019-11-20' as per the website, use '-d nematoda'"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  -m/--mode       <string>    Mode, i.e. assembly type               [default: 'genome']"
+    echo "  -m/--mode       <string>    Run mode, i.e. assembly type            [default: 'genome']"
     echo "                              Valid options: 'genome', 'transcriptome', or 'proteins'"
     echo "  --more-args     <str>       Quoted string with additional argument(s) to pass to Busco"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                 Run the script in debug mode (print all code)"
-    echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for Busco and exit"
-    echo "  -v/--version            Print the version of Busco and exit"
-    echo
-    echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i results/assembly.fa -o results/busco -d bacteria_odb"
+    echo "  -h                          Print this help message and exit"
+    echo "  --help                      Print the help for Busco and exit"
+    echo "  -v/--version                Print the version of Busco and exit"
     echo
     echo "DOCUMENTATION:"
     echo "  - https://busco.ezlab.org/busco_userguide.html"
     echo
 }
 
-## Load software
+# Load software
 Load_software() {
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /fs/ess/PAS0471/jelmer/conda/busco
 }
 
-## Print version
+# Print version
 Print_version() {
     Load_software
     busco --version
 }
 
-## Print help for the focal program
+# Print help for the focal program
 Print_help_program() {
     Load_software
     busco --help
 }
 
-## Print SLURM job resource usage info
+# Print SLURM job resource usage info
 Resource_usage() {
     echo
     sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | grep -Ev "ba|ex"
     echo
 }
 
-## Print SLURM job requested resources
+# Print SLURM job requested resources
 Print_resources() {
     set +u
     echo "# SLURM job information:"
@@ -90,7 +89,7 @@ Print_resources() {
     set -u
 }
 
-## Set the number of threads/CPUs
+# Set the number of threads/CPUs
 Set_threads() {
     set +u
     if [[ "$slurm" = true ]]; then
@@ -108,14 +107,14 @@ Set_threads() {
     set -u
 }
 
-## Resource usage information
+# Resource usage information
 Time() {
     /usr/bin/time -f \
         '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
         "$@"
 }   
 
-## Exit upon error with a message
+# Exit upon error with a message
 Die() {
     error_message=${1}
     error_args=${2-none}
@@ -135,30 +134,17 @@ Die() {
     exit 1
 }
 
-
-# ==============================================================================
-#                          CONSTANTS AND DEFAULTS
-# ==============================================================================
-## Option defaults
-assembly_type=genome
-
-debug=false
-dryrun=false && e=""
-slurm=true
-
-
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-## Placeholder defaults
+# Placeholder defaults
 infile=""
 outdir=""
 busco_db=""
 more_args=""
 
-## Parse command-line args
+# Parse command-line args
 all_args="$*"
-
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
@@ -169,40 +155,34 @@ while [ "$1" != "" ]; do
         -v | --version )    Print_version; exit 0 ;;
         -h )                Print_help; exit 0 ;;
         --help )            Print_help_program; exit 0;;
-        --dryrun )          dryrun=true && e="echo ";;
-        --debug )           debug=true ;;
         * )                 Die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
 
-
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-## In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
+# Check if this is a SLURM job
+if [[ -z "$SLURM_JOB_ID" ]]; then slurm=false; else slurm=true; fi
 
-## Check if this is a SLURM job
-[[ -z "$SLURM_JOB_ID" ]] && slurm=false
-
-## Load software and set nr of threads
-[[ "$dryrun" = false ]] && Load_software
+# Load software and set nr of threads
+Load_software
 Set_threads
 
-## If needed, make input path absolute because we have to move into the outdir
+# If needed, make input path absolute because we have to move into the outdir
 [[ ! $infile =~ ^/ ]] && infile="$PWD"/"$infile"
 
-## Get a sample/assembly ID from the filename
+# Get a sample/assembly ID from the filename
 fileID=$(basename "$infile" | sed -E 's/.fn?as?t?a?//')
 
-## Check input
+# Check input
 [[ "$infile" = "" ]] && Die "Please specify an input FASTA file with -i"
 [[ "$outdir" = "" ]] && Die "Please specify an output dir file with -o"
 [[ "$busco_db" = "" ]] && Die "Please specify a Busco database name with -d"
 [[ ! -f "$infile" ]] && Die "Input file $infile does not exist"
 
-## Report
+# Report
 echo
 echo "=========================================================================="
 echo "               STARTING SCRIPT BUSCO.SH"
@@ -219,51 +199,39 @@ echo "Number of cores:                  $threads"
 echo "Assembly ID (inferred):           $fileID"
 echo "Listing the input file(s):"
 ls -lh "$infile"
-[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 
-## Print reserved resources
+# Print reserved resources
 [[ "$slurm" = true ]] && Print_resources
-
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-if [[ "$dryrun" = false ]]; then
-    ## Create output dir if needed
-    mkdir -p "$outdir"/logs
+# Create output dir if needed
+mkdir -pv "$outdir"/logs
 
-    ## Move into output dir
-    cd "$outdir" || exit 1
+# Move into output dir
+cd "$outdir" || exit 1
 
-    ## Run BUSCO
-    echo "## Now running BUSCO..."
-    [[ "$debug" = false ]] && set -o xtrace
-
-    ${e}Time busco \
-        -i "$infile" \
-        -o "$fileID" \
-        -l "$busco_db" \
-        -m "$assembly_type" \
-        -c "$threads" \
-        --force
+# Run BUSCO
+echo "## Now running BUSCO..."
+Time busco \
+    -i "$infile" \
+    -o "$fileID" \
+    -l "$busco_db" \
+    -m "$assembly_type" \
+    -c "$threads" \
+    --force
     
-    [[ "$debug" = false ]] && set +o xtrace
-
-fi
-
-
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
 echo
 echo "========================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo "# Version used:"
-    Print_version | tee logs/version.txt
-    echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/*
-    [[ "$slurm" = true ]] && Resource_usage
-fi
+echo "# Version used:"
+Print_version | tee logs/version.txt
+echo -e "\n# Listing files in the output dir:"
+ls -lhd "$PWD"/*
+[[ "$slurm" = true ]] && Resource_usage
 echo "# Done with script"
 date
