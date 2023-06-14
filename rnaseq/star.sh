@@ -10,6 +10,20 @@
 #SBATCH --output=slurm-star_align-%j.out
 
 # ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
+# Option defaults
+max_map=10                # If this nr is exceeded, read is considered unmapped
+intron_min=21             # STAR default, too
+intron_max=0              # => auto-determined; STAR default, too
+count=false
+sort_bam=true
+samtools_sort=false
+index_bam=false
+output_unmapped=false && unmapped_arg=
+paired_end=true
+
+# ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
 # Help function
@@ -33,6 +47,7 @@ Print_help() {
     echo "OTHER KEY OPTIONS:"
     echo "  --annot             <file>  Reference annotation (GFF/GFF3/GTF) file (GTF preferred)  [default: no annotation file, but this is not recommended]"
     echo "  --output_unmapped           Output unmapped reads back as FASTQ file    [default: don't output]"
+    echo "  --R2                <file>  R2 FASTQ file -- provide the name of this file in case of non-standard naming"
     echo "  --single_end                FASTQ files are single-end, not paired-end  [default: paired-end]"
     echo "  --no_sort                   Don't sort the output BAM file              [default: position-sort the BAM file]"
     echo "  --samtools_sort             Use samtools to sort the output BAM file    [default: Use STAR to sort the BAM file]"
@@ -151,38 +166,24 @@ Die() {
 }
 
 # ==============================================================================
-#                          CONSTANTS AND DEFAULTS
-# ==============================================================================
-# Option defaults
-max_map=10                # If this nr is exceeded, read is considered unmapped
-intron_min=21             # STAR default, too
-intron_max=0              # => auto-determined; STAR default, too
-count=false
-sort_bam=true
-samtools_sort=false
-index_bam=false
-output_unmapped=false && unmapped_arg=""
-paired_end=true
-slurm=true
-
-# ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Placeholder defaults
-R1_in=""
-R2_in=""
-fofn=""
+R1_in=
+R2_in=
+fofn=
 declare -a infiles
-outdir=""
-index_dir=""
-annot="" && annot_arg=""
-more_args=""
+outdir=
+index_dir=
+annot= && annot_arg=
+more_args=
 
 # Parse command-line args
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --R1 | --reads )   shift && R1_in=$1 ;;
+        --R2 )                  shift && R2_in=$1 ;;
         --fofn )                shift && fofn=$1 ;;
         -r | --index_dir )      shift && index_dir=$1 ;;
         -a | --annot )          shift && annot=$1 ;;
@@ -209,7 +210,7 @@ done
 #                          OTHER SETUP
 # ==============================================================================
 # Check if this is a SLURM job
-[[ -z "$SLURM_JOB_ID" ]] && slurm=false
+if [[ -z "$SLURM_JOB_ID" ]]; then slurm=false; else slurm=true; fi
 
 # Bash strict mode
 set -euo pipefail
@@ -219,15 +220,15 @@ Load_software
 Set_threads
 
 # Check inputs I
-[[ "$R1_in" = "" && "$fofn" = "" ]] && Die "Please specify input FASTQ file(s) with -i or --fofn"
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o"
-[[ "$index_dir" = "" ]] && Die "Please specify a dir with a STAR reference genome index with -r"
+[[ -z "$R1_in" && -z "$fofn" ]] && Die "Please specify input FASTQ file(s) with -i or --fofn"
+[[ -z "$outdir" ]] && Die "Please specify an output dir with -o"
+[[ -z "$index_dir" ]] && Die "Please specify a dir with a STAR reference genome index with -r"
 [[ ! -d "$index_dir" ]] && Die "Input ref genome dir (-r) $index_dir does not exist"
-[[ "$annot" != "" ]] && [[ ! -f "$annot" ]] && Die "Input annotation file (-a) $annot does not exist"
-[[ "$annot" = "" ]] && [[ "$count" = true ]] && Die "Need an annotation file (-a) for gene counting (-c)"
+[[ -n "$annot" && ! -f "$annot" ]] && Die "Input annotation file (-a) $annot does not exist"
+[[ -z "$annot" && "$count" == true ]] && Die "Need an annotation file (-a) for gene counting (-c)"
 
 # Input files via FOFN
-if  [[ "$fofn" != "" ]]; then
+if  [[ -n "$fofn" ]]; then
     mapfile -t infiles <"$fofn"
     R1_in=${infiles[0]}
     [[ ${#infiles[@]} -eq 2 ]] && R2_in=${infiles[1]}
@@ -235,22 +236,22 @@ if  [[ "$fofn" != "" ]]; then
 fi
 
 # Determine R2 file, output prefix, etc
-if [[ "$R1_in" != "" ]]; then
+if [[ -n "$R1_in" ]]; then
     R1_basename=$(basename "$R1_in" | sed -E 's/.fa?s?t?q.gz//')
     
-    if [ "$paired_end" = true ]; then
+    if [[ "$paired_end" == true ]]; then
         R1_suffix=$(echo "$R1_in" | sed -E 's/.*(_R?1).*fa?s?t?q.gz/\1/')
         sampleID=${R1_basename/"$R1_suffix"/}
 
         # Determine name of R2 file
-        if [[ "$R2_in" = "" ]]; then
+        if [[ -z "$R2_in" ]]; then
             R2_suffix=${R1_suffix/1/2}
             R2_in=${R1_in/$R1_suffix/$R2_suffix}
         fi
         
         [[ ! -f "$R1_in" ]] && Die "Input file R1_in $R1_in does not exist"
         [[ ! -f "$R2_in" ]] && Die "Input file R2_in $R2_in does not exist"
-        [[ "$R1_in" = "$R2_in" ]] && Die "Input file R1 is the same as R2"
+        [[ "$R1_in" == "$R2_in" ]] && Die "Input file R1 is the same as R2"
     
     else
         sampleID="$R1_basename"
@@ -263,8 +264,7 @@ starlog_dir="$outdir"/star_logs
 final_bam="$outdir"/bam/"$sampleID".bam
 
 # If a GFF/GTF file is provided, build the appropriate argument for STAR
-if [ "$annot" != "" ]; then
-
+if [[ -n "$annot" ]]; then
     if [[ "$annot" =~ .*\.gff3? ]]; then
         annot_format=gff
         annot_tags="--sjdbGTFtagExonParentTranscript Parent"
@@ -275,8 +275,8 @@ if [ "$annot" != "" ]; then
         Die "Unknown annotation file format"
     fi
 
-    if [ "$count" = true ]; then
-        if [ "$annot_format" = "gff" ]; then
+    if [[ "$count" == true ]]; then
+        if [[ "$annot_format" == "gff" ]]; then
             # Better to use GTF for counting https://groups.google.com/g/rna-star/c/M0q8M5FscA4
             Die "Please convert your GFF to a GTF, use the script 'mcic-scripts/convert/gff2gtf.sh'"
         fi
@@ -285,18 +285,17 @@ if [ "$annot" != "" ]; then
     else
         annot_arg="--sjdbGTFfile $annot $annot_tags"
     fi
-
 fi
 
 # Sorted output or not
-if [[ "$sort_bam" = true && "$samtools_sort" = false ]]; then
+if [[ "$sort_bam" == true && "$samtools_sort" == false ]]; then
     output_arg="--outSAMtype BAM SortedByCoordinate --outBAMsortingBinsN 100"
 else
     output_arg="--outSAMtype BAM Unsorted"
 fi
 
 # Output unmapped reads in a FASTQ file
-if [ "$output_unmapped" = true ]; then
+if [[ "$output_unmapped" == true ]]; then
     unmapped_arg="--outReadsUnmapped Fastx"
     unmapped_dir="$outdir"/unmapped
     mkdir -p "$unmapped_dir"
@@ -370,7 +369,7 @@ STAR --runThreadN "$threads" \
 # Sort with samtools sort
 # STAR may fail to sort on some large BAM files, or BAM files with a lot of
 # reads mapping to similar positions. In that case, could use samtools sort. 
-if [[ "$sort_bam" = true && "$samtools_sort" = "true" ]]; then
+if [[ "$sort_bam" == true && "$samtools_sort" == "true" ]]; then
     echo -e "\n# Sorting the BAM file with samtools sort..."
     bam_unsorted="$outfile_prefix"Aligned.out.bam
     bam_sorted="$outfile_prefix"Aligned.sortedByCoord.out.bam
@@ -380,20 +379,20 @@ fi
 
 # Move BAM file
 echo -e "\n# Moving the BAM file..."
-if [[ "$sort_bam" = true ]]; then
+if [[ "$sort_bam" == true ]]; then
     mv -v "$outfile_prefix"Aligned.sortedByCoord.out.bam "$final_bam"
 else
     mv -v "$outfile_prefix"Aligned.out.bam "$final_bam"
 fi
 
 # Index BAM file
-if [[ "$index_bam" = true ]]; then
+if [[ "$index_bam" == true ]]; then
     echo -e "\n# Indexing the BAM file..."
     samtools index "$final_bam"
 fi
 
 # Organize STAR output
-if [ "$output_unmapped" = true ]; then
+if [ "$output_unmapped" == true ]; then
     echo -e "\n# Moving, renaming and zipping unmapped FASTQ files...."
     for oldpath in "$outfile_prefix"*Unmapped.out.mate*; do
         oldname=$(basename "$oldpath")
@@ -424,12 +423,12 @@ echo "========================================================================="
 echo -e "# Listing the output BAM file(s):"
 ls -lh "$outdir"/bam/"$sampleID"*bam
 
-if [ "$output_unmapped" = true ]; then
+if [[ "$output_unmapped" == true ]]; then
     echo "# Listing the FASTQ files with unmapped reads:"
     ls -lh "$unmapped_dir/$sampleID"*fastq.gz
 fi
 
-if [ "$count" = true ]; then
+if [[ "$count" = true ]]; then
     echo -e "\n# Listing the output gene count file:"
     ls -lh "$outdir"/"$sampleID"*ReadsPerGene.out.tab
 fi
@@ -437,7 +436,7 @@ fi
 echo -e "\n# STAR version used:"
 Print_version | tee "$outdir"/logs/version.txt
 echo
-[[ "$slurm" = true ]] && Resource_usage
+[[ "$slurm" == true ]] && Resource_usage
 echo
 echo "# Done with script"
 date
