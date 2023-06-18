@@ -3,8 +3,8 @@
 #SBATCH --time=1:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
-#SBATCH --job-name=longest_transcripts.sh
-#SBATCH --output=slurm-longest_transcripts.sh-%j.out
+#SBATCH --job-name=longest_transcripts
+#SBATCH --output=slurm-longest_transcripts-%j.out
 
 # From a proteome (or nucleotide) FASTA file,
 # create a new FASTA file with only the longest transcript (isoform) per gene
@@ -20,6 +20,10 @@ readonly SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
 readonly MODULE=miniconda3/4.12.0-py39
 readonly CONDA_ENV=/fs/ess/PAS0471/jelmer/conda/seqkit
 readonly TOOL_BINARY=seqkit
+
+# Defaults
+clean_header=false      # Remove anything after a space in the FASTA header
+wormbase_file=false
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -45,6 +49,8 @@ script_help() {
     echo "  -o/--outfile    <dir>   Output FASTA file (dir will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
+    echo "  --wormbase_file         The proteome was downloaded from wormbase"
+    echo "  --clean_header          Remove everything after a space in the FASTA header [default: Leave the FASTA headers intact]"
     echo
     echo "UTILITY OPTIONS:"
     echo "  -h                      Print this help message and exit"
@@ -75,6 +81,7 @@ load_tool_conda() {
 
 # Exit upon error with a message
 die() {
+    set +u
     local error_message=${1}
     local error_args=${2-none}
     log_time "$0: ERROR: $error_message" >&2
@@ -130,6 +137,8 @@ while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && readonly infile=$1 ;;
         -o | --outfile )    shift && readonly outfile=$1 ;;
+        --wormbase_file )   wormbase_file=true ;;
+        --clean_header )    clean_header=true ;;
         -v )                script_version; exit 0 ;;
         -h )                script_help; exit 0 ;;
         --version )         tool_version; exit 0 ;;
@@ -150,7 +159,7 @@ done
 if [[ -z "$SLURM_JOB_ID" ]]; then is_slurm=false; else is_slurm=true; fi
 
 # Strict bash settings
-set -euo pipefail
+#set -euo pipefail
 
 # Load software
 load_tool_conda
@@ -160,9 +169,23 @@ load_tool_conda
 # ==============================================================================
 # Define outputs based on script parameters
 outdir=$(dirname "$outfile")
-seqlen_file="$outdir"/seqlengths.tsv
-longtrans_file="$outdir"/longest_transcripts.txt
+file_id=$(echo "${infile%.*}" | xargs basename)
+seqlen_file="$outdir"/intermed/"$file_id"_seqlengths.tsv
+longtrans_file="$outdir"/intermed/"$file_id"_longest-transcripts.txt
 
+# Settings for Wormbase files
+if [[ "$wormbase_file" == true ]]; then
+    # Never clean header for Wormbase files, as transcript inference relies on the full header
+    clean_header=false
+    gene2trans="$outdir"/intermed/"$file_id"_gene2trans.tsv
+fi
+
+infile_prepped="$outdir"/intermed/"$file_id"_cleanheaders.faa
+
+# Number of input DFASTA entries
+n_in=$(grep -c "^>" "$infile")
+
+# Log files
 readonly version_file="$outdir"/logs/version.txt
 readonly log_dir="$outdir"/logs
 
@@ -173,9 +196,13 @@ log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All arguments to this script:             $all_args"
 echo "Input FASTA file:                         $infile"
+echo "Nr of sequences in the input FASTA:       $n_in"
+echo "Clean the FASTA header:                   $clean_header"
+echo "The FASTA file is from Wormbase:          $wormbase_file"
+echo
 echo "Output FASTA file:                        $outfile"
-echo "Output TSV file with sequence lengths:    $seqlen_file"
-echo "Output text file with longest transcript IDS: $longtrans_file"
+echo "Output file with sequence lengths:        $seqlen_file"
+echo "Output file with longest transcript IDS:  $longtrans_file"
 echo
 log_time "Listing the input file(s):"
 ls -lh "$infile"
@@ -183,33 +210,65 @@ ls -lh "$infile"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Create the output directories
 log_time "Creating the output directories..."
-mkdir -pv "$log_dir"
+mkdir -pv "$log_dir" "$outdir"/intermed
 
-# Run the tool
+# Clean the FASTA headers
+if [[ "$clean_header" == true ]]; then
+    log_time "Keeping only the first 'word' in the FASTA header..."
+    awk '{print $1}' "$infile" > "$infile_prepped"
+else
+    log_time "Replacing tabs with spaces in the FASTA header..."
+    tr "\t" " " < "$infile" > "$infile_prepped"
+fi
+
+# Get a table with sequence lengths
 log_time "Getting the sequence lengths..."
-runstats $TOOL_BINARY fx2tab --length --name "$infile" > "$seqlen_file"
+runstats $TOOL_BINARY fx2tab --length --name "$infile_prepped" > "$seqlen_file"
 
+# Getting the longest transcript
 log_time "Getting the IDs of the longest transcripts..."
-tr '.' '\t' < "$seqlen_file" |
-    sort -k1,1 -k 3,3nr |
-    sort -k1,1 -u |
-    cut -f1,2 |
-    tr '\t' '.' \
-    > "$longtrans_file"
+if [[ "$wormbase_file" == false ]]; then
+    # This relies on headers in the format of <gene001.t1> etc => separate into "gene001" and "t1", with "t" meaning transcript
+    sed -E 's/\.(t[0-9]+)/\t\1/' "$seqlen_file" |
+        sort -k1,1 -k 3,3nr |
+        sort -k1,1 -u |
+        cut -f1,2 |
+        tr '\t' '.' > "$longtrans_file"
+else
+    # Extract gene and transcript IDs from the gene= transcript= and info in the headers
+    tr " " "\t" < "$seqlen_file" |
+        cut -f2,3,4 |
+        sed -e 's/transcript=//' -e 's/gene=//' |
+        paste <(cut -f 1 "$seqlen_file") - |
+        sort -k3,3 -k 4,4nr \
+        > "$gene2trans"
 
-log_time "Extracting the longest transcripts..."
-$TOOL_BINARY grep -f "$longtrans_file" "$infile" > "$outfile"
+    sort -t$'\t' -k3,3 -u "$gene2trans" | cut -f 1  > "$longtrans_file"
+    
+    log_time "Head of the gene-to-transcript map $gene2trans:"
+    head -n 4 "$gene2trans"
+fi
+
+# Extract only the longest transcript per gene
+n_longest=$(wc -l < "$longtrans_file")
+
+if [[ "$n_in" -gt "$n_longest" ]]; then
+    log_time "Extracting the $n_longest longest transcripts..."
+    runstats $TOOL_BINARY grep --by-name -f "$longtrans_file" "$infile_prepped" > "$outfile"
+else
+    log_time "Skipping extraction: Nr of longest transcripts ($n_longest) is not less than the input number ($n_in)"
+    cp -v "$infile_prepped" "$outfile"
+fi
 
 # Report and check
-n_longest=$(wc -l < "$longtrans_file")
 n_out=$(grep -c ">" "$outfile")
-[[ "$n_longest" != "$n_out" ]] && die "Output FASTA does not contain the same nr of sequences ($n_out) as the file with longest transcripts ($n_longest)"
 
-echo
-echo "Number of sequences in the input file:      $(grep -c ">" "$infile")"
-echo "Number of sequences in the output file:     $(grep -c ">" "$outfile")"
+if [[ "$n_longest" != "$n_out" ]]; then
+    die "Output FASTA does not contain the same nr of sequences ($n_out) as the file with longest transcripts ($n_longest)"
+fi
+
+log_time "Nr sequences in the in/output files for:      $n_in / $n_out      ($file_id)"
 
 # ==============================================================================
 #                               WRAP-UP
