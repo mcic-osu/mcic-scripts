@@ -7,7 +7,7 @@
 #SBATCH --job-name=orthofinder
 #SBATCH --output=slurm-orthofinder-%j.out
 
-# Run OrthoFinder to find orthologs between genomes
+# Run OrthoFinder to find orthologs between proteomes
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
@@ -37,15 +37,17 @@ script_help() {
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage:"
-    echo "      sbatch $0 -i TODO -o results/TODO" #TODO
+    echo "      sbatch $0 -i data/proteomes/ -o results/orthofinder"
     echo "  - To run the script using a different OSC project than PAS0471:"
     echo "      sbatch -A PAS0001 $0 [...]"
-    echo "  - To just print the help message for this script or for Orthofinder"
+    echo "  - To just print the help message for this script (-h) or for Orthofinder (--help)"
     echo "      bash $0 -h"
     echo "      bash $0 --help"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--indir      <dir>   Input dir with protein FASTA files, one per genome"
+    echo "  -i/--indir      <dir>   Input dir with proteomes (protein FASTA files), one per genome"
+    echo "                          Accepted file extensions: .fa, .faa, .fasta, .fas, .pep"
+    echo "                          (Files with different extensions will be ignored.)"
     echo "  -o/--outdir     <dir>   Output dir (NOTE: This dir should not yet exist)"
     echo
     echo "OTHER KEY OPTIONS:"
