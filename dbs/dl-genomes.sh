@@ -286,9 +286,29 @@ if [[ $include =~ "protein" ]]; then
     done
     log_time "Number of output proteomes:                   $(find . -name "*_protein.faa" | wc -l)"
 fi
+if [[ $include =~ "gff3" ]]; then
+    log_time "Moving GFF files..."
+    for proteome_old in $(find ncbi_dataset -type f -name "genomic.gff"); do
+        acc_nr=$(dirname "$proteome_old" | xargs basename)
+        mv -v "$proteome_old" "$acc_nr".gff
+    done
+    log_time "Number of output GFF files:                   $(find . -name "*.gff" | wc -l)"
+fi
+if [[ $include =~ "gtf" ]]; then
+    log_time "Moving GTF files..."
+    for proteome_old in $(find ncbi_dataset -type f -name "genomic.gtf"); do
+        acc_nr=$(dirname "$proteome_old" | xargs basename)
+        mv -v "$proteome_old" "$acc_nr".gtf
+    done
+    log_time "Number of output GTF files:                   $(find . -name "*.gtf" | wc -l)"
+fi
 
 # Report
 [[ -n "$accessions" ]] && log_time "Number of input accessions:                   $(wc -l < "$accessions")"
+
+# Clean up
+log_time "Removing original ZIP file and NCBI's README file..."
+rm -v README.md genomes.zip
 
 # ==============================================================================
 #                               WRAP-UP
