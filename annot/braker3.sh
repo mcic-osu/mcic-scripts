@@ -1,9 +1,8 @@
 #!/bin/bash
-
 #SBATCH --account=PAS0471
 #SBATCH --time=32:00:00
 #SBATCH --cpus-per-task=15
-#SBATCH --mem=100G
+#SBATCH --mem=60G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --mail-type=END,FAIL
@@ -25,11 +24,12 @@ readonly SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
 readonly TOOL_BINARY_PART=braker.pl
 readonly TOOL_NAME=Braker3
 readonly TOOL_DOCS=https://github.com/Gaius-Augustus/BRAKER
-readonly TOOL_PAPER=https://academic.oup.com/nargab/article/3/1/lqaa108/6066535
+readonly TOOL_PAPER=https://www.biorxiv.org/content/10.1101/2023.06.10.544449v1
 
 # Option defaults
 container_path=/fs/ess/PAS0471/containers/braker3.sif
 rebuild_container=false
+fungus=false && fungus_arg=
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -42,9 +42,13 @@ script_help() {
     echo "DESCRIPTION:"
     echo "  Run Braker3 to annotate a genome, using RNAseq and/or protein data"
     echo 
-    echo "USAGE:"
-    echo "  sbatch $0 -i <input FASTA> -o <outdir> --species <species_name> [...]"
-    echo "  bash $0 -h"
+    echo "USAGE / EXAMPLES:"
+    echo "  - Provide both RNAseq and protein data:"
+    echo "    sbatch $0 -i results/genome.fa -o results/braker --rnaseq_fqdir data/rnaseq --prot_seq data/ref/proteins.faa --species homo_sapiens"
+    echo "  - Provide only protein data, and use the '--fungus' option:"
+    echo "    sbatch $0 -i results/genome.fa -o results/braker --prot_seq data/ref/proteins.faa --species candida_albicans --fungus"
+    echo "  - Provide RNAseq data via SRA IDS: the corresponding FASTQ files will be downloaded"
+    echo "    sbatch $0 -i results/genome.fa -o results/braker --rnaseq_sra_ids SRR5506722,SRR6942483,SRR21195554 --species homo_sapiens"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--assembly       <file>  Input assembly nucleotide FASTA"
@@ -54,11 +58,13 @@ script_help() {
     echo "OTHER KEY OPTIONS:"
     echo "  --rnaseq_fqdir      <dir>   Directory with RNAseq FASTQ files"
     echo "                              NOTE: FASTQs should be unzipped, and end in '_1.fastq' / '_2.fastq' for R1/R2 reads"
-    echo "  --sra_ids           <str>   Comma-separated list of SRA IDs, e.g. 'SRR5506722,SRR6942483,SRR21195554'"
+    echo "  --rnaseq_sra_ids    <str>   Comma-separated list of RNAseq SRA IDs, e.g. 'SRR5506722,SRR6942483,SRR21195554'"
+    echo "                              Braker will download"
     echo "  --prot_seq          <file>  FASTA file with reference proteins. For info on how to create this file:"
     echo "                              https://github.com/gatech-genemark/ProtHint#protein-database-preparation"
-    echo " --rebuild_container          Rebuild the container from docker://teambraker/braker3:latest, e.g. to update to latest version"
-    echo " --container_path     <file>  Use the specified container SIF file    [default: use /fs/ess/PAS0471/containers/braker3.sif]"
+    echo "  --fungus                    Use a fungus-specific annotation model implemented in Braker"
+    echo "  --rebuild_container         Rebuild the container from docker://teambraker/braker3:latest, e.g. to update to latest version [default: use /fs/ess/PAS0471/containers/braker3.sif]"
+    echo "  --container_path    <file>  Use the specified container SIF file    [default: use /fs/ess/PAS0471/containers/braker3.sif]"
     echo "  --more_args         <str>   Quoted string with more argument(s) for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -66,12 +72,6 @@ script_help() {
     echo "  --help                      Print the help for $TOOL_NAME and exit"
     echo "  -v                          rint the version of this script and exit"
     echo "  -v/--version                Print the version of $TOOL_NAME and exit"
-    echo
-    echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i results/genome.fa -o results/braker --prot_seq data/ref/proteins.faa --species homo_sapiens"
-    echo "  sbatch $0 -i results/genome.fa -o results/braker --prot_seq data/ref/proteins.faa --species candida_albicans --more_args '--fungus'"
-    echo "  sbatch $0 -i results/genome.fa -o results/braker --rnaseq_fqdir data/rnaseq --species candi --more_args '--fungus'"
-    echo "  sbatch $0 -i results/genome.fa -o results/braker --sra_ids SRR5506722,SRR6942483,SRR21195554 --species homo_sapiens"
     echo
     echo "HARDCODED PARAMETERS:"
     echo "  - '--verbosity=3'           Set Braker verbosity level to 3"
@@ -171,13 +171,13 @@ runstats() {
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
-assembly=""
-species=""
-outdir=""
-prot_seq="" && prot_seq_arg=""
-fqdir="" && rna_seq_arg=""
-sra_ids=""
-more_args=""
+assembly=
+species=
+outdir=
+prot_seq= && prot_seq_arg=
+fqdir= && rna_seq_arg=
+rnaseq_sra_ids=
+more_args=
 
 # Parse command-line args
 all_args="$*"
@@ -188,7 +188,8 @@ while [ "$1" != "" ]; do
         --species )             shift && species=$1 ;;
         --prot_seq )            shift && prot_seq=$1 ;;
         --rnaseq_fqdir )        shift && fqdir=$1 ;;
-        --sra_ids )             shift && sra_ids=$1 ;;
+        --rnaseq_sra_ids )      shift && rnaseq_sra_ids=$1 ;;
+        --fungus )              fungus=true ;;
         --rebuild_container )   readonly rebuild_container=true ;;
         --container_path )      readonly container_path=$1 ;;
         --more_args )           shift && readonly more_args=$1 ;;
@@ -221,9 +222,9 @@ set -euo pipefail
 set_threads
 
 # Make input paths absolute
-[[ ! $assembly =~ ^/ ]] && assembly=$(realpath "$assembly")
-[[ -n "$prot_seq" ]] && [[ ! $prot_seq =~ ^/ ]] && prot_seq=$(realpath "$prot_seq")
-[[ -n "$fqdir" && ! $fqdir =~ ^/ ]] && fqdir=$(realpath "$fqdir")
+assembly=$(realpath "$assembly")
+[[ -n "$prot_seq" ]] && prot_seq=$(realpath "$prot_seq")
+[[ -n "$fqdir" ]] && fqdir=$(realpath "$fqdir")
 
 # ==============================================================================
 #              DEFINE OUTPUTS AND DERIVED INPUTS, BUILD ARGS
@@ -233,17 +234,20 @@ set_threads
 
 # RNAseq data argument
 if [[ -n "$fqdir" ]]; then
-    fq_ids=$(ls "$fqdir" | sed 's/_[12].fastq//' | sort | uniq | tr "\n" "," | sed 's/,$/\n/')
+    fq_ids=$(ls "$fqdir"/*fastq | xargs -n1 basename | sed 's/_[12].fastq//' | sort | uniq | tr "\n" "," | sed 's/,$/\n/')
     rna_seq_arg="--rnaseq_sets_dirs=$fqdir --rnaseq_sets_ids=$fq_ids"
-elif [[ -n "$sra_ids" ]]; then
-    rna_seq_arg="--rnaseq_sets_ids=$sra_ids"
+elif [[ -n "$rnaseq_sra_ids" ]]; then
+    rna_seq_arg="--rnaseq_sets_ids=$rnaseq_sra_ids"
 fi
 
 # Augustus config dir
 augustus_config_dir="$PWD"/"$outdir"/augustus_config
 augustus_config_arg="--AUGUSTUS_CONFIG_PATH=$augustus_config_dir"
 
-# Define outputs based on script parameters
+# Fungus option
+[[ "$fungus" == true ]] && fungus_arg="--fungus"
+
+# Full binary and log files
 readonly TOOL_BINARY="singularity exec $container_path $TOOL_BINARY_PART"
 readonly version_file="$outdir"/logs/version.txt
 readonly log_dir="$outdir"/logs
@@ -259,7 +263,7 @@ echo "Input file:                               $assembly"
 echo "Species:                                  $species"
 [[ -n "$prot_seq" ]] && echo "Reference protein FASTA:                  $prot_seq"
 [[ -n "$fqdir" ]] && echo "RNAseq FASTQ dir:                         $fqdir"
-[[ -n "$sra_ids" ]] && echo "RNAseq SRA IDs:                           $sra_ids"
+[[ -n "$rnaseq_sra_ids" ]] && echo "RNAseq SRA IDs:                           $rnaseq_sra_ids"
 [[ $more_args != "" ]] && echo "Other arguments for $TOOL_NAME:           $more_args"
 echo "Number of threads/cores:                  $threads"
 echo
@@ -288,7 +292,7 @@ log_time "Copying the Augustus config dir from the container..."
 singularity exec -B "$PWD":"$PWD" "$container_path" \
     cp -r /usr/share/augustus/config/ "$augustus_config_dir"
 
-# Run
+# Run Braker
 log_time "Running $TOOL_NAME..."
 runstats \
     $TOOL_BINARY \
@@ -297,12 +301,13 @@ runstats \
     $prot_seq_arg \
     $rna_seq_arg \
     $augustus_config_arg \
+    $fungus_arg \
     --species="$species" \
     --verbosity=3 \
     --threads="$threads" \
     $more_args
 
-# Report
+# Report number of genes and transcripts
 if [[ -f "$outdir"/braker.gtf ]]; then
     ngenes=$(awk '$3 == "gene"' "$outdir"/braker.gtf | wc -l)
     log_time "Number of genes in the output:        $ngenes"
