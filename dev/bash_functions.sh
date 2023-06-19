@@ -50,12 +50,12 @@ script_version() {
 
 # Print the tool's version
 tool_version() {
-    local version_command=${2-none}
+    local version_command=${1-none}
 
     set +e
     load_tool_conda
     
-    if [[ "$version_command" != none ]]; then
+    if [[ "$version_command" == "none" ]]; then
         $TOOL_BINARY --version
     else
         $version_command
@@ -66,11 +66,11 @@ tool_version() {
 
 # Print the tool's help
 tool_help() {
-    local help_command=${2-none}
+    local help_command=${1-none}
 
     load_tool_conda
     
-    if [[ "$help_command" != none ]]; then
+    if [[ "$help_command" == "none" ]]; then
         $TOOL_BINARY --help
     else
         $help_command
