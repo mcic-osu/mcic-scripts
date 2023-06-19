@@ -5,7 +5,7 @@
 #SBATCH --output=slurm-tree-plot-%j.out
 
 # SET-UP -----------------------------------------------------------------------
-## Load (and install, if necessary) packages
+# Load (and install, if necessary) packages
 #chooseCRANmirror(ind = 1)
 if (!"pacman" %in% installed.packages()) {
     install.packages("pacman",
@@ -17,12 +17,12 @@ pacman::p_load(char = packages, install = TRUE,
                 repos = "https://cloud.r-project.org/",
                 lib = Sys.getenv("R_LIBS_USER"))
 
-## Other scripts
+# Other scripts
 fun_script <- "mcic-scripts/trees/tree-plot_fun.R"
 
-## Parse options
+# Parse options
 parser <- ArgumentParser() # create parser object
-parser$add_argument("-t", "--tree",
+parser$add_argument("-i", "--tree",
                     help = "Input tree file (REQUIRED)")
 parser$add_argument("-o", "--figure",
                     help = "Output figure (REQUIRED)")
@@ -52,15 +52,15 @@ if (! args$msa_offset %in% c("auto", "textlen")) {
     args$msa_offset <- as.numeric(args$msa_offset)
 }
 
-## Test input
+# Test input
 stopifnot(file.exists(args$tree))
 if (args$plot_msa == TRUE) stopifnot(file.exists(args$aln))
 if (!is.null(args$annot)) stopifnot(file.exists(args$annot))
 
-## Source script with functions
+# Source script with functions
 source(here(fun_script))
 
-## Process args
+# Process args
 fig_dir <- dirname(args$fig)
 alt_msa_dir <- file.path(fig_dir, "alt_msa")
 if (!dir.exists(fig_dir)) dir.create(fig_dir, recursive = TRUE)
@@ -80,27 +80,25 @@ if (!is.null(args$label_col1)) {
     label_cols <- NULL
 }
 
-## Report
-message("\n## Starting script tree-plot.R")
+# Report
+message("\n# Starting script tree-plot.R")
 message(Sys.time())
 message()
-message("## Input tree file:            ", args$tree)
-if (!is.null(args$annot)) message("## Annotation file:            ", args$annot)
-message("## Plot MSA besides the tree:  ", args$plot_msa)
-if (args$plot_msa == TRUE) message("## Alignment file:              ", args$aln)
-message("## Output figure:              ", args$figure)
-message("## Label columns:              ", label_cols)
-if (args$show_strain == TRUE) message("## Show strain info:            ", args$show_strain)
-if (args$plot_msa == TRUE) message("## MSA offset in plot:          ", args$msa_offset)
+message("# Input tree file:            ", args$tree)
+if (!is.null(args$annot)) message("# Annotation file:            ", args$annot)
+message("# Plot MSA besides the tree:  ", args$plot_msa)
+if (args$plot_msa == TRUE) message("# Alignment file:              ", args$aln)
+message("# Output figure:              ", args$figure)
+if (!is.null(label_cols)) message("# Label columns:              ", label_cols)
+if (args$show_strain == TRUE) message("# Show strain info:            ", args$show_strain)
+if (args$plot_msa == TRUE) message("# MSA offset in plot:          ", args$msa_offset)
 message("----------------------\n")
 
-
-
 # CREATE TREE ------------------------------------------------------------------
-## Read the tree file
+# Read the tree file
 tree <- read.tree(args$tree)
 
-## Read and parse annotation file
+# Read and parse annotation file
 if (!is.null(args$annot)) {
     if (args$blast == TRUE) {
         annot <- prep_annot_blast(args$annot, tree$tip.label, show_strain)
@@ -111,7 +109,7 @@ if (!is.null(args$annot)) {
     annot <- NULL
 }
 
-## Plot the tree
+# Plot the tree
 plot_tree(tree = tree,
           alignment = args$aln,
           fig_file = args$fig,
@@ -121,13 +119,12 @@ plot_tree(tree = tree,
           plot_msa = args$plot_msa,
           msa_offset = args$msa_offset)
 
-
 # WRAP UP ----------------------------------------------------------------------
 if (file.exists("Rplots.pdf")) unlink("Rplots.pdf")
 
-message("## Listing output file:")
+message("# Listing output file:")
 system(paste("ls -lh", args$fig))
 message()
-message("## Done with script tree-plot.R")
+message("# Done with script tree-plot.R")
 message(Sys.time())
 message()
