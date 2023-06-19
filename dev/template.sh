@@ -9,13 +9,13 @@
 #SBATCH --job-name=TODO_THIS_SOFTWARE
 #SBATCH --output=slurm-TODO_THIS_SOFTWARE-%j.out
 
-# Run .... #TODO_TOOL_DESCRIPTION
+readonly DESCRIPTION="" #TODO
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants
-readonly SCRIPT_NAME=#TODO #This is necessary because Slurm will copy&rename the script
+readonly SCRIPT_NAME=#TODO
 readonly SCRIPT_VERSION="1.0"
 readonly SCRIPT_AUTHOR="Jelmer Poelstra"
 readonly SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
@@ -38,14 +38,16 @@ script_help() {
     echo "        $0 (v. $SCRIPT_VERSION): Run $TOOL_NAME"
     echo "        =============================================="
     echo "DESCRIPTION:"
-    echo "  #TODO"
+    echo "  $DESCRIPTION"
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage:"
+    echo "  - Basic usage (always submit your scripts to SLURM with 'sbatch'):"
     echo "      sbatch $0 -i TODO -o results/TODO" #TODO
     echo "  - To run the script using a different OSC project than PAS0471:"
     echo "      sbatch -A PAS0001 $0 [...]"
-    echo "  - To just print the help message for this script (-h) or for $TOOL_NAME (--help)"
+    echo "  - To just get an estimate of the start time, the number of requested cores, etc:"
+    echo "      sbatch --test-only $0"
+    echo "  - To just print the help message for this script (-h) or for $TOOL_NAME (--help):"
     echo "      bash $0 -h"
     echo "      bash $0 --help"
     echo
@@ -62,9 +64,6 @@ script_help() {
     echo "  -v                      Print the version of this script and exit"
     echo "  -v/--version            Print the version of $TOOL_NAME and exit"
     echo
-    echo "OUTPUT:" #TODO
-    echo "  - " 
-    echo
     echo "TOOL DOCUMENTATION:"
     echo "  - Docs: $TOOL_DOCS"
     echo "  - Paper: $TOOL_PAPER"
@@ -73,13 +72,20 @@ script_help() {
 
 # Load software
 load_tool_conda() {
+    local conda_yml=${2-none}
     set +u
-    module load "$MODULE" # Load the OSC Conda module
-    # Deactivate any active Conda environments:
+
+    # Load the OSC Conda module
+    module load "$MODULE" 
+    # Deactivate any active Conda environment
     if [[ -n "$CONDA_SHLVL" ]]; then
         for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     fi
-    source activate "$CONDA_ENV" # Activate the focal environment
+    # Activate the focal environment
+    source activate "$CONDA_ENV"
+    # Store the Conda env in a YAML file
+    [[ "$conda_yml" != "none" ]] && conda env export --no-build > "$conda_yml"
+
     set -u
 }
 
@@ -204,16 +210,22 @@ if [[ -z "$SLURM_JOB_ID" ]]; then is_slurm=false; else is_slurm=true; fi
 # Strict bash settings
 set -euo pipefail
 
+# Logging files and dirs
+readonly log_dir="$outdir"/logs
+readonly version_file="$log_dir"/version.txt
+readonly conda_yml="$log_dir"/conda_env.yml
+readonly env_file="$log_dir"/env.txt
+mkdir -p "$log_dir"
+
 # Load software and set nr of threads
-load_tool_conda
+load_tool_conda "$conda_yml"
 set_threads
 
 # ==============================================================================
 #              DEFINE OUTPUTS AND DERIVED INPUTS, BUILD ARGS
 # ==============================================================================
 # Define outputs based on script parameters
-readonly version_file="$outdir"/logs/version.txt
-readonly log_dir="$outdir"/logs
+
 
 # ==============================================================================
 #                               REPORT
@@ -233,10 +245,6 @@ ls -lh "$infile" #TODO
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Create the output directories
-log_time "Creating the output directories..."
-mkdir -pv "$log_dir"
-
 # Run the tool
 log_time "Running $TOOL_NAME..."
 runstats $TOOL_BINARY \
@@ -244,14 +252,17 @@ runstats $TOOL_BINARY \
     $more_args
 
 # ==============================================================================
-#                               WRAP-UP
+#                               WRAP UP
 # ==============================================================================
 printf "\n======================================================================"
 log_time "Versions used:"
 tool_version | tee "$version_file"
 script_version | tee -a "$version_file" 
+env | sort > "$env_file"
+
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
+
 [[ "$is_slurm" = true ]] && echo && resource_usage
-log_time "Done with script $SCRIPT_NAME"
-echo
+
+log_time "Done with script $SCRIPT_NAME\n"
