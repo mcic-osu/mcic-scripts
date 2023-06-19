@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=6:00:00
-#SBATCH --cpus-per-task=20
-#SBATCH --mem=80G
+#SBATCH --cpus-per-task=25
+#SBATCH --mem=100G
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=orthofinder
 #SBATCH --output=slurm-orthofinder-%j.out
@@ -23,6 +23,9 @@ readonly TOOL_BINARY=orthofinder
 readonly TOOL_NAME=Orthofinder
 readonly TOOL_DOCS=https://github.com/davidemms/OrthoFinder
 readonly TOOL_PAPER=https://genomebiology.biomedcentral.com/articles/10.1186/s13059-019-1832-y
+
+# Defaults
+genetree_method=dendroblast # This is also the Orthofinder default
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -51,6 +54,8 @@ script_help() {
     echo "  -o/--outdir     <dir>   Output dir (NOTE: This dir should not yet exist)"
     echo
     echo "OTHER KEY OPTIONS:"
+    echo "  --genetree_method <str> 'dendroblast' or 'msa'  [default: 'dendroblast', also Orthofinder default]"
+    echo "                          (This is Orthofinder's '-M' option)"
     echo "  --more_args     <str>   Quoted string with more argument(s) for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -173,6 +178,7 @@ while [ "$1" != "" ]; do
     case "$1" in
         -i | --indir )      shift && readonly indir=$1 ;;
         -o | --outdir )     shift && readonly outdir=$1 ;;
+        --genetree_method ) shift && readonly genetree_method=$1 ;;
         --more_args )       shift && readonly more_args=$1 ;;
         -v )                script_version; exit 0 ;;
         -h )                script_help; exit 0 ;;
@@ -216,6 +222,7 @@ echo "==========================================================================
 echo "All arguments to this script:             $all_args"
 echo "Input dir:                                $indir"
 echo "Output dir:                               $outdir"
+echo "Gene tree inference methos:               $genetree_method"
 [[ -n $more_args ]] && echo "Other arguments for $TOOL_NAME:   $more_args"
 echo "Number of threads/cores:                  $threads"
 echo
@@ -231,6 +238,7 @@ log_time "Running $TOOL_NAME..."
 runstats $TOOL_BINARY \
     -f "$indir" \
     -o "$outdir" \
+    -M "$genetree_method" \
     -t "$threads" \
     -a "$threads" \
     $more_args
