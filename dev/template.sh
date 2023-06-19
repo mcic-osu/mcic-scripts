@@ -3,18 +3,15 @@
 #SBATCH --time=1:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=TODO_THIS_SOFTWARE
 #SBATCH --output=slurm-TODO_THIS_SOFTWARE-%j.out
-
-readonly DESCRIPTION="" #TODO
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants
+readonly DESCRIPTION="" #TODO
 readonly SCRIPT_NAME=#TODO
 readonly SCRIPT_VERSION="1.0"
 readonly SCRIPT_AUTHOR="Jelmer Poelstra"
@@ -45,8 +42,6 @@ script_help() {
     echo "      sbatch $0 -i TODO -o results/TODO" #TODO
     echo "  - To run the script using a different OSC project than PAS0471:"
     echo "      sbatch -A PAS0001 $0 [...]"
-    echo "  - To just get an estimate of the start time, the number of requested cores, etc:"
-    echo "      sbatch --test-only $0"
     echo "  - To just print the help message for this script (-h) or for $TOOL_NAME (--help):"
     echo "      bash $0 -h"
     echo "      bash $0 --help"
@@ -70,105 +65,25 @@ script_help() {
     echo
 }
 
-# Load software
-load_tool_conda() {
-    local conda_yml=${2-none}
-    set +u
-
-    # Load the OSC Conda module
-    module load "$MODULE" 
-    # Deactivate any active Conda environment
-    if [[ -n "$CONDA_SHLVL" ]]; then
-        for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    fi
-    # Activate the focal environment
-    source activate "$CONDA_ENV"
-    # Store the Conda env in a YAML file
-    [[ "$conda_yml" != "none" ]] && conda env export --no-build > "$conda_yml"
-
-    set -u
-}
-
-# Exit upon error with a message
-die() {
-    local error_message=${1}
-    local error_args=${2-none}
-    log_time "$0: ERROR: $error_message" >&2
-    log_time "For help, run this script with the '-h' option" >&2
-    if [[ "$error_args" != "none" ]]; then
-        log_time "Arguments passed to the script:" >&2
-        echo "$error_args" >&2
-    fi
-    log_time "EXITING..." >&2
-    exit 1
-}
-
-# Log messages that include the time
-log_time() { echo -e "\n[$(date +'%Y-%m-%d %H:%M:%S')]" ${1-""}; }
-
-# Print the script version
-script_version() {
-    echo "Run using $SCRIPT_NAME by $SCRIPT_AUTHOR, version $SCRIPT_VERSION ($SCRIPT_URL)"
-}
-
-# Print the tool's version
-tool_version() {
-    set +e
-    load_tool_conda
-    $TOOL_BINARY --version #TODO check that this works
-    set -e
-}
-
-# Print the tool's help
-tool_help() {
-    load_tool_conda
-    $TOOL_BINARY --help #TODO check that this works
-}
-
-# Print SLURM job resource usage info
-resource_usage() {
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
-}
-
-# Print SLURM job requested resources
-slurm_resources() {
-    set +u
-    log_time "SLURM job information:"
-    echo "Account (project):                        $SLURM_JOB_ACCOUNT"
-    echo "Job ID:                                   $SLURM_JOB_ID"
-    echo "Job name:                                 $SLURM_JOB_NAME"
-    echo "Memory (MB per node):                     $SLURM_MEM_PER_NODE"
-    echo "CPUs (per task):                          $SLURM_CPUS_PER_TASK"
-    echo "Time limit:                               $SLURM_TIMELIMIT"
-    echo -e "=================================================================\n"
-    set -u
-}
-
-# Set the number of threads/CPUs
-set_threads() {
-    set +u
+# Function to source the script with Bash functions
+source_function_script() {
+    # Determine the location of this script, and based on that, the function script
     if [[ "$is_slurm" == true ]]; then
-        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-            readonly threads="$SLURM_CPUS_PER_TASK"
-        elif [[ -n "$SLURM_NTASKS" ]]; then
-            readonly threads="$SLURM_NTASKS"
-        else 
-            log_time "WARNING: Can't detect nr of threads, setting to 1"
-            readonly threads=1
-        fi
+        SCRIPT_PATH=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        SCRIPT_DIR=$(dirname "$SCRIPT_PATH")
     else
-        readonly threads=1
+        SCRIPT_DIR="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
     fi
-    set -u
-}
+    FUNCTION_SCRIPT="$SCRIPT_DIR"/../dev/bash_functions.sh
+    
+    if [[ ! -f "$FUNCTION_SCRIPT" ]]; then
+        echo "Can't find script with Bash functions, downloading from GitHub..."
+        git clone https://github.com/mcic-osu/mcic-scripts.git
+        FUNCTION_SCRIPT=mcic-scripts/dev/bash_functions.sh
+    fi
 
-# Resource usage information for any process
-runstats() {
-    /usr/bin/time -f \
-        "\n# Ran the command: \n%C
-        \n# Run stats by /usr/bin/time:
-        Time: %E   CPU: %P    Max mem: %M K    Exit status: %x \n" \
-        "$@"
+    # shellcheck source=/dev/null
+    source "$FUNCTION_SCRIPT"
 }
 
 # ==============================================================================
@@ -210,6 +125,9 @@ if [[ -z "$SLURM_JOB_ID" ]]; then is_slurm=false; else is_slurm=true; fi
 # Strict bash settings
 set -euo pipefail
 
+# Source the Bash functions script
+source_function_script
+
 # Logging files and dirs
 readonly log_dir="$outdir"/logs
 readonly version_file="$log_dir"/version.txt
@@ -249,7 +167,11 @@ ls -lh "$infile" #TODO
 log_time "Running $TOOL_NAME..."
 runstats $TOOL_BINARY \
     -t "$threads" \
-    $more_args
+    $more_args #TODO
+
+# List the output
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/*
 
 # ==============================================================================
 #                               WRAP UP
@@ -259,10 +181,5 @@ log_time "Versions used:"
 tool_version | tee "$version_file"
 script_version | tee -a "$version_file" 
 env | sort > "$env_file"
-
-log_time "Listing files in the output dir:"
-ls -lhd "$(realpath "$outdir")"/*
-
 [[ "$is_slurm" = true ]] && echo && resource_usage
-
 log_time "Done with script $SCRIPT_NAME\n"
