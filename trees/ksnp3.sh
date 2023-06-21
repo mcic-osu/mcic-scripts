@@ -1,9 +1,9 @@
 #!/bin/bash
-
 #SBATCH --account=PAS0471
 #SBATCH --time=4:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=12
+#SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=ksnp3
 #SBATCH --output=slurm-ksnp3-%j.out
 
@@ -17,11 +17,12 @@ Help() {
   echo
   echo "Required options:"
   echo "-i STRING         Input file which should contain one row per genome and two columns:"
-  echo "                     - The first column has the path to a genome FASTA"
+  echo "                     - The first column has the ABSOLUTE (!) path to a genome FASTA"
   echo "                     - The second column has an ID for that genome"
   echo "                  E.g., a file for two genomes could look like this:"
-  echo "                  results/spades/sampleA/contigs.fasta sampleA"
-  echo "                  results/spades/sampleB/contigs.fasta sampleB"
+  echo "                    results/spades/sampleA/contigs.fasta sampleA"
+  echo "                    results/spades/sampleB/contigs.fasta sampleB"
+  echo "                  NOTE: The input FASTA file names cannot contains spaces, more than one period, or special chars"
   echo "-o STRING         Output dir"
   echo
   echo "Other options:"
