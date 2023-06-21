@@ -1,11 +1,12 @@
 #!/bin/bash
 #SBATCH --account=PAS0471
-#SBATCH --time=4:00:00
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=12
+#SBATCH --time=8:00:00
+#SBATCH --cpus-per-task=16
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=ksnp3
 #SBATCH --output=slurm-ksnp3-%j.out
+
+#TODO - Update to KSNP4: https://sourceforge.net/projects/ksnp/files/
 
 # PARSE ARGUMENTS --------------------------------------------------------------
 ## Help function
