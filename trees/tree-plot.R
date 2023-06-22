@@ -114,8 +114,8 @@ plot_tree(tree = tree,
           alignment = args$aln,
           fig_file = args$fig,
           annot = annot,
-          label_cols = label_cols,
-          color_col = args$color_col,
+          label_columns = label_cols,
+          color_column = args$color_col,
           plot_msa = args$plot_msa,
           msa_offset = args$msa_offset)
 
