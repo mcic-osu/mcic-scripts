@@ -12,16 +12,17 @@
 # ==============================================================================
 # Constants
 readonly DESCRIPTION="" #TODO
-readonly SCRIPT_NAME=#TODO
+readonly MODULE=miniconda3/4.12.0-py39
+readonly CONDA=#TODO
 readonly SCRIPT_VERSION="1.0"
 readonly SCRIPT_AUTHOR="Jelmer Poelstra"
 readonly SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
-readonly MODULE=miniconda3/4.12.0-py39
-readonly CONDA_ENV=#TODO
 readonly TOOL_BINARY=#TODO
 readonly TOOL_NAME=#TODO
 readonly TOOL_DOCS=#TODO
 readonly TOOL_PAPER=#TODO
+readonly VERSION_COMMAND=
+readonly HELP_COMMAND=
 
 # Option defaults
 #TODO
@@ -67,24 +68,34 @@ script_help() {
 
 # Function to source the script with Bash functions
 source_function_script() {
+    local is_slurm=$1
+
     # Determine the location of this script, and based on that, the function script
     if [[ "$is_slurm" == true ]]; then
-        SCRIPT_PATH=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
-        SCRIPT_DIR=$(dirname "$SCRIPT_PATH")
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
     else
-        SCRIPT_DIR="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
     fi
-    FUNCTION_SCRIPT="$SCRIPT_DIR"/../dev/bash_functions.sh
+    function_script=$(realpath "$script_dir"/../dev/bash_functions.sh)
     
-    if [[ ! -f "$FUNCTION_SCRIPT" ]]; then
-        echo "Can't find script with Bash functions, downloading from GitHub..."
+    if [[ ! -f "$function_script" ]]; then
+        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
         git clone https://github.com/mcic-osu/mcic-scripts.git
-        FUNCTION_SCRIPT=mcic-scripts/dev/bash_functions.sh
+        function_script=mcic-scripts/dev/bash_functions.sh
     fi
-
     # shellcheck source=/dev/null
-    source "$FUNCTION_SCRIPT"
+    source "$function_script"
 }
+
+# ==============================================================================
+#                          INFRASTRUCTURE SETUP I
+# ==============================================================================
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script $IS_SLURM
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
@@ -103,41 +114,37 @@ while [ "$1" != "" ]; do
         --more_args )       shift && readonly more_args=$1 ;;
         -v )                script_version; exit 0 ;;
         -h )                script_help; exit 0 ;;
-        --version )         tool_version; exit 0 ;;
-        --help )            tool_help; exit 0;;
+        --version )         load_env "$MODULE" "$CONDA"
+                            tool_version "$VERSION_COMMAND" && exit 0 ;;
+        --help )            load_env "$MODULE" "$CONDA"
+                            tool_help "$HELP_COMMAND" && exit 0;;
         * )                 die "Invalid option $1" "$all_args" ;;
         #* )                infiles[$count]=$1 && count=$(( count + 1 )) ;;
     esac
     shift
 done
 
-# Check input
+# Check arguments
 [[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_args"
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_args"
 [[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 
 # ==============================================================================
-#                          INFRASTRUCTURE SETUP
+#                          INFRASTRUCTURE SETUP II
 # ==============================================================================
-# Check if this is a SLURM job
-if [[ -z "$SLURM_JOB_ID" ]]; then is_slurm=false; else is_slurm=true; fi
-
 # Strict bash settings
 set -euo pipefail
 
-# Source the Bash functions script
-source_function_script
-
 # Logging files and dirs
-readonly log_dir="$outdir"/logs
-readonly version_file="$log_dir"/version.txt
-readonly conda_yml="$log_dir"/conda_env.yml
-readonly env_file="$log_dir"/env.txt
-mkdir -p "$log_dir"
+readonly LOG_DIR="$outdir"/logs
+readonly VERSION_FILE="$LOG_DIR"/version.txt
+readonly CONDA_YML="$LOG_DIR"/conda_env.yml
+readonly ENV_FILE="$LOG_DIR"/env.txt
+mkdir -p "$LOG_DIR"
 
 # Load software and set nr of threads
-load_tool_conda "$conda_yml"
-set_threads
+load_env "$MODULE" "$CONDA" "$CONDA_YML"
+set_threads "$IS_SLURM"
 
 # ==============================================================================
 #              DEFINE OUTPUTS AND DERIVED INPUTS, BUILD ARGS
@@ -154,11 +161,9 @@ echo "All arguments to this script:             $all_args"
 echo "Input file:                               $infile"
 echo "Output dir:                               $outdir"
 [[ -n $more_args ]] && echo "Other arguments for $TOOL_NAME:   $more_args"
-echo "Number of threads/cores:                  $threads"
-echo
 log_time "Listing the input file(s):"
 ls -lh "$infile" #TODO
-[[ "$is_slurm" = true ]] && slurm_resources
+[[ "$IS_SLURM" = true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
@@ -178,8 +183,8 @@ ls -lhd "$(realpath "$outdir")"/*
 # ==============================================================================
 printf "\n======================================================================"
 log_time "Versions used:"
-tool_version | tee "$version_file"
-script_version | tee -a "$version_file" 
-env | sort > "$env_file"
-[[ "$is_slurm" = true ]] && echo && resource_usage
+tool_version "$VERSION_COMMAND" | tee "$VERSION_FILE"
+script_version "$SCRIPT_NAME" "$SCRIPT_AUTHOR" "$SCRIPT_VERSION" "$SCRIPT_URL" | tee -a "$VERSION_FILE" 
+env | sort > "$ENV_FILE"
+[[ "$IS_SLURM" = true ]] && resource_usage
 log_time "Done with script $SCRIPT_NAME\n"
