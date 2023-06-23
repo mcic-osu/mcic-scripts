@@ -1,136 +1,264 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
-#SBATCH --mem=20G
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
+#SBATCH --mail-type=FAIL
+#SBATCH --job-name=bwa
 #SBATCH --output=slurm-bwa-%j.out
 
+# ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
+# Constants
+readonly DESCRIPTION="Map short reads to a reference using BWA"
+readonly MODULE=miniconda3/4.12.0-py39
+readonly CONDA=/fs/project/PAS0471/jelmer/conda/bwa-0.7.17
+readonly SCRIPT_VERSION="1.0"
+readonly SCRIPT_AUTHOR="Jelmer Poelstra"
+readonly SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
+readonly TOOL_BINARY=bwa
+readonly TOOL_NAME=BWA
+readonly TOOL_DOCS=https://github.com/lh3/bwa
+readonly VERSION_COMMAND='bwa 2>&1 | grep Version'
+readonly HELP_COMMAND="bwa mem"
 
-# SETUP ------------------------------------------------------------------------
-## Help function
-Help() {
-  echo
-  echo "## $0: Map FASTQ reads to a reference genome with BWA."
-  echo
-  echo "## Syntax: $0 -i <R1-FASTQ-file> -r <ref-genome> -o <output-dir> ..."
-  echo
-  echo "## Required options:"
-  echo "## -i STRING        Input (R1) FASTQ file (if paired-end, name of R2 file will be inferred)"
-  echo "## -o STRING        Output directory"
-  echo "## -r STRING        Reference genome FASTA file (with BWA indices in same dir)"
-  echo
-  echo "## Other options:"
-  echo "## -s               Sequences are single-end -- don't infer name of R2 file [default: paired-end sequences]"
-  echo "## -g STRING        Readgroup string to be added"
-  echo "## -h               Print this help message and exit"
-  echo
-  echo "## Example command:"
-  echo "## $0 -i data/fastq/A1_R1.fastq.gz -o results/bwa -r refdata/genome.fa"
-  echo "## To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
-  echo
-}
-
-## Option defaults
-fq_R1=""
-ref=""
-outdir=""
-readgroup_string=""
+# Option defaults
 single_end=false
 
-## Get command-line options
-while getopts 'i:o:r:g:sh' flag; do
-    case "${flag}" in
-    i) fq_R1="$OPTARG" ;;
-    o) outdir="$OPTARG" ;;
-    r) ref="$OPTARG" ;;
-    g) readgroup_arg="$OPTARG" ;;
-    s) single_end=true ;;
-    h) Help && exit 0 ;;
-    \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
-    :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
+# Help function
+script_help() {
+    echo
+    echo "        $0 (v. $SCRIPT_VERSION): Run $TOOL_NAME"
+    echo "        =============================================="
+    echo "DESCRIPTION:"
+    echo "  $DESCRIPTION"
+    echo
+    echo "USAGE / EXAMPLE COMMANDS:"
+    echo "  - Basic usage (always submit your scripts to SLURM with 'sbatch'):"
+    echo "      sbatch $0 -i data/sampleA_R1.fastq.gz --index_dir results/bwa/index -o results/bwa"
+    echo "  - To run the script using a different OSC project than PAS0471:"
+    echo "      sbatch -A PAS0001 $0 [...]"
+    echo "  - To just print the help message for this script (-h) or for $TOOL_NAME (--help):"
+    echo "      bash $0 -h"
+    echo "      bash $0 --help"
+    echo
+    echo "REQUIRED OPTIONS:"
+    echo "  -i/--R1         <file>  Input FASTQ file - for paired-end reads, provide only the R1"
+    echo "                            (R2 file name will be inferred)"
+    echo "  --index_dir     <dir>   Genome index dir"
+    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
+    echo
+    echo "OTHER KEY OPTIONS:"
+    echo "  --readgroup     <str>   Readgroup string to be added to the BAM file"
+    echo "  --single_end            Reads are single-end - don't look for R2 file"
+    echo "  --more_args     <str>   Quoted string with more argument(s) for $TOOL_NAME"
+    echo
+    echo "UTILITY OPTIONS:"
+    echo "  -h                      Print this help message and exit"
+    echo "  --help                  Print the help for $TOOL_NAME and exit"
+    echo "  -v                      Print the version of this script and exit"
+    echo "  -v/--version            Print the version of $TOOL_NAME and exit"
+    echo
+    echo "TOOL DOCUMENTATION:"
+    echo "  - Docs: $TOOL_DOCS"
+    echo "  - Paper: $TOOL_PAPER"
+    echo
+}
+
+# Function to source the script with Bash functions
+source_function_script() {
+    local is_slurm=$1
+
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$is_slurm" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
+    else
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
+    fi
+    function_script=$(realpath "$script_dir"/../dev/bash_functions.sh)
+    
+    if [[ ! -f "$function_script" ]]; then
+        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
+        git clone https://github.com/mcic-osu/mcic-scripts.git
+        function_script=mcic-scripts/dev/bash_functions.sh
+    fi
+    # shellcheck source=/dev/null
+    source "$function_script"
+}
+
+# ==============================================================================
+#                          INFRASTRUCTURE SETUP I
+# ==============================================================================
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script $IS_SLURM
+
+# ==============================================================================
+#                          PARSE COMMAND-LINE ARGS
+# ==============================================================================
+# Initiate variables
+infile=
+outdir=
+index_dir=
+R2=
+more_args=
+readgroup_string= && readgroup_arg=
+
+# Parse command-line args
+all_args="$*"
+while [ "$1" != "" ]; do
+    case "$1" in
+        -i | --R1 )         shift && readonly infile=$1 ;;
+        --index_dir )       shift && readonly index_dir=$1 ;;
+        -o | --outdir )     shift && readonly outdir=$1 ;;
+        --single_end )      single_end=true ;;
+        --readgroup )       shift && readonly readgroup_string=$1 ;;
+        --more_args )       shift && readonly more_args=$1 ;;
+        -v )                script_version; exit 0 ;;
+        -h )                script_help; exit 0 ;;
+        --version )         load_env "$MODULE" "$CONDA"
+                            tool_version "$VERSION_COMMAND" && exit 0 ;;
+        --help )            load_env "$MODULE" "$CONDA"
+                            tool_help "$HELP_COMMAND" && exit 0;;
+        * )                 die "Invalid option $1" "$all_args" ;;
     esac
+    shift
 done
 
-## Report
-echo -e "\n## Starting script bwa.sh"
-date
-echo
+# Check arguments
+[[ -z "$infile" ]] && die "No input FASTQ file specified, do so with -i/--R1" "$all_args"
+[[ -z "$index_dir" ]] && die "No input index dir specified, do so with --index_dir" "$all_args"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_args"
+[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
+[[ ! -d "$index_dir" ]] && die "Input index dir $index_dir does not exist"
 
-## Load software
-module load python/3.6-conda5.2
-source activate /fs/project/PAS0471/jelmer/conda/bwa-0.7.17
-SAMTOOLS_ENV=/fs/ess/PAS0471/jelmer/conda/samtools # Loaded later
-
-## Bash strict settings
+# ==============================================================================
+#                          INFRASTRUCTURE SETUP II
+# ==============================================================================
+# Strict bash settings
 set -euo pipefail
 
-## Process parameters - input file arg
-if [[ "$single_end" = false ]]; then
-    fq_R2=${fq_R1/_R1/_R2}
-    fq_arg="$fq_R1 $fq_R2"
-else
-    fq_arg="$fq_R1"
+# Logging files and dirs
+readonly LOG_DIR="$outdir"/logs
+readonly VERSION_FILE="$LOG_DIR"/version.txt
+readonly CONDA_YML="$LOG_DIR"/conda_env.yml
+readonly ENV_FILE="$LOG_DIR"/env.txt
+mkdir -p "$LOG_DIR"
+
+# Load software and set nr of threads
+load_env "$MODULE" "$CONDA" "$CONDA_YML"
+set_threads "$IS_SLURM"
+
+# ==============================================================================
+#              DEFINE OUTPUTS AND DERIVED INPUTS, BUILD ARGS
+# ==============================================================================
+# Determine R2 file, output prefix, etc
+if [[ -n "$infile" ]]; then
+    R1_basename=$(basename "$infile" | sed -E 's/.fa?s?t?q.gz//')
+    
+    if [[ "$single_end" == false ]]; then
+        R1_suffix=$(echo "$infile" | sed -E 's/.*(_R?1).*fa?s?t?q.gz/\1/')
+        sampleID=${R1_basename/"$R1_suffix"/}
+
+        # Determine name of R2 file
+        if [[ -z "$R2" ]]; then
+            R2_suffix=${R1_suffix/1/2}
+            R2=${infile/$R1_suffix/$R2_suffix}
+        fi
+        
+        [[ ! -f "$R2" ]] && Die "R2 input file $R2 does not exist"
+        [[ "$infile" == "$R2" ]] && Die "Input file R1 is the same as R2 ($infile)"
+    
+    else
+        sampleID="$R1_basename"
+    fi
 fi
 
-## Process parameters -- output files
-sampleID=$(basename "$fq_R1" | sed -E 's/_R?1[\._].*//')  
-bam_out=$outdir/"$sampleID".bam
-flagstat_out=$outdir/"$sampleID".flagstat
+# Reference index prefix
+n_index=$(find "$index_dir" -name "*amb" | wc -l)
+[[ "$n_index" == 0 ]] && die "No BWA index files found in index dir $index_dir"
+[[ "$n_index" -gt 1 ]] && log_time "WARNING: More than one BWA indices found, using the first"
+index_prefix=$(find "$index_dir" -name "*amb" | head -n 1 | sed 's/.amb//')
 
-## Process parameters -- readgroup arg
-readgroup_arg=""
-[[ "$readgroup_string" != "" ]] && readgroup_arg="-R $readgroup_string"
+# Output BAM file
+bam=$outdir/"$sampleID".bam
 
-## Check input
-[[ ! -f "$fq_R1" ]] && echo "## ERROR: Input R1 FASTQ file $fq_R1 does not exist" >&2 && exit 1
-[[ "$single_end" = false ]] && [[ ! -f "$fq_R2" ]] && echo "## ERROR: Input R2 FASTQ file $fq_R2 does not exist" >&2 && exit 1
-[[ ! -f "$ref" ]] && echo "## ERROR: Reference FASTA file $ref does not exist" >&2 && exit 1
+# Readgroup arg
+[[ -n "$readgroup_string" ]] && readgroup_arg="-R $readgroup_string"
 
-## Other variables
-n_cores=$SLURM_CPUS_PER_TASK
+# Flagstat output file
+flagstat_file="$outdir"/flagstat/"$sampleID".flagstat
 
-## Make output dir
-mkdir -p "$outdir"
-
-## Report
-echo "## R1 FASTQ file:             $fq_R1"
-[[ "$single_end" = false ]] && echo "## R2 FASTQ file:             $fq_R2"
-echo "## Reference FASTA file:      $ref"
-echo "## Output BAM file:           $bam_out"
-[[ "$readgroup_string" != NA ]] && echo "## Readgroup string:        $readgroup_string"
+# ==============================================================================
+#                               REPORT
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
+echo "=========================================================================="
+echo "All arguments to this script:             $all_args"
+echo "Input (R1) FASTQ file:                    $infile"
+[[ -n "$R2" ]] && echo "Input R2 FASTQ file:                      $R2"
+echo "Reads are single end:                     $single_end"
+echo "Index prefix:                             $index_prefix"
+echo "Output BAM file:                          $bam"
+echo "Output flagstat file:                     $flagstat_file"
+[[ -n "$readgroup_string" ]] && echo "Readgroup string:                         $readgroup_string"
+[[ -n $more_args ]] && echo "Other arguments for $TOOL_NAME:   $more_args"
+log_time "Listing the input file(s):"
+ls -lh "$infile"
+[[ -n "$R2" ]] && ls -lh "$R2"
 echo
-echo "## Number of cores:           $n_cores"
-echo "## SLURM job ID:              $SLURM_JOB_ID"
-echo
+ls -lh "${index_prefix}"*
+[[ "$IS_SLURM" = true ]] && slurm_resources
 
+# ==============================================================================
+#                               RUN
+# ==============================================================================
+# Make output dirs
+mkdir -p "$outdir"/flagstat
 
-# MAIN -------------------------------------------------------------------------
-## Map
-echo "## Mapping with bwa mem..."
-bwa mem \
-    -t "$n_cores" ${readgroup_arg} \
-    "$ref" \
-    ${fq_arg} |
-    samtools view -b -h > "$bam_out"
+# Run BWA
+log_time "Running $TOOL_NAME..."
+runstats $TOOL_BINARY mem \
+    -t "$threads" \
+    $readgroup_arg \
+    $more_args \
+    "$index_prefix" \
+    "$infile" "$R2" |
+    samtools view -b -h > "$bam"
 
-## Get mapping stats
-echo -e "\n## Running samtools flagstat..."
-source activate $SAMTOOLS_ENV
-samtools flagstat "$bam_out" > "$flagstat_out"
+# Get mapping stats
+samtools flagstat "$bam" > "$flagstat_file"
 
+# List the output
+log_time "Listing the output BAM file:"
+ls -lh "$bam"
+log_time "Number of mapped reads:"
+grep "primary mapped" "$flagstat_file"
+[[ -n "$R2" ]] && grep "properly paired" "$flagstat_file" 
 
-# WRAP UP ----------------------------------------------------------------------
-## Report
-echo -e "\n## Output files:"
-ls -lh "$bam_out" "$flagstat_out"
-echo -e "\n## Done with script bwa.sh"
-date
-echo
+# ==============================================================================
+#                               WRAP UP
+# ==============================================================================
+printf "\n======================================================================"
+log_time "Versions used:"
+tool_version "$VERSION_COMMAND" | tee "$VERSION_FILE"
+script_version "$SCRIPT_NAME" "$SCRIPT_AUTHOR" "$SCRIPT_VERSION" "$SCRIPT_URL" | tee -a "$VERSION_FILE" 
+env | sort > "$ENV_FILE"
+[[ "$IS_SLURM" = true ]] && resource_usage
+log_time "Done with script $SCRIPT_NAME\n"
 
-################################################################################
-## bwa flags:
-# -t nr of threads
-# -a alignments for single-end / unpaired reads are also output, as secondary alignments
-# -M shorter split reads are output as secondary alignments, for Picard compatibility
-# -R "@RG\tID:group1\tSM:$IND\tPL:illumina\tLB:lib1"
+# ==============================================================================
+#                               INFO
+# ==============================================================================
+#? Useful bwa flags:
+#?  -t nr of threads
+#?  -a alignments for single-end / unpaired reads are also output, as secondary alignments
+#?  -M shorter split reads are output as secondary alignments, for Picard compatibility
+#?  -R "@RG\tID:group1\tSM:$IND\tPL:illumina\tLB:lib1"
