@@ -52,13 +52,13 @@ script_help() {
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --more_args     <str>   Quoted string with more argument(s) for $TOOL_NAME"
+    echo "  --more_args     <str>   Quoted string with additional argument(s) for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
     echo "  -h                      Print this help message and exit"
     echo "  --help                  Print the help for $TOOL_NAME and exit"
     echo "  -v                      Print the version of this script and exit"
-    echo "  -v/--version            Print the version of $TOOL_NAME and exit"
+    echo "  --version               Print the version of $TOOL_NAME and exit"
     echo
     echo "TOOL DOCUMENTATION:"
     echo "  - Docs: $TOOL_DOCS"
