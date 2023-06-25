@@ -14,15 +14,13 @@
 readonly DESCRIPTION="Run the Nextflow/nf-core Sarek pipeline for non-model organism genomic variant callling"
 readonly MODULE=miniconda3/4.12.0-py39
 readonly CONDA=/fs/project/PAS0471/jelmer/conda/nextflow
-readonly SCRIPT_VERSION="1.0"
+readonly SCRIPT_VERSION="1.1"
 readonly SCRIPT_AUTHOR="Jelmer Poelstra"
 readonly SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
 readonly TOOL_BINARY="nextflow run"
 readonly TOOL_NAME="nf-core Sarek"
 readonly TOOL_DOCS=https://nf-co.re/sarek
 readonly TOOL_PAPER=http://dx.doi.org/10.12688/f1000research.16665.2
-readonly VERSION_COMMAND= #TODO
-readonly HELP_COMMAND= #TODO
 
 # Constants - specific
 #? By default, the workflow will download human 'igenome' data - skip this
@@ -37,6 +35,7 @@ work_dir=/fs/scratch/PAS0471/$USER/nfcore-sarek
 profile="singularity"
 resume=true && resume_arg="-resume"
 download_wf=false
+variant_tools=mpileup
 
 # URL to OSC Nextflow config file
 OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config
@@ -55,12 +54,13 @@ script_help() {
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage (always submit your scripts to SLURM with 'sbatch'):"
-    echo "      sbatch $0 --samplesheet metadata/samplesheet.csv --genome data/assembly.fna -o results/sarek"
-    echo "  - To run the script using a different OSC project than PAS0471:"
-    echo "      sbatch -A PAS0001 $0 [...]"
-    echo "  - To just print the help message for this script (-h) or for $TOOL_NAME (--help):"
+    echo "      sbatch $0 --samplesheet metadata/samplesheet.csv --genome data/assembly.fna -o results/sarek --tools freebayes"
+    echo "  - Use the Freebayes variant caller in addition to mpileup:"
+    echo "      sbatch $0 --samplesheet metadata/samplesheet.csv --genome data/assembly.fna -o results/sarek --tools freebayes,mpileup"
+    echo "  - Example of using '--more_args': save the BAM files"
+    echo "      sbatch $0 --samplesheet metadata/samplesheet.csv --genome data/assembly.fna -o results/sarek --more_args '--save_mapped --save_output_as_bam'"
+    echo "  - To just print the help message for this script:"
     echo "      bash $0 -h"
-    echo "      bash $0 --help"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--samplesheet    <file>  Input samplesheet CSV file (see https://nf-co.re/sarek/3.2.3/usage)"
@@ -68,19 +68,23 @@ script_help() {
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
+    echo "  --variant_tools     <str>   Comma-separated list of one or more tools for variant calling and annotation"
+    echo "                              See https://nf-co.re/sarek/3.2.3/parameters#tools for options   [default: 'mpileup']"
     echo "  --download_wf       <str>   Download the specified workflow version (e.g. '--download_wf 3.2.0')"
-    echo "  --workflow_dir      <dir>   Dir with the nf-core Sarek workflow   [default: 'workflows/nfcore-sarek']"
-    echo "                                - Will be downloaded if needed."
-    echo "  --more_args         <str>   Quoted string with more argument(s) for $TOOL_NAME"
+    echo "                              The default current workflow version is $workflow_version"
+    echo "  --workflow_dir      <dir>   Dir with the nf-core Sarek workflow                             [default: 'workflows/nfcore-sarek']"
+    echo "                                - The workflow files will be downloaded here if needed."
+    echo "  --more_args         <str>   Quoted string with more argument(s) for the workflow"
+    echo "                              For a list of possibilities, see https://nf-co.re/sarek/3.2.3/parameters"
     echo
     echo "NEXTFLOW OPTIONS:"
-    echo "  -r/-no-resume               Don't attempt to resume workflow run, but start over        [default: resume workflow]"
-    echo "  -c/-config          <file>  Additional config file                                      [default: none]"
+    echo "  -r/-no-resume               Don't attempt to resume workflow run, but start over            [default: resume workflow]"
+    echo "  -c/-config          <file>  Additional config file                                          [default: none]"
     echo "                                - Settings in this file will override default settings"
     echo "                                - Note that the mcic-scripts OSC config file will always be included, too"
     echo "                                  (https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config)"
-    echo "  -profile            <str>   'Profile' to use from one of the config files               [default: 'singularity']"
-    echo "  -work-dir           <dir>   Scratch (work) dir for the workflow                         [default: '/fs/scratch/PAS0471/\$USER/nfcore-sarek']"
+    echo "  -profile            <str>   'Profile' to use from one of the config files                   [default: 'singularity']"
+    echo "  -work-dir           <dir>   Scratch (work) dir for the workflow                             [default: '/fs/scratch/PAS0471/\$USER/nfcore-sarek']"
     echo "                                - This is where the workflow results will be stored before final results are copied to the output dir."
     echo
     echo "UTILITY OPTIONS:"
@@ -151,6 +155,7 @@ while [ "$1" != "" ]; do
         -i | --samplesheet )    shift && readonly samplesheet=$1 ;;
         -o | --outdir )         shift && readonly outdir=$1 ;;
         --genome )              shift && readonly genome=$1 ;;
+        --variant_tools )       shift && readonly variant_tools=$1 ;;
         --workflow_dir )        shift && readonly workflow_dir=$1 ;;
         --download_wf )         shift && download_wf=true && workflow_version=$1 ;;
         --container_dir )       shift && readonly container_dir=$1 ;;
@@ -220,6 +225,7 @@ echo "All arguments to this script:             $all_args"
 echo "Input samplesheet file:                   $samplesheet"
 echo "Input genome FASTA file:                  $genome"
 echo "Output dir:                               $outdir"
+echo "Variant calling & annotation tools:       $variant_tools"
 echo "Config file argument:                     $config_arg"
 [[ -n $more_args ]] && echo "Additional arguments:                     $more_args"
 log_time "Listing the input file(s):"
@@ -255,6 +261,7 @@ runstats $TOOL_BINARY \
     --input "$samplesheet" \
     --outdir "$outdir" \
     --fasta "$genome" \
+    --tools "$variant_tools" \
     $NONMODEL_OPTS \
     -work-dir "$work_dir" \
     -with-report "$TRACE_DIR"/report.html \
