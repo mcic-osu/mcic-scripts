@@ -41,8 +41,6 @@ script_help() {
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage (always submit your scripts to SLURM with 'sbatch'):"
     echo "      sbatch $0 -i TODO -o results/TODO" #TODO
-    echo "  - To run the script using a different OSC project than PAS0471:"
-    echo "      sbatch -A PAS0001 $0 [...]"
     echo "  - To just print the help message for this script (-h) or for $TOOL_NAME (--help):"
     echo "      bash $0 -h"
     echo "      bash $0 --help"
