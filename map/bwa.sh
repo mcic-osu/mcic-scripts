@@ -11,7 +11,7 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants
-readonly DESCRIPTION="Map short reads to a reference using BWA"
+readonly DESCRIPTION="Map short reads to a reference using BWA, and output a sorted BAM file"
 readonly MODULE=miniconda3/4.12.0-py39
 readonly CONDA=/fs/project/PAS0471/jelmer/conda/bwa-0.7.17
 readonly SCRIPT_VERSION="1.0"
@@ -231,7 +231,12 @@ runstats $TOOL_BINARY mem \
     $more_args \
     "$index_prefix" \
     "$infile" "$R2" |
-    samtools view -b -h > "$bam"
+        samtools sort \
+            --threads "$threads" \
+            -o "$bam" \
+            -
+
+#samtools view -b -h > "$bam"
 
 # Get mapping stats
 samtools flagstat "$bam" > "$flagstat_file"
