@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
+#SBATCH --time=6:00:00
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=40G
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name=mpileup
 #SBATCH --output=slurm-mpileup-%j.out
@@ -10,8 +10,8 @@
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-# Constants
-readonly DESCRIPTION="Run bcftools mpileup and bcftools call to call variants using BAM files and a reference"
+# Constants - generic
+readonly DESCRIPTION="Run 'bcftools mpileup' and 'bcftools call' to call variants using BAM files and a reference FASTA"
 readonly MODULE=miniconda3/4.12.0-py39
 readonly CONDA=/fs/ess/PAS0471/jelmer/conda/bcftools
 readonly SCRIPT_VERSION="0.1"
@@ -21,6 +21,10 @@ readonly TOOL_BINARY=bcftools
 readonly TOOL_NAME=bcftools
 readonly TOOL_DOCS=https://samtools.github.io/bcftools/bcftools.html
 readonly TOOL_PAPER=https://academic.oup.com/gigascience/article/10/2/giab008/6137722
+readonly VERSION_COMMAND=
+
+# Constants - parameters
+VARCALL_METHOD="--multiallelic-caller"
 
 # Option defaults
 allsites=false      # Only output variant sites
@@ -35,6 +39,7 @@ script_help() {
     echo "        =============================================="
     echo "DESCRIPTION:"
     echo "  $DESCRIPTION"
+    echo "  NOTE: The variant-calling method is set to '--multiallelic-caller'"
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage (always submit your scripts to SLURM with 'sbatch'):"
@@ -133,9 +138,11 @@ done
 # Strict bash settings
 set -euo pipefail
 
-# Logging files and dirs
+# Outputs based on script parameters
 outdir=$(dirname "$vcf")
+if [[ "$allsites" == true ]]; then allsites_opt=; else allsites_opt="-v"; fi
 
+# Logging files
 readonly LOG_DIR="$outdir"/logs
 readonly VERSION_FILE="$LOG_DIR"/version.txt
 readonly CONDA_YML="$LOG_DIR"/conda_env.yml
@@ -145,12 +152,6 @@ mkdir -p "$LOG_DIR"
 # Load software and set nr of threads
 load_env "$MODULE" "$CONDA" "$CONDA_YML"
 set_threads "$IS_SLURM"
-
-# ==============================================================================
-#              DEFINE OUTPUTS AND DERIVED INPUTS, BUILD ARGS
-# ==============================================================================
-# Define outputs based on script parameters
-if [[ "$allsites" == true ]]; then allsites_opt=; else allsites_opt="-v"; fi
 
 # ==============================================================================
 #                               REPORT
@@ -176,17 +177,18 @@ ls -lh "$fasta" "$bam_dir"/*bam
 log_time "Running $TOOL_NAME..."
 runstats $TOOL_BINARY mpileup \
     --fasta-ref "$fasta" \
-    -O u \
+    --output-type u \
     $args_mpileup \
     "$bam_dir"/*bam |
         bcftools call \
-            -m \
+            "$VARCALL_METHOD" \
             $allsites_opt \
             --threads "$threads" \
-            --output-type v \
+            --output-type z \
             $args_call \
-            -o "$vcf"
+            --output "$vcf"
 
+#? '--output-type u/z' => uncompressed BCF / compressed VCF
 #? -m: default calling methods (vs -c, old consensus calling method)
 
 # List the output
@@ -198,7 +200,7 @@ ls -lh "$vcf"
 # ==============================================================================
 printf "\n======================================================================"
 log_time "Versions used:"
-#tool_version "$VERSION_COMMAND" | tee "$VERSION_FILE" #TODO
+tool_version "$VERSION_COMMAND" | tee "$VERSION_FILE"
 script_version "$SCRIPT_NAME" "$SCRIPT_AUTHOR" "$SCRIPT_VERSION" "$SCRIPT_URL" | tee -a "$VERSION_FILE" 
 env | sort > "$ENV_FILE"
 [[ "$IS_SLURM" = true ]] && resource_usage

@@ -20,8 +20,9 @@ infile=$(realpath "$infile")
 
 # Read a fofn
 [[ -n "$fofn" ]] && mapfile -t infiles <"$fofn"
+
+# Create an array of input files
 [[ -n "$indir" ]] && mapfile infiles < <(find "$indir" -type f)
 
 # Check derived inputs
-[[ ! -f $R2 ]] && die "Input file R2 ($R2) does not exist"
 [[ "$R1" == "$R2" ]] && die "Input R1 and R2 FASTQ files are the same file: $R1"
