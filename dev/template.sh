@@ -10,7 +10,7 @@
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-# Constants
+# Constants - generic
 readonly DESCRIPTION="" #TODO
 readonly MODULE=miniconda3/4.12.0-py39
 readonly CONDA=#TODO
@@ -24,7 +24,10 @@ readonly TOOL_PAPER=#TODO
 readonly VERSION_COMMAND=
 readonly HELP_COMMAND=
 
-# Option defaults
+# Constants - parameters
+#TODO
+
+# Parameter defaults
 #TODO
 
 # ==============================================================================
@@ -133,6 +136,9 @@ done
 # Strict bash settings
 set -euo pipefail
 
+# Define outputs based on script parameters
+#TODO
+
 # Logging files and dirs
 readonly LOG_DIR="$outdir"/logs
 readonly VERSION_FILE="$LOG_DIR"/version.txt
@@ -143,12 +149,6 @@ mkdir -p "$LOG_DIR"
 # Load software and set nr of threads
 load_env "$MODULE" "$CONDA" "$CONDA_YML"
 set_threads "$IS_SLURM"
-
-# ==============================================================================
-#              DEFINE OUTPUTS AND DERIVED INPUTS, BUILD ARGS
-# ==============================================================================
-# Define outputs based on script parameters
-
 
 # ==============================================================================
 #                               REPORT
