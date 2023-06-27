@@ -7,6 +7,8 @@
 #SBATCH --job-name=sarek
 #SBATCH --output=slurm-sarek-%j.out
 
+#TODO - No way of providing annotation via GFF/GTF?
+
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
