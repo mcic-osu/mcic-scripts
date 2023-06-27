@@ -10,21 +10,22 @@
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-# Constants
-readonly DESCRIPTION="Map short reads to a reference using BWA, and output a sorted BAM file"
+# Constants - generic
+readonly DESCRIPTION="Map short reads to a reference using BWA MEM, and output a sorted BAM file and a 'samtools flagstat' QC stats file"
 readonly MODULE=miniconda3/4.12.0-py39
 readonly CONDA=/fs/project/PAS0471/jelmer/conda/bwa-0.7.17
-readonly SCRIPT_VERSION="1.0"
+readonly SCRIPT_VERSION="1.1"
 readonly SCRIPT_AUTHOR="Jelmer Poelstra"
 readonly SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
-readonly TOOL_BINARY=bwa
+readonly TOOL_BINARY="bwa mem"
 readonly TOOL_NAME=BWA
 readonly TOOL_DOCS=https://github.com/lh3/bwa
 readonly VERSION_COMMAND='bwa 2>&1 | grep Version'
 readonly HELP_COMMAND="bwa mem"
 
 # Option defaults
-single_end=false
+single_end=false            # Assume that reads are PE
+use_secondary=true          # Use bwa mem's -M option: output additional shorter hits as secondary
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -40,8 +41,6 @@ script_help() {
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage (always submit your scripts to SLURM with 'sbatch'):"
     echo "      sbatch $0 -i data/sampleA_R1.fastq.gz --index_dir results/bwa/index -o results/bwa"
-    echo "  - To run the script using a different OSC project than PAS0471:"
-    echo "      sbatch -A PAS0001 $0 [...]"
     echo "  - To just print the help message for this script (-h) or for $TOOL_NAME (--help):"
     echo "      bash $0 -h"
     echo "      bash $0 --help"
@@ -53,8 +52,9 @@ script_help() {
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
+    echo "  --no_secondary          Don't use BWA MEM's '-M' option to output shorter addtional hits as 'secondary' [default: use -M]"    
     echo "  --readgroup     <str>   Readgroup string to be added to the BAM file"
-    echo "  --single_end            Reads are single-end - don't look for R2 file"
+    echo "  --single_end            Reads are single-end - don't look for R2 file [default: PE reads]"
     echo "  --more_args     <str>   Quoted string with more argument(s) for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -119,6 +119,7 @@ while [ "$1" != "" ]; do
         --index_dir )       shift && readonly index_dir=$1 ;;
         -o | --outdir )     shift && readonly outdir=$1 ;;
         --single_end )      single_end=true ;;
+        --no_secondary )    use_secondary=false ;;
         --readgroup )       shift && readonly readgroup_string=$1 ;;
         --more_args )       shift && readonly more_args=$1 ;;
         -v )                script_version; exit 0 ;;
@@ -187,13 +188,10 @@ n_index=$(find "$index_dir" -name "*amb" | wc -l)
 [[ "$n_index" -gt 1 ]] && log_time "WARNING: More than one BWA indices found, using the first"
 index_prefix=$(find "$index_dir" -name "*amb" | head -n 1 | sed 's/.amb//')
 
-# Output BAM file
-bam=$outdir/"$sampleID".bam
-
-# Readgroup arg
+# Other
 [[ -n "$readgroup_string" ]] && readgroup_arg="-R $readgroup_string"
-
-# Flagstat output file
+if [[ "$use_secondary" == true ]]; then secondary_arg="-M"; else secondary_arg=; fi
+bam=$outdir/"$sampleID".bam
 flagstat_file="$outdir"/flagstat/"$sampleID".flagstat
 
 # ==============================================================================
@@ -205,6 +203,7 @@ echo "All arguments to this script:             $all_args"
 echo "Input (R1) FASTQ file:                    $infile"
 [[ -n "$R2" ]] && echo "Input R2 FASTQ file:                      $R2"
 echo "Reads are single end:                     $single_end"
+echo "Shorter hits are output as secondary (-M option): $use_secondary"
 echo "Index prefix:                             $index_prefix"
 echo "Output BAM file:                          $bam"
 echo "Output flagstat file:                     $flagstat_file"
@@ -225,18 +224,17 @@ mkdir -p "$outdir"/flagstat
 
 # Run BWA
 log_time "Running $TOOL_NAME..."
-runstats $TOOL_BINARY mem \
+runstats $TOOL_BINARY \
     -t "$threads" \
     $readgroup_arg \
+    $secondary_arg \
     $more_args \
     "$index_prefix" \
-    "$infile" "$R2" |
-        samtools sort \
-            --threads "$threads" \
-            -o "$bam" \
-            -
-
-#samtools view -b -h > "$bam"
+    "$infile" "$R2" \
+    | samtools sort \
+        --threads "$threads" \
+        -o "$bam" \
+        -
 
 # Get mapping stats
 samtools flagstat "$bam" > "$flagstat_file"
