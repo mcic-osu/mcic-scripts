@@ -80,13 +80,13 @@ script_help() {
     echo "                              For a list of possibilities, see https://nf-co.re/sarek/3.2.3/parameters"
     echo
     echo "NEXTFLOW OPTIONS:"
-    echo "  -r/-no-resume               Don't attempt to resume workflow run, but start over            [default: resume workflow]"
-    echo "  -c/-config          <file>  Additional config file                                          [default: none]"
+    echo "  --restart                   Don't attempt to resume workflow run, but start over            [default: resume workflow]"
+    echo "  --config            <file>  Additional config file                                          [default: none]"
     echo "                                - Settings in this file will override default settings"
     echo "                                - Note that the mcic-scripts OSC config file will always be included, too"
     echo "                                  (https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config)"
-    echo "  -profile            <str>   'Profile' to use from one of the config files                   [default: 'singularity']"
-    echo "  -work-dir           <dir>   Scratch (work) dir for the workflow                             [default: '/fs/scratch/PAS0471/\$USER/nfcore-sarek']"
+    echo "  --profile           <str>   'Profile' to use from one of the config files                   [default: 'singularity']"
+    echo "  --workdir           <dir>   Scratch (work) dir for the workflow                             [default: '/fs/scratch/PAS0471/\$USER/nfcore-sarek']"
     echo "                                - This is where the workflow results will be stored before final results are copied to the output dir."
     echo
     echo "UTILITY OPTIONS:"
@@ -161,10 +161,10 @@ while [ "$1" != "" ]; do
         --workflow_dir )        shift && readonly workflow_dir=$1 ;;
         --download_wf )         shift && download_wf=true && workflow_version=$1 ;;
         --container_dir )       shift && readonly container_dir=$1 ;;
-        -c | -config )          shift && readonly config_file=$1 ;;
-        -p | -profile )         shift && readonly profile=$1 ;;
-        -w | -work-dir )        shift && readonly work_dir=$1 ;;
-        -r | -no-resume )       resume=false ;;
+        --config )              shift && readonly config_file=$1 ;;
+        --profile )             shift && readonly profile=$1 ;;
+        --workdir )             shift && readonly work_dir=$1 ;;
+        --restart )             resume=false ;;
         --more_args )           shift && readonly more_args=$1 ;;
         -v | --version )        script_version; exit 0 ;;
         -h | --help )           script_help; exit 0 ;;
@@ -194,9 +194,8 @@ readonly ENV_FILE="$LOG_DIR"/env.txt
 readonly TRACE_DIR="$outdir"/pipeline_info
 mkdir -p "$LOG_DIR"
 
-# Load software and set nr of threads
+# Load software
 load_env "$MODULE" "$CONDA" "$CONDA_YML"
-set_threads "$IS_SLURM"
 nextflow_env
 
 # ==============================================================================
