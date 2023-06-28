@@ -1,251 +1,307 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
+#SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=bactopia
 #SBATCH --output=slurm-bactopia-%j.out
 
-# FUNCTIONS --------------------------------------------------------------------
-## Help function
-Help() {
+#TODO Implement additional tools
+
+# ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
+# Constants - generic
+readonly DESCRIPTION="Run the Bactopia workflow"
+readonly MODULE=miniconda3/4.12.0-py39
+readonly CONDA=/fs/project/PAS0471/jelmer/conda/bactopia
+readonly SCRIPT_VERSION="1.0"
+readonly SCRIPT_AUTHOR="Jelmer Poelstra"
+readonly SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
+readonly TOOL_BINARY=bactopia
+readonly TOOL_NAME=Bactopia
+readonly TOOL_DOCS=https://bactopia.github.io/
+readonly VERSION_COMMAND=
+readonly HELP_COMMAND=
+
+# Constants - parameters and settings
+# NOTE: The '--cleanup_workdir' option is hardcoded below
+# NOTE: The script will always use or download Bactopia datasets
+GENOME_LIMIT=100                                # Download max. 100 genomes from the genus of the focal species
+
+QUEUE_SIZE=100                                  # Nr of jobs to be submitted at once
+MAX_CPUS=48
+MAX_TIME=1440                                   # In hours
+MAX_MEMORY=128                                  # In GB
+
+# Parameter defaults
+db_dir=data/bactopia                            # Output of the 'bactopia datasets command'
+always_download_db=false                        # Default is to only download if $db_dir doesn't exist
+container_dir=/fs/project/PAS0471/containers
+profile=singularity
+resume=true && resume_arg="-resume"
+
+# URL to OSC Nextflow config file
+OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config
+osc_config=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present here
+
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
+# Help function
+script_help() {
     echo
-    echo "=================================================================================================="
-    echo "$0: Run the Bactopia pipeline"
-    echo "=================================================================================================="
+    echo "        $0 (v. $SCRIPT_VERSION): Run $TOOL_NAME"
+    echo "        =============================================="
+    echo "DESCRIPTION:"
+    echo "  $DESCRIPTION"
+    echo
+    echo "USAGE / EXAMPLE COMMANDS:"
+    echo "  - Basic usage (always submit your scripts to SLURM with 'sbatch'):"
+    echo "      sbatch $0 --samplesheet metadata/samplesheet.csv --species 'Salmonella enterica' -o results/bactopia"
+    echo "  - To just print the help message for this script (-h) or for $TOOL_NAME (--help):"
+    echo "      bash $0 -h"
+    echo "      bash $0 --help"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "------------------"
-    echo "    -i DIR      Sample sheet (FOFN) containing paths to FASTQ files"
-    echo "    -o DIR      Output directory (will be created if needed)"
-    echo "    -s STRING   Focal species, e.g. 'Salmonella enterica' (make sure to quote!)"
+    echo "  -i/--indir          <dir>   Input dir with FASTQ files"
+    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
+    echo "  --species           <str>   Focal species, e.g. 'Salmonella enterica' (make sure to quote!)"
     echo
-    echo "OTHER OPTIONS:"
-    echo "------------------"
-    echo "    -r          Don't attempt to resume workflow run, but start over      [default: resume workflow]"
-    echo "    -d DIR      Bactopia datasets directory                               [default: none"
-    echo "    -p STRING   Profile to use from one of the config files               [default: 'singularity']"
-    echo "    -c FILE     Additional config file                                    [default: mcic-scripts OSC config file 'osc.config']"
-    echo "                    - osc.config is at https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config"
-    echo "    -t DIR      Container dir                                             [default: /fs/project/PAS0471/containers]"
-    echo "    -a STRING   Additional arguments to pass to Bactopia"
-    echo
+    echo "OTHER KEY OPTIONS:"
+    echo "  --add_tools         <str>   Comma-separated list of tools to run after the main workflow    [default: ?]"
+    echo "                              See https://bactopia.github.io/v2.2.0/bactopia-tools"
+    echo "  --db_dir            <dir>   Dir for downloaded Bactopia datasets (database) data            [default: data/bactopia]"
+    echo "  --download_db               Always download datasets, even if --db_dir exists               [default: only download if dir doesn't exist]"
+    echo "  --more_args         <str>   Quoted string with additional argument(s) for $TOOL_NAME"
+    echo "  --more_args_db      <str>   Quoted string with additional argument(s) for $TOOL_NAME datasets"
+    echo "  --restart                   Don't attempt to resume workflow run, but start over            [default: resume]"
+    echo 
     echo "UTILITY OPTIONS:"
-    echo "------------------"
-    echo "    -x          Turn on debugging/dry-run mode: print run information, but don't run commands"
-    echo "    -v          Print the version and exit"
-    echo "    -h          Print this help message and exit"
+    echo "  --config            <file>  Additional Nextflow config file                                 [default: none]"
+    echo "                                - Settings in this file will override default settings"
+    echo "                                - Note that the mcic-scripts OSC config file will always be included, too"
+    echo "                                  (https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config)"
+    echo "  --profile           <str>   'Profile' to use from one of the config files                   [default: 'singularity']"
+    echo "  -h                          Print this help message and exit"
+    echo "  --help                      Print the help for $TOOL_NAME and exit"
+    echo "  -v                          Print the version of this script and exit"
+    echo "  --version                   Print the version of $TOOL_NAME and exit"
     echo
-    echo "EXAMPLE COMMAND:"
-    echo "------------------"
-    echo "    sbatch $0 -i data/meta/samplesheet.tsv -s 'Salmonella enterica' -o results/bactopia"
+    echo "TOOL DOCUMENTATION:"
+    echo "  - $TOOL_DOCS"
     echo
-    echo "OUTPUT:"
-    echo "------------------"
-    echo "      - ...."
-    echo
-    echo "BACTOPIA INFORMATION:"
-    echo "------------------"
-    echo " - Documentation: https://bactopia.github.io/ "
-    echo " - Paper:         https://journals.asm.org/doi/10.1128/mSystems.00190-20"
 }
 
-## Print the version
-Print_version() {
-    load_software
-    bactopia --version
+# Function to source the script with Bash functions
+source_function_script() {
+    local is_slurm=$1
+
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$is_slurm" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
+    else
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
+    fi
+    function_script=$(realpath "$script_dir"/../dev/bash_functions.sh)
+    
+    if [[ ! -f "$function_script" ]]; then
+        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
+        git clone https://github.com/mcic-osu/mcic-scripts.git
+        function_script=mcic-scripts/dev/bash_functions.sh
+    fi
+    # shellcheck source=/dev/null
+    source "$function_script"
 }
 
-## Load software
-Load_software() {
-    ## Load Conda environment
-    module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do conda deactivate; done
-    source activate /fs/project/PAS0471/jelmer/conda/bactopia
-
-    ## Singularity container dir - any downloaded containers will be stored here;
-    ## if the required container is already there, it won't be re-downloaded
+nextflow_env() {
+    # Singularity container dir - any downloaded containers will be stored here;
+    # if the required container is already there, it won't be re-downloaded
     export NXF_SINGULARITY_CACHEDIR="$container_dir"
     mkdir -p "$NXF_SINGULARITY_CACHEDIR"
 
-    ## Limit memory for Nextflow main process - see https://www.nextflow.io/blog/2021/5_tips_for_hpc_users.html
+    # Limit memory for Nextflow main process - see https://www.nextflow.io/blog/2021/5_tips_for_hpc_users.html
     export NXF_OPTS='-Xms1g -Xmx4g'
 }
 
+# ==============================================================================
+#                          INFRASTRUCTURE SETUP I
+# ==============================================================================
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script $IS_SLURM
 
-# PARSE COMMAND-LINE OPTIONS ---------------------------------------------------
-## Hardcoded variables
-QUEUE_SIZE=100
-MAX_CPUS=48
-MAX_TIME=1440    # In hours
-MAX_MEMORY=128   # In GB
+# ==============================================================================
+#                          PARSE COMMAND-LINE ARGS
+# ==============================================================================
+# Initiate variables
+indir=
+outdir=
+species=
+extra_config_file=
+more_args=
+more_args_db=
 
-## Option defaults
-container_dir=/fs/project/PAS0471/containers
-profile=singularity
-resume=true
-debug=false
-
-datasets_dir=""
-species=""
-samplesheet=""
-outdir=""
-config_file=""
-more_args=""
-
-## Parse command-line options
-while getopts 'i:o:s:d:c:p:t:a:rvhx' flag; do
-    case "${flag}" in
-        i) samplesheet="$OPTARG" ;;
-        o) outdir="$OPTARG" ;;
-        s) species="$OPTARG" ;;
-        d) datasets_dir="$OPTARG" ;;
-        p) profile="$OPTARG" ;;
-        c) config_file="$OPTARG" ;;
-        t) container_dir="$OPTARG" ;;
-        a) more_args="$OPTARG" ;;
-        r) resume=false ;;
-        x) debug=true ;;
-        v) Print_version && exit 0 ;;
-        h) Help && exit 0 ;;
-        \?) echo "## $0: ERROR: Invalid option" >&2 && exit 1 ;;
-        :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
+# Parse command-line args
+all_args="$*"
+while [ "$1" != "" ]; do
+    case "$1" in
+        -i | --indir )          shift && readonly indir=$1 ;;
+        -o | --outdir )         shift && outdir=$1 ;;
+        --species )             shift && readonly species=$1 ;;
+        --db_dir )              shift && readonly db_dir=$1 ;;
+        --download_db )         always_download_db=true ;;
+        --add_tools )           shift && readonly add_tools=$1 ;;
+        --more_args )           shift && readonly more_args=$1 ;;
+        --more_args_db )        shift && readonly more_args_db=$1 ;;
+        --config )              shift && readonly extra_config_file=$1 ;;
+        --profile )             shift && readonly profile=$1 ;;
+        --restart )             readonly resume=false ;;
+        -v )                    script_version; exit 0 ;;
+        -h )                    script_help; exit 0 ;;
+        --version )             load_env "$MODULE" "$CONDA"
+                                tool_version "$VERSION_COMMAND" && exit 0 ;;
+        --help )                load_env "$MODULE" "$CONDA"
+                                tool_help "$HELP_COMMAND" && exit 0;;
+        * )                     die "Invalid option $1" "$all_args" ;;
     esac
+    shift
 done
 
+# Check arguments
+[[ -z "$indir" ]] && die "No input samplesheet specified, do so with -i/--indir" "$all_args"
+[[ -z "$species" ]] && die "No species specified, do so with --species" "$all_args"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_args"
+[[ ! -d "$indir" ]] && die "Input dir $indir does not exist"
 
-# SETUP ------------------------------------------------------------------
-## Load software
-Load_software
+# ==============================================================================
+#                          INFRASTRUCTURE SETUP II
+# ==============================================================================
+# Strict bash settings
+set -euo pipefail
 
-## Bash strict settings
-set -ueo pipefail
-
-## Check input
-[[ "$samplesheet" = "" ]] && echo "## ERROR: Please specify a samplesheet with -i" && exit 1
-[[ "$outdir" = "" ]] && echo "## ERROR: Please specify an output dir with -o" && exit 1
-[[ "$species" = "" ]] && echo "## ERROR: Please specify a species with -s" && exit 1
-[[ ! -f "$samplesheet" ]] && echo "## ERROR: Samplesheet $samplesheet does not exist" && exit 1
-
-## Report
-echo -e "\n=========================================================================="
-echo "## STARTING SCRIPT BACTOPIA.SH"
-date
-echo -e "==========================================================================\n"
-
-## Get the OSC config file
-if [[ "$config_file" = "" ]]; then
-    echo "## Using the mcisc-scripts OSC config file"
-
-    SCRIPTPATH="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
-    OSC_CONFIG_FILE="$PWD"/"$SCRIPTPATH"/../nextflow/osc.config
-    
-    if [[ ! -f "$OSC_CONFIG_FILE" ]]; then
-        [[ ! -d "mcic-scripts" ]] && git clone https://github.com/mcic-osu/mcic-scripts.git
-        OSC_CONFIG_FILE="$PWD"/mcic-scripts/nextflow/osc.config
-        [[ ! -f "$OSC_CONFIG_FILE" ]] && echo "## ERROR: No OSC config file" >&2 && exit 1
-    fi
-    
-    config_arg="--nfconfig $OSC_CONFIG_FILE"
-fi
-
-## Make paths absolute
-[[ ! "$samplesheet" =~ ^/ ]] && samplesheet="$PWD"/"$samplesheet"
-
-## Setup arguments: resume option
-if [[ "$resume" = true ]]; then
-    resume_arg="-resume"
-else
-    resume_arg=""
-fi
-
-## Setup arguments: datasets
-if [[ "$datasets_dir" != "" ]]; then
-    [[ ! "$datasets_dir" =~ ^/ ]] && datasets_dir="$PWD"/"$datasets_dir"
-    datasets_arg="--datasets $datasets_dir"
-else
-    datasets_arg=""
-fi
-
-## Split outdir into 'outdir' and 'run_name'
+# Outputs - absolute paths
+[[ ! "$outdir" =~ ^/ ]] && outdir="$PWD"/"$outdir"
+[[ ! "$db_dir" =~ ^/ ]] && db_dir="$PWD"/"$db_dir"
+[[ ! "$osc_config" =~ ^/ ]] && osc_config="$PWD"/"$osc_config"
+samplesheet="$outdir"/samplesheet.tsv
 outdir_base=$(dirname "$outdir")
 run_name=$(basename "$outdir")
 
-## Report
-echo "## Sample sheet:                      $samplesheet"
-echo "## Output dir:                        $outdir"
-echo "## Species:                           $species"
-[[ "$datasets_dir" != "" ]] && echo "## Bactopia datasets dir:             $datasets_dir"
-echo
-echo "## Config 'profile':                  $profile"
-[[ "$config_file" != "" ]] && echo "## Additional config file:                       $config_file"
-echo "## Resume previous run:               $resume"
-[[ "$more_args" != "" ]] && echo "## Additional arguments:              $more_args"
-echo
-echo "Print the contents of the sample sheet:"
-cat -n "$samplesheet"
-echo -e "-------------------------\n"
-
-
-# MAIN -------------------------------------------------------------------------
-if [[ "$debug" = false ]]; then
-    ## Make output dir
-    mkdir -p "$outdir"/logs
-
-    ## Move into output dir
-    echo "## Changing into dir $outdir_base..."
-    cd "$outdir_base" || exit 1
-    echo
-
-    ## Remove any previous trace files
-    trace_file=$run_name/nf-reports/bactopia-trace.txt
-    dag_file=$run_name/nf-reports/bactopia-dag.svg
-    report_file=$run_name/nf-reports/bactopia-report.html
-    timeline_file=$run_name/nf-reports/bactopia-timeline.html
-    rm -vf "$timeline_file" "$report_file" "$dag_file" "$trace_file"
-    echo
+# Get the OSC config file
+if [[ ! -f "$osc_config" ]]; then
+    wget -q "$OSC_CONFIG_URL"
+    osc_config=$(basename "$OSC_CONFIG_URL")
 fi
 
-## Define the workflow command
-command="bactopia \
-    --samples $samplesheet \
+# Build the config argument
+config_arg="-c $osc_config"
+if [[ -n "$extra_config_file" ]]; then
+    [[ ! "$extra_config_file" =~ ^/ ]] && extra_config_file="$PWD"/"$extra_config_file"
+    config_arg="$config_arg -c ${extra_config_file/,/ -c }"
+fi
+
+# Other
+[[ "$resume" == false ]] && resume_arg=
+
+# Logging files and dirs
+readonly LOG_DIR="$outdir"/logs
+readonly VERSION_FILE="$LOG_DIR"/version.txt
+readonly CONDA_YML="$LOG_DIR"/conda_env.yml
+readonly ENV_FILE="$LOG_DIR"/env.txt
+mkdir -p "$LOG_DIR"
+
+# Load software
+load_env "$MODULE" "$CONDA" "$CONDA_YML"
+nextflow_env
+set_threads "$IS_SLURM"
+
+# ==============================================================================
+#                               REPORT
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
+echo "=========================================================================="
+echo "All arguments to this script:             $all_args"
+echo "Input dir:                                $indir"
+echo "Output dir:                               $outdir"
+echo "Species:                                  $species"
+echo "Db/Datasets dir:                          $db_dir"
+echo "Nr of FASTQ files in the input dir:       $(ls "$indir"/*fastq.gz | wc -l)"
+echo "Resume a previous run:                    $resume"
+echo "Nextflow config file argument:            $config_arg"
+echo "Nextflow profile:                         $profile"
+[[ -n $more_args ]] && echo "Other arguments for $TOOL_NAME:   $more_args"
+[[ -n $more_args_db ]] && echo "Other arguments for $TOOL_NAME datasets:  $more_args_db"
+[[ "$IS_SLURM" = true ]] && slurm_resources
+
+# ==============================================================================
+#                               RUN
+# ==============================================================================
+# Prepare the samplesheet
+log_time "Preparing the samplesheet $samplesheet with 'bactopia prepare'..."
+bactopia prepare "$indir" > "$samplesheet"
+log_time "Printing the contents of the sample sheet:"
+cat -n "$samplesheet"
+
+# Download datasets
+if [[ ! -d "$db_dir" || "$always_download_db" == true ]]; then
+    log_time "Downloading Bactopia datasets for $species..."
+    runstats $TOOL_BINARY datasets \
+        --outdir "$db_dir" \
+        --species "$species" \
+        --include_genus \
+        --limit "$GENOME_LIMIT" \
+        --cpus "$threads" \
+        --force \
+        $more_args_db
+fi
+
+# Move into output dir
+log_time "Changing into dir $outdir_base..."
+cd "$outdir_base" || exit 1
+
+# Removing old trace and log files
+#trace_file=$run_name/nf-reports/bactopia-trace.txt
+#dag_file=$run_name/nf-reports/bactopia-dag.svg
+#report_file=$run_name/nf-reports/bactopia-report.html
+#timeline_file=$run_name/nf-reports/bactopia-timeline.html
+#rm -vf "$timeline_file" "$report_file" "$dag_file" "$trace_file"
+
+# Run Bactopia
+log_time "Running $TOOL_NAME..."
+runstats $TOOL_BINARY \
+    --samples "$samplesheet" \
     --outdir ./ \
-    --run_name $run_name \
-    --force \
-    -profile $profile \
-    --species '$species' \
+    --run_name "$run_name" \
+    -profile "$profile" \
+    --species "$species" \
+    --datasets "$db_dir" \
+    --cleanup_workdir \
     --max_cpus $MAX_CPUS \
     --max_time $MAX_TIME \
     --max_memory $MAX_MEMORY \
     -qs $QUEUE_SIZE \
+    --singularity_cache "$container_dir" \
+    --force \
     $resume_arg \
-    $datasets_arg \
     $config_arg \
-    $more_args"
+    $more_args
 
-#? Apparently there is no setting to change the work dir
-                    
-## Report
-echo "## Running Bactopia using the following command:"
-echo "$command" | tr -s " "
-echo
+# List the output
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/*
 
-## Run Bactopia
-[[ "$debug" = false ]] && eval $command
-
-
-# WRAP UP ----------------------------------------------------------------------
-echo -e "\n-------------------------------"
-if [[ "$debug" = false ]]; then
-    echo "## Ran Bactopia version:"
-    Print_version | tee logs/version.txt
-    echo "## Listing files in the output dir:"
-    ls -lh
-    echo
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
-    echo
-fi
-echo "## Done with script bactopia.sh"
-date
-echo
+# ==============================================================================
+#                               WRAP UP
+# ==============================================================================
+printf "\n======================================================================"
+log_time "Versions used:"
+tool_version "$VERSION_COMMAND" | tee "$VERSION_FILE"
+script_version "$SCRIPT_NAME" "$SCRIPT_AUTHOR" "$SCRIPT_VERSION" "$SCRIPT_URL" | tee -a "$VERSION_FILE" 
+env | sort > "$ENV_FILE"
+[[ "$IS_SLURM" = true ]] && resource_usage
+log_time "Done with script $SCRIPT_NAME\n"
