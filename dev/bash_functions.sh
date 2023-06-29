@@ -78,7 +78,7 @@ slurm_resources() {
     echo "Memory (GB per node):           $(( SLURM_MEM_PER_NODE / 1000 ))"
     echo "CPUs (per task):                $SLURM_CPUS_PER_TASK"
     echo "Time limit (minutes):           $(( SLURM_TIME_LIMIT / 60 ))"
-    echo -e "=================================================================\n"
+    echo -e "==========================================================================\n"
     set -u
 }
 
@@ -138,4 +138,24 @@ die() {
 # Log messages that include the time
 log_time() {
     echo -e "\n[$(date +'%Y-%m-%d %H:%M:%S')]" ${1-""};
+}
+
+# Final reporting
+final_reporting() {
+    local version_command=$1
+    local version_file=$2
+    local env_file=$3
+    local is_slurm=$4
+    local script_name=$5
+    local script_author=$6
+    local script_version=$7
+    local script_url=$8
+
+    printf "\n======================================================================"
+    log_time "Versions used:"
+    tool_version "$version_command" | tee "$version_file"
+    script_version "$script_name" "$script_author" "$script_version" "$script_url" | tee -a "$version_file" 
+    env | sort > "$env_file"
+    [[ "$is_slurm" = true ]] && resource_usage
+    log_time "Done with script $script_name\n"
 }

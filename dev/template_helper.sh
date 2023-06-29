@@ -26,3 +26,20 @@ infile=$(realpath "$infile")
 
 # Check derived inputs
 [[ "$R1" == "$R2" ]] && die "Input R1 and R2 FASTQ files are the same file: $R1"
+
+# Process positional args as input files (for an example, see misc/fastqc.sh)
+declare -a infiles
+count=0
+while [ "$1" != "" ]; do
+    case "$1" in
+        -i | --infile )     shift && readonly infiles[0]=$1 ;;
+        * )                 infiles[$count]=$1 && count=$(( count + 1 )) ;;
+    esac
+    shift
+done
+[[ "${#infiles[@]}" -eq 0 ]] && Die "Please specify input file(s) with -i/--infile or as positional arguments" "$all_args"
+for infile in "${infiles[@]}"; do
+    [[ ! -f "$infile" ]] && die "Input file $infile does not exist"
+done
+echo "Number of input files:            ${#infiles[@]}"
+ls -lh "${infiles[@]}"

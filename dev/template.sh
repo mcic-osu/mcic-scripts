@@ -20,9 +20,7 @@ readonly SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
 readonly TOOL_BINARY=#TODO
 readonly TOOL_NAME=#TODO
 readonly TOOL_DOCS=#TODO
-readonly TOOL_PAPER=#TODO
-readonly VERSION_COMMAND=
-readonly HELP_COMMAND=
+readonly VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Constants - parameters
 #TODO
@@ -44,9 +42,6 @@ script_help() {
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage (always submit your scripts to SLURM with 'sbatch'):"
     echo "      sbatch $0 -i TODO -o results/TODO" #TODO
-    echo "  - To just print the help message for this script (-h) or for $TOOL_NAME (--help):"
-    echo "      bash $0 -h"
-    echo "      bash $0 --help"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--infile     <file>  Input file"
@@ -56,14 +51,11 @@ script_help() {
     echo "  --more_args     <str>   Quoted string with additional argument(s) for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for $TOOL_NAME and exit"
+    echo "  -h/--help               Print this help message and exit"
     echo "  -v                      Print the version of this script and exit"
     echo "  --version               Print the version of $TOOL_NAME and exit"
     echo
-    echo "TOOL DOCUMENTATION:"
-    echo "  - Docs: $TOOL_DOCS"
-    echo "  - Paper: $TOOL_PAPER"
+    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
     echo
 }
 
@@ -87,7 +79,6 @@ source_function_script() {
         git clone https://github.com/mcic-osu/mcic-scripts.git
         function_script=mcic-scripts/dev/bash_functions.sh
     fi
-    # shellcheck source=/dev/null
     source "$function_script"
 }
 
@@ -114,13 +105,10 @@ while [ "$1" != "" ]; do
         -o | --outdir )     shift && readonly outdir=$1 ;;
         --more_args )       shift && readonly more_args=$1 ;;
         -v )                script_version; exit 0 ;;
-        -h )                script_help; exit 0 ;;
+        -h | --help )       script_help; exit 0 ;;
         --version )         load_env "$MODULE" "$CONDA"
                             tool_version "$VERSION_COMMAND" && exit 0 ;;
-        --help )            load_env "$MODULE" "$CONDA"
-                            tool_help "$HELP_COMMAND" && exit 0;;
         * )                 die "Invalid option $1" "$all_args" ;;
-        #* )                infiles[$count]=$1 && count=$(( count + 1 )) ;;
     esac
     shift
 done
@@ -133,7 +121,7 @@ done
 # ==============================================================================
 #                          INFRASTRUCTURE SETUP II
 # ==============================================================================
-# Strict bash settings
+# Strict Bash settings
 set -euo pipefail
 
 # Define outputs based on script parameters
@@ -155,10 +143,10 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "All arguments to this script:             $all_args"
-echo "Input file:                               $infile"
-echo "Output dir:                               $outdir"
-[[ -n $more_args ]] && echo "Other arguments for $TOOL_NAME:   $more_args"
+echo "All options/arguments passed to this script:  $all_args"
+echo "Input file:                                   $infile"
+echo "Output dir:                                   $outdir"
+[[ -n $more_args ]] && echo "Additional arguments for $TOOL_NAME:          $more_args"
 log_time "Listing the input file(s):"
 ls -lh "$infile" #TODO
 [[ "$IS_SLURM" = true ]] && slurm_resources
@@ -172,17 +160,8 @@ runstats $TOOL_BINARY \
     -t "$threads" \
     $more_args #TODO
 
-# List the output
+# List the output, report version, etc
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
-
-# ==============================================================================
-#                               WRAP UP
-# ==============================================================================
-printf "\n======================================================================"
-log_time "Versions used:"
-tool_version "$VERSION_COMMAND" | tee "$VERSION_FILE"
-script_version "$SCRIPT_NAME" "$SCRIPT_AUTHOR" "$SCRIPT_VERSION" "$SCRIPT_URL" | tee -a "$VERSION_FILE" 
-env | sort > "$ENV_FILE"
-[[ "$IS_SLURM" = true ]] && resource_usage
-log_time "Done with script $SCRIPT_NAME\n"
+final_reporting "$VERSION_COMMAND" "$VERSION_FILE" "$ENV_FILE" "$IS_SLURM" \
+    "$SCRIPT_NAME" "$SCRIPT_AUTHOR" "$SCRIPT_VERSION" "$SCRIPT_URL"
