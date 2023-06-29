@@ -1,236 +1,175 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=30
-#SBATCH --cpus-per-task=2
-#SBATCH --mem=8G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
+#SBATCH --time=1:00:00
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
+#SBATCH --mail-type=FAIL
 #SBATCH --job-name=multiqc
-#SBATCH --out=slurm-multiqc-%j.out
-
-
-# ==============================================================================
-#                                   FUNCTIONS
-# ==============================================================================
-## Help function
-Print_help() {
-    echo
-    echo "======================================================================"
-    echo "                            $0"
-    echo "   Run MultiQC to summarize output by e.g. FastQC, Cutadapt, STAR"
-    echo "======================================================================"
-    echo
-    echo "USAGE:"
-    echo "  sbatch $0 -i <input file> -o <output dir> [...]"
-    echo "  bash $0 -h"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--indir      <file>  Input directory (e.g. with FastQC output files)"
-    echo "  -o/--outdir     <dir>   Output directory for MultiQC report"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --filename      <file>  Provide filename for MultiQC HTML report    [default: <outdir>/multiqc_report.html]"
-    echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to MultiQC"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                 Run the script in debug mode (print all code)"
-    echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for TODO_THIS_SOFTWARE and exit"
-    echo "  -v/--version            Print the version of TODO_THIS_SOFTWARE and exit"
-    echo
-    echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i results/fastqc -o results/multiqc"
-    echo
-    echo "HARDCODED PARAMETERS:"
-    echo "  - '--interactive'      Reports will always have interactive figures"
-    echo "  - '--force'            Overwrite existing MultiQC reports with the same name"
-    echo
-    echo "OUTPUT:"
-    echo "  - The main output is an HTML file, by default named <outdir>/multiqc_report.html"
-    echo
-}
-
-## Load software
-Load_software() {
-    module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /fs/project/PAS0471/jelmer/conda/multiqc
-}
-
-## Print version
-Print_version() {
-    Load_software
-    multiqc --version
-}
-
-## Print help for the focal program
-Print_help_program() {
-    Load_software
-    multiqc --help
-}
-
-## Print SLURM job resource usage info
-Resource_usage() {
-    echo
-    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
-        grep -Ev "ba|ex"
-    echo
-}
-
-## Print SLURM job requested resources
-Print_resources() {
-    set +u
-    echo "# SLURM job information:"
-    echo "Account (project):    $SLURM_JOB_ACCOUNT"
-    echo "Job ID:               $SLURM_JOB_ID"
-    echo "Job name:             $SLURM_JOB_NAME"
-    echo "Memory (per node):    $SLURM_MEM_PER_NODE"
-    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
-    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
-    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
-    echo "======================================================================"
-    echo
-    set -u
-}
-
-## Resource usage information
-Time() {
-    /usr/bin/time -f \
-        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
-        "$@"
-}   
-
-## Exit upon error with a message
-Die() {
-    error_message=${1}
-    error_args=${2-none}
-    
-    echo >&2
-    echo "=====================================================================" >&2
-    printf "$0: ERROR: %s\n" "$error_message" >&2
-    echo -e "\nFor help, run this script with the '-h' option" >&2
-    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
-    if [[ "$error_args" != "none" ]]; then
-        echo -e "\nArguments passed to the script:" >&2
-        echo "$error_args" >&2
-    fi
-    echo -e "\nEXITING..." >&2
-    echo "=====================================================================" >&2
-    echo >&2
-    exit 1
-}
+#SBATCH --output=slurm-multiqc-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-## Option defaults
-debug=false
-dryrun=false && e=""
-slurm=true
+# Constants - generic
+readonly DESCRIPTION="Run MultiQC to summarize log output by e.g. FastQC, Cutadapt, STAR"
+readonly MODULE=miniconda3/4.12.0-py39
+readonly CONDA=/fs/project/PAS0471/jelmer/conda/multiqc
+readonly SCRIPT_VERSION="1.0"
+readonly SCRIPT_AUTHOR="Jelmer Poelstra"
+readonly SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
+readonly TOOL_BINARY=multiqc
+readonly TOOL_NAME=MultiQC
+readonly TOOL_DOCS=https://multiqc.info/
+readonly VERSION_COMMAND="$TOOL_BINARY --version"
 
+# Parameter defaults
+outfile= && filename_arg=                                  # By default, let MultiQC name the output files
+always_interactive=true && interactive_arg="--interactive" # By default, force interactive plots
+
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
+# Help function
+script_help() {
+    echo
+    echo "        $0 (v. $SCRIPT_VERSION): Run $TOOL_NAME"
+    echo "        =============================================="
+    echo "DESCRIPTION:"
+    echo "  $DESCRIPTION"
+    echo
+    echo "USAGE / EXAMPLE COMMANDS:"
+    echo "  - Basic usage (always submit your scripts to SLURM with 'sbatch'):"
+    echo "      sbatch $0 -i results/fastqc -o results/multiqc"
+    echo
+    echo "REQUIRED OPTIONS:"
+    echo "  -i/--infile     <file>  Input file"
+    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
+    echo
+    echo "OTHER KEY OPTIONS:"
+    echo "  --filename      <str>   Name of the output report (without its dir) [default: 'multiqc_report.html']"
+    echo "  --optional_interactive  Don't force interactive plots               [default: always use interactive plots]"
+    echo "  --more_args     <str>   Quoted string with additional argument(s) for $TOOL_NAME"
+    echo
+    echo "UTILITY OPTIONS:"
+    echo "  -h/--help               Print this help message and exit"
+    echo "  -v                      Print the version of this script and exit"
+    echo "  --version               Print the version of $TOOL_NAME and exit"
+    echo
+    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
+    echo
+}
+
+# Function to source the script with Bash functions
+source_function_script() {
+    local is_slurm=$1
+
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$is_slurm" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
+    else
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
+    fi
+    function_script=$(realpath "$script_dir"/../dev/bash_functions.sh)
+    
+    if [[ ! -f "$function_script" ]]; then
+        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
+        git clone https://github.com/mcic-osu/mcic-scripts.git
+        function_script=mcic-scripts/dev/bash_functions.sh
+    fi
+    source "$function_script"
+}
+
+# ==============================================================================
+#                          INFRASTRUCTURE SETUP I
+# ==============================================================================
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script $IS_SLURM
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-## Placeholder defaults
-indir=""
-outdir=""
-more_args=""
-filename="" && filename_arg=""
+# Initiate variables
+indir=
+outdir=
+more_args=
 
-## Parse command-line args
+# Parse command-line args
 all_args="$*"
-
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --indir )      shift && indir=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
-        --filename )        shift && filename=$1 ;;
-        --more-args )       shift && more_args=$1 ;;
-        -v | --version )    Print_version; exit 0 ;;
-        -h )                Print_help; exit 0 ;;
-        --help )            Print_help_program; exit 0;;
-        --dryrun )          dryrun=true && e="echo ";;
-        --debug )           debug=true ;;
-        * )                 Die "Invalid option $1" "$all_args" ;;
+        -i | --indir )      shift && readonly indir=$1 ;;
+        -o | --outdir )     shift && readonly outdir=$1 ;;
+        --filename )        shift && readonly outfile=$1 ;;
+        --more_args )       shift && readonly more_args=$1 ;;
+        -v )                script_version; exit 0 ;;
+        -h | --help )       script_help; exit 0 ;;
+        --version )         load_env "$MODULE" "$CONDA"
+                            tool_version "$VERSION_COMMAND" && exit 0 ;;
+        * )                 die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
 
+# Check arguments
+[[ -z "$indir" ]] && die "No input dir specified, do so with -i/--indir" "$all_args"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_args"
+[[ ! -d "$indir" ]] && die "Input file $indir does not exist"
 
 # ==============================================================================
-#                          OTHER SETUP
+#                          INFRASTRUCTURE SETUP II
 # ==============================================================================
-## In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
-
-## Check if this is a SLURM job
-[[ -z "$SLURM_JOB_ID" ]] && slurm=false
-
-## Load software and set nr of threads
-[[ "$dryrun" = false ]] && Load_software
-
-## Bash script settings
+# Strict Bash settings
 set -euo pipefail
 
-## Filename argument
-[[ "$filename" != "" ]] && filename_arg="--filename $filename"
+# Define outputs based on script parameters
+[[ -n "$outfile" ]] && filename_arg="--filename $outfile"
+[[ "$always_interactive" == false ]] && interactive_arg=
 
-## Check input
-[[ "$indir" = "" ]] && Die "Please specify an input file with -i/--indir" "$all_args"
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
-[[ ! -d "$indir" ]] && Die "Input dir $indir does not exist"
+# Logging files and dirs
+readonly LOG_DIR="$outdir"/logs
+readonly VERSION_FILE="$LOG_DIR"/version.txt
+readonly CONDA_YML="$LOG_DIR"/conda_env.yml
+readonly ENV_FILE="$LOG_DIR"/env.txt
+mkdir -p "$LOG_DIR"
 
-## Report
-echo
+# Load software
+load_env "$MODULE" "$CONDA" "$CONDA_YML"
+
+# ==============================================================================
+#                               REPORT
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "              STARTING SCRIPT MULTIQC.SH"
-date
-echo "=========================================================================="
-echo "All arguments to this script:     $all_args"
-echo "Input dir:                        $indir"
-echo "Output dir:                       $outdir"
-[[ $filename_arg != "" ]] && echo "Output filename:                  $filename"
-[[ $more_args != "" ]] && echo "Other arguments for MultiQC:      $more_args"
-echo
-[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
-echo "=========================================================================="
-
-## Print reserved resources
-[[ "$slurm" = true ]] && Print_resources
-
+echo "All arguments to this script:             $all_args"
+echo "Input dir:                                $indir"
+echo "Output dir:                               $outdir"
+echo "Always use interactive plots:             $always_interactive"
+[[ -n $outfile ]] && echo "Output report name:                       $outfile"
+[[ -n $more_args ]] && echo "Other arguments for $TOOL_NAME:   $more_args"
+[[ "$IS_SLURM" = true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-## Create the output directory
-${e}mkdir -p "$outdir"/logs
-
-echo "## Starting MultiQC run..."
-${e}Time multiqc \
-    --interactive \
+# Run the tool
+log_time "Running $TOOL_NAME..."
+runstats $TOOL_BINARY \
     --force \
-    -o "$outdir" \
+    --pdf \
+    --outdir "$outdir" \
+    $more_args \
     $filename_arg \
+    $interactive_arg \
     "$indir"
 
-#? --interactive will ensure interactive plots, regardless of number of samples
 #? --force will overwrite any old report
 
-
-# ==============================================================================
-#                               WRAP-UP
-# ==============================================================================
-echo
-echo "========================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
-    [[ "$slurm" = true ]] && Resource_usage
-fi
-echo "# Done with script"
-date
+# List the output, report version, etc
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/*
+final_reporting "$VERSION_COMMAND" "$VERSION_FILE" "$ENV_FILE" "$IS_SLURM" \
+    "$SCRIPT_NAME" "$SCRIPT_AUTHOR" "$SCRIPT_VERSION" "$SCRIPT_URL"

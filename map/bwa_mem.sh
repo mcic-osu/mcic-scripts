@@ -174,8 +174,8 @@ if [[ -n "$infile" ]]; then
             R2=${infile/$R1_suffix/$R2_suffix}
         fi
         
-        [[ ! -f "$R2" ]] && Die "R2 input file $R2 does not exist"
-        [[ "$infile" == "$R2" ]] && Die "Input file R1 is the same as R2 ($infile)"
+        [[ ! -f "$R2" ]] && die "R2 input file $R2 does not exist"
+        [[ "$infile" == "$R2" ]] && die "Input file R1 is the same as R2 ($infile)"
     
     else
         sampleID="$R1_basename"
@@ -237,6 +237,7 @@ runstats $TOOL_BINARY \
         -
 
 # Get mapping stats
+log_time "Getting mapping stats with Samtools flagstat:"
 samtools flagstat "$bam" > "$flagstat_file"
 
 # List the output
