@@ -198,7 +198,7 @@ csv_out="$outdir"/output/"$prefix".csv     # distance/ANI matrix in CSV format
 cmp_out="$outdir"/output/"$prefix".cmp     # distance/ANI matrix in Python format for sourmash plotting
 
 # Create array with input FASTA files
-mapfile -t fastas < <(find "$indir" -type f -iname '*.fasta' -or -iname '*.fa' -or -iname '*.fna' -or -iname '*.fna.gz')
+mapfile -t fastas < <(find "$indir" -type f -or -type l -iname '*.fasta' -or -iname '*.fa' -or -iname '*.fna' -or -iname '*.fna.gz')
 
 # Check input
 [[ "$indir" = "" ]] && Die "Please specify an input dir with -i/--indir" "$all_args"
