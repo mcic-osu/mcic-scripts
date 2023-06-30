@@ -7,8 +7,6 @@
 #SBATCH --job-name=bactopia
 #SBATCH --output=slurm-bactopia-%j.out
 
-#TODO Implement additional tools
-
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
@@ -70,8 +68,6 @@ script_help() {
     echo "  --species           <str>   Focal species, e.g. 'Salmonella enterica' (make sure to quote!)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --add_tools         <str>   Comma-separated list of tools to run after the main workflow    [default: ?]"
-    echo "                              See https://bactopia.github.io/v2.2.0/bactopia-tools"
     echo "  --db_dir            <dir>   Dir for downloaded Bactopia datasets (database) data            [default: data/bactopia]"
     echo "  --download_db               Always download datasets, even if --db_dir exists               [default: only download if dir doesn't exist]"
     echo "  --more_args         <str>   Quoted string with additional argument(s) for $TOOL_NAME"
@@ -155,7 +151,6 @@ while [ "$1" != "" ]; do
         --species )             shift && readonly species=$1 ;;
         --db_dir )              shift && readonly db_dir=$1 ;;
         --download_db )         always_download_db=true ;;
-        --add_tools )           shift && readonly add_tools=$1 ;;
         --more_args )           shift && readonly more_args=$1 ;;
         --more_args_db )        shift && readonly more_args_db=$1 ;;
         --config )              shift && readonly extra_config_file=$1 ;;
@@ -286,10 +281,11 @@ runstats $TOOL_BINARY \
     --max_memory $MAX_MEMORY \
     -qs $QUEUE_SIZE \
     --singularity_cache "$container_dir" \
-    --force \
     $resume_arg \
     $config_arg \
     $more_args
+
+#--force \
 
 # List the output
 log_time "Listing files in the output dir:"
