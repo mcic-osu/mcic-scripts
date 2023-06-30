@@ -6,19 +6,20 @@
 #SBATCH --job-name=trimgalore
 #SBATCH --output=slurm-trimgalore-%j.out
 
+# ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants
 readonly DESCRIPTION="Run TrimGalore for one (single-end) or a pair of FASTQ files"
-readonly SCRIPT_NAME=trimgalore.sh
-readonly SCRIPT_VERSION="1.0"
+readonly MODULE=miniconda3/23.3.1-py310
+readonly CONDA=/fs/project/PAS0471/jelmer/conda/trimgalore
+readonly SCRIPT_VERSION="2023-06-30"
 readonly SCRIPT_AUTHOR="Jelmer Poelstra"
 readonly SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
-readonly OSC_MODULE=miniconda3/4.12.0-py39
-readonly CONDA_ENV=/fs/project/PAS0471/jelmer/conda/trimgalore
 readonly TOOL_BINARY=trim_galore
 readonly TOOL_NAME=TrimGalore
 readonly TOOL_DOCS=https://github.com/FelixKrueger/TrimGalore/blob/master/Docs/Trim_Galore_User_Guide.md
+readonly VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Option defaults
 quality=20                 # => 20 is also the TrimGalore default
@@ -41,11 +42,6 @@ script_help() {
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage (always submit your scripts to SLURM with 'sbatch'):"
     echo "      sbatch $0 -i data/fastq/S01_R1.fastq.gz -o results/trimgalore"
-    echo "  - To run the script using a different OSC project than PAS0471:"
-    echo "      sbatch -A PAS0001 $0 [...]"
-    echo "  - To just print the help message for this script (-h) or for $TOOL_NAME (--help):"
-    echo "      bash $0 -h"
-    echo "      bash $0 --help"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--R1         <file>  Gzipped (R1) FASTQ input file (if paired-end, R2 file name will be inferred)"
@@ -61,8 +57,7 @@ script_help() {
     echo "  --more_args             Additional arguments to pass to $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for $TOOL_NAME and exit"
+    echo "  -h / --help             Print this help message and exit"
     echo "  -v                      Print the version of this script and exit"
     echo "  -v/--version            Print the version of $TOOL_NAME and exit"
     echo
@@ -77,13 +72,43 @@ script_help() {
     echo
 }
 
+# Function to source the script with Bash functions
+source_function_script() {
+    local is_slurm=$1
+
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$is_slurm" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
+    else
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
+    fi
+    function_script=$(realpath "$script_dir"/../dev/bash_functions.sh)
+    
+    if [[ ! -f "$function_script" ]]; then
+        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
+        git clone https://github.com/mcic-osu/mcic-scripts.git
+        function_script=mcic-scripts/dev/bash_functions.sh
+    fi
+    source "$function_script"
+}
+
+# ==============================================================================
+#                          INFRASTRUCTURE SETUP I
+# ==============================================================================
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script $IS_SLURM
+
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
-R1_in=""
-outdir=""
-more_args=""
+R1_in=
+outdir=
+more_args=
 
 # Parse command-line args
 all_args="$*"
@@ -98,9 +123,8 @@ while [ "$1" != "" ]; do
         --no_fastqc )       readonly run_fastqc=false ;;
         --more_args )       shift && readonly more_args=$1 ;;
         -v )                script_version; exit 0 ;;
-        -h )                script_help; exit 0 ;;
+        -h | --help )       script_help; exit 0 ;;
         --version )         tool_version; exit 0 ;;
-        --help )            tool_help; exit 0;;
         * )                 Die "Invalid option $1" "$all_args";;
     esac
     shift
@@ -112,39 +136,22 @@ done
 [[ ! -f "$R1_in" ]] && die "Input file $R1_in does not exist"
 
 # ==============================================================================
-#                          INFRASTRUCTURE SETUP
+#                          INFRASTRUCTURE SETUP II
 # ==============================================================================
-# Check if this is a SLURM job
-if [[ -z "$SLURM_JOB_ID" ]]; then is_slurm=false; else is_slurm=true; fi
-
-# Strict bash settings
+# Strict Bash settings
 set -euo pipefail
 
-# Source the Bash functions script
-if [[ "$is_slurm" == true ]]; then
-    SCRIPT_PATH=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
-    SCRIPT_DIR=$(dirname "$SCRIPT_PATH")
-else
-    SCRIPT_DIR="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
-fi
-FUNCTION_SCRIPT="$SCRIPT_DIR"/../dev/bash_functions.sh
-# shellcheck source=/dev/null
-source "$FUNCTION_SCRIPT"
-
 # Logging files and dirs
-readonly log_dir="$outdir"/logs
-readonly version_file="$log_dir"/version.txt
-readonly conda_yml="$log_dir"/conda_env.yml
-readonly env_file="$log_dir"/env.txt
-mkdir -p "$log_dir"
+readonly LOG_DIR="$outdir"/logs
+readonly VERSION_FILE="$LOG_DIR"/version.txt
+readonly CONDA_YML="$LOG_DIR"/conda_env.yml
+readonly ENV_FILE="$LOG_DIR"/env.txt
+mkdir -p "$LOG_DIR"
 
 # Load software and set nr of threads
-load_tool_conda "$conda_yml"
-set_threads
+load_env "$MODULE" "$CONDA" "$CONDA_YML"
+set_threads "$IS_SLURM"
 
-# ==============================================================================
-#              DEFINE OUTPUTS AND DERIVED INPUTS, BUILD ARGS
-# ==============================================================================
 # Define outputs based on script parameters
 outdir_trim="$outdir"/trimmed
 outdir_fastqc="$outdir"/fastqc
@@ -212,7 +219,7 @@ echo "R1 output file:                           $R1_out"
 log_time "Listing the input file(s):"
 ls -lh "$R1_in"
 [[ -n "$R2_in" ]] && ls -lh "$R2_in"
-[[ "$is_slurm" = true ]] && slurm_resources
+[[ "$IS_SLURM" = true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
@@ -235,7 +242,7 @@ runstats $TOOL_BINARY \
 
 # Rename the output files
 echo -e "\n# Moving output files..."
-mv -v "$outdir_trim"/"$(basename "$R1_in")"_trimming_report.txt "$log_dir"
+mv -v "$outdir_trim"/"$(basename "$R1_in")"_trimming_report.txt "$LOG_DIR"
 
 if [ "$single_end" != "true" ]; then
     mv -v "$outdir_trim"/"$sample_id"*_val_1.fq.gz "$R1_out"
@@ -249,14 +256,6 @@ fi
 log_time "Listing FASTQ output files:"
 ls -lh "$R1_out"
 [[ "$single_end" != "true" ]] && ls -lh "$R2_out"
-
-# ==============================================================================
-#                               WRAP UP
-# ==============================================================================
-printf "\n======================================================================"
-log_time "Versions used:"
-tool_version | tee "$version_file"
-script_version | tee -a "$version_file"
-env | sort > "$env_file"
-[[ "$is_slurm" = true ]] && echo && resource_usage
-log_time "Done with script $SCRIPT_NAME\n"
+ls -lhd "$(realpath "$outdir")"/*
+final_reporting "$VERSION_COMMAND" "$VERSION_FILE" "$ENV_FILE" "$IS_SLURM" \
+    "$SCRIPT_NAME" "$SCRIPT_AUTHOR" "$SCRIPT_VERSION" "$SCRIPT_URL"
