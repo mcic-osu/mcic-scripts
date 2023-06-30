@@ -1,10 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=6:00:00
-#SBATCH --cpus-per-task=10
-#SBATCH --mem=40G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
+#SBATCH --time=4:00:00
+#SBATCH --cpus-per-task=12
+#SBATCH --mem=48G
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=eggnogmap
 #SBATCH --output=slurm-eggnogmap-%j.out
@@ -12,27 +10,41 @@
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-# Option defaults
+# Constants - generic
+readonly DESCRIPTION="Run EggNOGmapper to functionally annotate proteins"
+readonly MODULE=miniconda3/23.3.1-py310
+readonly CONDA=/fs/ess/PAS0471/jelmer/conda/eggnogmapper
+readonly SCRIPT_VERSION="2023-06-30"
+readonly SCRIPT_AUTHOR="Jelmer Poelstra"
+readonly SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
+readonly TOOL_BINARY=emapper.py
+readonly TOOL_NAME=EggNOGmapper
+readonly TOOL_DOCS=https://github.com/eggnogdb/eggnog-mapper/wiki/eggNOG-mapper-v2.1.5-to-v2.1.11
+readonly VERSION_COMMAND="$TOOL_BINARY --version | grep emapper"
+
+# Constants - parameters
+INPUT_TYPE=proteins             # Assume a protein (rather than nucleotide) FASTA
+
+# Parameter defaults
 search_method=diamond           # Also the EggNOGmapper default
 go_evidence="non-electronic"    # Also the EggNOGmapper default
 sensmode="more-sensitive"       # EggNOGmapper default is 'sensitive'
 tax_scope="auto"                # Also the EggNOGmapper default
-slurm=true
 
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
 # Help function
-Print_help() {
+script_help() {
     echo
-    echo "======================================================================"
-    echo "                            $0"
-    echo "        Run eggNOGmapper to functionally annotate proteins"
-    echo "======================================================================"
+    echo "        $0 (v. $SCRIPT_VERSION): Run $TOOL_NAME"
+    echo "        =============================================="
+    echo "DESCRIPTION:"
+    echo "  $DESCRIPTION"
     echo
-    echo "USAGE:"
-    echo "  sbatch $0 -i <input FASTA> -d <database dir> -o <output dir> [...]"
-    echo "  bash $0 -h"
+    echo "USAGE / EXAMPLE COMMANDS:"
+    echo "  - Basic usage (always submit your scripts to SLURM with 'sbatch'):"
+    echo "      sbatch $0 -i results/braker/proteins.faa -d data/eggnog -o results/eggnogmapper"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--proteins   <file>  Input protein FASTA file"
@@ -47,173 +59,100 @@ Print_help() {
     echo "                            One of 'default', 'fast', 'mid-sensitive', 'sensitive', 'more-sensitive', 'very-sensitive' or 'ultra-sensitive'"
     echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to EggNOGmapper"
     echo
-    echo "UTILITY OPTIONS:"
-    echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for EggNOGmapper and exit"
-    echo "  -v/--version            Print the version of EggNOGmapper and exit"
-    echo
-    echo "HARDCODED OPTIONS:"
+    echo "HARDCODED PARAMETERS:"
     echo "  - This script is set up to work with a protein FASTA file;"
     echo "    whereas it is also possible to run EggNOGmapper with a nucleotide FASTA file."
     echo
-    echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i results/braker/proteins.faa -d data/eggnog -o results/eggnogmapper"
+    echo "UTILITY OPTIONS:"
+    echo "  -h/--help               Print this help message and exit"
+    echo "  -v                      Print the version of this script and exit"
+    echo "  --version               Print the version of $TOOL_NAME and exit"
     echo
-    echo "SOFTWARE DOCUMENTATION:"
-    echo "  - Docs: https://github.com/eggnogdb/eggnog-mapper/wiki/eggNOG-mapper-v2.1.5-to-v2.1.8"
-    echo
-}
-
-# Load software
-Load_software() {
-    set +u
-    module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /users/PAS0471/jelmer/miniconda3/envs/eggnogg-env
-    export EGGNOG_DATA_DIR="$db_dir"
-    set -u
-}
-
-# Print version
-Print_version() {
-    set +e
-    Load_software
-    emapper.py --version
-    set -e
-}
-
-# Print help for the focal program
-Print_help_program() {
-    Load_software
-    emapper.py --help
-}
-
-# Print SLURM job resource usage info
-Resource_usage() {
-    echo
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
+    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
     echo
 }
 
-# Print SLURM job requested resources
-Print_resources() {
-    set +u
-    echo "# SLURM job information:"
-    echo "Account (project):    $SLURM_JOB_ACCOUNT"
-    echo "Job ID:               $SLURM_JOB_ID"
-    echo "Job name:             $SLURM_JOB_NAME"
-    echo "Memory (MB per node): $SLURM_MEM_PER_NODE"
-    echo "CPUs (per task):      $SLURM_CPUS_PER_TASK"
-    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
-    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
-    echo "======================================================================"
-    echo
-    set -u
-}
+# Function to source the script with Bash functions
+source_function_script() {
+    local is_slurm=$1
 
-# Set the number of threads/CPUs
-Set_threads() {
-    set +u
-    if [[ "$slurm" = true ]]; then
-        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-            threads="$SLURM_CPUS_PER_TASK"
-        elif [[ -n "$SLURM_NTASKS" ]]; then
-            threads="$SLURM_NTASKS"
-        else 
-            echo "WARNING: Can't detect nr of threads, setting to 1"
-            threads=1
-        fi
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$is_slurm" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
     else
-        threads=1
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
     fi
-    set -u
-}
-
-# Resource usage information
-Time() {
-    /usr/bin/time -f \
-        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
-        "$@"
-}   
-
-# Exit upon error with a message
-Die() {
-    error_message=${1}
-    error_args=${2-none}
+    function_script=$(realpath "$script_dir"/../dev/bash_functions.sh)
     
-    echo >&2
-    echo "=====================================================================" >&2
-    date
-    printf "$0: ERROR: %s\n" "$error_message" >&2
-    echo -e "\nFor help, run this script with the '-h' option" >&2
-    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
-    if [[ "$error_args" != "none" ]]; then
-        echo -e "\nArguments passed to the script:" >&2
-        echo "$error_args" >&2
+    if [[ ! -f "$function_script" ]]; then
+        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
+        git clone https://github.com/mcic-osu/mcic-scripts.git
+        function_script=mcic-scripts/dev/bash_functions.sh
     fi
-    echo -e "\nEXITING..." >&2
-    echo "=====================================================================" >&2
-    echo >&2
-    exit 1
+    source "$function_script"
 }
+
+# ==============================================================================
+#                          INFRASTRUCTURE SETUP I
+# ==============================================================================
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script $IS_SLURM
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-# Placeholder defaults
-proteins=""
-db_dir=""
-out_prefix=""
-outdir=""
-more_args=""
+# Initiate variables
+infile=
+db_dir=
+out_prefix=
+outdir=
+more_args=
 
 # Parse command-line args
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --proteins )   shift && proteins=$1 ;;
-        -d | --db_dir )     shift && db_dir=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
-        --out_prefix )      shift && out_prefix=$1 ;;
-        --search_method )   shift && search_method=$1 ;;
-        --sensmode )        shift && sensmode=$1 ;;
-        --tax_scope )       shift && tax_scope=$1 ;;
-        --more_args )       shift && more_args=$1 ;;
-        -v | --version )    Print_version; exit 0 ;;
-        -h )                Print_help; exit 0 ;;
-        --help )            Print_help_program; exit 0;;
-        * )                 Die "Invalid option $1" "$all_args" ;;
+        -i | --infile )     shift && readonly infile=$1 ;;
+        -o | --outdir )     shift && readonly outdir=$1 ;;
+        -d | --db_dir )     shift && readonly db_dir=$1 ;;
+        --out_prefix )      shift && readonly out_prefix=$1 ;;
+        --search_method )   shift && readonly search_method=$1 ;;
+        --sensmode )        shift && readonly sensmode=$1 ;;
+        --tax_scope )       shift && readonly tax_scope=$1 ;;
+        --more_args )       shift && readonly more_args=$1 ;;
+        -v )                script_version; exit 0 ;;
+        -h | --help )       script_help; exit 0 ;;
+        --version )         load_env "$MODULE" "$CONDA"
+                            tool_version "$VERSION_COMMAND" && exit 0 ;;
+        * )                 die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
 
-# ==============================================================================
-#                          OTHER SETUP
-# ==============================================================================
-# Check if this is a SLURM job
-[[ -z "$SLURM_JOB_ID" ]] && slurm=false
+# Check arguments
+[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_args"
+[[ -z "$db_dir" ]] && Die "No EggNOGmapper DB dir specified, do so with -d/--db_dir" "$all_args"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_args"
+[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
+[[ ! -d "$db_dir" ]] && die "Input EggNOGmapper DB dir $db_dir does not exist"
 
-# Strict bash settings
+# ==============================================================================
+#                          INFRASTRUCTURE SETUP II
+# ==============================================================================
+# Strict Bash settings
 set -euo pipefail
 
-# Load software and set nr of threads
-Load_software
-Set_threads
-
-# Check input
-[[ "$proteins" = "" ]] && Die "Please specify an input file with -i/--proteins" "$all_args"
-[[ "$db_dir" = "" ]] && Die "Please specify an input file with -d/--db_dir" "$all_args"
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
-[[ ! -f "$proteins" ]] && Die "Input file $proteins does not exist"
-[[ ! -d "$db_dir" ]] && Die "Input dir $db_dir does not exist"
-
 # Other variables
-if [[ "$out_prefix" = "" ]]; then
-    prot_basename=$(basename "$proteins")
+if [[ -z "$out_prefix" ]]; then
+    prot_basename=$(basename "$infile")
     out_prefix=${prot_basename%.*}
 fi
 
-if [[ "$slurm" = true ]]; then
+if [[ "$IS_SLURM" == true ]]; then
     scratch_dir="$PFSDIR"
     temp_dir="$PFSDIR"/tmp
     tempdir_arg="--scratch_dir $scratch_dir --temp_dir $temp_dir"
@@ -223,47 +162,50 @@ else
 fi
 
 # Get nr of genes in the input
-ngenes_in=$(grep -c "^>" "$proteins")
+ngenes_in=$(grep -c "^>" "$infile")
 
-# Report
-echo
-echo "=========================================================================="
-echo "                    STARTING SCRIPT EGGNOGMAP.SH"
-date
-echo "=========================================================================="
-echo "All arguments to this script:     $all_args"
-echo "Input file:                       $proteins"
-echo "eggNOGmapper database dir:        $db_dir"
-echo "Output dir:                       $outdir"
-echo "Output prefix:                    $out_prefix"
-echo "Search method:                    $search_method"
-echo "DIAMOND sensitivity:              $sensmode"
-echo "Taxonomic scope:                  $tax_scope"
-echo "Scratch and temp dir argument:    $tempdir_arg"
-[[ $more_args != "" ]] && echo "Other arguments for EggNOGmapper: $more_args"
-echo "Number of threads/cores:          $threads"
-echo
-echo "Nr of genes/entries in the input: $ngenes_in" 
-echo "Listing the input file(s):"
-ls -lh "$proteins"
-echo "=========================================================================="
+# Logging files and dirs
+readonly LOG_DIR="$outdir"/logs
+readonly VERSION_FILE="$LOG_DIR"/version.txt
+readonly CONDA_YML="$LOG_DIR"/conda_env.yml
+readonly ENV_FILE="$LOG_DIR"/env.txt
+mkdir -p "$LOG_DIR"
 
-# Print reserved resources
-[[ "$slurm" = true ]] && Print_resources
+# Load software and set nr of threads
+load_env "$MODULE" "$CONDA" "$CONDA_YML"
+set_threads "$IS_SLURM"
+
+# ==============================================================================
+#                               REPORT
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
+echo "=========================================================================="
+echo "All options/arguments passed to this script:  $all_args"
+echo "Input file:                                   $infile"
+echo "Nr of entries (genes) in the input file:      $ngenes_in"
+echo "eggNOGmapper database dir:                    $db_dir"
+echo "Output dir:                                   $outdir"
+echo "Output prefix:                                $out_prefix"
+echo "Search method:                                $search_method"
+echo "DIAMOND sensitivity:                          $sensmode"
+echo "Taxonomic scope:                              $tax_scope"
+echo "Scratch and temp dir argument:                $tempdir_arg"
+[[ -n $more_args ]] && echo "Additional arguments for $TOOL_NAME:          $more_args"
+log_time "Listing the input file(s):"
+ls -lh "$infile"
+[[ "$IS_SLURM" = true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
 # Create the output directory
-echo -e "\n# Creating the output directories..."
-mkdir -pv "$outdir"/logs "$temp_dir"
+mkdir -p "$temp_dir"
 
-# Run
-echo -e "\n# Running eggNOGmapper..."
-Time \
-    emapper.py \
-        -i "$proteins" \
-        --itype proteins \
+# Run the tool
+log_time "Running $TOOL_NAME..."
+runstats $TOOL_BINARY \
+        -i "$infile" \
+        --itype "$INPUT_TYPE" \
         --data_dir "$db_dir" \
         --output_dir "$outdir" \
         --output "$out_prefix" \
@@ -296,16 +238,8 @@ echo "Nr of genes/entries with a description:   $ngenes_descrip"
 #--tax_scope            ....
 #--resume               Resumes a previous emapper run, skipping results in existing output files.
 
-# ==============================================================================
-#                               WRAP-UP
-# ==============================================================================
-echo
-echo "========================================================================="
-echo "# Version used:"
-Print_version | tee "$outdir"/logs/version.txt
-echo -e "\n# Listing files in the output dir:"
-ls -lhd "$PWD"/"$outdir"/*
-[[ "$slurm" = true ]] && Resource_usage
-echo "# Done with script"
-date
-echo
+# List the output, report version, etc
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/*
+final_reporting "$VERSION_COMMAND" "$VERSION_FILE" "$ENV_FILE" "$IS_SLURM" \
+    "$SCRIPT_NAME" "$SCRIPT_AUTHOR" "$SCRIPT_VERSION" "$SCRIPT_URL"

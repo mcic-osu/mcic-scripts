@@ -1,238 +1,163 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=2:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-type=FAIL
 #SBATCH --job-name=eggnogmap_dl
-#SBATCH --output=slurm-eggnogmap-dl-%j.out
+#SBATCH --output=slurm-eggnogmap_dl-%j.out
+
+# ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
+# Constants - generic
+readonly DESCRIPTION="Download the EggNOG database in preparation for an EggNOGmapper run"
+readonly MODULE=miniconda3/23.3.1-py310
+readonly CONDA=/fs/ess/PAS0471/jelmer/conda/eggnogmapper
+readonly SCRIPT_VERSION="1.0"
+readonly SCRIPT_AUTHOR="Jelmer Poelstra"
+readonly SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
+readonly TOOL_BINARY=download_eggnog_data.py
+readonly TOOL_NAME=download_eggnog_data.py
+readonly TOOL_DOCS=https://github.com/eggnogdb/eggnog-mapper/wiki/eggNOG-mapper-v2.1.5-to-v2.1.11
+readonly VERSION_COMMAND="emapper.py --version"
+
+# Constants - parameters
+PFAM_ARG="-P"               # Always include the PFAM db
+MMSEQS_ARG="-M"             # Always include the MMseqs DB
 
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
 # Help function
-Print_help() {
+script_help() {
     echo
-    echo "======================================================================"
-    echo "                            $0"
-    echo "                  DOWNLOAD THE EGGNOG DATABASE"
-    echo "======================================================================"
+    echo "        $0 (v. $SCRIPT_VERSION): Run $TOOL_NAME"
+    echo "        =============================================="
+    echo "DESCRIPTION:"
+    echo "  $DESCRIPTION"
     echo
-    echo "USAGE:"
-    echo "  sbatch $0 -o <output dir> [...]"
-    echo "  bash $0 -h"
+    echo "USAGE / EXAMPLE COMMANDS:"
+    echo "  - Basic usage (always submit your scripts to SLURM with 'sbatch'):"
+    echo "      sbatch $0 -o data/emapper"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
+    echo "OTHER KEY OPTIONS:"
+    echo "  --more_args     <str>   Quoted string with additional argument(s) for $TOOL_NAME"
+    echo
     echo "UTILITY OPTIONS:"
-    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                 Run the script in debug mode (print all code)"
-    echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for download_eggnog_data.py and exit"
+    echo "  -h/--help               Print this help message and exit"
+    echo "  -v                      Print the version of this script and exit"
+    echo "  --version               Print the version of $TOOL_NAME and exit"
     echo
-    echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -o results/eggnog_data"
-    echo
-    echo "SOFTWARE DOCUMENTATION:"
-    echo "  - Docs: https://github.com/eggnogdb/eggnog-mapper/wiki/eggNOG-mapper-v2.1.5-to-v2.1.8"
+    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
     echo
 }
 
-# Load software
-Load_software() {
-    set +u
-    module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /users/PAS0471/jelmer/miniconda3/envs/eggnogg-env
-    set -u
-}
+# Function to source the script with Bash functions
+source_function_script() {
+    local is_slurm=$1
 
-# Print help for the focal program
-Print_help_program() {
-    Load_software
-    download_eggnog_data.py --help
-}
-
-# Print SLURM job resource usage info
-Resource_usage() {
-    echo
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
-    echo
-}
-
-# Print SLURM job requested resources
-Print_resources() {
-    set +u
-    echo "# SLURM job information:"
-    echo "Account (project):    $SLURM_JOB_ACCOUNT"
-    echo "Job ID:               $SLURM_JOB_ID"
-    echo "Job name:             $SLURM_JOB_NAME"
-    echo "Memory (MB per node): $SLURM_MEM_PER_NODE"
-    echo "CPUs (per task):      $SLURM_CPUS_PER_TASK"
-    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
-    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
-    echo "======================================================================"
-    echo
-    set -u
-}
-
-# Set the number of threads/CPUs
-Set_threads() {
-    set +u
-    if [[ "$slurm" = true ]]; then
-        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-            threads="$SLURM_CPUS_PER_TASK"
-        elif [[ -n "$SLURM_NTASKS" ]]; then
-            threads="$SLURM_NTASKS"
-        else 
-            echo "WARNING: Can't detect nr of threads, setting to 1"
-            threads=1
-        fi
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$is_slurm" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
     else
-        threads=1
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
     fi
-    set -u
-}
-
-# Resource usage information
-Time() {
-    /usr/bin/time -f \
-        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
-        "$@"
-}   
-
-# Exit upon error with a message
-Die() {
-    error_message=${1}
-    error_args=${2-none}
+    function_script=$(realpath "$script_dir"/../dev/bash_functions.sh)
     
-    echo >&2
-    echo "=====================================================================" >&2
-    date
-    printf "$0: ERROR: %s\n" "$error_message" >&2
-    echo -e "\nFor help, run this script with the '-h' option" >&2
-    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
-    if [[ "$error_args" != "none" ]]; then
-        echo -e "\nArguments passed to the script:" >&2
-        echo "$error_args" >&2
+    if [[ ! -f "$function_script" ]]; then
+        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
+        git clone https://github.com/mcic-osu/mcic-scripts.git
+        function_script=mcic-scripts/dev/bash_functions.sh
     fi
-    echo -e "\nEXITING..." >&2
-    echo "=====================================================================" >&2
-    echo >&2
-    exit 1
+    source "$function_script"
 }
 
-
 # ==============================================================================
-#                          CONSTANTS AND DEFAULTS
+#                          INFRASTRUCTURE SETUP I
 # ==============================================================================
-# Option defaults
-debug=false
-dryrun=false && e=""
-slurm=true
-
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script $IS_SLURM
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-# Placeholder defaults
-outdir=""
-more_args=""
+# Initiate variables
+outdir=
+more_args=
 
 # Parse command-line args
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -o | --outdir )     shift && outdir=$1 ;;
-        --more_args )       shift && more_args=$1 ;;
-        -h )                Print_help; exit 0 ;;
-        --help )            Print_help_program; exit 0;;
-        --dryrun )          dryrun=true && e="echo ";;
-        --debug )           debug=true ;;
-        * )                 Die "Invalid option $1" "$all_args" ;;
+        -o | --outdir )     shift && readonly outdir=$1 ;;
+        --more_args )       shift && readonly more_args=$1 ;;
+        -v )                script_version; exit 0 ;;
+        -h | --help )       script_help; exit 0 ;;
+        --version )         load_env "$MODULE" "$CONDA"
+                            tool_version "$VERSION_COMMAND" && exit 0 ;;
+        * )                 die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
 
+# Check arguments
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_args"
 
 # ==============================================================================
-#                          OTHER SETUP
+#                          INFRASTRUCTURE SETUP II
 # ==============================================================================
-# In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
-
-# Check if this is a SLURM job
-[[ -z "$SLURM_JOB_ID" ]] && slurm=false
-
-# Strict bash settings
+# Strict Bash settings
 set -euo pipefail
 
-# Load software and set nr of threads
-[[ "$dryrun" = false ]] && Load_software
-Set_threads
+# Logging files and dirs
+readonly LOG_DIR="$outdir"/logs
+readonly VERSION_FILE="$LOG_DIR"/version.txt
+readonly CONDA_YML="$LOG_DIR"/conda_env.yml
+readonly ENV_FILE="$LOG_DIR"/env.txt
+mkdir -p "$LOG_DIR"
 
-# Check input
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
+# Load software
+load_env "$MODULE" "$CONDA" "$CONDA_YML"
 
-# Report
-echo
+# ==============================================================================
+#                               REPORT
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "               STARTING SCRIPT EGGNOGMAP_DL.SH"
-date
-echo "=========================================================================="
-echo "All arguments to this script:                 $all_args"
+echo "All options/arguments passed to this script:  $all_args"
 echo "Output dir:                                   $outdir"
-[[ $more_args != "" ]] && echo "Other arguments for download_eggnog_data.py:  $more_args"
-echo "Number of threads/cores:                      $threads"
-[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
-echo "=========================================================================="
-
-# Print reserved resources
-[[ "$slurm" = true ]] && Print_resources
-
+[[ -n $more_args ]] && echo "Additional arguments for $TOOL_NAME:          $more_args"
+[[ "$IS_SLURM" = true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Create the output directory
-echo -e "\n# Creating the output directories..."
-${e}mkdir -pv "$outdir"/logs
-
-# Run
-echo -e "\n# Now running download_eggnog_data.py..."
-${e}Time \
-    download_eggnog_data.py \
-    -y \
-    -P \
-    -M \
+# Run the tool
+log_time "Running $TOOL_NAME..."
+runstats $TOOL_BINARY \
     --data_dir "$outdir" \
+    $PFAM_ARG \
+    $MMSEQS_ARG \
+    -y \
     $more_args
 
 # Options used:
 #  -y       Assume "yes" to all questions
-#  -P       Install the Pfam database
-#  -M       Install the MMseqs2 database
 
 # Other possible options:
 #  -H, -d   for HMMER database
 
+# List the output, report version, etc
 echo "Data downloaded on $(date +%F)" > "$outdir"/README.txt
-
-
-# ==============================================================================
-#                               WRAP-UP
-# ==============================================================================
-echo
-echo "========================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$(realpath "$outdir")"/*
-    [[ "$slurm" = true ]] && Resource_usage
-fi
-echo "# Done with script"
-date
-echo
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/*
+final_reporting "$VERSION_COMMAND" "$VERSION_FILE" "$ENV_FILE" "$IS_SLURM" \
+    "$SCRIPT_NAME" "$SCRIPT_AUTHOR" "$SCRIPT_VERSION" "$SCRIPT_URL"
