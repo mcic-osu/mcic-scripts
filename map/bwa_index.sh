@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants
 readonly DESCRIPTION="Index a (genome) FASTA with BWA"
-readonly SCRIPT_VERSION="1.0"
+readonly SCRIPT_VERSION="2023-07-14"
 readonly SCRIPT_AUTHOR="Jelmer Poelstra"
 readonly SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
 readonly MODULE=miniconda3/4.12.0-py39
@@ -21,7 +21,6 @@ readonly TOOL_BINARY=bwa
 readonly TOOL_NAME=BWA
 readonly TOOL_DOCS=https://github.com/lh3/bwa
 readonly VERSION_COMMAND='bwa 2>&1 | grep Version'
-readonly HELP_COMMAND="bwa"
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -37,11 +36,6 @@ script_help() {
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage (always submit your scripts to SLURM with 'sbatch'):"
     echo "      sbatch $0 -i data/my_genome.fa -o results/bwa_index"
-    echo "  - To run the script using a different OSC project than PAS0471:"
-    echo "      sbatch -A PAS0001 $0 [...]"
-    echo "  - To just print the help message for this script (-h) or for $TOOL_NAME (--help):"
-    echo "      bash $0 -h"
-    echo "      bash $0 --help"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--infile     <file>  Input FASTA file"
@@ -51,10 +45,9 @@ script_help() {
     echo "  --more_args     <str>   Quoted string with more argument(s) for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for $TOOL_NAME and exit"
+    echo "  -h/--help               Print this help message and exit"
     echo "  -v                      Print the version of this script and exit"
-    echo "  -v/--version            Print the version of $TOOL_NAME and exit"
+    echo "  --version               Print the version of $TOOL_NAME and exit"
     echo
     echo "TOOL DOCUMENTATION:"
     echo "  - Docs: $TOOL_DOCS"
@@ -108,11 +101,9 @@ while [ "$1" != "" ]; do
         -o | --outdir )     shift && readonly outdir=$1 ;;
         --more_args )       shift && readonly more_args=$1 ;;
         -v )                script_version; exit 0 ;;
-        -h )                script_help; exit 0 ;;
+        -h | --help )       script_help; exit 0 ;;
         --version )         load_env "$MODULE" "$CONDA"
                             tool_version "$VERSION_COMMAND" && exit 0 ;;
-        --help )            load_env "$MODULE" "$CONDA"
-                            tool_help "$HELP_COMMAND" && exit 0;;
         * )                 die "Invalid option $1" "$all_args" ;;
     esac
     shift

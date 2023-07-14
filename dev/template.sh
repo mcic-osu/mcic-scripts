@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 readonly DESCRIPTION="" #TODO
-readonly MODULE=miniconda3/23.3.1-py310
+readonly MODULE=miniconda3
 readonly CONDA=#TODO
 readonly SCRIPT_VERSION="2023-06-30" #TODO
 readonly SCRIPT_AUTHOR="Jelmer Poelstra"

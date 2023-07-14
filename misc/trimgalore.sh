@@ -234,7 +234,7 @@ runstats $TOOL_BINARY \
     $quality_arg \
     --length "$length" \
     --gzip \
-    -j "$threads" \
+    --cores "$threads" \
     $more_args \
     $fastqc_arg1 \
     "$fastqc_arg2" \
