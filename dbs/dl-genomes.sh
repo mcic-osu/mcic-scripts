@@ -48,11 +48,6 @@ script_help() {
     echo "      sbatch $0 --accessions metadata/accession.txt -o results/refgenomes"
     echo "  - Also download annotation and proteome:"
     echo "      sbatch $0 --taxon 'human' --include 'genome,protein,gff' -o results"
-    echo "  - Run the script using a different OSC project than PAS0471:"
-    echo "      sbatch -A PAS0001 $0 [...]"
-    echo "  - Just print the help message for this script (-h) or for $TOOL_NAME (--help):"
-    echo "      bash $0 -h"
-    echo "      bash $0 --help"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
@@ -63,13 +58,12 @@ script_help() {
     echo "OTHER KEY OPTIONS:"
     echo "  --include           <str>   Comma-separated string with one or more of the following options: [default: 'genome']"
     echo "                              'genome', 'rna', 'protein', 'cds', 'gff3', 'gtf', 'gbff', 'seq-report'"
-    echo "  --assembly_version  <str>   'latest' or 'all'"
+    echo "  --assembly_version  <str>   'latest' or 'all'                       [default: 'lastest']"
     echo "  --ref_only                  When specifying a taxon, only download 'reference genomes' [default: download all matching genomes]"
     echo "  --more_args         <str>   Quoted string with more argument(s) for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for $TOOL_NAME and exit"
+    echo "  -h/--help               Print this help message and exit"
     echo "  -v                      Print the version of this script and exit"
     echo "  -v/--version            Print the version of $TOOL_NAME and exit"
     echo
@@ -177,9 +171,8 @@ while [ "$1" != "" ]; do
         --ref_only )            ref_only=true ;;
         --more_args )           shift && more_args=$1 ;;
         -v )                    script_version; exit 0 ;;
-        -h )                    script_help; exit 0 ;;
+        -h | --help )           script_help; exit 0 ;;
         --version )             tool_version; exit 0 ;;
-        --help )                tool_help; exit 0;;
         * )                     die "Invalid option $1" "$all_args" ;;
     esac
     shift
@@ -250,7 +243,7 @@ mkdir -pv "$log_dir"
 # Move into the output dir
 cd "$outdir" || exit 1
 
-# Report info on genomes
+# Report info on genomes #TODO
 #info_fields="accession,assminfo-name,organism-name,assminfo-refseq-category,assminfo-level,assmstats-number-of-contigs,assmstats-contig-n50"
 #log_time datasets summary genome $subcommand "$taxon_arg" $accession_arg --as-json-lines |
 #    dataformat tsv genome --fields "$info_fields" |
