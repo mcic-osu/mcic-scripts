@@ -11,16 +11,16 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-readonly DESCRIPTION="" #TODO
-readonly MODULE=miniconda3
-readonly CONDA=#TODO
-readonly SCRIPT_VERSION="2023-06-30" #TODO
-readonly SCRIPT_AUTHOR="Jelmer Poelstra"
-readonly SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
-readonly TOOL_BINARY=#TODO
-readonly TOOL_NAME=#TODO
-readonly TOOL_DOCS=#TODO
-readonly VERSION_COMMAND="$TOOL_BINARY --version"
+DESCRIPTION="" #TODO
+MODULE=miniconda3
+CONDA=#TODO
+SCRIPT_VERSION="2023-06-30" #TODO
+SCRIPT_AUTHOR="Jelmer Poelstra"
+SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
+TOOL_BINARY=#TODO
+TOOL_NAME=#TODO
+TOOL_DOCS=#TODO
+VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Constants - parameters
 #TODO
@@ -40,7 +40,7 @@ script_help() {
     echo "  $DESCRIPTION"
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage (always submit your scripts to SLURM with 'sbatch'):"
+    echo "  - Basic usage:"
     echo "      sbatch $0 -i TODO -o results/TODO" #TODO
     echo
     echo "REQUIRED OPTIONS:"
@@ -101,9 +101,9 @@ more_args=
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infile )     shift && readonly infile=$1 ;;
-        -o | --outdir )     shift && readonly outdir=$1 ;;
-        --more_args )       shift && readonly more_args=$1 ;;
+        -i | --infile )     shift && infile=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        --more_args )       shift && more_args=$1 ;;
         -v )                script_version; exit 0 ;;
         -h | --help )       script_help; exit 0 ;;
         --version )         load_env "$MODULE" "$CONDA"
@@ -124,19 +124,19 @@ done
 # Strict Bash settings
 set -euo pipefail
 
-# Define outputs based on script parameters
-#TODO
-
 # Logging files and dirs
-readonly LOG_DIR="$outdir"/logs
-readonly VERSION_FILE="$LOG_DIR"/version.txt
-readonly CONDA_YML="$LOG_DIR"/conda_env.yml
-readonly ENV_FILE="$LOG_DIR"/env.txt
+LOG_DIR="$outdir"/logs
+VERSION_FILE="$LOG_DIR"/version.txt
+CONDA_YML="$LOG_DIR"/conda_env.yml
+ENV_FILE="$LOG_DIR"/env.txt
 mkdir -p "$LOG_DIR"
 
 # Load software and set nr of threads
 load_env "$MODULE" "$CONDA" "$CONDA_YML"
 set_threads "$IS_SLURM"
+
+# Define outputs based on script parameters
+#TODO
 
 # ==============================================================================
 #                               REPORT
