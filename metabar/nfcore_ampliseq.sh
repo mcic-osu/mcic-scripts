@@ -322,7 +322,10 @@ log_time "Creating the output directories..."
 mkdir -pv "$work_dir" "$container_dir" "$outdir"/logs "$trace_dir"
 
 # Download the OSC config file
-[[ ! -f "$OSC_CONFIG" ]] && wget -q -O "$OSC_CONFIG" "$OSC_CONFIG_URL"
+if [[ ! -f "$OSC_CONFIG" ]]; then
+    log_time "Downloading the mcic-scripts Nextflow OSC config file to $OSC_CONFIG..."
+    wget -q -O "$OSC_CONFIG" "$OSC_CONFIG_URL"
+fi
 
 # Download workflow, if needed
 if [[ ! -d "$workflow_dir_full" ]]; then
