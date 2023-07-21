@@ -27,7 +27,8 @@ OSC_CONFIG=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present
 
 # Parameter defaults
 workflow_version=2.6.1      # The version of the nf-core workflow
-workflow_dir=workflows/nfcore-ampliseq/${workflow_version//./_}
+workflow_dir_base=workflows/nfcore-ampliseq
+workflow_dir_full=workflows/nfcore-ampliseq/${workflow_version//./_}
 is_ITS=false && ITS_arg=
 container_dir=/fs/project/PAS0471/containers
 work_dir=/fs/scratch/PAS0471/$USER/nfcore-ampliseq
@@ -195,7 +196,7 @@ while [ "$1" != "" ]; do
         --metadata )                    shift && metadata=$1 ;;
         --metadata_category )           shift && metadata_category=$1 ;;
         --metadata_category_barplot )   shift && metadata_category_barplot=$1 ;;
-        --workflow_dir )                shift && workflow_dir=$1 ;;
+        --workflow_dir )                shift && workflow_dir_full=$1 ;;
         --container_dir )               shift && container_dir=$1 ;;
         --more_args )                   shift && more_args=$1 ;;
         -config )                       shift && config_file=$1 ;;
@@ -306,7 +307,7 @@ echo "NEXTFLOW-RELATED SETTINGS:"
 echo "Resume previous run (if any):                 $resume"
 echo "Container dir:                                $container_dir"
 echo "Scratch (work) dir:                           $work_dir"
-echo "Nextflow workflow dir:                        $workflow_dir"
+echo "Nextflow workflow dir:                        $workflow_dir_full"
 echo "Config 'profile':                             $profile"
 echo "Config file argument:                         $config_arg"
 [[ -n "$config_file" ]] && echo "Additional config file:                       $config_file"
@@ -324,22 +325,22 @@ mkdir -pv "$work_dir" "$container_dir" "$outdir"/logs "$trace_dir"
 [[ ! -f "$OSC_CONFIG" ]] && wget -q -O "$OSC_CONFIG" "$OSC_CONFIG_URL"
 
 # Download workflow, if needed
-if [[ ! -d "$workflow_dir" ]]; then
-    mkdir -p "$(dirname "$workflow_dir")"
-    echo -e "\n# Downloading workflow to $workflow_dir"
+if [[ ! -d "$workflow_dir_full" ]]; then
+    mkdir -p "$(dirname "$workflow_dir_base")"
+    echo -e "\n# Downloading workflow to $workflow_dir_base"
     nf-core download "$WORKFLOW_NAME" \
         --revision "$workflow_version" \
         --compress none \
         --container-system singularity \
         --parallel-downloads "$threads" \
-        --outdir "$workflow_dir"
+        --outdir "$workflow_dir_base"
     echo
 fi
 
 # Run the tool
 log_time "Starting the workflow.."
 runstats $TOOL_BINARY \
-    "$workflow_dir" \
+    "$workflow_dir_full" \
     --input "$fastq_dir" \
     $extension_arg \
     --outdir "$outdir" \
