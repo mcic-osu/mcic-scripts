@@ -26,9 +26,12 @@ OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/next
 OSC_CONFIG=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present here
 
 # Parameter defaults
-workflow_version=2.6.1      # The version of the nf-core workflow
-workflow_dir=workflows/nfcore-ampliseq/${workflow_version//./_}
+workflow_version=2.6.1                                  # The version of the nf-core workflow
+workflow_dir_base=workflows/nfcore-ampliseq
+workflow_dir_full=workflows/nfcore-ampliseq/${workflow_version//./_}
 is_ITS=false && ITS_arg=
+ITS_arg_default="--illumina_pe_its --addsh"             # When is_ITS is true, use this arg
+ITS_taxonomy='unite-fungi=8.3'
 container_dir=/fs/project/PAS0471/containers
 work_dir=/fs/scratch/PAS0471/$USER/nfcore-ampliseq
 profile="singularity"
@@ -44,6 +47,7 @@ script_help() {
     echo "                      $DESCRIPTION"
     echo "        =============================================="
     echo "ABOUT:"
+    echo "  - The workflow definition files will be downloaded by the script if not already present for the correct version"
     echo "  - All workflow parameter defaults in this script are the same as in the https://nf-co.re/ampliseq pipeline,"
     echo "    except that '--ignore_failed_trimming' is always used so the pipeline will keep running when some samples have too small filesizes after trimming."
     echo "  - Different from the Nextflow default, this script will try to 'resume' (rather than restart) a previous incomplete run by default"
@@ -56,8 +60,8 @@ script_help() {
     echo "    --more-args \"--extension '/*_R{1,2}.fastq.gz' --illumina_novaseq\""
     echo
     echo "NF-CORE/AMPLISEQ WORKFLOW PARAMETERS:"
-    echo "Note: These are all the same as the parameters specified at https://nf-co.re/ampliseq/parameters: see there for details"
-    echo "Note: To pass nf-core/ampliseq parameters that are not listed below, use the 'more_args' option."
+    echo "  - Note: These are all the same as the parameters specified at https://nf-co.re/ampliseq/parameters: see there for details"
+    echo "  - Note: To pass nf-core/ampliseq parameters that are not listed below, use the '--more_args' option."
     echo "  --input             <dir>   Input FASTQ dir                                             [REQUIRED]"
     echo "  --outdir            <dir>   Output directory (will be created)                          [REQUIRED]"
     echo "  --FW_primer         <str>   Forward primer sequence                                     [REQUIRED]"
@@ -69,40 +73,40 @@ script_help() {
     echo "  --max_len_asv       <int>   Maximum ASV length in basepairs                             [default: none => no length filtering]"
     echo "  --sample_inference  <str>   Dada sample inference method                                [default: 'independent']"
     echo "                                - 'independent', 'pooled', or 'pseudo'"
-    echo "  --dada_ref_taxonomy <str>   Reference taxonomy for dada             [default: 'silva=138' for 16S / 'unite-fungi=8.3' for ITS]"
-    echo "  --filter_ssu        <str>   Quoted, comma-separated list of kingdoms to keep after Barrnap classification"
-    echo "                                - Recommended for 16S: 'bac'"
-    echo "                                - Don't use this for ITS"
-    echo "                                - Default: no SSU filtering"
-    echo "                                - See https://nf-co.re/ampliseq/2.4.1/parameters#filter_ssu"
-    echo "  --exclude_taxa      <str>   Quoted, comma-separated list of Kingdoms/taxa to remove after ASV tax. classification with DADA2 or QIIME2"
-    echo "                                - Default: 'mitochondria,chloroplast'"
+    echo "  --dada_ref_taxonomy <str>   Reference taxonomy for dada                                 [16S default: Ampliseq's default ('silva=138' as of writing)]"
+    echo "                                                                                          [ITS: default:  'unite-fungi=8.3']"
+    echo "  --filter_ssu        <str>   Quoted, comma-separated list of kingdoms to keep after Barrnap classification [default: no SSU filtering]"
+    echo "                                - Recommended for 16S: 'bac', see https://nf-co.re/ampliseq/parameters#filter_ssu"
+    echo "                                - Don't use this option for an ITS dataset!"
+    echo "  --exclude_taxa      <str>   Quoted, comma-separated list of Kingdoms/taxa to remove     [default: 'mitochondria,chloroplast']"
+    echo "                                after ASV tax. classification with DADA2 or QIIME2"
     echo "  --min_frequency     <int>   ASV must be present at least x times                        [default: 1]"
     echo "  --metadata          <file>  Metadata TSV file                                           [default: no metadata => no by-group stats]"
     echo "                                - At a minimum should have a column named 'id'"
     echo "                                - See https://docs.qiime2.org/2022.11/tutorials/metadata/"
-    echo "  --metadata_category <str>   Metadata category/ies for downstream analysis [default: none]"
-    echo "  --metadata_category_barplot <str> Metadata category/ies for barplots [default: none / 'metadata_category' if that is specified]"
+    echo "  --metadata_category <str>   Metadata category/ies for downstream analysis               [default: none]"
+    echo "  --metadata_category_barplot <str> Metadata category/ies for barplots                    [default: none / 'metadata_category' if that is specified]"
     echo
     echo "OPTIONS OF THIS SHELL SCRIPT:"
     echo "  --its                       Use this flag if the data is ITS-derived, in which case:"
     echo "                                - The default taxonomy will be changed to 'unite-fungi=8.3'"
     echo "                                - The '--illumina_pe_its' and '--addsh' flags to the workflow will be used"
-    echo "  --workflow_dir      <dir>   Dir with (or for) the nfcore/ampliseq workflow              [default: 'workflows/nfcore-ampliseq']"
     echo "  --workflow_version  <str>   nf-core ampliseq workflow version                           [default: $workflow_version]"
-    echo "  --more_args         <str>   Additional arguments, all in a single quoted string, to pass to 'nextflow run'"
+    echo "  --workflow_dir      <dir>   Top-level dir (without version number) with or for the ampliseq workflow    [default: 'workflows/nfcore-ampliseq']"
+    echo "                                - If the correct version of the workflow is already present in this dir, it won't be downloaded again"
+    echo "  --more_args         <str>   Additional arguments, all in a single quoted string, to pass to the workflow"
     echo 
-    echo "NEXTFLOW OPTIONS:"
-    echo "  -restart                    Don't attempt to resume workflow run, but start over        [default: resume workflow]"
-    echo "  -config             <file>  Additional config file                                      [default: none]"
+    echo "NEXTFLOW AND UTILITY OPTIONS:"
+    echo "  --restart                   Don't attempt to resume workflow run, but start over        [default: resume workflow]"
+    echo "  --container_dir     <dir>   Directory with container images                             [default: $container_dir]"
+    echo "                                - Required images will be downloaded here when not already present here" 
+    echo "  --config            <file>  Additional config file                                      [default: none]"
     echo "                                - Settings in this file will override default settings"
     echo "                                - Note that the mcic-scripts OSC config file will always be included, too"
     echo "                                  (https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config)"
-    echo "  -profile            <str>   'Profile' to use from one of the config files               [default: 'singularity']"
-    echo "  -work-dir           <dir>   Scratch (work) dir for the workflow                         [default: '/fs/scratch/PAS0471/\$USER/nfcore-ampliseq']"
+    echo "  --profile            <str>  'Profile' to use from one of the config files               [default: 'singularity']"
+    echo "  --work_dir           <dir>  Scratch (work) dir for the workflow                         [default: '/fs/scratch/PAS0471/\$USER/nfcore-ampliseq']"
     echo "                                - This is where the workflow results will be stored before final results are copied to the output dir."
-    echo
-    echo "UTILITY OPTIONS:"
     echo "  -h/--help                   Print this help message and exit"
     echo "  -v                          Print the version of this script and exit"
     echo "  --version                   Print the version of Nextflow and exit"
@@ -195,13 +199,13 @@ while [ "$1" != "" ]; do
         --metadata )                    shift && metadata=$1 ;;
         --metadata_category )           shift && metadata_category=$1 ;;
         --metadata_category_barplot )   shift && metadata_category_barplot=$1 ;;
-        --workflow_dir )                shift && workflow_dir=$1 ;;
+        --workflow_dir )                shift && workflow_dir_full=$1 ;;
         --container_dir )               shift && container_dir=$1 ;;
         --more_args )                   shift && more_args=$1 ;;
-        -config )                       shift && config_file=$1 ;;
-        -profile )                      shift && profile=$1 ;;
-        -work-dir )                     shift && work_dir=$1 ;;
-        -restart )                      resume=false && resume_arg= ;;
+        --config | -config )            shift && config_file=$1 ;;
+        --profile | -profile )          shift && profile=$1 ;;
+        --work_dir | -work-dir )        shift && work_dir=$1 ;;
+        --restart | -restart)           resume=false && resume_arg= ;;
         -h | --help )                   script_help; exit 0 ;;
         -v )                            script_version; exit 0 ;;
         --version )                     load_env "$MODULE" "$CONDA"
@@ -238,8 +242,8 @@ set_threads "$IS_SLURM"
 
 # ITS options
 if [[ "$is_ITS" = true ]]; then
-    ITS_arg="--illumina_pe_its --addsh" #TODO declare at top
-    [[ -z "$dada_ref_taxonomy" ]] && dada_ref_taxonomy='unite-fungi=8.3' #TODO declare at top
+    ITS_arg="$ITS_arg_default"
+    [[ -z "$dada_ref_taxonomy" ]] && dada_ref_taxonomy="$ITS_taxonomy"
 fi
 
 # Metadata options
@@ -306,7 +310,7 @@ echo "NEXTFLOW-RELATED SETTINGS:"
 echo "Resume previous run (if any):                 $resume"
 echo "Container dir:                                $container_dir"
 echo "Scratch (work) dir:                           $work_dir"
-echo "Nextflow workflow dir:                        $workflow_dir"
+echo "Nextflow workflow dir:                        $workflow_dir_full"
 echo "Config 'profile':                             $profile"
 echo "Config file argument:                         $config_arg"
 [[ -n "$config_file" ]] && echo "Additional config file:                       $config_file"
@@ -321,25 +325,28 @@ log_time "Creating the output directories..."
 mkdir -pv "$work_dir" "$container_dir" "$outdir"/logs "$trace_dir"
 
 # Download the OSC config file
-[[ ! -f "$OSC_CONFIG" ]] && wget -q -O "$OSC_CONFIG" "$OSC_CONFIG_URL"
+if [[ ! -f "$OSC_CONFIG" ]]; then
+    log_time "Downloading the mcic-scripts Nextflow OSC config file to $OSC_CONFIG..."
+    wget -q -O "$OSC_CONFIG" "$OSC_CONFIG_URL"
+fi
 
 # Download workflow, if needed
-if [[ ! -d "$workflow_dir" ]]; then
-    mkdir -p "$(dirname "$workflow_dir")"
-    echo -e "\n# Downloading workflow to $workflow_dir"
+if [[ ! -d "$workflow_dir_full" ]]; then
+    mkdir -p "$(dirname "$workflow_dir_base")"
+    echo -e "\n# Downloading workflow to $workflow_dir_base"
     nf-core download "$WORKFLOW_NAME" \
         --revision "$workflow_version" \
         --compress none \
         --container-system singularity \
         --parallel-downloads "$threads" \
-        --outdir "$workflow_dir"
+        --outdir "$workflow_dir_base"
     echo
 fi
 
 # Run the tool
 log_time "Starting the workflow.."
 runstats $TOOL_BINARY \
-    "$workflow_dir" \
+    "$workflow_dir_full" \
     --input "$fastq_dir" \
     $extension_arg \
     --outdir "$outdir" \
