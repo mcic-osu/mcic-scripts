@@ -1,147 +1,182 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=3:00:00
 #SBATCH --cpus-per-task=6
+#SBATCH --mem=48G
+#SBATCH --mail-type=FAIL
 #SBATCH --job-name=gubbins
 #SBATCH --output=slurm-gubbins-%j.out
 
-# FUNCTIONS --------------------------------------------------------------------
-## Help function
-function Print_help() {
+# ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
+# Constants - generic
+DESCRIPTION="Run Gubbins to remove HGT among a bacterial genome alignment, and create a phylogentic tree"
+MODULE=miniconda3
+CONDA=/fs/project/PAS0471/jelmer/conda/gubbins
+SCRIPT_VERSION="2023-07-21"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
+TOOL_BINARY=run_gubbins.py
+TOOL_NAME=Gubbins
+TOOL_DOCS=http://nickjcroucher.github.io/gubbins/
+VERSION_COMMAND="$TOOL_BINARY --version"
+
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
+# Help function
+script_help() {
     echo
-    echo "======================================================================"
-    echo "$0: Run Gubbins to identify recombination among bacterial genomes"
-    echo "======================================================================"
-    echo "USAGE:"
-    echo "$0 -i <alignment-file> -o <output-prefix> ..."
+    echo "        $0 (v. $SCRIPT_VERSION): Run $TOOL_NAME"
+    echo "        =============================================="
+    echo "DESCRIPTION:"
+    echo "  $DESCRIPTION"
+    echo
+    echo "USAGE / EXAMPLE COMMANDS:"
+    echo "  - Basic usage:"
+    echo "      sbatch $0 -i results/snippy/core.full.aln -o results/gubbins/run1"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "    -i FILE           Input alignment in FASTA format"
-    echo "    -o STRING         Output prefix (dir + run ID)"
+    echo "  -i/--alignment  <file>  Input alignment in FASTA format"
+    echo "  -o/--out_prefix <str>   Output prefix: dir + filename prefix (dir will be created if needed)"
     echo
-    echo "OTHER OPTIONS:"
-    echo "    -t FILE           Tree file for starting tree"
-    echo "    -d FILE           Dates file for dating"
-    echo "    -a STRING         Other argument(s) to pass to Gubbins"
+    echo "OTHER KEY OPTIONS:"
+    echo "  --dates         <file>  Dates file for dating"
+    echo "  --start_tree    <file>  Tree file to serve as a starting tree"
+    echo "  --more_args     <str>   Quoted string with additional argument(s) for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
-    echo "    -v                Print the version and exit"
-    echo "    -h                Print this help message and exit"
+    echo "  -h/--help               Print this help message and exit"
+    echo "  -v                      Print the version of this script and exit"
+    echo "  --version               Print the version of $TOOL_NAME and exit"
     echo
-    echo "EXAMPLE COMMAND:"
-    echo "    sbatch $0 -i aln.fasta -o results/gubbins/run1"
-    echo
-    echo "DOCUMENTATION:"
-    echo "  - Documentation:    http://nickjcroucher.github.io/gubbins/ "
+    echo "TOOL DOCUMENTATION:"
+    echo "  - $TOOL_DOCS"
     echo "  - Tutorial:         https://github.com/nickjcroucher/gubbins/blob/master/docs/gubbins_tutorial.md "
     echo "  - Manual:           https://github.com/nickjcroucher/gubbins/blob/master/docs/gubbins_manual.md "
     echo "  - Repository:       https://github.com/nickjcroucher/gubbins "
     echo "  - Paper:            https://academic.oup.com/nar/article/43/3/e15/2410982 "
-    echo "======================================================================"
     echo
 }
 
-## Load software
-function Load_software() {
-    module load python/3.6-conda5.2
-    #source activate /fs/project/PAS0471/jelmer/conda/gubbins-3.2.1
-    source activate /fs/project/PAS0471/jelmer/conda/gubbins-3.3
+# Function to source the script with Bash functions
+source_function_script() {
+    local is_slurm=$1
+
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$is_slurm" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
+    else
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
+    fi
+    function_script=$(realpath "$script_dir"/../dev/bash_functions.sh)
+    
+    if [[ ! -f "$function_script" ]]; then
+        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
+        git clone https://github.com/mcic-osu/mcic-scripts.git
+        function_script=mcic-scripts/dev/bash_functions.sh
+    fi
+    source "$function_script"
 }
 
-## Print the version
-function Print_version() {
-    load_software
-    run_gubbins.py --version
-}
+# ==============================================================================
+#                          INFRASTRUCTURE SETUP I
+# ==============================================================================
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script $IS_SLURM
 
+# ==============================================================================
+#                          PARSE COMMAND-LINE ARGS
+# ==============================================================================
+# Initiate variables
+infile=
+tree= && tree_arg=
+date_file= && date_arg=
+out_prefix=
+more_args=
 
-# PARSE OPTIONS ----------------------------------------------------------------
-## Option defaults
-aln=""
-tree="" && tree_arg=""
-date_file="" && date_arg=""
-out_prefix=""
-more_args=""
-
-## Parse command-line options
-while getopts ':i:t:o:d:a:vh' flag; do
-    case "${flag}" in
-        i) aln="$OPTARG" ;;
-        o) out_prefix="$OPTARG" ;;
-        d) date_file="$OPTARG" ;;
-        t) tree="$OPTARG" ;;
-        a) more_args="$OPTARG" ;;
-        v) Print_version && exit 0 ;;
-        h) Print_help && exit 0 ;;
-        \?) echo -e "\n## $0: ERROR: Invalid option -$OPTARG\n" >&2 && exit 1 ;;
-        :) echo -e "\n## $0: ERROR: Option -$OPTARG requires an argument\n" >&2 && exit 1 ;;
+# Parse command-line args
+all_args="$*"
+while [ "$1" != "" ]; do
+    case "$1" in
+        -i | --alignment )  shift && infile=$1 ;;
+        -o | --out_prefix ) shift && out_prefix=$1 ;;
+        --dates )           shift && date_file=$1 ;;
+        --start_tree )      shift && tree=$1 ;;
+        --more_args )       shift && more_args=$1 ;;
+        -v )                script_version; exit 0 ;;
+        -h | --help )       script_help; exit 0 ;;
+        --version )         load_env "$MODULE" "$CONDA"
+                            tool_version "$VERSION_COMMAND" && exit 0 ;;
+        * )                 die "Invalid option $1" "$all_args" ;;
     esac
+    shift
 done
 
+# Check arguments
+[[ -z "$infile" ]] && die "No input alignment file specified, do so with -i/--alignment" "$all_args"
+[[ -z "$out_prefix" ]] && die "No output prefix specified, do so with -o/--out_prefix" "$all_args"
+[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
+[[ -n "$tree" && ! -f "$tree" ]] && die "Input file $tree does not exist"
+[[ -n "$date_file" && ! -f "$date_file" ]] && die "Input file $tree does not exist"
 
-# SETUP ------------------------------------------------------------------------
-## Load software
-Load_software
-
-## Bash strict settings
+# ==============================================================================
+#                          INFRASTRUCTURE SETUP II
+# ==============================================================================
+# Strict Bash settings
 set -euo pipefail
 
-## Check input
-[[ "$aln" = "" ]] && echo "## ERROR: Please specify an alignment with -i" >&2 && exit 1
-[[ "$out_prefix" = "" ]] && echo "## ERROR: Please specify an output dir with -o" >&2 && exit 1
-[[ ! -f "$aln" ]] && echo "## ERROR: Input file $aln does not exist" >&2 && exit 1
-[[ "$tree" != "" && ! -f "$tree" ]] && echo "## ERROR: Input file $tree does not exist" >&2 && exit 1
-
-## Build tree and dates arguments
-[[ $tree != "" ]] && tree_arg="--starting-tree $tree"
-[[ $date_file != "" ]] && date_arg="--date $date_file"
-
-
-## Report
-echo "=========================================================================="
-echo "                       STARTING SCRIPT GUBBINS.SH"
-date
-echo "=========================================================================="
-echo "Alignment input file:                      $aln"
-echo "Output prefix:                             $out_prefix"
-[[ "$tree" != "" ]] && echo "Tree input file:                           $tree"
-[[ "$date_file" != "" ]] && echo "Dates input file:                          $date_file"
-[[ $more_args != "" ]] && echo "Other arguments for Gubbins:              $more_args"
-echo
-echo "## Listing the input files:"
-ls -lh "$aln"
-[[ $tree != "" ]] && ls -lh "$tree"
-echo "=========================================================================="
-
-
-# MAIN -------------------------------------------------------------------------
-## Create output dir
+# Logging files and dirs
 outdir=$(dirname "$out_prefix")
-mkdir -p "$outdir"/logs
+LOG_DIR="$outdir"/logs
+VERSION_FILE="$LOG_DIR"/version.txt
+CONDA_YML="$LOG_DIR"/conda_env.yml
+ENV_FILE="$LOG_DIR"/env.txt
+mkdir -p "$LOG_DIR"
 
-## Run treetime
-echo "## Now running Gubbins..."
-set -o xtrace
-run_gubbins.py \
-    --threads "$SLURM_CPUS_PER_TASK" \
+# Load software and set nr of threads
+load_env "$MODULE" "$CONDA" "$CONDA_YML"
+set_threads "$IS_SLURM"
+
+# Build tree and dates arguments
+[[ -n $tree ]] && tree_arg="--starting-tree $tree"
+[[ -n $date_file ]] && date_arg="--date $date_file"
+
+# ==============================================================================
+#                               REPORT
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
+echo "=========================================================================="
+echo "All options/arguments passed to this script:  $all_args"
+echo "Alignment input file:                         $infile"
+echo "Output prefix:                                $out_prefix"
+[[ -n "$tree" ]] && echo "Starting tree input file:                     $tree"
+[[ -n "$date_file" ]] && echo "Dates input file:                             $date_file"
+[[ -n $more_args ]] && echo "Additional arguments for $TOOL_NAME:          $more_args"
+log_time "Listing the input file(s):"
+ls -lh "$infile"
+[[ "$IS_SLURM" = true ]] && slurm_resources
+
+# ==============================================================================
+#                               RUN
+# ==============================================================================
+# Run the tool
+log_time "Running $TOOL_NAME..."
+runstats $TOOL_BINARY \
+    --threads "$threads" \
     --prefix "$out_prefix" \
     $date_arg \
     $tree_arg \
-    "$aln"
-set +o xtrace
+    "$infile" \
+    $more_args
 
-
-# WRAP UP ----------------------------------------------------------------------
-echo -e "\n-------------------------------"
-echo "## Gubbins version used:"
-run_gubbins.py --version
-echo
-echo "## Listing files in the output dir:"
-ls -lh "$outdir"
-echo 
-echo "## Done with script"
-date
-echo
-sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
-echo
+# List the output, report version, etc
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/*
+final_reporting "$VERSION_COMMAND" "$VERSION_FILE" "$ENV_FILE" "$IS_SLURM" \
+    "$SCRIPT_NAME" "$SCRIPT_AUTHOR" "$SCRIPT_VERSION" "$SCRIPT_URL"

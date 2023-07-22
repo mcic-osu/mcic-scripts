@@ -1,161 +1,194 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=3:00:00
 #SBATCH --cpus-per-task=6
+#SBATCH --mem=24G
+#SBATCH --mail-type=FAIL
 #SBATCH --job-name=treetime
 #SBATCH --output=slurm-treetime-%j.out
 
-# FUNCTIONS --------------------------------------------------------------------
-## Help function
-print_help() {
+# ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
+# Constants - generic
+DESCRIPTION="Run TreeTime to date a phylogenetic tree"
+MODULE=miniconda3
+CONDA=/fs/project/PAS0471/jelmer/conda/treetime
+SCRIPT_VERSION="2023-07-21"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
+TOOL_BINARY=treetime
+TOOL_NAME=Treetime
+TOOL_DOCS=https://treetime.readthedocs.io/
+VERSION_COMMAND="$TOOL_BINARY --version"
+
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
+# Help function
+script_help() {
     echo
-    echo "======================================================================"
-    echo "$0: Run TreeTime to date a phylogenetic tree"
-    echo "======================================================================"
-    echo "USAGE:"
-    echo "------------------"
-    echo "$0 -i <alignment-file> -d <dates-file> -o <output-dir> ..."
+    echo "        $0 (v. $SCRIPT_VERSION): Run $TOOL_NAME"
+    echo "        =============================================="
+    echo "DESCRIPTION:"
+    echo "  $DESCRIPTION"
+    echo
+    echo "USAGE / EXAMPLE COMMANDS:"
+    echo "  - Basic usage:"
+    echo "      sbatch $0 -i results/snippy/core.full.aln -o results/treetime --dates metadata/dates.tsv"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "------------------"
-    echo "    -i FILE           Input alignment: FASTA, Phylip, or VCF"
-    echo "    -d FILE           Input CSV/TSV with sampling date for each sample"
-    echo "                      Should have columns 'node_name' and 'date',"
-    echo "                      with dates in %Y-%m-%d format"
-    echo "    -o DIR            Output dir"
+    echo "  -i/--alignment  <file>  Input alignment file in FASTA, Phylip, or VCF format"
+    echo "  --dates         <file>  Input CSV/TSV with sampling date for each sample"
+    echo "                            Should have columns 'node_name' and 'date',"
+    echo "                            with dates in %Y-%m-%d format"
+    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
-    echo "OTHER OPTIONS:"
-    echo "------------------"
-    echo "    -t FILE           Tree file in Nexus or Newick format"
-    echo "                      If no tree file is provided, TreeTime will infer one"
-    echo "    -a STRING         Other argument(s) to pass to TreeTime"
-    echo "    -v                Print the version and exit"
-    echo "    -h                Print this help message and exit"
+    echo "OTHER KEY OPTIONS:"
+    echo "  --tree          <file>  Tree file in Nexus or Newick format"
+    echo "                            If no tree file is provided, TreeTime will infer one"
+    echo "  --clock_rate    <str>   Clock rate to assume"
+    echo "  --more_args     <str>   Quoted string with additional argument(s) for $TOOL_NAME"
     echo
-    echo "EXAMPLE COMMAND:"
-    echo "------------------"
-    echo "sbatch $0 -i aln.fasta -d data/meta/dates.tsv -o results/treetime"
+    echo "UTILITY OPTIONS:"
+    echo "  -h/--help               Print this help message and exit"
+    echo "  -v                      Print the version of this script and exit"
+    echo "  --version               Print the version of $TOOL_NAME and exit"
     echo
-    echo "DOCUMENTATION:"
-    echo "------------------"
-    echo "Documentation:        https://treetime.readthedocs.io/"
-    echo "Repo:                 https://github.com/neherlab/treetime"
-    echo "Paper:                https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5758920/"
+    echo "TOOL DOCUMENTATION:"
+    echo "  - $TOOL_DOCS"
+    echo "  - Repo:                 https://github.com/neherlab/treetime"
+    echo "  - Paper:                https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5758920/"
     echo
 }
 
-## Load software
-load_software() {
-    module load python/3.6-conda5.2
-    source activate /fs/project/PAS0471/jelmer/conda/treetime-0.9.4
-    #? Note: The treetime environment also includes FastTree
+# Function to source the script with Bash functions
+source_function_script() {
+    local is_slurm=$1
+
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$is_slurm" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
+    else
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
+    fi
+    function_script=$(realpath "$script_dir"/../dev/bash_functions.sh)
+    
+    if [[ ! -f "$function_script" ]]; then
+        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
+        git clone https://github.com/mcic-osu/mcic-scripts.git
+        function_script=mcic-scripts/dev/bash_functions.sh
+    fi
+    source "$function_script"
 }
 
-## Print the version
-print_version() {
-    load_software
-    treetime --version
-}
+# ==============================================================================
+#                          INFRASTRUCTURE SETUP I
+# ==============================================================================
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script $IS_SLURM
 
+# ==============================================================================
+#                          PARSE COMMAND-LINE ARGS
+# ==============================================================================
+# Initiate variables
+infile=
+outdir=
+date_file=
+tree= && tree_arg=
+clock_rate= && clock_rate_arg=
+more_args=
 
-# PARSE OPTIONS ----------------------------------------------------------------
-## Option defaults
-aln=""
-dates=""
-outdir=""
-tree="" && tree_arg=""
-clock_rate="" && clock_rate_arg=""
-more_args=""
-
-## Parse command-line options
-while getopts ':i:d:t:o:c:a:vh' flag; do
-    case "${flag}" in
-        i) aln="$OPTARG" ;;
-        d) dates="$OPTARG" ;;
-        t) tree="$OPTARG" ;;
-        o) outdir="$OPTARG" ;;
-        c) clock_rate="$OPTARG" ;;
-        a) more_args="$OPTARG" ;;
-        v) print_version && exit 0 ;;
-        h) print_help && exit 0 ;;
-        \?) echo -e "\n## $0: ERROR: Invalid option -$OPTARG\n\n" >&2 && exit 1 ;;
-        :) echo -e "\n## $0: ERROR: Option -$OPTARG requires an argument\n\n" >&2 && exit 1 ;;
+# Parse command-line args
+all_args="$*"
+while [ "$1" != "" ]; do
+    case "$1" in
+        -i | --infile )     shift && infile=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        --dates )           shift && date_file=$1 ;;
+        --tree )            shift && tree=$1 ;;
+        --clock_rate )      shift && clock_rate=$1 ;;
+        --more_args )       shift && more_args=$1 ;;
+        -v )                script_version; exit 0 ;;
+        -h | --help )       script_help; exit 0 ;;
+        --version )         load_env "$MODULE" "$CONDA"
+                            tool_version "$VERSION_COMMAND" && exit 0 ;;
+        * )                 die "Invalid option $1" "$all_args" ;;
     esac
+    shift
 done
 
+# Check arguments
+[[ -z "$infile" ]] && die "No input alignment file specified, do so with -i/--infile" "$all_args"
+[[ -z "$date_file" ]] && die "No input dates file specified, do so with -i/--dates" "$all_args"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_args"
+[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
+[[ ! -f "$date_file" ]] && die "Input file $date_file does not exist"
+[[ -n "$tree" && ! -f "$tree" ]] && die "Input tree file $tree does not exist"
 
-# SETUP ------------------------------------------------------------------------
-## Load software
-load_software
-
-## Bash strict settings
+# ==============================================================================
+#                          INFRASTRUCTURE SETUP II
+# ==============================================================================
+# Strict Bash settings
 set -euo pipefail
 
-## Check input
-[[ "$aln" = "" ]] && echo "## ERROR: Please specify an alignment with -i" >&2 && exit 1
-[[ "$dates" = "" ]] && echo "## ERROR: Please specify a dates file -d" >&2 && exit 1
-[[ "$outdir" = "" ]] && echo "## ERROR: Please specify an output dir with -o" >&2 && exit 1
-[[ ! -f "$aln" ]] && echo "## ERROR: Input file $aln does not exist" >&2 && exit 1
-[[ ! -f "$dates" ]] && echo "## ERROR: Input file $dates does not exist" >&2 && exit 1
-[[ "$tree" != "" && ! -f "$tree" ]] && echo "## ERROR: Input file $tree does not exist" >&2 && exit 1
+# Logging files and dirs
+LOG_DIR="$outdir"/logs
+VERSION_FILE="$LOG_DIR"/version.txt
+CONDA_YML="$LOG_DIR"/conda_env.yml
+ENV_FILE="$LOG_DIR"/env.txt
+mkdir -p "$LOG_DIR"
 
-## Build tree argument
-[[ $tree != "" ]] && tree_arg="--tree $tree"
-[[ $clock_rate != "" ]] && clock_rate_arg="--clock-rate $clock_rate"
+# Load software and set nr of threads
+load_env "$MODULE" "$CONDA" "$CONDA_YML"
+set_threads "$IS_SLURM"
 
-## Report
+# Define outputs based on script parameters
+[[ -n $tree ]] && tree_arg="--tree $tree"
+[[ -n $clock_rate ]] && clock_rate_arg="--clock-rate $clock_rate"
+
+# ==============================================================================
+#                               REPORT
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "                     STARTING SCRIPT TREETIME.SH"
-date
-echo "=========================================================================="
-echo "## Alignment (or VCF) input file:             $aln"
-echo "## CSV/TSV dates input file:                  $dates"
-echo "## Output dir:                                $outdir"
-[[ "$tree" != "" ]] && echo "## Tree input file:                           $tree"
-[[ $more_args != "" ]] && echo "## Other arguments for treetime:              $more_args"
-echo
-echo "## Listing the input files:"
-ls -lh "$aln" "$dates"
-[[ "$tree" != "" ]] && ls -lh "$tree"
-echo "=========================================================================="
-echo
+echo "All options/arguments passed to this script:  $all_args"
+echo "Input file:                                   $infile"
+echo "Output dir:                                   $outdir"
+echo "CSV/TSV dates input file:                     $date_file"
+[[ -n "$tree" ]] && echo "Input tree file:                              $tree"
+[[ -n "$clock_rate" ]] && echo "Clock rate:                                   $clock_rate"
+[[ -n $more_args ]] && echo "Additional arguments for $TOOL_NAME:          $more_args"
+log_time "Listing the input file(s):"
+ls -lh "$infile" "$date_file"
+[[ -n "$tree" ]] && "$tree"
+[[ "$IS_SLURM" = true ]] && slurm_resources
 
-
-# MAIN -------------------------------------------------------------------------
-## Create output dir
-mkdir -p "$outdir"/logs
-
-## Run treetime
-echo "## Now running treetime..."
-set -o xtrace
-treetime \
-    --aln "$aln" \
+# ==============================================================================
+#                               RUN
+# ==============================================================================
+# Run the tool
+log_time "Running $TOOL_NAME..."
+runstats $TOOL_BINARY \
+    --aln "$infile" \
     $tree_arg \
     $clock_rate_arg \
-    --dates "$dates" \
+    --dates "$date_file" \
     --outdir "$outdir" \
     --confidence \
-    --covariation
-set +o xtrace
+    --covariation \
+    $more_args 
 
-echo "## Treetime version used:"
-treetime --version | tee "$outdir"/logs/version.txt
-
-
-# WRAP UP ----------------------------------------------------------------------
-echo -e "\n-------------------------------"
-echo
-echo "## Listing files in the output dir:"
-ls -lh "$outdir"
-echo
-tree "$outdir"
-echo
-echo "## Show contents of dates.tsv:"
+# Report output
+log_time "Showing the contents of the output dates.tsv:"
 cat -n "$outdir"/dates.tsv
-echo 
-echo "## Done with script treetime.sh"
-date
-echo
-sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
-echo
+
+# List the output, report version, etc
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/*
+final_reporting "$VERSION_COMMAND" "$VERSION_FILE" "$ENV_FILE" "$IS_SLURM" \
+    "$SCRIPT_NAME" "$SCRIPT_AUTHOR" "$SCRIPT_VERSION" "$SCRIPT_URL"
