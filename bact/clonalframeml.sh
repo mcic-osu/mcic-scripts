@@ -1,31 +1,28 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=3:00:00
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=48G
-#SBATCH --mail-type=FAIL
-#SBATCH --job-name=iqtree
-#SBATCH --output=slurm-iqtree-%j.out
+#SBATCH --time=2:00:00
+#SBATCH --cpus-per-task=5
+#SBATCH --mem=20G
+#SBATCH --mail-type=END,FAIL
+#SBATCH --job-name=clonalframeml
+#SBATCH --output=slurm-clonalframeml-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Construct a phylogenetic tree from a FASTA alignment using IQ-tree"
+DESCRIPTION="Run ClonalFrameML to infer recombination (HGT) in bacterial genomes,
+and run maskrc-svg to mask recombinant regions"
 MODULE=miniconda3
-CONDA=/fs/ess/PAS0471/jelmer/conda/iqtree
+CONDA=/fs/ess/PAS0471/jelmer/conda/clonalframeml
+CONTAINER=/fs/ess/PAS0471/containers/depot.galaxyproject.org-singularity-mulled-v2-f5c68f1508671d5744655da9b0e8b609098f4138-7e089189af7822a6a18245830639dbfe11a4c277-0.img
 SCRIPT_VERSION="2023-07-22"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
-TOOL_BINARY=iqtree
-TOOL_NAME=IQ-tree
-TOOL_DOCS=http://www.iqtree.org/doc/
-VERSION_COMMAND="$TOOL_BINARY --version"
-
-# Parameter defaults
-auto_cores=false                # Don't use IQ-tree's 'AUTO' core mode
-ufboot= && boot_arg=            # No bootstrapping by default
-model= && model_arg=            # Use IQ-tree's default model (MFP => Pick model)
+TOOL_BINARY=ClonalFrameML
+TOOL_NAME=ClonalFrameML
+TOOL_DOCS=https://github.com/xavierdidelot/ClonalFrameML
+VERSION_COMMAND="$TOOL_BINARY | head -n 1"
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -40,17 +37,14 @@ script_help() {
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage:"
-    echo "      sbatch $0 -i results/alignment/COI_aligned.fa -p results/iqtree/COI -b 1000"
+    echo "      sbatch $0 -i results/roary/core_gene_alignment.aln -o results/clonalframeml"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile     <file>  Input FASTA file (alignment) -- should contain multiple, aligned sequences"
+    echo "  -i/--infile     <file>  Input alignment file from Roary/Panaroo or similar"
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --out_prefix    <str>   Output file prefix                          [default: basename of input file]"
-    echo "  --model         <str>   Mutation model                              [default: IQ-tree's default = MFP = Pick model]"
-    echo "  --ufboot        <int>   Nr of ultrafast bootstraps                  [default: no bootstrapping]"
-    echo "  --auto_cores            Use IQ-tree's 'AUTO' core mode              [default: use nr of cores for batch job]"
     echo "  --more_args     <str>   Quoted string with additional argument(s) for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -58,7 +52,9 @@ script_help() {
     echo "  -v                      Print the version of this script and exit"
     echo "  --version               Print the version of $TOOL_NAME and exit"
     echo
-    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
+    echo "TOOL DOCUMENTATION:"
+    echo "  - ClonalFrameML: $TOOL_DOCS"
+    echo "  - maskrc-svg: https://github.com/kwongj/maskrc-svg"
     echo
 }
 
@@ -108,9 +104,6 @@ while [ "$1" != "" ]; do
         -i | --infile )     shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
         --out_prefix )      shift && out_prefix=$1 ;;
-        --model )           shift && model=$1 ;;
-        --ufboot )          shift && ufboot=$1 ;;
-        --auto_cores )      auto_cores=true ;;
         --more_args )       shift && more_args=$1 ;;
         -v )                script_version; exit 0 ;;
         -h | --help )       script_help; exit 0 ;;
@@ -143,11 +136,8 @@ mkdir -p "$LOG_DIR"
 load_env "$MODULE" "$CONDA" "$CONDA_YML"
 set_threads "$IS_SLURM"
 
-# Define outputs and settings based on script parameters
-mem_gb=$((8*(SLURM_MEM_PER_NODE / 1000)/10))G   # 80% of available memory in GB
-[[ "$auto_cores" == true ]] && threads="AUTO"
-[[ -n "$ufboot" ]] && boot_arg="--ufboot $ufboot"
-[[ -n "$model" ]] && model_arg="-m $model"
+# Define settings and outputs based on script parameters
+mem_gb=4G && [[ "$IS_SLURM" == true ]] && mem_gb=$((8*(SLURM_MEM_PER_NODE / 1000)/10))G
 [[ -z "$out_prefix" ]] && out_prefix=$(basename "${infile%.*}")
 
 # ==============================================================================
@@ -156,12 +146,9 @@ mem_gb=$((8*(SLURM_MEM_PER_NODE / 1000)/10))G   # 80% of available memory in GB
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options/arguments passed to this script:  $all_args"
-echo "Input FASTA file:                             $infile"
+echo "Input alignment file:                         $infile"
 echo "Output dir:                                   $outdir"
 echo "Output file prefix:                           $out_prefix"
-echo "Use IQ-tree's 'AUTO' core mode:               $auto_cores"
-[[ -n "$model" ]] && echo "Model:                                        $model"
-[[ -n "$ufboot" ]] && echo "Number of ultrafast bootstraps:               $ufboot"
 [[ -n $more_args ]] && echo "Additional arguments for $TOOL_NAME:          $more_args"
 log_time "Listing the input file(s):"
 ls -lh "$infile"
@@ -170,23 +157,36 @@ ls -lh "$infile"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Run the tool
-log_time "Running $TOOL_NAME..."
-iqtree \
+log_time "Running IQtree to get a starting tree for ClonalFrameML..."
+runstats iqtree \
     -s "$infile" \
     --prefix "$outdir"/"$out_prefix" \
-    $model_arg \
-    $boot_arg \
-    -nt "$threads" -ntmax "$threads" -mem "$mem_gb" \
+    -m MFP \
+    -fast \
     -redo \
-    $more_args
+    -nt "$threads" -ntmax "$threads" -mem "$mem_gb"
 
 #? -m MFP  => Model selection with ModelFinder (is the IQ-tree default, too)
 #? -redo   => Will overwrite old results
-#? --mem 4G  - memory
 
-#TODO - Consider these options:
-#-alrt 1000 --wbtl -alninfo
+log_time "Running ClonalFrameML..."
+runstats $TOOL_BINARY \
+    "$outdir"/"$out_prefix".treefile \
+    "$infile" \
+    "$outdir"/"$out_prefix" \
+    $more_args
+
+# Have to run maskrc-svg.py using a container because the Conda env doesn't work
+log_time "Running maskrc-svg.py..."
+singularity exec "$CONTAINER" \
+    maskrc-svg.py \
+    --aln "$infile" \
+    --symbol '-' \
+    --out "$outdir"/"$out_prefix".masked.aln \
+    "$outdir"/"$out_prefix"
+
+#?--symbol CHAR        symbol to use for masking (default="?")
+#? The positional argument is the prefix used for ClonalFrameML (or Gubbins) output files
 
 # List the output, report version, etc
 log_time "Listing files in the output dir:"

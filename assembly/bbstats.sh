@@ -1,31 +1,26 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=3:00:00
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=48G
+#SBATCH --time=1:00:00
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
 #SBATCH --mail-type=FAIL
-#SBATCH --job-name=iqtree
-#SBATCH --output=slurm-iqtree-%j.out
+#SBATCH --job-name=bbstats
+#SBATCH --output=slurm-bbstats-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Construct a phylogenetic tree from a FASTA alignment using IQ-tree"
+DESCRIPTION="Get quick stats on a dir with genome assemblies in FASTA format with BBmap's stats.sh"
 MODULE=miniconda3
-CONDA=/fs/ess/PAS0471/jelmer/conda/iqtree
+CONDA=/fs/ess/PAS0471/jelmer/conda/bbmap
 SCRIPT_VERSION="2023-07-22"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
-TOOL_BINARY=iqtree
-TOOL_NAME=IQ-tree
-TOOL_DOCS=http://www.iqtree.org/doc/
+TOOL_BINARY=stats.sh
+TOOL_NAME="BBmap stats.sh"
+TOOL_DOCS=https://jgi.doe.gov/data-and-tools/software-tools/bbtools/bb-tools-user-guide/bbmap-guide/
 VERSION_COMMAND="$TOOL_BINARY --version"
-
-# Parameter defaults
-auto_cores=false                # Don't use IQ-tree's 'AUTO' core mode
-ufboot= && boot_arg=            # No bootstrapping by default
-model= && model_arg=            # Use IQ-tree's default model (MFP => Pick model)
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -40,17 +35,13 @@ script_help() {
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage:"
-    echo "      sbatch $0 -i results/alignment/COI_aligned.fa -p results/iqtree/COI -b 1000"
+    echo "      sbatch $0 -i results/spades -o results/bbstats"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile     <file>  Input FASTA file (alignment) -- should contain multiple, aligned sequences"
+    echo "  -i/--indir     <file>   Input dir with FASTA files (extension '.fa' or '.fna' or '.fasta')"
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --out_prefix    <str>   Output file prefix                          [default: basename of input file]"
-    echo "  --model         <str>   Mutation model                              [default: IQ-tree's default = MFP = Pick model]"
-    echo "  --ufboot        <int>   Nr of ultrafast bootstraps                  [default: no bootstrapping]"
-    echo "  --auto_cores            Use IQ-tree's 'AUTO' core mode              [default: use nr of cores for batch job]"
     echo "  --more_args     <str>   Quoted string with additional argument(s) for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -96,21 +87,16 @@ source_function_script $IS_SLURM
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
-infile=
+indir=
 outdir=
-out_prefix=
 more_args=
 
 # Parse command-line args
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infile )     shift && infile=$1 ;;
+        -i | --indir )      shift && indir=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
-        --out_prefix )      shift && out_prefix=$1 ;;
-        --model )           shift && model=$1 ;;
-        --ufboot )          shift && ufboot=$1 ;;
-        --auto_cores )      auto_cores=true ;;
         --more_args )       shift && more_args=$1 ;;
         -v )                script_version; exit 0 ;;
         -h | --help )       script_help; exit 0 ;;
@@ -122,9 +108,9 @@ while [ "$1" != "" ]; do
 done
 
 # Check arguments
-[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_args"
+[[ -z "$indir" ]] && die "No input file specified, do so with -i/--indir" "$all_args"
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_args"
-[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
+[[ ! -d "$indir" ]] && die "Input dir $indir does not exist"
 
 # ==============================================================================
 #                          INFRASTRUCTURE SETUP II
@@ -143,28 +129,17 @@ mkdir -p "$LOG_DIR"
 load_env "$MODULE" "$CONDA" "$CONDA_YML"
 set_threads "$IS_SLURM"
 
-# Define outputs and settings based on script parameters
-mem_gb=$((8*(SLURM_MEM_PER_NODE / 1000)/10))G   # 80% of available memory in GB
-[[ "$auto_cores" == true ]] && threads="AUTO"
-[[ -n "$ufboot" ]] && boot_arg="--ufboot $ufboot"
-[[ -n "$model" ]] && model_arg="-m $model"
-[[ -z "$out_prefix" ]] && out_prefix=$(basename "${infile%.*}")
-
 # ==============================================================================
 #                               REPORT
 # ==============================================================================
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options/arguments passed to this script:  $all_args"
-echo "Input FASTA file:                             $infile"
+echo "Input dir:                                    $indir"
 echo "Output dir:                                   $outdir"
-echo "Output file prefix:                           $out_prefix"
-echo "Use IQ-tree's 'AUTO' core mode:               $auto_cores"
-[[ -n "$model" ]] && echo "Model:                                        $model"
-[[ -n "$ufboot" ]] && echo "Number of ultrafast bootstraps:               $ufboot"
 [[ -n $more_args ]] && echo "Additional arguments for $TOOL_NAME:          $more_args"
 log_time "Listing the input file(s):"
-ls -lh "$infile"
+ls -lh "$indir"
 [[ "$IS_SLURM" = true ]] && slurm_resources
 
 # ==============================================================================
@@ -172,21 +147,11 @@ ls -lh "$infile"
 # ==============================================================================
 # Run the tool
 log_time "Running $TOOL_NAME..."
-iqtree \
-    -s "$infile" \
-    --prefix "$outdir"/"$out_prefix" \
-    $model_arg \
-    $boot_arg \
-    -nt "$threads" -ntmax "$threads" -mem "$mem_gb" \
-    -redo \
-    $more_args
-
-#? -m MFP  => Model selection with ModelFinder (is the IQ-tree default, too)
-#? -redo   => Will overwrite old results
-#? --mem 4G  - memory
-
-#TODO - Consider these options:
-#-alrt 1000 --wbtl -alninfo
+while IFS= read -r -d '' assembly; do
+    log_time "Getting assembly stats for $assembly..."
+    outfile="$outdir"/"$(basename "${assembly%.*}")".txt
+    $TOOL_BINARY "$assembly" $more_args > "$outfile"
+done < <(find "$indir" \( -name "*fasta" -or -name "*fa" -or -name "*fna" \) -print0)
 
 # List the output, report version, etc
 log_time "Listing files in the output dir:"

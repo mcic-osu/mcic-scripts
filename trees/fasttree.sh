@@ -1,31 +1,26 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=3:00:00
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=48G
+#SBATCH --time=1:00:00
+#SBATCH --cpus-per-task=5
+#SBATCH --mem=20G
 #SBATCH --mail-type=FAIL
-#SBATCH --job-name=iqtree
-#SBATCH --output=slurm-iqtree-%j.out
+#SBATCH --job-name=fasttree
+#SBATCH --output=slurm-fasttree-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Construct a phylogenetic tree from a FASTA alignment using IQ-tree"
+DESCRIPTION="Build a phylogenetic tree from a nucleotide alignment with fasttree"
 MODULE=miniconda3
-CONDA=/fs/ess/PAS0471/jelmer/conda/iqtree
+CONDA=/fs/ess/PAS0471/jelmer/conda/fasttree-2.1.11
 SCRIPT_VERSION="2023-07-22"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
-TOOL_BINARY=iqtree
-TOOL_NAME=IQ-tree
-TOOL_DOCS=http://www.iqtree.org/doc/
-VERSION_COMMAND="$TOOL_BINARY --version"
-
-# Parameter defaults
-auto_cores=false                # Don't use IQ-tree's 'AUTO' core mode
-ufboot= && boot_arg=            # No bootstrapping by default
-model= && model_arg=            # Use IQ-tree's default model (MFP => Pick model)
+TOOL_BINARY=fasttree
+TOOL_NAME=FastTree
+TOOL_DOCS=http://www.microbesonline.org/fasttree/
+VERSION_COMMAND="$TOOL_BINARY 2>&1 | head -n 1"
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -40,17 +35,13 @@ script_help() {
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage:"
-    echo "      sbatch $0 -i results/alignment/COI_aligned.fa -p results/iqtree/COI -b 1000"
+    echo "      sbatch $0 -i results/maff/alignment.fa -o results/fasttree"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile     <file>  Input FASTA file (alignment) -- should contain multiple, aligned sequences"
+    echo "  -i/--infile     <file>  Input alignment FASTA file"
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --out_prefix    <str>   Output file prefix                          [default: basename of input file]"
-    echo "  --model         <str>   Mutation model                              [default: IQ-tree's default = MFP = Pick model]"
-    echo "  --ufboot        <int>   Nr of ultrafast bootstraps                  [default: no bootstrapping]"
-    echo "  --auto_cores            Use IQ-tree's 'AUTO' core mode              [default: use nr of cores for batch job]"
     echo "  --more_args     <str>   Quoted string with additional argument(s) for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -98,7 +89,6 @@ source_function_script $IS_SLURM
 # Initiate variables
 infile=
 outdir=
-out_prefix=
 more_args=
 
 # Parse command-line args
@@ -107,10 +97,6 @@ while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
-        --out_prefix )      shift && out_prefix=$1 ;;
-        --model )           shift && model=$1 ;;
-        --ufboot )          shift && ufboot=$1 ;;
-        --auto_cores )      auto_cores=true ;;
         --more_args )       shift && more_args=$1 ;;
         -v )                script_version; exit 0 ;;
         -h | --help )       script_help; exit 0 ;;
@@ -143,12 +129,8 @@ mkdir -p "$LOG_DIR"
 load_env "$MODULE" "$CONDA" "$CONDA_YML"
 set_threads "$IS_SLURM"
 
-# Define outputs and settings based on script parameters
-mem_gb=$((8*(SLURM_MEM_PER_NODE / 1000)/10))G   # 80% of available memory in GB
-[[ "$auto_cores" == true ]] && threads="AUTO"
-[[ -n "$ufboot" ]] && boot_arg="--ufboot $ufboot"
-[[ -n "$model" ]] && model_arg="-m $model"
-[[ -z "$out_prefix" ]] && out_prefix=$(basename "${infile%.*}")
+# Define outputs based on script options
+tree="$outdir"/$(basename "${infile%.*}").tre
 
 # ==============================================================================
 #                               REPORT
@@ -156,12 +138,9 @@ mem_gb=$((8*(SLURM_MEM_PER_NODE / 1000)/10))G   # 80% of available memory in GB
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options/arguments passed to this script:  $all_args"
-echo "Input FASTA file:                             $infile"
+echo "Input file:                                   $infile"
 echo "Output dir:                                   $outdir"
-echo "Output file prefix:                           $out_prefix"
-echo "Use IQ-tree's 'AUTO' core mode:               $auto_cores"
-[[ -n "$model" ]] && echo "Model:                                        $model"
-[[ -n "$ufboot" ]] && echo "Number of ultrafast bootstraps:               $ufboot"
+echo "Output tree:                                  $tree"
 [[ -n $more_args ]] && echo "Additional arguments for $TOOL_NAME:          $more_args"
 log_time "Listing the input file(s):"
 ls -lh "$infile"
@@ -172,21 +151,15 @@ ls -lh "$infile"
 # ==============================================================================
 # Run the tool
 log_time "Running $TOOL_NAME..."
-iqtree \
-    -s "$infile" \
-    --prefix "$outdir"/"$out_prefix" \
-    $model_arg \
-    $boot_arg \
-    -nt "$threads" -ntmax "$threads" -mem "$mem_gb" \
-    -redo \
-    $more_args
+runstats $TOOL_BINARY \
+    -nt \
+    -gamma \
+    -gtr \
+    < "$infile" \
+    > "$tree"
 
-#? -m MFP  => Model selection with ModelFinder (is the IQ-tree default, too)
-#? -redo   => Will overwrite old results
-#? --mem 4G  - memory
-
-#TODO - Consider these options:
-#-alrt 1000 --wbtl -alninfo
+#?  -gamma -- after optimizing the tree under the CAT approximation, rescale the lengths to optimize the Gamma20 likelihood
+#? -gtr -- generalized time-reversible model (nucleotide alignments only)
 
 # List the output, report version, etc
 log_time "Listing files in the output dir:"

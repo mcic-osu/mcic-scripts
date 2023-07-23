@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=3:00:00
-#SBATCH --cpus-per-task=6
-#SBATCH --mem=48G
+#SBATCH --time=2:00:00
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=80G
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name=gubbins
 #SBATCH --output=slurm-gubbins-%j.out
@@ -11,7 +11,7 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Run Gubbins to remove HGT among a bacterial genome alignment, and create a phylogentic tree"
+DESCRIPTION="Run Gubbins to remove HGT among a bacterial genome alignment, and create a phylogenetic tree"
 MODULE=miniconda3
 CONDA=/fs/project/PAS0471/jelmer/conda/gubbins
 SCRIPT_VERSION="2023-07-21"

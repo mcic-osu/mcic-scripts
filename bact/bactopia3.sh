@@ -27,11 +27,11 @@ VERSION_COMMAND="bactopia --version"
 OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config
 OSC_CONFIG=mcic-scripts/nextflow/osc.config     # Will be downloaded if not present here
 QUEUE_SIZE=100                                  # Nr of jobs to be submitted at once
-MAX_CPUS=48
 MAX_TIME=1440                                   # In hours
-MAX_MEMORY=128                                  # In GB
+MAX_MEM=128                                     # In GB
+MAX_CPUS=48
+MAX_RETRY=1                                     # Retry failed jobs just once
 
-CLEAN_WORKDIR_ARG="--cleanup_workdir"           # Always remove workdir after a successful run
 TRIM_ADAPTER_ARG="--trim"
 
 # Defaults - Nextflow generics
@@ -40,9 +40,9 @@ container_dir=/fs/project/PAS0471/containers
 profile=singularity
 resume=true && resume_arg="-resume"
 
-# Defaults - settings
-use_bakta=true                                  # Differs from Bactopia default
-assembler=spades                                # Differs from Bactopia default
+# Defaults - Bactopia settings
+annotater=bakta                                 # Differs from Bactopia default (Prokka)
+assembler=spades                                # Differs from Bactopia default (Skesa)
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -69,8 +69,9 @@ script_help() {
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --assembler         <str>   Which assembler to use inside Shovill                           [default: spades]"
-    echo "                              Options: spades, skesa, megahit, velvet"
-    echo "  --use_prokka                Use Prokka instead of Bakta for annotation                      [default: Bakta]"
+    echo "                              Options: 'spades', 'skesa', 'megahit', 'velvet'"
+    echo "  --annotater         <str>   Which annotation program to use, options: 'prokka', 'bakta'     [default: bakta]"
+    echo "  --amr_organism      <str>   Organism name for AMRFinder+                                    [default: none]"
     echo "  --more_args         <str>   Quoted string with additional argument(s) for $TOOL_NAME"
     echo "  --restart                   Don't attempt to resume workflow run, but always start over     [default: resume any previous run]"
     echo 
@@ -138,10 +139,12 @@ indir=
 outdir=
 species=
 bakta_db=
-bakta_arg=
+annot_arg=
+amr_organism= && amr_organism_arg=
 config_file=
 work_dir=
 profile_arg=
+conda_dir= && conda_dir_arg=
 more_args=
 
 # Parse command-line args
@@ -152,9 +155,11 @@ while [ "$1" != "" ]; do
         -o | --outdir )         shift && outdir=$1 ;;
         --species )             shift && species=$1 ;;
         --bakta_db )            shift && bakta_db=$1 ;;
-        --use_prokka )          use_bakta=false ;;
+        --annotater )           shift && annotater=$1 ;;
         --assembler )           shift && assembler=$1 ;;
+        --amr_organism )        shift && amr_organism=$1 ;;
         --container_dir )       shift && container_dir=$1 ;;
+        --conda_dir )           shift && conda_dir=$1 ;;
         --more_args )           shift && more_args=$1 ;;
         --config )              shift && config_file=$1 ;;
         --profile )             shift && profile=$1 ;;
@@ -217,27 +222,33 @@ fi
 if [[ "$profile" != "none" ]]; then
     profile_arg="-profile $profile"
 else
-    [[ "$IS_SLURM" == true ]] && profile_arg="--queue slurm --cluster_opts '--account=PAS0471'"
+    profile_arg="--use_mamba"
 fi
 
+# Conda env dir
+[[ -n "$conda_dir" ]] && conda_dir_arg="--condadir $conda_dir"
+
 # Define outputs
-#outdir_base=$(dirname "$outdir")
-run_name=$(basename "$outdir") #TODO make option
+run_name=$(basename "$outdir")
+[[ "$run_name" == "bactopia" ]] && run_name=bactopia_run  # Run name can't be 'bactopia', gives problems
 outdir_main="$outdir"/main
 outdir_cleanreads="$outdir"/cleanreads
 fastqdir_cleanreads="$outdir_cleanreads"/fastq_out
-samplesheet_raw="$outdir_cleanreads"/samplesheet.tsv
-samplesheet_clean="$outdir_main"/samplesheet.tsv
-
-# Bakta argument 
-if [[ "$use_bakta" == true ]]; then
-    [[ -z "$bakta_db" ]] && die "Using Bakta, but no Bakta DB dir specified, do so with --bakta_db" "$all_args"
-    [[ ! -d "$bakta_db" ]] && die "Bakta DB dir $bakta_db does not exist"
-    bakta_arg="--use_bakta --bakta_db $bakta_db"
-fi
+samplesheet_raw="$outdir_main"/samplesheet.tsv
+samplesheet_clean="$outdir_cleanreads"/samplesheet.tsv
 
 # Assembler arg
 assembler_arg="--shovill_assembler $assembler"
+
+# Annotater argument 
+if [[ "$annotater" == "bakta" ]]; then
+    [[ -z "$bakta_db" ]] && die "Using Bakta, but no Bakta DB dir specified, do so with --bakta_db" "$all_args"
+    [[ ! -d "$bakta_db" ]] && die "Bakta DB dir $bakta_db does not exist"
+    annot_arg="--use_bakta --bakta_db $bakta_db"
+fi
+
+# AMRFinder+ organism
+[[ -n "$amr_organism" ]] && amr_organism_arg="--organism $amr_organism"
 
 # ==============================================================================
 #                               REPORT
@@ -249,13 +260,14 @@ echo
 echo "INPUT AND OUTPUT:"
 echo "Input FASTQ dir:                          $indir"
 echo "Output dir:                               $outdir"
-[[ "$use_bakta" == true ]] && echo "Bakta DB dir:                             $bakta_db"
+[[ "$annotater" == "bakta" ]] && echo "Bakta DB dir:                             $bakta_db"
 echo "Nr of FASTQ files in the input dir:       $(ls "$indir"/*fastq.gz | wc -l)"
 echo
 echo "SETTINGS:"
 echo "Species:                                  $species"
 echo "Genome assembler (within Shovill):        $assembler"
-echo "Using Bakta for annotation:               $use_bakta"
+echo "Genome annotater:                         $annotater"
+[[ -n "$amr_organism" ]] && echo "AMRFinder+ organism:                      $amr_organism"
 [[ -n "$more_args" ]] && echo "More args for Bactopia:                   $more_args"
 echo
 echo "NEXTFLOW-RELATED SETTINGS:"
@@ -274,86 +286,64 @@ echo "==========================================================================
 # Create output dirs
 mkdir -p "$outdir_main" "$outdir_cleanreads" "$fastqdir_cleanreads"
 
-# Move into output dir
-#log_time "Changing into dir $outdir_base..."
-#cd "$outdir_base" || exit 1
-
 # Prepare the samplesheet
 log_time "Preparing the samplesheet $samplesheet_raw with 'bactopia prepare'..."
 runstats bactopia prepare \
-    --path "$fastqdir_cleanreads" \
-    --species "$species" \
-    > "$samplesheet_raw"
-log_time "Printing the contents of the sample sheet:"
-cat -n "$samplesheet_raw"
+    --path "$indir" --species "$species" > "$samplesheet_raw"
+log_time "Printing the first rows of the sample sheet ($(wc -l <"$samplesheet_raw") rows total):"
+head -n 3 "$samplesheet_raw"
 
 # Run Bactopia - clean-yer-reads
 log_time "Running the Bactopia 'clean-yer-reads' workflow..."
-runstats $TOOL_BINARY \
-    --wf cleanyerreads \
+runstats $TOOL_BINARY --wf cleanyerreads \
+    --outdir "$outdir_cleanreads" --run_name "$run_name" \
     --samples "$samplesheet_raw" \
-    --outdir "$outdir_cleanreads" \
-    --run_name "$run_name" \
     --species "$species" \
-    $CLEAN_WORKDIR_ARG \
-    --max_cpus $MAX_CPUS \
-    --max_time $MAX_TIME \
-    --max_memory $MAX_MEMORY \
+    $TRIM_ADAPTER_ARG \
+    --singularity_cache "$container_dir" $conda_dir_arg \
+    --max_cpus $MAX_CPUS --max_time $MAX_TIME --max_memory $MAX_MEM --max_retry $MAX_RETRY \
     -qs $QUEUE_SIZE \
-    --singularity_cache "$container_dir" \
     -w "$work_dir" \
-    $profile_arg \
-    $resume_arg \
-    $config_arg \
+    $profile_arg $config_arg $resume_arg \
     -ansi-log false
 
-# Collect FASTQs
+# Collect output FASTQs from clean-yer-reads, then prepare a new samplesheet
+log_time "Collecting FASTQ files from clean-yer-reads for main Bactopia workflow..."
 find "$outdir_cleanreads" -wholename "*/qc/*[12].fastq.gz" \
     -exec ln -sf {} "$fastqdir_cleanreads" \;
-
-# Prepare the samplesheet
 log_time "Preparing the samplesheet $samplesheet_clean with 'bactopia prepare'..."
 runstats bactopia prepare \
-    --path "$fastqdir_cleanreads" \
-    --species "$species" \
-    > "$samplesheet_clean"
-log_time "Printing the contents of the sample sheet:"
-cat -n "$samplesheet_clean"
+    --path "$fastqdir_cleanreads" --species "$species" > "$samplesheet_clean"
+log_time "Printing the first rows of the sample sheet ($(wc -l <"$samplesheet_clean") rows total):"
+head -n 3 "$samplesheet_clean"
 
 # Run Bactopia - main workflow
+#? NOTE: This will use '--skip_qc' since we ran the clean-yer-reads workflow before this
 log_time "Running the main Bactopia workflow..."
-runstats $TOOL_BINARY \
-    --wf bactopia \
+runstats $TOOL_BINARY --wf bactopia \
+    --outdir "$outdir_main" --run_name "$run_name" \
     --samples "$samplesheet_clean" \
-    --outdir "$outdir_main" \
-    --run_name "$run_name" \
     --species "$species" \
     $assembler_arg \
-    $bakta_arg \
-    $CLEAN_WORKDIR_ARG \
-    $TRIM_ADAPTER_ARG \
+    $annot_arg \
+    $amr_organism_arg \
     --skip_qc \
-    --max_cpus $MAX_CPUS \
-    --max_time $MAX_TIME \
-    --max_memory $MAX_MEMORY \
+    --singularity_cache "$container_dir" $conda_dir_arg \
+    --max_cpus $MAX_CPUS --max_time $MAX_TIME --max_memory $MAX_MEM --max_retry $MAX_RETRY \
     -qs $QUEUE_SIZE \
-    --singularity_cache "$container_dir" \
     -w "$work_dir" \
-    $profile_arg \
-    $resume_arg \
-    $config_arg \
+    $profile_arg $config_arg $resume_arg \
     -ansi-log false \
     $more_args
 
-#? Other options
-# --datasets_cache [string]  Directory where downloaded datasets should be stored. [default: <BACTOPIA_DIR>/data/datasets]
-# --min_contig_len                    [integer] Minimum contig length <0=AUTO> [default: 500]
-# --min_contig_cov                    [integer] Minimum contig coverage <0=AUTO> [default: 2]
-# --organism                          [string]  Taxonomy group to run additional screens against (AMRFinder+) #TODO add this as an option
+#? Other Bactopia options
+# --datasets_cache      [string]  Directory where downloaded datasets should be stored. [default: <BACTOPIA_DIR>/data/datasets]
+# --min_contig_len      [integer] Minimum contig length <0=AUTO> [default: 500]
+# --min_contig_cov      [integer] Minimum contig coverage <0=AUTO> [default: 2]
 
 # List the output
 log_time "Listing files in the output dir:"
-ls -lhd "$(realpath "$outdir")"/*
+ls -lhd "$(realpath "$outdir_main")"/*
 
 # ==============================================================================
 #                               WRAP UP

@@ -23,23 +23,20 @@ TOOL_DOCS=https://bactopia.github.io/
 VERSION_COMMAND="bactopia --version"
 
 # Constants - Nextflow and Bactopia generic settings
-# Note: The samplesheet will be saved in $outdir/samplesheet.tsv 
+# Note: The samplesheet will be saved in "$outdir"/samplesheet.tsv 
 OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config
 OSC_CONFIG=mcic-scripts/nextflow/osc.config     # Will be downloaded if not present here
 QUEUE_SIZE=100                                  # Nr of jobs to be submitted at once
+MAX_TIME=1440                                   # In minutes
+MAX_MEM=128                                     # In GB
 MAX_CPUS=48
-MAX_TIME=1440                                   # In hours
-MAX_MEMORY=128                                  # In GB
-
-CLEAN_WORKDIR_ARG="--cleanup_workdir"           # Always remove workdir after a successful run
+MAX_RETRY=1                                     # Retry failed jobs just once
 
 # Defaults - Nextflow generics
 work_dir_default=/fs/scratch/$SLURM_JOB_ACCOUNT/$USER/bactopia
 container_dir=/fs/project/PAS0471/containers
 profile=singularity
 resume=true && resume_arg="-resume"
-
-# Defaults - settings
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -62,7 +59,9 @@ script_help() {
     echo "  --tool              <str>   Bactopia tool to run -- see https://bactopia.github.io/v2.2.0/bactopia-tools"
     echo
     echo "OTHER KEY OPTIONS:"
+    echo "  --run_name          <str>   Run name                                                        [default: ${tool}_run]"
     echo "  --restart                   Don't attempt to resume workflow run, but always start over     [default: resume any previous run]"
+    echo "  --more_args         <str>   Additional arguments to pass to the tool"
     echo 
     echo "UTILITY AND NEXTFLOW OPTIONS:"
     echo "  --work_dir          <dir>   Dir for initial workflow output files                           [default: /fs/scratch/$SLURM_JOB_ACCOUNT/$USER/bactopia]"
@@ -128,6 +127,7 @@ outdir=
 tool=
 config_file=
 work_dir=
+run_name=
 more_args=
 
 # Parse command-line args
@@ -138,6 +138,7 @@ while [ "$1" != "" ]; do
         -o | --outdir )         shift && outdir=$1 ;;
         --tool )                shift && tool=$1 ;;
         --container_dir )       shift && container_dir=$1 ;;
+        --run_name )            shift && run_name=$1 ;;
         --more_args )           shift && more_args=$1 ;;
         --config )              shift && config_file=$1 ;;
         --profile )             shift && profile=$1 ;;
@@ -154,6 +155,7 @@ done
 
 # Check arguments
 [[ -z "$indir" ]] && die "No input dir specified, do so with -i/--bactopia_dir" "$all_args"
+[[ -z "$tool" ]] && die "No Bactopia tool specified, do so with --tool" "$all_args"
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_args"
 [[ ! -d "$indir" ]] && die "Input dir $indir does not exist"
 
@@ -197,8 +199,8 @@ else
 fi
 
 # Define outputs
-outdir_base=$(dirname "$outdir")
-run_name=$(basename "$outdir")
+[[ -z "$run_name" ]] && run_name=$(basename "$outdir")
+[[ "$run_name" == "$tool" ]] && run_name="$tool"_run  # Run name can't be same as tool name, gives problems
 
 # ==============================================================================
 #                               REPORT
@@ -226,27 +228,17 @@ echo "==========================================================================
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Move into output dir
-log_time "Changing into dir $outdir_base..."
-cd "$outdir_base" || exit 1
-
 # Run Bactopia
 log_time "Running $TOOL_NAME..."
-runstats $TOOL_BINARY \
-    --wf "$tool" \
+runstats $TOOL_BINARY --wf "$tool" \
     --bactopia "$indir" \
-    --run_name "$run_name" \
     --outdir "$outdir" \
-    $CLEAN_WORKDIR_ARG \
-    --max_cpus $MAX_CPUS \
-    --max_time $MAX_TIME \
-    --max_memory $MAX_MEMORY \
-    -qs $QUEUE_SIZE \
+    --run_name "$run_name" \
     --singularity_cache "$container_dir" \
-    -profile "$profile" \
+    --max_cpus $MAX_CPUS --max_time $MAX_TIME --max_memory $MAX_MEM --max_retry $MAX_RETRY \
+    -qs $QUEUE_SIZE \
     -w "$work_dir" \
-    $resume_arg \
-    $config_arg \
+    -profile "$profile" $resume_arg $config_arg \
     -ansi-log false \
     $more_args
 

@@ -11,17 +11,17 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-readonly DESCRIPTION="Run the Bactopia workflow"
-readonly MODULE=miniconda3/4.12.0-py39
-readonly CONDA=/fs/project/PAS0471/jelmer/conda/bactopia
-readonly SCRIPT_VERSION="1.0"
-readonly SCRIPT_AUTHOR="Jelmer Poelstra"
-readonly SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
-readonly TOOL_BINARY=bactopia
-readonly TOOL_NAME=Bactopia
-readonly TOOL_DOCS=https://bactopia.github.io/
-readonly VERSION_COMMAND=
-readonly HELP_COMMAND=
+DESCRIPTION="Run the Bactopia workflow (up to version 2, there's a separate script for version 3)"
+MODULE=miniconda3/4.12.0-py39
+CONDA=/fs/project/PAS0471/jelmer/conda/bactopia
+SCRIPT_VERSION="1.0"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
+TOOL_BINARY=bactopia
+TOOL_NAME=Bactopia
+TOOL_DOCS=https://bactopia.github.io/
+VERSION_COMMAND=
+HELP_COMMAND=
 
 # Constants - parameters and settings
 # NOTE: The '--cleanup_workdir' option is hardcoded below
@@ -56,11 +56,8 @@ script_help() {
     echo "  $DESCRIPTION"
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage (always submit your scripts to SLURM with 'sbatch'):"
-    echo "      sbatch $0 --samplesheet metadata/samplesheet.csv --species 'Salmonella enterica' -o results/bactopia"
-    echo "  - To just print the help message for this script (-h) or for $TOOL_NAME (--help):"
-    echo "      bash $0 -h"
-    echo "      bash $0 --help"
+    echo "  - Basic usage:"
+    echo "      sbatch $0 -i data/fastq/ --species 'Salmonella enterica' -o results/bactopia"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--indir          <dir>   Input dir with FASTQ files"
@@ -146,16 +143,16 @@ more_args_db=
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --indir )          shift && readonly indir=$1 ;;
+        -i | --indir )          shift && indir=$1 ;;
         -o | --outdir )         shift && outdir=$1 ;;
-        --species )             shift && readonly species=$1 ;;
-        --db_dir )              shift && readonly db_dir=$1 ;;
+        --species )             shift && species=$1 ;;
+        --db_dir )              shift && db_dir=$1 ;;
         --download_db )         always_download_db=true ;;
-        --more_args )           shift && readonly more_args=$1 ;;
-        --more_args_db )        shift && readonly more_args_db=$1 ;;
-        --config )              shift && readonly extra_config_file=$1 ;;
-        --profile )             shift && readonly profile=$1 ;;
-        --restart )             readonly resume=false ;;
+        --more_args )           shift && more_args=$1 ;;
+        --more_args_db )        shift && more_args_db=$1 ;;
+        --config )              shift && extra_config_file=$1 ;;
+        --profile )             shift && profile=$1 ;;
+        --restart )             resume=false ;;
         -v )                    script_version; exit 0 ;;
         -h )                    script_help; exit 0 ;;
         --version )             load_env "$MODULE" "$CONDA"
@@ -168,7 +165,7 @@ while [ "$1" != "" ]; do
 done
 
 # Check arguments
-[[ -z "$indir" ]] && die "No input samplesheet specified, do so with -i/--indir" "$all_args"
+[[ -z "$indir" ]] && die "No input dir specified, do so with -i/--indir" "$all_args"
 [[ -z "$species" ]] && die "No species specified, do so with --species" "$all_args"
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_args"
 [[ ! -d "$indir" ]] && die "Input dir $indir does not exist"
@@ -204,10 +201,10 @@ fi
 [[ "$resume" == false ]] && resume_arg=
 
 # Logging files and dirs
-readonly LOG_DIR="$outdir"/logs
-readonly VERSION_FILE="$LOG_DIR"/version.txt
-readonly CONDA_YML="$LOG_DIR"/conda_env.yml
-readonly ENV_FILE="$LOG_DIR"/env.txt
+LOG_DIR="$outdir"/logs
+VERSION_FILE="$LOG_DIR"/version.txt
+CONDA_YML="$LOG_DIR"/conda_env.yml
+ENV_FILE="$LOG_DIR"/env.txt
 mkdir -p "$LOG_DIR"
 
 # Load software
