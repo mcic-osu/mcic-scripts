@@ -1,228 +1,176 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
+#SBATCH --mail-type=FAIL
 #SBATCH --job-name=sourmash_compare
-#SBATCH --output=slurm-sourmash-compare-%j.out
+#SBATCH --output=slurm-sourmash_compare-%j.out
+
+# ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
+# Constants - generic
+DESCRIPTION="Run Sourmash Compare to compute distances among genomes and plot a dendrogram
+This script will:
+  (1) Create sourmash signatures from FASTA files
+  (2) Rename the signature to get rid of the extension for plotting
+  (3) Compare the signature with 'sourmash compare'
+  (4) Plot a dendrogram and distance/similarity matrix with 'sourmash plot'"
+MODULE=miniconda3
+CONDA=/fs/project/PAS0471/jelmer/conda/sourmash
+SCRIPT_VERSION="2023-07-23"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
+TOOL_BINARY="sourmash"
+TOOL_NAME="Sourmash Compare"
+TOOL_DOCS=https://sourmash.readthedocs.io
+VERSION_COMMAND="$TOOL_BINARY --version"
+
+# Parameter defaults
+kmer_size=31
+use_ani=false && ani_arg=       # By default, don't use ANI as the distance metric
+out_prefix="compare"            # Output filename prefix
 
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
 # Help function
-Print_help() {
+script_help() {
     echo
-    echo "======================================================================"
-    echo "                            $0"
-    echo "           RUN SOURMASH COMPARE (OPTIONALLY WITH ANI)"
-    echo "======================================================================"
-    echo
+    echo "        $0 (v. $SCRIPT_VERSION): Run $TOOL_NAME"
+    echo "        =============================================="
     echo "DESCRIPTION:"
-    echo "  This script will:"
-    echo "    (1) Create sourmash signatures from FASTA files"
-    echo "    (2) Rename the signature to get rid of the extension for plotting"
-    echo "    (3) Compare the signature with 'sourmash compare'"
-    echo "    (4) Plot a dendrogram and distance/similarity matrix with 'sourmash plot'"
+    echo "  $DESCRIPTION"
     echo
-    echo "USAGE:"
-    echo "  sbatch $0 -i <input file> -o <output dir> [...]"
-    echo "  bash $0 -h"
+    echo "USAGE / EXAMPLE COMMANDS:"
+    echo "  - Basic usage:"
+    echo "      sbatch $0 -i results/assemblies -o results/sourmash_compare"
+    echo "  - Use ANI (Average Nucleotide Identity) as the similarity metric:"
+    echo "      sbatch $0 -i results/assemblies -o results/sourmash_compare --ani"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--indir      <dir>   Input dir with FASTA files"
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --ani                   Use ANI (Average Nucleotide Identity) as the similarity metric"
+    echo "  --ani                   Use ANI as the similarity metric            [default: Jaccard similarity]"
     echo "  --kmer_size     <int>   Kmer size                                   [default: 31]"
-    echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to Sourmash compare"
+    echo "  --more_args     <str>   Quoted string with additional argument(s) for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for Sourmash Compare and exit"
-    echo "  -v/--version            Print the version of Sourmash Compare and exit"
+    echo "  -h/--help               Print this help message and exit"
+    echo "  -v                      Print the version of this script and exit"
+    echo "  --version               Print the version of $TOOL_NAME and exit"
     echo
-    echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i data/refgenomes -o results/sourmash -k 29"
-    echo
-    echo "SOFTWARE DOCUMENTATION:"
-    echo "  - Docs: https://sourmash.readthedocs.io"
-    echo "  - Paper:  https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6720031/"
+    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
     echo
 }
 
-# Load software
-Load_software() {
-    set +u
-    module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
-    source activate /fs/project/PAS0471/jelmer/conda/sourmash
-    set -u
-}
+# Function to source the script with Bash functions
+source_function_script() {
+    local is_slurm=$1
 
-# Print version
-Print_version() {
-    set +e
-    Load_software
-    sourmash --version
-    set -e
-}
-
-# Print help for the focal program
-Print_help_program() {
-    Load_software
-    sourmash compare --help
-}
-
-# Print SLURM job resource usage info
-Resource_usage() {
-    echo
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
-        grep -Ev "ba|ex"
-    echo
-}
-
-# Print SLURM job requested resources
-Print_resources() {
-    set +u
-    echo "# SLURM job information:"
-    echo "Account (project):    $SLURM_JOB_ACCOUNT"
-    echo "Job ID:               $SLURM_JOB_ID"
-    echo "Job name:             $SLURM_JOB_NAME"
-    echo "Memory (per node):    $SLURM_MEM_PER_NODE"
-    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
-    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
-    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
-    echo "======================================================================"
-    echo
-    set -u
-}
-
-# Set the number of threads/CPUs
-Set_threads() {
-    set +u
-    if [[ "$slurm" = true ]]; then
-        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-            threads="$SLURM_CPUS_PER_TASK"
-        elif [[ -n "$SLURM_NTASKS" ]]; then
-            threads="$SLURM_NTASKS"
-        else 
-            echo "WARNING: Can't detect nr of threads, setting to 1"
-            threads=1
-        fi
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$is_slurm" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
     else
-        threads=1
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
     fi
-    set -u
-}
-
-# Resource usage information
-Time() {
-    /usr/bin/time -f \
-        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
-        "$@"
-}   
-
-# Exit upon error with a message
-Die() {
-    error_message=${1}
-    error_args=${2-none}
+    function_script=$(realpath "$script_dir"/../dev/bash_functions.sh)
     
-    echo >&2
-    echo "=====================================================================" >&2
-    printf "$0: ERROR: %s\n" "$error_message" >&2
-    echo -e "\nFor help, run this script with the '-h' option" >&2
-    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
-    if [[ "$error_args" != "none" ]]; then
-        echo -e "\nArguments passed to the script:" >&2
-        echo "$error_args" >&2
+    if [[ ! -f "$function_script" ]]; then
+        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
+        git clone https://github.com/mcic-osu/mcic-scripts.git
+        function_script=mcic-scripts/dev/bash_functions.sh
     fi
-    echo -e "\nEXITING..." >&2
-    echo "=====================================================================" >&2
-    echo >&2
-    exit 1
+    source "$function_script"
 }
 
+# ==============================================================================
+#                          INFRASTRUCTURE SETUP I
+# ==============================================================================
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script $IS_SLURM
 
 # ==============================================================================
-#                          CONSTANTS AND DEFAULTS
+#                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-# Option defaults
-kmer_size=31
-ani=false && ani_arg=
-prefix="compare"           # Output filename prefix
-slurm=true
-
-# Placeholder defaults
+# Initiate variables
 indir=
 outdir=
 more_args=
 
 # Parse command-line args
 all_args="$*"
-
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --indir )      shift && indir=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
-        --kmer-size )       shift && kmer_size=$1 ;;
-        --ani )             ani=true && ani_arg="--ani" ;;
-        --more-args )       shift && more_args=$1 ;;
-        -v | --version )    Print_version; exit 0 ;;
-        -h )                Print_help; exit 0 ;;
-        --help )            Print_help_program; exit 0;;
-        * )                 Die "Invalid option $1" "$all_args" ;;
+        --kmer_size )       shift && kmer_size=$1 ;;
+        --ani )             use_ani=true && ani_arg="--ani" ;;
+        --more_args )       shift && more_args=$1 ;;
+        -v )                script_version; exit 0 ;;
+        -h | --help )       script_help; exit 0 ;;
+        --version )         load_env "$MODULE" "$CONDA"
+                            tool_version "$VERSION_COMMAND" && exit 0 ;;
+        * )                 die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
 
-# ==============================================================================
-#                          OTHER SETUP
-# ==============================================================================
-# Check if this is a SLURM job
-[[ -z "$SLURM_JOB_ID" ]] && slurm=false
+# Check arguments
+[[ -z "$indir" ]] && die "No input file specified, do so with -i/--indir" "$all_args"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_args"
+[[ ! -d "$indir" ]] && die "Input dir $indir does not exist"
 
-# Load software and set nr of threads
-Load_software
-Set_threads
-
-# Bash script settings
+# ==============================================================================
+#                          INFRASTRUCTURE SETUP II
+# ==============================================================================
+# Strict Bash settings
 set -euo pipefail
 
-# Determine output file names
-[[ "$ani" = true ]] && prefix=ani
-csv_out="$outdir"/output/"$prefix".csv     # distance/ANI matrix in CSV format
-cmp_out="$outdir"/output/"$prefix".cmp     # distance/ANI matrix in Python format for sourmash plotting
+# Logging files and dirs
+LOG_DIR="$outdir"/logs
+VERSION_FILE="$LOG_DIR"/version.txt
+CONDA_YML="$LOG_DIR"/conda_env.yml
+ENV_FILE="$LOG_DIR"/env.txt
+mkdir -p "$LOG_DIR"
+
+# Load software and set nr of threads
+load_env "$MODULE" "$CONDA" "$CONDA_YML"
+set_threads "$IS_SLURM"
+
+# Define outputs based on script parameters
+[[ "$use_ani" = true ]] && out_prefix=ani
+csv_out="$outdir"/output/"$out_prefix".csv     # distance/ANI matrix in CSV format
+cmp_out="$outdir"/output/"$out_prefix".cmp     # distance/ANI matrix in Python format for sourmash plotting
+signature_list="$outdir"/renamed_signatures.fofn
 
 # Create array with input FASTA files
-mapfile -t fastas < <(find "$indir" -type f -or -type l -iname '*.fasta' -or -iname '*.fa' -or -iname '*.fna' -or -iname '*.fna.gz')
+mapfile -t fastas < <(find "$indir" -iname '*.fasta' -or -iname '*.fa' -or -iname '*.fna' -or -iname '*.fna.gz')
+[[ ${#fastas[@]} -eq 0 ]] && die "No FASTA files found..."
 
-# Check input
-[[ "$indir" = "" ]] && Die "Please specify an input dir with -i/--indir" "$all_args"
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
-
-# Report
-echo
+# ==============================================================================
+#                               REPORT
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "                STARTING SCRIPT SOURMASH_COMPARE.SH"
-date
-echo "=========================================================================="
-echo "All arguments to this script:     $all_args"
-echo "Dir with input FASTA files:       $indir"
-echo "Output dir:                       $outdir"
-echo "Kmer size:                        $kmer_size"
-echo "Run ANI analysis:                 $ani"
-[[ $more_args != "" ]] && echo "Other arguments for Sourmash compare:$more_args"
-echo "Number of threads/cores:          $threads"
-echo
-echo "Number of FASTA files:            ${#fastas[@]}"
-echo "Listing the input FASTA file(s):"
+echo "All options/arguments passed to this script:  $all_args"
+echo "Dir with input FASTA files:                   $indir"
+echo "Output dir:                                   $outdir"
+echo "Output file prefix:                           $out_prefix"
+echo "Kmer size:                                    $kmer_size"
+echo "Use ANI as the similarity metric:             $use_ani"
+[[ -n $more_args ]] && echo "Additional arguments for $TOOL_NAME:          $more_args"
+echo "Number of FASTA files:                        ${#fastas[@]}"
+log_time "Listing the input FASTA file(s):"
 for fasta in "${fastas[@]}"; do ls -lh "$fasta"; done
-echo "=========================================================================="
-[[ "$slurm" = true ]] && Print_resources
+[[ "$IS_SLURM" = true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
@@ -231,50 +179,38 @@ echo "==========================================================================
 mkdir -p "$outdir"/signatures "$outdir"/sig_renamed "$outdir"/output "$outdir"/logs
 
 # Create a signature for each FASTA file
-echo "# Creating sourmash signatures..."
-sourmash sketch dna \
+log_time "Creating sourmash signatures..."
+runstats $TOOL_BINARY sketch dna \
     -p k="$kmer_size" \
     --outdir "$outdir"/signatures \
     "${fastas[@]}"
 
 # Rename signatures so they have short names
-echo -e "--------------------\n"
-echo "# Renaming sourmash signatures..."
+log_time "Renaming sourmash signatures..."
 for sig in "$outdir"/signatures/*sig; do
     newname=$(basename "$sig" .fasta.sig | sed 's/^Spades//')
     newfile="$outdir"/sig_renamed/"$(basename "$sig")"
-
-    sourmash signature rename \
-        "$sig" \
-        "$newname" \
-        -o "$newfile"
+    $TOOL_BINARY signature rename "$sig" "$newname" -o "$newfile"
 done
+ls "$outdir"/sig_renamed/*sig > "$signature_list"
 
-# Compare genomes
-echo -e "--------------------\n"
-echo "# Comparing genomes..."
-Time sourmash compare \
+# Run sourmash compare
+log_time "Running $TOOL_NAME..."
+runstats $TOOL_BINARY compare \
     -k"$kmer_size" \
     $ani_arg \
-    --from-file <(ls "$outdir"/sig_renamed/*) \
+    --from-file "$signature_list" \
     --csv "$csv_out" \
     $more_args \
     -o "$cmp_out"
 
 # Make plots - run separately for PNG and PDF output
-echo -e "\n# Creating plots..."
-sourmash plot --labels --output-dir "$outdir"/output "$cmp_out"
-sourmash plot --labels --pdf --output-dir "$outdir"/output "$cmp_out"
+log_time "Creating plots..."
+runstats $TOOL_BINARY plot --labels --output-dir "$outdir"/output "$cmp_out"
+runstats $TOOL_BINARY plot --labels --pdf --output-dir "$outdir"/output "$cmp_out"
 
-# ==============================================================================
-#                               WRAP-UP
-# ==============================================================================
-echo
-echo "========================================================================="
-echo "# Version used:"
-Print_version | tee "$outdir"/logs/version.txt
-echo -e "\n# Listing files in the output dir:"
-ls -lhd "$PWD"/"$outdir"/output/*
-[[ "$slurm" = true ]] && Resource_usage
-echo "# Done with script"
-date
+# List the output, report version, etc
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/output/*
+final_reporting "$VERSION_COMMAND" "$VERSION_FILE" "$ENV_FILE" "$IS_SLURM" \
+    "$SCRIPT_NAME" "$SCRIPT_AUTHOR" "$SCRIPT_VERSION" "$SCRIPT_URL"

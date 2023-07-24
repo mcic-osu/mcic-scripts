@@ -1,96 +1,167 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
 #SBATCH --cpus-per-task=8
+#SBATCH --mem=32G
+#SBATCH --mail-type=FAIL
 #SBATCH --job-name=mobsuite
 #SBATCH --output=slurm-mobsuite-%j.out
 
+# ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
+# Constants - generic
+DESCRIPTION="Run Mob-suite to detect plasmids in a bacterial genome"
+MODULE=miniconda3
+CONDA=/fs/ess/conda/jelmer/mobsuite
+SCRIPT_VERSION="2023-07-23"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
+TOOL_BINARY=mob_recon
+TOOL_NAME=Mob-suite
+TOOL_DOCS=https://github.com/phac-nml/mob-suite
+VERSION_COMMAND="$TOOL_BINARY --version"
 
-# PARSE ARGUMENTS --------------------------------------------------------------
-## Help function
-Help() {
+# Parameter defaults
+#TODO
+
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
+# Help function
+script_help() {
     echo
-    echo "$0: Run mob-suite to detect plasmids in a genome."
+    echo "        $0 (v. $SCRIPT_VERSION): Run $TOOL_NAME"
+    echo "        =============================================="
+    echo "DESCRIPTION:"
+    echo "  $DESCRIPTION"
     echo
-    echo "Syntax: $0 -i <genome-FASTA> -o <output-dir> ..."
+    echo "USAGE / EXAMPLE COMMANDS:"
+    echo "  - Basic usage:"
+    echo "      sbatch $0 -i results/assembly.fna -o results/mobsuite"
     echo
-    echo "Required options:"
-    echo "-i FILE           Genome (nucleotide) FASTA file"
-    echo "-o DIR            Output directory"
+    echo "REQUIRED OPTIONS:"
+    echo "  -i/--infile     <file>  Genome assembly in nucleotide FASTA format"
+    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
-    echo "Other options:"
-    echo "-h                Print this help message and exit"
+    echo "OTHER KEY OPTIONS:"
+    echo "  --more_args     <str>   Quoted string with additional argument(s) for $TOOL_NAME"
     echo
-    echo "Example:          $0 -i my_genome.fa -o results/mob-suite"
-    echo "To submit the OSC queue, preface with 'sbatch': sbatch $0 ..."
+    echo "UTILITY OPTIONS:"
+    echo "  -h/--help               Print this help message and exit"
+    echo "  -v                      Print the version of this script and exit"
+    echo "  --version               Print the version of $TOOL_NAME and exit"
     echo
-    echo "Mob-suite documentation: https://github.com/phac-nml/mob-suite"
-    echo "Paper: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6159552/"
+    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
     echo
 }
 
-## Option defaults
-genome_fa=""
-outdir=""
-more_args=""
+# Function to source the script with Bash functions
+source_function_script() {
+    local is_slurm=$1
 
-## Parse command-line options
-while getopts ':i:o:a:h' flag; do
-    case "${flag}" in
-        i) genome_fa="$OPTARG" ;;
-        o) outdir="$OPTARG" ;;
-        a) more_args="$OPTARG" ;;
-        h) Help && exit 0 ;;
-        \?) echo -e "\n## $0: ERROR: Invalid option -$OPTARG\n\n" >&2 && exit 1 ;;
-        :) echo -e "\n## $0: ERROR: Option -$OPTARG requires an argument\n\n" >&2 && exit 1 ;;
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$is_slurm" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
+    else
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
+    fi
+    function_script=$(realpath "$script_dir"/../dev/bash_functions.sh)
+    
+    if [[ ! -f "$function_script" ]]; then
+        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
+        git clone https://github.com/mcic-osu/mcic-scripts.git
+        function_script=mcic-scripts/dev/bash_functions.sh
+    fi
+    source "$function_script"
+}
+
+# ==============================================================================
+#                          INFRASTRUCTURE SETUP I
+# ==============================================================================
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script $IS_SLURM
+
+# ==============================================================================
+#                          PARSE COMMAND-LINE ARGS
+# ==============================================================================
+# Initiate variables
+infile=
+outdir=
+more_args=
+
+# Parse command-line args
+all_args="$*"
+while [ "$1" != "" ]; do
+    case "$1" in
+        -i | --infile )     shift && infile=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        --more_args )       shift && more_args=$1 ;;
+        -v )                script_version; exit 0 ;;
+        -h | --help )       script_help; exit 0 ;;
+        --version )         load_env "$MODULE" "$CONDA"
+                            tool_version "$VERSION_COMMAND" && exit 0 ;;
+        * )                 die "Invalid option $1" "$all_args" ;;
     esac
+    shift
 done
 
+# Check arguments
+[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_args"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_args"
+[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 
-# SETUP ------------------------------------------------------------------
-## Check input
-[[ ! -f "$genome_fa" ]] && echo "## ERROR: Input file (-i) $genome_fa does not exist" >&2 && exit 1
-
-## Software
-module load python/3.6-conda5.2
-source activate /fs/ess/PAS0471/jelmer/conda/mob-suite-3.1.0
-
-## Bash strict mode
+# ==============================================================================
+#                          INFRASTRUCTURE SETUP II
+# ==============================================================================
+# Strict Bash settings
 set -euo pipefail
 
-## Report
-echo "## Starting script mob-suite.sh"
-date
-echo
-echo "## Genome FASTA file:                    $genome_fa"
-echo "## Output dir:                           $outdir"
-echo -e "--------------------\n"
+# Logging files and dirs
+LOG_DIR="$outdir"/logs
+VERSION_FILE="$LOG_DIR"/version.txt
+CONDA_YML="$LOG_DIR"/conda_env.yml
+ENV_FILE="$LOG_DIR"/env.txt
+mkdir -p "$LOG_DIR"
 
+# Load software and set nr of threads
+load_env "$MODULE" "$CONDA" "$CONDA_YML"
+set_threads "$IS_SLURM"
 
-# RUN -------------------------------------------------------------------------
-## Make output dir
-mkdir -p "$outdir"/logs
+# ==============================================================================
+#                               REPORT
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
+echo "=========================================================================="
+echo "All options/arguments passed to this script:  $all_args"
+echo "Input file:                                   $infile"
+echo "Output dir:                                   $outdir"
+[[ -n $more_args ]] && echo "Additional arguments for $TOOL_NAME:          $more_args"
+log_time "Listing the input file(s):"
+ls -lh "$infile"
+[[ "$IS_SLURM" = true ]] && slurm_resources
 
-echo "## Now running Mob-suite..."
-mob_recon \
-    --infile "$genome_fa" \
+# ==============================================================================
+#                               RUN
+# ==============================================================================
+# Note: the DB is downloaded during the Conda installation, into
+# /fs/ess/PAS0471/jelmer/conda/mobsuite/lib/python3.8/site-packages/mob_suite/databases
+
+# Run the tool
+log_time "Running $TOOL_NAME..."
+runstats $TOOL_BINARY \
+    --infile "$infile" \
     --outdir "$outdir" \
-    --num_threads "$SLURM_CPUS_PER_TASK" \
+    --num_threads "$threads" \
     --force \
     $more_args
 
-## To get the databases, run:
-# mob_init
-# DB in /fs/ess/PAS0471/jelmer/conda/mob-suite-3.1.0/lib/python3.8/site-packages/mob_suite/databases
-
-
-# WRAP-UP ----------------------------------------------------------------------
-echo -e "\n-------------------------------"
-echo "## Listing files in the output dir:"
-ls -lh "$outdir"
-echo -e "\n## Done with script mob-suite.sh"
-date
-echo
-sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
-echo
+# List the output, report version, etc
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/*
+final_reporting "$VERSION_COMMAND" "$VERSION_FILE" "$ENV_FILE" "$IS_SLURM" \
+    "$SCRIPT_NAME" "$SCRIPT_AUTHOR" "$SCRIPT_VERSION" "$SCRIPT_URL"
