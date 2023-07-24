@@ -23,6 +23,8 @@ infile=$(realpath "$infile")
 
 # Create an array of input files
 [[ -n "$indir" ]] && mapfile infiles < <(find "$indir" -type f)
+mapfile -t fastas < <(find "$indir" -iname '*.fasta' -or -iname '*.fa' -or -iname '*.fna' -or -iname '*.fna.gz')
+[[ ${#fastas[@]} -eq 0 ]] && die "No FASTA files found..."
 
 # Check derived inputs
 [[ "$R1" == "$R2" ]] && die "Input R1 and R2 FASTQ files are the same file: $R1"
