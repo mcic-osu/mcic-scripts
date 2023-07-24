@@ -34,7 +34,7 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 # Help function
 script_help() {
     echo
-    echo "        $0 (v. $SCRIPT_VERSION): Run $TOOL_NAME"
+    echo "          $0 (v. $SCRIPT_VERSION)"
     echo "        =============================================="
     echo "DESCRIPTION:"
     echo "  $DESCRIPTION"
