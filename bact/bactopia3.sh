@@ -32,8 +32,6 @@ MAX_MEM=128                                     # In GB
 MAX_CPUS=48
 MAX_RETRY=1                                     # Retry failed jobs just once
 
-TRIM_ADAPTER_ARG="--trim"
-
 # Defaults - Nextflow generics
 work_dir_default=/fs/scratch/$SLURM_JOB_ACCOUNT/$USER/bactopia
 container_dir=/fs/project/PAS0471/containers
@@ -41,6 +39,7 @@ profile=singularity
 resume=true && resume_arg="-resume"
 
 # Defaults - Bactopia settings
+#TRIM_ADAPTER_ARG="--trim"                      # This is not an arg to clean-yer-reads, only the main workflow (?)
 annotater=bakta                                 # Differs from Bactopia default (Prokka)
 assembler=spades                                # Differs from Bactopia default (Skesa)
 
@@ -203,10 +202,6 @@ nextflow_env
 set_threads "$IS_SLURM"
 
 # Get the OSC config file, then build the config argument
-if [[ ! -f "$OSC_CONFIG" ]]; then
-    wget -q "$OSC_CONFIG_URL"
-    OSC_CONFIG=$(basename "$OSC_CONFIG_URL")
-fi
 [[ ! -f "$OSC_CONFIG" ]] && OSC_CONFIG="$outdir"/$(basename "$OSC_CONFIG_URL")
 config_arg="-c $OSC_CONFIG"
 [[ -n "$config_file" ]] && config_arg="$config_arg -c ${config_file/,/ -c }"
@@ -231,14 +226,11 @@ fi
 # Define outputs
 run_name=$(basename "$outdir")
 [[ "$run_name" == "bactopia" ]] && run_name=bactopia_run  # Run name can't be 'bactopia', gives problems
-outdir_main="$outdir"/main
-outdir_cleanreads="$outdir"/cleanreads
-fastqdir_cleanreads="$outdir_cleanreads"/fastq_out
-samplesheet_raw="$outdir_main"/samplesheet.tsv
-samplesheet_clean="$outdir_cleanreads"/samplesheet.tsv
-
-# Assembler arg
-assembler_arg="--shovill_assembler $assembler"
+#outdir_main="$outdir"/main
+#outdir_cleanreads="$outdir"/cleanreads
+fastqdir_cleanreads="$outdir"/fastq_clean && mkdir -p "$fastqdir_cleanreads"
+samplesheet_raw="$outdir"/samplesheet_rawreads.tsv
+samplesheet_clean="$outdir"/samplesheet_cleanreads.tsv
 
 # Annotater argument 
 if [[ "$annotater" == "bakta" ]]; then
@@ -283,8 +275,11 @@ echo "==========================================================================
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Create output dirs
-mkdir -p "$outdir_main" "$outdir_cleanreads" "$fastqdir_cleanreads"
+# Download the OSC config file
+if [[ ! -f "$OSC_CONFIG" ]]; then
+    log_time "Downloading the mcic-scripts Nextflow OSC config file to $OSC_CONFIG..."
+    wget -q -O "$OSC_CONFIG" "$OSC_CONFIG_URL"
+fi
 
 # Prepare the samplesheet
 log_time "Preparing the samplesheet $samplesheet_raw with 'bactopia prepare'..."
@@ -296,7 +291,7 @@ head -n 3 "$samplesheet_raw"
 # Run Bactopia - clean-yer-reads
 log_time "Running the Bactopia 'clean-yer-reads' workflow..."
 runstats $TOOL_BINARY --wf cleanyerreads \
-    --outdir "$outdir_cleanreads" --run_name "$run_name" \
+    --outdir "$outdir" --run_name "$run_name" \
     --samples "$samplesheet_raw" \
     --species "$species" \
     $TRIM_ADAPTER_ARG \
@@ -309,7 +304,7 @@ runstats $TOOL_BINARY --wf cleanyerreads \
 
 # Collect output FASTQs from clean-yer-reads, then prepare a new samplesheet
 log_time "Collecting FASTQ files from clean-yer-reads for main Bactopia workflow..."
-find "$outdir_cleanreads" -wholename "*/qc/*[12].fastq.gz" \
+find "$outdir" -wholename "*/qc/*[12].fastq.gz" \
     -exec ln -sf {} "$fastqdir_cleanreads" \;
 log_time "Preparing the samplesheet $samplesheet_clean with 'bactopia prepare'..."
 runstats bactopia prepare \
@@ -321,10 +316,10 @@ head -n 3 "$samplesheet_clean"
 #? NOTE: This will use '--skip_qc' since we ran the clean-yer-reads workflow before this
 log_time "Running the main Bactopia workflow..."
 runstats $TOOL_BINARY --wf bactopia \
-    --outdir "$outdir_main" --run_name "$run_name" \
+    --outdir "$outdir" --run_name "$run_name" \
     --samples "$samplesheet_clean" \
     --species "$species" \
-    $assembler_arg \
+    --shovill_assembler "$assembler" \
     $annot_arg \
     $amr_organism_arg \
     --skip_qc \
@@ -343,7 +338,7 @@ runstats $TOOL_BINARY --wf bactopia \
 
 # List the output
 log_time "Listing files in the output dir:"
-ls -lhd "$(realpath "$outdir_main")"/*
+ls -lhd "$(realpath "$outdir")"/*
 
 # ==============================================================================
 #                               WRAP UP
