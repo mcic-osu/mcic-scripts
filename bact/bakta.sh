@@ -153,8 +153,7 @@ set_threads "$IS_SLURM"
 
 # Define outputs and settings based on provided options
 [[ -n "$min_contig_len" ]] && contig_len_arg="--min-contig-length $min_contig_len"
-infile_base=$(basename "$infile")
-sample_id=${infile_base%.*}
+sample_id=$(basename "${infile%.*}")
 
 # ==============================================================================
 #                               REPORT
