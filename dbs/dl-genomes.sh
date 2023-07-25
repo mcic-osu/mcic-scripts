@@ -47,13 +47,13 @@ script_help() {
     echo "  - Download a list of accessions:"
     echo "      sbatch $0 --accessions metadata/accession.txt -o results/refgenomes"
     echo "  - Also download annotation and proteome:"
-    echo "      sbatch $0 --taxon 'human' --include 'genome,protein,gff' -o results"
+    echo "      sbatch $0 --taxon 'human' --include 'genome,protein,gff3' -o results"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
-    echo "  To specify genomes to download, use one of the following two options:"
-    echo "  1) -a/--accessions   <file>  Text file with list of NCBI accession numbers, one per line"
-    echo "  2) -t/--taxon        <str>   Taxon string, e.g. 'bos taurus' or 'nematoda'"
+    echo "    To specify genomes to download, use one of the following two options:"
+    echo "  -a/--accessions     <file>  Text file with list of NCBI accession numbers, one per line"
+    echo "  -t/--taxon          <str>   Taxon string, e.g. 'bos taurus' or 'nematoda'"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --include           <str>   Comma-separated string with one or more of the following options: [default: 'genome']"
@@ -69,7 +69,6 @@ script_help() {
     echo
     echo "TOOL DOCUMENTATION:"
     echo "  - Docs: $TOOL_DOCS"
-    echo "  - Paper: $TOOL_PAPER"
     echo
 }
 
