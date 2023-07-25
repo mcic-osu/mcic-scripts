@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-
 #SBATCH --account=PAS0471
 #SBATCH --time=30
 #SBATCH --cpus-per-task=12
@@ -10,269 +9,189 @@
 #SBATCH --output=slurm-prokka-%j.out
 
 # ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
+# Constants - generic
+DESCRIPTION="Annotate a prokaryotic genome assembly with Prokka"
+SCRIPT_VERSION="2023-07-24"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+TOOL_BINARY=prokka
+TOOL_NAME=Prokka
+TOOL_DOCS=https://github.com/tseemann/prokka
+VERSION_COMMAND="$TOOL_BINARY --version"
+
+# Defaults - generics
+env=container                      # 'conda' or 'container'
+conda_path=/fs/project/PAS0471/jelmer/conda/prokka
+container_path=/fs/ess/PAS0471/containers/prokka:1.14.6--pl5321hdfd78af_4
+container_url=https://depot.galaxyproject.org/singularity/prokka:1.14.6--pl5321hdfd78af_4
+dl_container=false
+container_dir="$HOME/containers"
+
+# Defaults - settings
+gff_noseqs=false                # Don't create a copy of the GFF file without annotations at the end
+
+# ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
 # Help function
-Print_help() {
+script_help() {
+    echo "                          $0"
+    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
+    echo "        =============================================================="
+    echo "DESCRIPTION:"
+    echo "  $DESCRIPTION"
     echo
-    echo "======================================================================"
-    echo "                            $0"
-    echo "         ANNOTATE A PROKARYOTIC GENOME ASSEMBLY WITH PROKKA"
-    echo "======================================================================"
-    echo
-    echo "USAGE:"
-    echo "  sbatch $0 -i <assembly-FASTA> -o <output-dir> [...]"
-    echo "  bash $0 -h"
+    echo "USAGE / EXAMPLE COMMANDS:"
+    echo "  - Basic usage:"
+    echo "      sbatch $0 -i results/spades/assembly.fasta -o results/prokka"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--assembly   <file>  Input genome assembly FASTA file"
+    echo "  -i/--infile     <file>  Input file"
     echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --genus         <str>   Genus name of the focal organism"
-    echo "  --species       <str>   Quoted string with additional argument(s) to pass to Prokka"
-    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to Prokka"
+    echo "  --genus             <str>   Genus name of the focal organism (e.g. 'salmonella')"
+    echo "  --species           <str>   Species name of the focal organism (e.g. 'enterica')"
+    echo "  --gff_noseqs                Create a copy of the GFF file that has no DNA sequences"
+    echo "  --opts         <str>   Quoted string with additional argument(s) for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                 Run the script in debug mode (print all code)"
-    echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for Prokka and exit"
-    echo "  -v/--version            Print the version of Prokka and exit"
+    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
+    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
+    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
+    echo "  --dl_container              Force a redownload of the container     [default: false]"
+    echo "  -h/--help                   Print this help message and exit"
+    echo "  -v                          Print the version of this script and exit"
+    echo "  --version                   Print the version of $TOOL_NAME and exit"
     echo
-    echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i results/spades/assembly.fasta -o results/prokka"
-    echo
-    echo "SOFTWARE DOCUMENTATION:"
-    echo "  - Docs: https://github.com/tseemann/prokka"
-    echo "  - Paper: https://pubmed.ncbi.nlm.nih.gov/24642063/"
+    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
     echo
 }
 
-# Load software
-Load_software() {
-    set +u
-    module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /fs/project/PAS0471/jelmer/conda/prokka-1.14.6
-    set -u
-}
-
-# Print version
-Print_version() {
-    set +e
-    Load_software
-    prokka --version
-    set -e
-}
-
-# Print help for the focal program
-Print_help_program() {
-    Load_software
-    prokka --help
-}
-
-# Print SLURM job resource usage info
-Resource_usage() {
-    echo
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
-    echo
-}
-
-# Print SLURM job requested resources
-Print_resources() {
-    set +u
-    echo "# SLURM job information:"
-    echo "Account (project):    $SLURM_JOB_ACCOUNT"
-    echo "Job ID:               $SLURM_JOB_ID"
-    echo "Job name:             $SLURM_JOB_NAME"
-    echo "Memory (MB per node): $SLURM_MEM_PER_NODE"
-    echo "CPUs (per task):      $SLURM_CPUS_PER_TASK"
-    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
-    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
-    echo "======================================================================"
-    echo
-    set -u
-}
-
-# Set the number of threads/CPUs
-Set_threads() {
-    set +u
-    if [[ "$slurm" = true ]]; then
-        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-            threads="$SLURM_CPUS_PER_TASK"
-        elif [[ -n "$SLURM_NTASKS" ]]; then
-            threads="$SLURM_NTASKS"
-        else 
-            echo "WARNING: Can't detect nr of threads, setting to 1"
-            threads=1
-        fi
+# Function to source the script with Bash functions
+source_function_script() {
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$IS_SLURM" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
     else
-        threads=1
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
     fi
-    set -u
+    function_script=$(realpath "$script_dir"/../dev/"$(basename "$FUNCTION_SCRIPT_URL")")
+    # Download the function script if needed, then source it
+    if [[ ! -f "$function_script" ]]; then
+        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
+        function_script=$(basename "$FUNCTION_SCRIPT_URL")
+        wget "$FUNCTION_SCRIPT_URL" -O "$function_script"
+    fi
+    source "$function_script"
 }
 
-# Resource usage information
-Time() {
-    /usr/bin/time -f \
-        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
-        "$@"
-}   
-
-# Exit upon error with a message
-Die() {
-    error_message=${1}
-    error_args=${2-none}
-    
-    echo >&2
-    echo "=====================================================================" >&2
-    printf "$0: ERROR: %s\n" "$error_message" >&2
-    echo -e "\nFor help, run this script with the '-h' option" >&2
-    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
-    if [[ "$error_args" != "none" ]]; then
-        echo -e "\nArguments passed to the script:" >&2
-        echo "$error_args" >&2
-    fi
-    echo -e "\nEXITING..." >&2
-    echo "=====================================================================" >&2
-    echo >&2
-    exit 1
-}
-
-
-# ==============================================================================
-#                          CONSTANTS AND DEFAULTS
-# ==============================================================================
-# Option defaults
-debug=false
-dryrun=false && e=""
-slurm=true
-
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script $IS_SLURM
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-# Placeholder defaults
-assembly=""
-outdir=""
-genus="" && species_arg=""
-species="" && genus_arg=""
-more_args=""
+# Initiate variables
+infile=
+outdir=
+genus= && genus_arg=
+species= && species_arg=
+opts=
+version_only=false
 
 # Parse command-line args
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --assembly )   shift && assembly=$1 ;;
+        -i | --infile )     shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
         --genus )           shift && genus=$1 ;;
         --species )         shift && species=$1 ;;
-        --more_args )       shift && more_args=$1 ;;
-        -v | --version )    Print_version; exit 0 ;;
-        -h )                Print_help; exit 0 ;;
-        --help )            Print_help_program; exit 0;;
-        --dryrun )          dryrun=true && e="echo ";;
-        --debug )           debug=true ;;
-        * )                 Die "Invalid option $1" "$all_args" ;;
+        --gff_noseqs )      gff_noseqs=true ;;
+        --opts )            shift && opts=$1 ;;
+        --env )             shift && env=$1 ;;
+        --dl_container )    dl_container=true ;;
+        --container_dir )   shift && container_dir=$1 ;;
+        --container_url )   shift && container_url=$1 && dl_container=true ;;
+        -v )                script_version; exit 0 ;;
+        -h | --help )       script_help; exit 0 ;;
+        --version )         version_only=true ;;
+        * )                 die "Invalid option $1" "$all_args" ;;
     esac
     shift
 done
 
-
 # ==============================================================================
-#                          OTHER SETUP
+#                          INFRASTRUCTURE SETUP
 # ==============================================================================
-# In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
-
-# Check if this is a SLURM job
-[[ -z "$SLURM_JOB_ID" ]] && slurm=false
-
-# Bash script settings
+# Strict Bash settings
 set -euo pipefail
 
 # Load software and set nr of threads
-[[ "$dryrun" = false ]] && Load_software
-Set_threads
+load_env "$conda_path" "$container_path" "$dl_container"
+[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
 
-# Get the sample ID
-file_ext=$(basename "$assembly" | sed -E 's/.*(.fasta|.fa|.fna)$/\1/')
-sampleID=$(basename "$assembly" "$file_ext")
+# Check options provided to the script
+[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_args"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_args"
+[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 
-# Build the 'genus' and 'species' name arguments
-[[ "$genus" != "" ]] && genus_arg="--genus $genus"
-[[ "$species" != "" ]] && species_arg="--species $species"
+# Define outputs based on script parameters
+LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+[[ -n "$genus" ]] && genus_arg="--genus $genus"
+[[ -n "$species" ]] && species_arg="--species $species"
+sample_id=$(basename "${infile%.*}")
 
-# Check input
-[[ "$assembly" = "" ]] && Die "Please specify an input file with -i/--assembly" "$all_args"
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
-[[ ! -f "$assembly" ]] && Die "Input file $assembly does not exist"
-
-# Report
-echo
+# ==============================================================================
+#                               REPORT
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "                    STARTING SCRIPT PROKKA.SH"
-date
-echo "=========================================================================="
-echo "All arguments to this script:     $all_args"
-echo "Input assembly file:              $assembly"
-echo "Output dir:                       $outdir"
-echo "Genus:                            $genus"
-echo "Species:                          $species"
-echo "Sample ID:                        $sampleID"
-[[ $more_args != "" ]] && echo "Other arguments for Prokka:       $more_args"
-echo "Number of threads/cores:          $threads"
-echo
-echo "Listing the input file(s):"
-ls -lh "$assembly"
-[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
-echo "=========================================================================="
-
-# Print reserved resources
-[[ "$slurm" = true ]] && Print_resources
-
+echo "All options passed to this script:        $all_args"
+echo "Input assembly FASTA:                     $infile"
+echo "Output dir:                               $outdir"
+echo "Create a copy of the GFF file wo/ seqs:   $gff_noseqs"
+[[ -n "$genus" ]] && echo "Genus:                                    $genus"
+[[ -n "$species" ]] && echo "Species:                                  $species"
+[[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
+log_time "Listing the input file(s):"
+ls -lh "$infile"
+set_threads "$IS_SLURM"
+[[ "$IS_SLURM" = true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Create the output directory
-echo -e "\n# Creating the output directories..."
-${e}mkdir -pv "$outdir"/logs
-
-# Run
-echo -e "\n# Now running Prokka..."
-${e}Time prokka \
+log_time "Running $TOOL_NAME..."
+runstats $CONTAINER_PREFIX $TOOL_BINARY \
     --outdir "$outdir" \
-    --prefix "$sampleID" \
-    --cpus "$threads"  \
+    --prefix "$sample_id" \
+    --cpus "$threads" \
     --force \
     $genus_arg \
     $species_arg \
-    $more_args \
-    "$assembly"
+    $opts \
+    "$infile"
 
-#? --strain
-#? --usegenus  ?
-#? --addgenes
+#? Other options:
+# --strain
+# --usegenus  ?
+# --addgenes
 
-## Remove DNA sequences from GFF file
-echo -e "\n# Now creating a copy of the GFF file without sequences..."
-${e}mv -v "$outdir"/"$sampleID".gff "$outdir"/"$sampleID"_withseqs.gff
-${e}sed '/^##FASTA/Q' "$outdir"/"$sampleID"_withseqs.gff > "$outdir"/"$sampleID".gff
-
-# ==============================================================================
-#                               WRAP-UP
-# ==============================================================================
-echo
-echo "========================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/"$sampleID"*
-    [[ "$slurm" = true ]] && Resource_usage
+if [[ "$gff_noseqs" == true ]]; then
+    log_time "Creating a copy of the GFF file without DNA sequences..."
+    sed '/^##FASTA/Q' "$outdir"/"$sample_id".gff > "$outdir"/"$sample_id"_noseqs.gff
 fi
-echo "# Done with script"
-date
-echo
+
+# List the output, report version, etc
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/"$sample_id"*
+final_reporting "$LOG_DIR"
