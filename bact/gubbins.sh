@@ -39,9 +39,10 @@ script_help() {
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--alignment  <file>  Input alignment in FASTA format"
-    echo "  -o/--out_prefix <str>   Output prefix: dir + filename prefix (dir will be created if needed)"
+    echo "  -o/--outdir     <str>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
+    echo "  --out_prefix    <file>  Output prefix                               [default: basename of input alignment file]"
     echo "  --dates         <file>  Dates file for dating"
     echo "  --start_tree    <file>  Tree file to serve as a starting tree"
     echo "  --more_args     <str>   Quoted string with additional argument(s) for $TOOL_NAME"
@@ -98,6 +99,7 @@ infile=
 tree= && tree_arg=
 date_file= && date_arg=
 out_prefix=
+outdir=
 more_args=
 
 # Parse command-line args
@@ -105,7 +107,8 @@ all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --alignment )  shift && infile=$1 ;;
-        -o | --out_prefix ) shift && out_prefix=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        --out_prefix )      shift && out_prefix=$1 ;;
         --dates )           shift && date_file=$1 ;;
         --start_tree )      shift && tree=$1 ;;
         --more_args )       shift && more_args=$1 ;;
@@ -120,8 +123,8 @@ done
 
 # Check arguments
 [[ -z "$infile" ]] && die "No input alignment file specified, do so with -i/--alignment" "$all_args"
-[[ -z "$out_prefix" ]] && die "No output prefix specified, do so with -o/--out_prefix" "$all_args"
-[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_args"
+[[ ! -f "$infile" ]] && die "Input alignment file $infile does not exist"
 [[ -n "$tree" && ! -f "$tree" ]] && die "Input file $tree does not exist"
 [[ -n "$date_file" && ! -f "$date_file" ]] && die "Input file $tree does not exist"
 
@@ -132,20 +135,28 @@ done
 set -euo pipefail
 
 # Logging files and dirs
-outdir=$(dirname "$out_prefix")
-LOG_DIR="$outdir"/logs
+[[ ! "$outdir" =~ ^/ ]] && outdir="$PWD"/"$outdir"
+LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 VERSION_FILE="$LOG_DIR"/version.txt
 CONDA_YML="$LOG_DIR"/conda_env.yml
 ENV_FILE="$LOG_DIR"/env.txt
-mkdir -p "$LOG_DIR"
 
 # Load software and set nr of threads
 load_env "$MODULE" "$CONDA" "$CONDA_YML"
 set_threads "$IS_SLURM"
 
+# Make paths absolute
+infile=$(realpath "$infile")
+[[ -n $tree ]] && tree=$(realpath "$tree")
+[[ -n $date_file ]] && date_file=$(realpath "$date_file")
+
 # Build tree and dates arguments
 [[ -n $tree ]] && tree_arg="--starting-tree $tree"
 [[ -n $date_file ]] && date_arg="--date $date_file"
+
+# Output prefix
+[[ -z "$out_prefix" ]] && out_prefix=$(basename "${infile%.*}")
+out_prefix_full="$outdir"/"$out_prefix"
 
 # ==============================================================================
 #                               REPORT
@@ -154,7 +165,8 @@ log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options/arguments passed to this script:  $all_args"
 echo "Alignment input file:                         $infile"
-echo "Output prefix:                                $out_prefix"
+echo "Output dir:                                   $outdir"
+echo "Output file prefix:                           $out_prefix"
 [[ -n "$tree" ]] && echo "Starting tree input file:                     $tree"
 [[ -n "$date_file" ]] && echo "Dates input file:                             $date_file"
 [[ -n $more_args ]] && echo "Additional arguments for $TOOL_NAME:          $more_args"
@@ -165,11 +177,14 @@ ls -lh "$infile"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
+# Move into the outdir because Gubbins will produce tempfiles in the working dir
+cd "$outdir" || die "Cannot change working dir to $outdir"
+
 # Run the tool
 log_time "Running $TOOL_NAME..."
 runstats $TOOL_BINARY \
     --threads "$threads" \
-    --prefix "$out_prefix" \
+    --prefix "$out_prefix_full" \
     $date_arg \
     $tree_arg \
     "$infile" \
