@@ -35,7 +35,7 @@ script_help() {
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage:"
-    echo "      sbatch $0 -i results/snippy/core.full.aln -o results/gubbins/run1"
+    echo "      sbatch $0 -i results/snippy/core.full.aln -o results/gubbins"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--alignment  <file>  Input alignment in FASTA format"

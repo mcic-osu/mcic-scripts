@@ -13,7 +13,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Annotate a prokaryotic genome assembly with Prokka"
-SCRIPT_VERSION="2023-07-24"
+SCRIPT_VERSION="2023-07-25"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -47,22 +47,26 @@ script_help() {
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage:"
     echo "      sbatch $0 -i results/spades/assembly.fasta -o results/prokka"
+    echo "  - It's recommended to provide species information:"
+    echo "      sbatch $0 -i results/spades/assembly.fasta --genus salmonella --species enterica"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile     <file>  Input file"
-    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
+    echo "  -i/--infile         <file>  Input file"
+    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --genus             <str>   Genus name of the focal organism (e.g. 'salmonella')"
-    echo "  --species           <str>   Species name of the focal organism (e.g. 'enterica')"
-    echo "  --gff_noseqs                Create a copy of the GFF file that has no DNA sequences"
-    echo "  --opts         <str>   Quoted string with additional argument(s) for $TOOL_NAME"
+    echo "  --genus             <str>   Genus name of the focal organism (e.g. 'salmonella')    [default: none]"
+    echo "  --species           <str>   Species name of the focal organism (e.g. 'enterica')    [default: none]"
+    echo "  --strain            <str>   Strain name of the focal organism                       [default: none]"
+    echo "  --prefix            <str>   Prefix for output file names                            [default: basename minus extension of input file]"
+    echo "  --gff_noseqs                Create a copy of the GFF file that has no DNA sequences [default: no copy]"
+    echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
-    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --dl_container              Force a redownload of the container     [default: false]"
+    echo "  --container_url     <str>   URL to download the container from                      [default: $container_url]"
+    echo "  --container_dir     <str>   Dir to download the container to                        [default: $container_dir]"
+    echo "  --dl_container              Force a redownload of the container                     [default: false]"
     echo "  -h/--help                   Print this help message and exit"
     echo "  -v                          Print the version of this script and exit"
     echo "  --version                   Print the version of $TOOL_NAME and exit"
@@ -104,6 +108,8 @@ infile=
 outdir=
 genus= && genus_arg=
 species= && species_arg=
+strain= && strain_arg=
+out_prefix=
 opts=
 version_only=false
 
@@ -115,6 +121,8 @@ while [ "$1" != "" ]; do
         -o | --outdir )     shift && outdir=$1 ;;
         --genus )           shift && genus=$1 ;;
         --species )         shift && species=$1 ;;
+        --strain )          shift && strain=$1 ;;
+        --prefix )          shift && out_prefix=$1 ;;
         --gff_noseqs )      gff_noseqs=true ;;
         --opts )            shift && opts=$1 ;;
         --env )             shift && env=$1 ;;
@@ -148,7 +156,7 @@ load_env "$conda_path" "$container_path" "$dl_container"
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 [[ -n "$genus" ]] && genus_arg="--genus $genus"
 [[ -n "$species" ]] && species_arg="--species $species"
-sample_id=$(basename "${infile%.*}")
+[[ -z "$out_prefix" ]] && out_prefix=$(basename "${infile%.*}")
 
 # ==============================================================================
 #                               REPORT
@@ -158,9 +166,11 @@ echo "==========================================================================
 echo "All options passed to this script:        $all_args"
 echo "Input assembly FASTA:                     $infile"
 echo "Output dir:                               $outdir"
+echo "Output file prefix:                       $out_prefix"
 echo "Create a copy of the GFF file wo/ seqs:   $gff_noseqs"
 [[ -n "$genus" ]] && echo "Genus:                                    $genus"
 [[ -n "$species" ]] && echo "Species:                                  $species"
+[[ -n "$strain" ]] && echo "Strain:                                   $strain"
 [[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
 log_time "Listing the input file(s):"
 ls -lh "$infile"
@@ -173,25 +183,25 @@ set_threads "$IS_SLURM"
 log_time "Running $TOOL_NAME..."
 runstats $CONTAINER_PREFIX $TOOL_BINARY \
     --outdir "$outdir" \
-    --prefix "$sample_id" \
+    --prefix "$out_prefix" \
     --cpus "$threads" \
     --force \
     $genus_arg \
     $species_arg \
+    $strain_arg \
     $opts \
     "$infile"
 
 #? Other options:
-# --strain
-# --usegenus  ?
-# --addgenes
+# --usegenus        Apparently no longer recommended, use `--proteins` instead
+# --addgenes        Add 'gene' features for each 'CDS' feature (default OFF)
 
 if [[ "$gff_noseqs" == true ]]; then
     log_time "Creating a copy of the GFF file without DNA sequences..."
-    sed '/^##FASTA/Q' "$outdir"/"$sample_id".gff > "$outdir"/"$sample_id"_noseqs.gff
+    sed '/^##FASTA/Q' "$outdir"/"$out_prefix".gff > "$outdir"/"$out_prefix"_noseqs.gff
 fi
 
 # List the output, report version, etc
 log_time "Listing files in the output dir:"
-ls -lhd "$(realpath "$outdir")"/"$sample_id"*
+ls -lhd "$(realpath "$outdir")"/"$out_prefix"*
 final_reporting "$LOG_DIR"
