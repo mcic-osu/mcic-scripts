@@ -22,12 +22,12 @@ TOOL_DOCS=#TODO
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
+env=conda                           # Use a 'conda' env or a Singularity 'container'
 conda_path=#TODO
 container_path=#TODO
-env=conda                           # 'conda' or 'container'
+container_url=
 dl_container=false
 container_dir="$HOME/containers"
-container_url=
 
 # Constants - tool parameters
 #TODO
@@ -60,9 +60,9 @@ script_help() {
     echo "UTILITY OPTIONS:"
     echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
     echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "                                A container will only be downloaded if an URL is provided with this option, or --dl_container is used"
+    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
     echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --dl_container              Force a redownload of the container     [default: false]"
+    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
     echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
     echo "  -h/--help                   Print this help message and exit"
     echo "  -v                          Print the version of this script and exit"
@@ -105,6 +105,7 @@ infile=
 outdir=
 opts=
 version_only=false
+threads=
 
 # Parse command-line args
 all_opts="$*"

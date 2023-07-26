@@ -38,13 +38,29 @@ load_conda() {
 
 # Set up container
 load_container() {
-    if [[ "$dl_container" == true ]]; then
-        log_time "Downloading container from $container_url to $container_dir"
-        mkdir -p "$container_dir"
-        singularity pull --dir "$container_dir" "$container_url"
-        container_path="$container_dir"/$(basename "$container_url")
+    
+    # If no path to a container image file was provided,
+    # then build the path based on the URL, and check if the file exists
+    if [[ -z "$container_path" ]]; then
+        url_basename=$(basename "$container_url")
+        container_path="$container_dir"/${url_basename/:/_}.sif
+        
+        if [[ -f "$container_path" ]]; then
+            log_time "No container path was provided, but the container in $container_url
+            was found at $container_path and will be used"
+        else
+            dl_container=true
+        fi
     fi
 
+    # If needed, download the container image
+    if [[ "$dl_container" == true ]]; then
+        log_time "Downloading container from $container_url to $container_path"
+        mkdir -p "$container_dir"
+        singularity pull --force --dir "$container_dir" "$container_url"
+    fi
+
+    # Set the final 'prefix' to run the container
     CONTAINER_PREFIX="singularity exec $container_path"
     log_time "Using a container with base call: $CONTAINER_PREFIX"
 }
@@ -89,12 +105,12 @@ resource_usage() {
 slurm_resources() {
     set +u
     log_time "SLURM job information:"
-    echo "Account (project):              $SLURM_JOB_ACCOUNT"
-    echo "Job ID:                         $SLURM_JOB_ID"
-    echo "Job name:                       $SLURM_JOB_NAME"
-    echo "Memory (GB per node):           $(( SLURM_MEM_PER_NODE / 1000 ))"
-    echo "CPUs (per task):                $SLURM_CPUS_PER_TASK"
-    echo "Time limit (minutes):           $(( SLURM_TIME_LIMIT / 60 ))"
+    echo "Account (project):                        $SLURM_JOB_ACCOUNT"
+    echo "Job ID:                                   $SLURM_JOB_ID"
+    echo "Job name:                                 $SLURM_JOB_NAME"
+    echo "Memory (GB per node):                     $(( SLURM_MEM_PER_NODE / 1000 ))"
+    echo "CPUs (per task):                          $SLURM_CPUS_PER_TASK"
+    echo "Time limit (minutes):                     $(( SLURM_TIME_LIMIT / 60 ))"
     echo -e "==========================================================================\n"
     set -u
 }
