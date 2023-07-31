@@ -294,7 +294,6 @@ runstats $TOOL_BINARY --wf cleanyerreads \
     --outdir "$outdir" --run_name "$run_name" \
     --samples "$samplesheet_raw" \
     --species "$species" \
-    $TRIM_ADAPTER_ARG \
     --singularity_cache "$container_dir" $conda_dir_arg \
     --max_cpus $MAX_CPUS --max_time $MAX_TIME --max_memory $MAX_MEM --max_retry $MAX_RETRY \
     -qs $QUEUE_SIZE \
