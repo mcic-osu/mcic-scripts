@@ -159,7 +159,6 @@ echo "Always use interactive plots:             $always_interactive"
 log_time "Running $TOOL_NAME..."
 runstats $TOOL_BINARY \
     --force \
-    --pdf \
     --outdir "$outdir" \
     $more_args \
     $filename_arg \
