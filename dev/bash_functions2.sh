@@ -57,7 +57,7 @@ load_container() {
     if [[ "$dl_container" == true ]]; then
         log_time "Downloading container from $container_url to $container_path"
         mkdir -p "$container_dir"
-        singularity pull --force --dir "$container_dir" "$container_url"
+        singularity pull --force "$container_path" "$container_url"
     fi
 
     # Set the final 'prefix' to run the container
@@ -70,6 +70,7 @@ tool_version() {
     local version_command=${1-none}
     set +e
     
+    echo "# Version of $TOOL_NAME:"
     if [[ "$version_command" == "none" ]]; then
         $CONTAINER_PREFIX $TOOL_BINARY --version
     else
@@ -81,6 +82,7 @@ tool_version() {
 
 # Print the script version
 script_version() {
+    echo "# Version of this shell script:"
     echo "$SCRIPT_NAME by $SCRIPT_AUTHOR, version $SCRIPT_VERSION ($REPO_URL)"
 }
 
@@ -109,7 +111,7 @@ slurm_resources() {
     echo "Job ID:                                   $SLURM_JOB_ID"
     echo "Job name:                                 $SLURM_JOB_NAME"
     echo "Memory (GB per node):                     $(( SLURM_MEM_PER_NODE / 1000 ))"
-    echo "CPUs (per task):                          $SLURM_CPUS_PER_TASK"
+    echo "CPUs (on node):                           $SLURM_CPUS_ON_NODE"
     echo "Time limit (minutes):                     $(( SLURM_TIME_LIMIT / 60 ))"
     echo -e "==========================================================================\n"
     set -u
