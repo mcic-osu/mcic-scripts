@@ -7,12 +7,15 @@
 #SBATCH --job-name=dl_genomes
 #SBATCH --output=slurm-dl_genomes-%j.out
 
+#TODO - Implement '--prefer_refseq' option where RefSeq genomes will be downloaded
+#TODO   as available, and GenBank genomes only for those for which there is no RefSeq genome
+
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Download genomes (and associated proteomes, annotations, etc) with the NCBI datasets tool"
-SCRIPT_VERSION="2023-07-25"
+SCRIPT_VERSION="2023-07-31"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -31,9 +34,11 @@ container_dir="$HOME/containers"
 
 # Defaults - tool parameters
 include="genome,seq-report"
-ref_only=false && ref_arg=
+ref_only=false
 assembly_version=latest
+assembly_source=GenBank
 move_output=true
+meta_fields="accession,assminfo-name,organism-name,assminfo-refseq-category,assminfo-level,assmstats-number-of-contigs,assmstats-contig-n50"
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -67,8 +72,14 @@ script_help() {
     echo "  --as_is                     Don't move all files into the output dir - keep subdir structure with one folder per genome"         
     echo "  --include           <str>   Comma-separated string with one or more of the following options: [default: $include]"
     echo "                              Options: 'all' (all of the following), 'genome', 'rna', 'protein', 'cds', 'gff3', 'gtf', 'gbff', 'seq-report'"
+    echo "  --assembly_source   <str>   'GenBank', 'RefSeq', or 'all'           [default: $assembly_source]"
+    echo "                                - 'GenBank' will likely return more records"
+    echo "                                - 'RefSeq' will likely return more annotations and proteomes" 
     echo "  --assembly_version  <str>   'latest' or 'all'                       [default: $assembly_version]"
     echo "  --ref_only                  When specifying a taxon, only download 'reference genomes' [default: download all matching genomes]"
+    echo "  --meta_fields       <str>   Comma-separated list of metadata fields for the 'selected' metadata file"
+    echo "                                (Note: a metadata file with all possible metadata will also be produced.)"
+    echo "                                [default: $meta_fields]"
     echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -117,9 +128,8 @@ source_function_script
 # Initiate variables
 outdir=
 accession_file=
-accession_arg=
 accession=
-taxon= && taxon_arg=
+taxon=
 opts=
 version_only=false
 
@@ -133,7 +143,9 @@ while [ "$1" != "" ]; do
         -A | --accession )      shift && accession=$1 ;;
         --include )             shift && include=$1 ;;
         --assembly_version )    shift && assembly_version=$1 ;;
+        --assembly_source )     shift && assembly_source=$1 ;;
         --ref_only )            ref_only=true ;;
+        --meta_fields )         shift && meta_fields=$1 ;;
         --as_is )               move_output=false ;;
         --opts )                shift && opts=$1 ;;
         --env )                 shift && env=$1 ;;
@@ -169,7 +181,7 @@ meta_dir="$outdir"/metadata && mkdir -p "$meta_dir"
 meta_all="$meta_dir"/meta_all.tsv
 meta_sel="$meta_dir"/meta_sel.tsv
 
-[[ "$ref_only" == true ]] && ref_arg="--reference"
+# Which seq files to include
 [[ "$include" == "all" ]] && include="cds,gbff,genome,gff3,gtf,protein,rna,seq-report"
 
 # Build command to specify which genomes to download
@@ -185,6 +197,11 @@ else
     die "Use either --accession, --accession_file, or --taxon to specify which genomes to download" "$all_opts"
 fi
 
+# Complete data arg
+[[ "$ref_only" == true ]] && data_arg+=("--reference")
+data_arg+=(--assembly-version "$assembly_version")
+data_arg+=(--assembly-source "$assembly_source")
+
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
 # ==============================================================================
@@ -196,6 +213,7 @@ echo "Output dir:                               $outdir"
 [[ -n "$accession_file" ]] && echo "Input file with accession list:           $accession_file"
 [[ -n "$accession_file" ]] && echo "Number of input accessions:               $(wc -l < "$accession_file")"
 echo "What to download for each genome:         $include"
+echo "Assembly source (GenBank vs RefSeq):      $assembly_source"
 echo "Download 'reference' genomes only:        $ref_only"
 echo "Which assembly version(s) to download:    $assembly_version"
 [[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
@@ -210,14 +228,13 @@ echo "Which assembly version(s) to download:    $assembly_version"
 cd "$outdir" || exit 1
 
 # Get metadata on genomes
-log_time "Getting all metadata on genomes to be downloaded..."
+log_time "Storing *full* metadata on genomes in $meta_all..."
 runstats datasets summary genome "${data_arg[@]}" --as-json-lines |
     dataformat tsv genome > "$meta_all"
 
-log_time "Getting selected metadata on genomes to be downloaded..."
-info_fields="accession,assminfo-name,organism-name,assminfo-refseq-category,assminfo-level,assmstats-number-of-contigs,assmstats-contig-n50"
+log_time "Storing *selected* metadata on genomes in $meta_sel..."
 runstats datasets summary genome "${data_arg[@]}" --as-json-lines |
-    dataformat tsv genome --fields "$info_fields" > "$meta_sel"
+    dataformat tsv genome --fields "$meta_fields" > "$meta_sel"
 
 # Report metadata
 n_genomes=$(tail -n +2 "$meta_sel" | wc -l)
@@ -230,8 +247,6 @@ log_time "Running $TOOL_NAME..."
 runstats $CONTAINER_PREFIX $TOOL_BINARY \
     "${data_arg[@]}" \
     --include "$include" \
-    --assembly-version "$assembly_version" \
-    $ref_arg \
     --filename genomes.zip \
     --no-progressbar \
     --api-key "$NCBI_API_KEY" \
@@ -243,17 +258,13 @@ unzip -q -o genomes.zip
 
 # Process the output - move the genomic data files
 if [[ "$move_output" == true ]]; then
-    log_time "Moving the output files..."
+    log_time "Moving and renaming the downloaded files..."
 
-    # Genome assemblies
-    find ncbi_dataset -type f -name "GC*genomic.fna" -exec mv -v {} . \;
-
-    # All other files
     while IFS= read -r -d '' file; do
         acc_nr=$(dirname "$file" | xargs basename)
-        if [[ "${file##*.}" == fna ]]; then
+        if [[ $(basename "$file") == "cds_from_genomic.fna" ]]; then
             # Make sure cds_from_genomic.fna is distinct from the genome fna
-            outfile="$acc_nr"_cds."${file##*.}"
+            outfile="$acc_nr"_cds.fasta
         else
             outfile="$acc_nr"."${file##*.}"
         fi
@@ -261,7 +272,7 @@ if [[ "$move_output" == true ]]; then
     done < <(find ncbi_dataset -type f -wholename "*data/GC*" -print0)
 
     echo
-    echo "# Nr output nucleotide FASTAs:          $(find . -name "*genomic.fna" | wc -l)"
+    echo "# Nr output nucleotide FASTAs:          $(find . -name "*.fna" | wc -l)"
     echo "# Nr output proteomes:                  $(find . -name "*.faa" | wc -l)"
     echo "# Nr output GFF files:                  $(find . -name "*.gff" | wc -l)"
     echo "# Nr output GTF files:                  $(find . -name "*.gtf" | wc -l)"
@@ -270,13 +281,12 @@ fi
 # Report nr of input accessions again, for comparison
 [[ -n "$accession_file" ]] && log_time "Number of input accessions:                   $(wc -l < "$accession_file")"
 
+# Show output metadata files
+log_time "Output metadata files:"
+ls -lh "$meta_all" "$meta_sel"
+
 # Clean up
 log_time "Removing original ZIP file and NCBI's README file..."
-rm -rv README.md genomes.zip ncbi_dataset
+rm -r README.md genomes.zip ncbi_dataset
 
 final_reporting "$LOG_DIR"
-
-#? Alternative:
-# Use AstroBioMike's bit - https://github.com/AstrobioMike/bit
-#micromamba activate /fs/ess/PAS0471/jelmer/conda/bit
-#bit-dl-ncbi-assemblies -w "$acc_file" -f fasta -j 1
