@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=4:00:00
+#SBATCH --time=6:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --mail-type=END,FAIL
@@ -24,6 +24,10 @@ TOOL_NAME=ClonalFrameML
 TOOL_DOCS=https://github.com/xavierdidelot/ClonalFrameML
 VERSION_COMMAND="$TOOL_BINARY | head -n 1"
 
+# Defaults - parameters
+tree_tool=iqtree
+force_tree=false            # If tree is found, don't rerun tree-building
+
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
@@ -45,6 +49,8 @@ script_help() {
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --out_prefix    <str>   Output file prefix                          [default: basename of input file]"
+    echo "  --tree_tool     <str>   Tool to build initial tree, 'iqtree' or 'fasttree' [default: 'iqtree']"
+    echo "  --force_tree            Even if the initial tree file is found, rebuild it [default: use existing tree]"
     echo "  --more_args     <str>   Quoted string with additional argument(s) for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -103,6 +109,8 @@ while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
+        --tree_tool )       shift && tree_tool=$1 ;;
+        --force_tree )      force_tree=true ;;
         --out_prefix )      shift && out_prefix=$1 ;;
         --more_args )       shift && more_args=$1 ;;
         -v )                script_version; exit 0 ;;
@@ -149,6 +157,8 @@ echo "All options/arguments passed to this script:  $all_args"
 echo "Input alignment file:                         $infile"
 echo "Output dir:                                   $outdir"
 echo "Output file prefix:                           $out_prefix"
+echo "Tool to build initial tree:                   $tree_tool"
+echo "Force tree-building even if file exists:      $force_tree"
 [[ -n $more_args ]] && echo "Additional arguments for $TOOL_NAME:          $more_args"
 log_time "Listing the input file(s):"
 ls -lh "$infile"
@@ -157,17 +167,20 @@ ls -lh "$infile"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-log_time "Running IQtree to get a starting tree for ClonalFrameML..."
-runstats iqtree \
-    -s "$infile" \
-    --prefix "$outdir"/"$out_prefix" \
-    -m MFP \
-    -fast \
-    -redo \
-    -nt "$threads" -ntmax "$threads" -mem "$mem_gb"
-
-#? -m MFP  => Model selection with ModelFinder (is the IQ-tree default, too)
-#? -redo   => Will overwrite old results
+if [[ ! -f "$outdir"/"$out_prefix".iqtree || "$force_tree" == true ]]; then
+    log_time "Running $tree_tool to get a starting tree for ClonalFrameML..."
+    
+    if [[ "$tree_tool" == "iqtree" ]]; then
+        runstats iqtree \
+            -s "$infile" --prefix "$outdir"/"$out_prefix" \
+            -m MFP -fast -redo -nt "$threads" -ntmax "$threads" -mem "$mem_gb"
+    
+    elif [[ "$tree_tool" == "fasttree" ]]; then
+        runstats fasttree -nt -gtr < "$infile" > "$outdir"/"$out_prefix".treefile
+    fi
+else
+    log_time "Tree file $outdir/$out_prefix.treefile exists, skipping tree-building..."
+fi
 
 log_time "Running ClonalFrameML..."
 runstats $TOOL_BINARY \
@@ -185,7 +198,7 @@ singularity exec "$CONTAINER" \
     --out "$outdir"/"$out_prefix".masked.aln \
     "$outdir"/"$out_prefix"
 
-#?--symbol CHAR        symbol to use for masking (default="?")
+#? --symbol CHAR        symbol to use for masking (default="?")
 #? The positional argument is the prefix used for ClonalFrameML (or Gubbins) output files
 
 # List the output, report version, etc
