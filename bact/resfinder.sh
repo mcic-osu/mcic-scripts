@@ -1,184 +1,118 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
+#SBATCH --mail-type=FAIL
 #SBATCH --job-name=resfinder
 #SBATCH --output=slurm-resfinder-%j.out
-
-# Run ResFinder to detect AMR genes and point mutations in a bacterial genome assembly
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-# Constants
-readonly SCRIPT_NAME="resfinder.sh"
-readonly SCRIPT_VERSION="1.0"
-readonly SCRIPT_AUTHOR="Jelmer Poelstra"
-readonly CONDA_ENV="/fs/ess/PAS0471/jelmer/conda/resfinder-4.1.11"
-readonly TOOL_BINARY="run_resfinder.py"
-readonly TOOL_NAME="ResFinder"
-readonly TOOL_DOCS="https://bitbucket.org/genomicepidemiology/resfinder"
-readonly TOOL_PAPER=""
+# Constants - generic
+DESCRIPTION="Run ResFinder to detect AMR genes and point mutations in a bacterial genome assembly"
+SCRIPT_VERSION="2023-07-29"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+TOOL_BINARY=run_resfinder.py
+TOOL_NAME=ResFinder
+TOOL_DOCS=https://bitbucket.org/genomicepidemiology/resfinder
+VERSION_COMMAND="$TOOL_BINARY --version"
 
-# Option defaults
-get_db=true            # Don't download the database
-point_mut=true         # Include point mutations
+# Defaults - generics
+env=conda                           # Use a 'conda' env or a Singularity 'container'
+conda_path=/fs/ess/PAS0471/jelmer/conda/resfinder
+container_path=
+container_url=https://depot.galaxyproject.org/singularity/resfinder:4.1.11--hdfd78af_0
+dl_container=false
+container_dir="$HOME/containers"
+
+# Defaults - tool parameters
+get_db=true                         # Download the database
+point_mut=true                      # Include point mutations
 acquired=true
-min_cov=0.90           # Coverage threshold for BLAST hits
-min_id=0.90            # Identity threshold for BLAST hits
+min_cov=0.90                        # Coverage threshold for BLAST hits
+min_id=0.90                         # Identity threshold for BLAST hits
 
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
 # Help function
 script_help() {
+    echo "                          $0"
+    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
+    echo "        =============================================================="
+    echo "DESCRIPTION:"
+    echo "  $DESCRIPTION"
     echo
-    echo "======================================================================"
-    echo "                            $0"
-    echo "                      Run $TOOL_NAME"
-    echo "======================================================================"
-    echo "USAGE:"
-    echo "  sbatch $0 -i <input file> -o <output dir> [...]"
-    echo "  bash $0 -h"
+    echo "USAGE / EXAMPLE COMMANDS:"
+    echo "  - Basic usage:"
+    echo "      sbatch $0 -i assemblies/sample15.fna -o results/resfinder/sample15"
+    echo "  - Loop over assemblies -- make sure to use a separate output dir for each:"
+    echo "    NOTE: for some reason it may be necessary to 'sleep' in between, or ResFinder will crash!"
+    echo "      for asm in result/assemblies/*fna; do"
+    echo '          outdir=results/resfinder/$(basename "$asm" .fna)'
+    echo '          sbatch mcic-scripts/bact/resfinder.sh -i "$asm" -o "$outdir"'
+    echo "          sleep 10s"
+    echo "      done"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile     <file>  Input file: a nucleotide FASTA file with a genome assembly"
-    echo "  -o/--outdir     <dir>   Output dir (use a separate dir per assembly)"
-    echo "  --species       <str>   Species name -- see ResFinder docs for possible values"
+    echo "  -i/--assembly   <file>      Input file: a nucleotide FASTA file with a genome assembly"
+    echo "  -o/--outdir     <dir>       Output dir (use a separate dir per assembly)"
+    echo "  --species       <str>       Species name -- see ResFinder docs for possible values"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --no_point_mut          Skip point-mutation-based resistance    [default: include]"
-    echo "  --no_aqcuired           Skip aqcuired genes                     [default: include]"
-    echo "  --min_cov       <num>   Coverage threshold                      [default: 0.90]"
-    echo "  --min_id        <num>   Identity threshold                      [default: 0.90]"
-    echo "  --db_dir                Dir with/for ResFinder DBs              [default: <outdir>/dbs]"
-    echo "  --dont_get_db           Don't download the ResFinder DBs        [default: download]"
-    echo "  --more_args     <str>   Quoted string with more argument(s) for $TOOL_NAME"
+    echo "  --no_point_mut              Skip point-mutation-based resistance    [default: include]"
+    echo "  --no_aqcuired               Skip aqcuired genes                     [default: include]"
+    echo "  --min_cov           <num>   Coverage threshold                      [default: 0.90]"
+    echo "  --min_id            <num>   Identity threshold                      [default: 0.90]"
+    echo "  --db_dir                    Dir with/for ResFinder DBs              [default: <outdir>/dbs]"
+    echo "  --dont_get_db               Don't download the ResFinder DBs        [default: download]"
+    echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for $TOOL_NAME and exit"
-    echo "  -v                      Print the version of this script and exit"
-    echo "  -v/--version            Print the version of $TOOL_NAME and exit"
+    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
+    echo "                                NOTE: If no default '--container_url' or '--container_dir' is listed below,"
+    echo "                                you'll have to provide one of these to run the script with a container."
+    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
+    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
+    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
+    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
+    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
+    echo "  -h/--help                   Print this help message and exit"
+    echo "  -v                          Print the version of this script and exit"
+    echo "  --version                   Print the version of $TOOL_NAME and exit"
     echo
-    echo "EXAMPLE COMMANDS:"
-    echo "  $0 -i results/spades/assembly.fa -o results/resfinder"
-    echo
-    echo "  for asm in result/assemblies/*fasta; do"
-    echo "      outdir=results/resfinder/$(basename "$asm" .fasta)"
-    echo "      sbatch mcic-scripts/bact/resfinder.sh -i "$asm" -o "$outdir""
-    echo "  done"
-    echo
-    echo "TOOL DOCUMENTATION:"
-    echo "  - Docs: $TOOL_DOCS"
-    echo "  - Paper: $TOOL_PAPER"
+    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
     echo
 }
 
-# Load software
-load_tool_conda() {
-    set +u
-    # Load the OSC Conda module 
-    module load miniconda3/4.12.0-py39
-    # Deactivate any activae Conda environments
-    if [[ -n "$CONDA_SHLVL" ]]; then
-        for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    fi
-    # Activate the focal environment
-    source activate "$CONDA_ENV"
-    set -u
-}
-
-# Exit upon error with a message
-die() {
-    local error_message=${1}
-    local error_args=${2-none}
-    
-    echo -e "\n============================================================" >&2
-    log_time "$0: ERROR: $error_message" >&2
-    log_time "For help, run this script with the '-h' option" >&2
-    if [[ "$error_args" != "none" ]]; then
-        log_time "Arguments passed to the script:" >&2
-        echo "$error_args" >&2
-    fi
-    log_time "EXITING..." >&2
-    echo -e "============================================================\n" >&2
-    exit 1
-}
-
-# Log messages that include the time
-log_time() {
-    echo -e "\n[$(date +'%Y-%m-%d %H:%M:%S')]" ${1-""}
-}
-
-# Print the script version
-script_version() {
-    echo "Run using $SCRIPT_NAME by $SCRIPT_AUTHOR, version $SCRIPT_VERSION (https://github.com/mcic-osu/mcic-scripts)"
-}
-
-# Print the tool's version
-tool_version() {
-    set +e
-    load_tool_conda
-    conda list | grep -i $TOOL_NAME | tail -n +2
-    set -e
-}
-
-# Print the tool's help
-tool_help() {
-    load_tool_conda
-    "$TOOL_BINARY" --help
-}
-
-# Print SLURM job resource usage info
-resource_usage() {
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
-}
-
-# Print SLURM job requested resources
-slurm_resources() {
-    set +u
-    log_time "SLURM job information:"
-    echo "Account (project):                        $SLURM_JOB_ACCOUNT"
-    echo "Job ID:                                   $SLURM_JOB_ID"
-    echo "Job name:                                 $SLURM_JOB_NAME"
-    echo "Memory (MB per node):                     $SLURM_MEM_PER_NODE"
-    echo "CPUs (per task):                          $SLURM_CPUS_PER_TASK"
-    echo "Time limit:                               $SLURM_TIMELIMIT"
-    echo -e "=================================================================\n"
-    set -u
-}
-
-# Set the number of threads/CPUs
-set_threads() {
-    set +u
-    if [[ "$is_slurm" == true ]]; then
-        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-            readonly threads="$SLURM_CPUS_PER_TASK"
-        elif [[ -n "$SLURM_NTASKS" ]]; then
-            readonly threads="$SLURM_NTASKS"
-        else 
-            log_time "WARNING: Can't detect nr of threads, setting to 1"
-            readonly threads=1
-        fi
+# Function to source the script with Bash functions
+source_function_script() {
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$IS_SLURM" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
     else
-        readonly threads=1
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
     fi
-    set -u
+    function_script=$(realpath "$script_dir"/../dev/"$(basename "$FUNCTION_SCRIPT_URL")")
+    # Download the function script if needed, then source it
+    if [[ ! -f "$function_script" ]]; then
+        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
+        function_script=$(basename "$FUNCTION_SCRIPT_URL")
+        wget "$FUNCTION_SCRIPT_URL" -O "$function_script"
+    fi
+    source "$function_script"
 }
 
-# Resource usage information for any process
-runstats() {
-    /usr/bin/time -f \
-        "\n# Ran the command: \n%C
-        \n# Run stats by /usr/bin/time:
-        Time: %E   CPU: %P    Max mem: %M K    Exit status: %x \n" \
-        "$@"
-}
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
@@ -188,13 +122,14 @@ infile=
 outdir=
 species=
 db_dir=
-more_args=
+opts=
+version_only=false
 
 # Parse command-line args
-all_args="$*"
+all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infile )     shift && infile=$1 ;;
+        -i | --assembly )   shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
         --species )         shift && species=$1 ;;
         --dont_get_db )     get_db=false ;;
@@ -203,127 +138,110 @@ while [ "$1" != "" ]; do
         --no_aqcuired )     acquired=false && acquired_arg="" ;;
         --min_cov )         shift && readonly min_cov=$1 ;;
         --min_id )          shift && readonly min_id=$1 ;;
-        --more_args )       shift && readonly more_args=$1 ;;
+        --opts )            shift && opts=$1 ;;
+        --env )             shift && env=$1 ;;
+        --dl_container )    dl_container=true ;;
+        --container_dir )   shift && container_dir=$1 ;;
+        --container_url )   shift && container_url=$1 && dl_container=true ;;
+        -h | --help )       script_help; exit 0 ;;
         -v )                script_version; exit 0 ;;
-        -h )                script_help; exit 0 ;;
-        --version )         tool_version; exit 0 ;;
-        --help )            tool_help; exit 0;;
-        * )                 die "Invalid option $1" "$all_args" ;;
+        --version )         version_only=true ;;
+        * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
 done
 
-# Check input
-[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_args"
-[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_args"
-[[ -z "$species" ]] && die "No species specified, do so with --species" "$all_args"
+# ==============================================================================
+#                          INFRASTRUCTURE SETUP
+# ==============================================================================
+# Strict Bash settings
+#set -euo pipefail
+
+# Load software
+load_env "$conda_path" "$container_path" "$dl_container"
+[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
+
+# Check options provided to the script
+[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
+[[ -z "$species" ]] && die "No species specified, do so with --species" "$all_opts"
 [[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 [[ -n "$db_dir" && ! -d "$db_dir" ]] && die "DB dir $db_dir does not exist"
 [[ "$get_db" == false && -z "$db_dir" ]] && die "You have to specify a DB dir with --db_dir when using --dont_get_db"
 
-# ==============================================================================
-#                          OTHER SETUP
-# ==============================================================================
-# Check if this is a SLURM job
-if [[ -z "$SLURM_JOB_ID" ]]; then is_slurm=false; else is_slurm=true; fi
-
-# Strict bash settings
-set -euo pipefail
-
-# Load software and set nr of threads
-load_tool_conda
-set_threads
-
-# ==============================================================================
-#                   DEFINE OUTPUTS, DERIVED INPUTS, AND ARGS
-# ==============================================================================
 # Define outputs based on script parameters
-[[ -z "$db_dir" ]] && db_dir="$outdir"/dbs
+LOG_DIR="$PWD"/"$outdir"/logs && mkdir -p "$LOG_DIR"
+[[ -z "$db_dir" ]] && db_dir="$outdir"/dbs && mkdir -p "$db_dir"
 
-# Make paths absolute
+# Make paths absolute since we have to move into the output dir
 infile=$(realpath "$infile")
 [[ ! "$outdir" =~ ^/ ]] && outdir="$PWD"/"$outdir"
 [[ ! "$db_dir" =~ ^/ ]] && db_dir="$PWD"/"$db_dir"
-
-# Define outputs based on script parameters
-readonly version_file="$outdir"/logs/version.txt
-readonly log_dir="$outdir"/logs
 
 # Define args
 [[ "$point_mut" == true ]] && point_arg="--point"
 [[ "$acquired" == true ]] && acquired_arg="--acquired"
 
 # ==============================================================================
-#                               REPORT
+#                         REPORT PARSED OPTIONS
 # ==============================================================================
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "All arguments to this script:             $all_args"
+echo "All options passed to this script:        $all_opts"
 echo "Input genome assembly FASTA file:         $infile"
 echo "Output dir:                               $outdir"
+echo "Database dir:                             $db_dir"
 echo "Species:                                  $species"
 echo "Include point mutations:                  $point_mut"
 echo "Include acquired genes:                   $acquired"
 echo "Min. coverage threshold:                  $min_cov"
 echo "Min. identity threshold:                  $min_id"
-[[ $more_args != "" ]] && echo "Other arguments for $TOOL_NAME:   $more_args"
-echo "Number of threads/cores:                  $threads"
-echo
+[[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
 log_time "Listing the input file(s):"
 ls -lh "$infile"
-[[ "$is_slurm" = true ]] && slurm_resources
+[[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Create the output directories
-log_time "Creating the output directories..."
-mkdir -pv "$log_dir" "$db_dir"
-
 # Download/update the database
 if [[ "$get_db" == true ]]; then
-    log_time "Downloading the databases..."
-
+    log_time "Downloading the ResFinder database into $db_dir/resfinder_db ..."
     cd "$db_dir" || die "Can't move to DB dir $db_dir"
+    [[ -d resfinder_db ]] && rm -r resfinder_db
     
     git clone https://bitbucket.org/genomicepidemiology/resfinder_db
     cd resfinder_db || exit 1
-    python3 INSTALL.py
+    python3 INSTALL.py #&> "$LOG_DIR"/resfinder_db.log
 
     if [[ "$point_mut" == true ]]; then
+        log_time "Downloading the PointFinder database into $db_dir/pointfinder_db ..."
         cd "$db_dir" || die "Can't move to DB dir $db_dir"
+        [[ -d pointfinder_db ]] && rm -r pointfinder_db
+
         git clone https://bitbucket.org/genomicepidemiology/pointfinder_db
         cd pointfinder_db || exit 1
-        python3 INSTALL.py
+        python3 INSTALL.py #&> "$LOG_DIR"/pointfinder_db.log
     fi
 fi
 
 # Move the output dir
+log_time "Moving into the output dir $outdir..."
 cd "$outdir" || die "Can't move to output dir $outdir"
 
-# Run
 log_time "Running $TOOL_NAME..."
-runstats run_resfinder.py \
+runstats $CONTAINER_PREFIX $TOOL_BINARY \
     --inputfasta "$infile" \
     --outputPath "$outdir" \
     --species "$species" \
     --min_cov "$min_cov" \
     --threshold "$min_id" \
     --db_path_res "$db_dir"/resfinder_db \
-    --db_path_point "$db_dir"/dbs/pointfinder_db \
+    --db_path_point "$db_dir"/pointfinder_db \
     $acquired_arg \
     $point_arg \
-    $more_args
+    $opts
 
-# ==============================================================================
-#                               WRAP-UP
-# ==============================================================================
-printf "\n======================================================================"
-log_time "Versions used:"
-tool_version | tee "$version_file"
-script_version | tee -a "$version_file" 
 log_time "Listing files in the output dir:"
-ls -lhd "$(realpath "$outdir")"/*
-[[ "$is_slurm" = true ]] && echo && resource_usage
-log_time "Done with script $SCRIPT_NAME"
-echo
+ls -lh
+final_reporting "$LOG_DIR"
