@@ -34,6 +34,12 @@ parser$add_argument("--header",
 parser$add_argument("--mrsd",
                     type = "character", required = FALSE, default = NULL,
                     help = "Most recent sampling date in YYYY-MM-DD format (use either --dates or --mrsd)")
+parser$add_argument("--annot",
+                    type = "character", default = NULL,
+                    help = "Input annotation file")
+parser$add_argument("--color_column",
+                    type = "character", default = NULL,
+                    help = "Name of annotation file column to color tip labels by")
 args <- parser$parse_args()
 
 tree_file <- args$tree
@@ -41,6 +47,15 @@ figure_file <- args$figure
 dates_file <- args$dates
 has_header <- args$header
 mrsd <- args$mrsd
+annot_file <- args$annot
+color_column <- args$color_column
+
+#annot_file <- "results/complete_XtuXttXta_own/metadata/pathovars.tsv"
+#color_column <- "pathovar"
+
+# CONSTANTS
+LABEL_SIZE <- 4    # Tip labels
+XLAB_SIZE <- 12    # X-axis labels (years)
 
 # Define the output file name, if needed
 if (is.null(figure_file)) {
@@ -54,6 +69,10 @@ if (is.null(figure_file)) {
 if (!is.null(dates_file)) {
   dates <- read.delim(dates_file, header = has_header)
   mrsd <- sort(dates[[2]])[length((dates[[2]]))]
+  # Only 'YYYY-MM-DD' dates will be parsed correctly by as.Date()
+  # => convert to 'YYYY-MM-DD' by adding (07)-15 (middle of the month)
+  mrsd <- ifelse(nchar(mrsd) == 4, paste0(mrsd, "-07-01"), mrsd)
+  mrsd <- ifelse(nchar(mrsd) == 7, paste0(mrsd, "-15"), mrsd)
 }
 if (is.null(mrsd)) stop("No most recent sample date, use --dates or --mrsd")
 
@@ -74,21 +93,28 @@ if (tree_file_ext == "nex") {
   tree <- treeio::read.tree(tree_file)
 }
 
-# Make the plot
-p <- ggtree(tree, layout = "rectangular", mrsd = mrsd) +
-  geom_tiplab(size = 4, color = "grey50") +
+# Read the annotation
+if (!is.null(annot_file)) annot <- read.delim(annot_file)
+
+# Plot the tree
+p <- ggtree(tree, layout = "rectangular", mrsd = mrsd)
+if (!is.null(annot_file)) p <- p %<+% annot
+p <- p +
+  geom_tiplab(aes_string(color = color_column),
+              align = TRUE, linesize= 0, size = LABEL_SIZE) +
   geom_rootedge(rootedge = sum(tree$edge.length) / 50) +
   coord_cartesian(clip = "off") +
-  scale_x_continuous(n.breaks = 8) +
+  scale_x_continuous(n.breaks = 8, labels = scales::comma) +
   theme_tree2() +
-  theme(plot.margin = margin(0.2, 3, 0.2, 0.2, "cm"),
-        axis.text.x = element_text(size = 13, color = "grey50"),
+  theme(plot.margin = margin(0.2, 3, 0.2, 0.75, "cm"),
+        axis.text.x = element_text(size = XLAB_SIZE, color = "grey50"),
         axis.line.x.bottom = element_line(color = "grey50"),
         axis.ticks.x.bottom = element_blank(),
-        panel.grid.major.x = element_line(linetype = "longdash"))
+        panel.grid.major.x = element_line(linetype = "longdash"),
+        legend.position = "top")
 
 # Save the plot to file
-ggsave(figure_file, p, width = 6, height = 6, dpi = "retina")
+ggsave(figure_file, p, width = 8, height = 8, dpi = "retina")
 
 
 # WRAP UP ----------------------------------------------------------------------
