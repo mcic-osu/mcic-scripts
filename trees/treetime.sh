@@ -156,6 +156,7 @@ load_env "$conda_path" "$container_path" "$dl_container"
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 [[ -n $tree ]] && tree_arg="--tree $tree"
 [[ -n $clock_rate ]] && clock_rate_arg="--clock-rate $clock_rate"
+file_id=$(basename "${infile%.*}")
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -186,6 +187,8 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
     --outdir "$outdir" \
     --confidence \
     --covariation \
+    --tip-labels \
+    --plot-tree "$outdir"/"$file_id".png \
     $opts
 
 #? TreeTime options:
