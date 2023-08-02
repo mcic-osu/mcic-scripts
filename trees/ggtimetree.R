@@ -42,6 +42,7 @@ parser$add_argument("--color_column",
                     help = "Name of annotation file column to color tip labels by")
 args <- parser$parse_args()
 
+# Save args from args list into separate variables
 tree_file <- args$tree
 figure_file <- args$figure
 dates_file <- args$dates
@@ -50,10 +51,7 @@ mrsd <- args$mrsd
 annot_file <- args$annot
 color_column <- args$color_column
 
-#annot_file <- "results/complete_XtuXttXta_own/metadata/pathovars.tsv"
-#color_column <- "pathovar"
-
-# CONSTANTS
+# Constants
 LABEL_SIZE <- 4    # Tip labels
 XLAB_SIZE <- 12    # X-axis labels (years)
 
@@ -87,8 +85,9 @@ message("# Output figure file:       ", figure_file, "\n")
 # PLOT THE TREE ----------------------------------------------------------------
 # Read the tree
 tree_file_ext <- tools::file_ext(tree_file)
-if (tree_file_ext == "nex") {
-  tree <- treeio::read.nexus(tree_file)
+if (tree_file_ext %in% c("nex", "nexus")) {
+  #tree <- treeio::read.nexus(tree_file) # Failed with treetime-tree
+  tree <- ape::read.nexus(tree_file)
 } else {
   tree <- treeio::read.tree(tree_file)
 }
