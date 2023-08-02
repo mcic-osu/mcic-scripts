@@ -85,7 +85,7 @@ fi
 
 # WRAP UP ----------------------------------------------------------------------
 echo -e "\n## Listing the input and output file:"
-ls -lh "$gff" "$bed"
+ls -lh "$infile" "$bed"
 echo -e "\n## Done with script gff2bed.sh"
 date
 echo
