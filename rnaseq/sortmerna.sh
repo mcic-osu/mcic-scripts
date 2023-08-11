@@ -52,7 +52,7 @@ script_help() {
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage:"
-    echo "      sbatch $0 data/S1_R1.fastq.gz -o results/sortmerna"
+    echo "      sbatch $0 -i data/S1_R1.fastq.gz -o results/sortmerna"
     echo "  - Loop:"
     echo "      for R1 in data/fastq/*R1.fastq.gz; do"
     echo "          sbatch $0 -i \$R1 -o results/sortmerna"
@@ -216,12 +216,15 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
+# Remove kvdb dir if it already exists (or SortMeRNA will explainA)
+[[ -d "$outdir_sample"/kvdb ]] && rm -rf "$outdir_sample"/kvdb
+
 # Clone sortmerna repo to get db FASTA files
-if [[ ! -f "$ref_18s" && ! -f "$ref_28s" ]]; then
+if [[ ! -f "$ref_18s" || ! -f "$ref_28s" ]]; then
     log_time "Cloning SortMeRNA repo..."
     n_seconds=$(( RANDOM % 50 + 1 ))
     sleep "$n_seconds"s # Sleep for a while so git doesn't error when running this multiple times in parallel
-    [[ ! -f "$ref_18s" && ! -f "$ref_28s" ]] && git clone https://github.com/biocore/sortmerna "$repo_dir"
+    git clone https://github.com/biocore/sortmerna "$repo_dir"
 fi
 # Check that db files are there
 [[ ! -f "$ref_18s" ]] && die "18s reference FASTA file $ref_18s not found"
@@ -249,12 +252,14 @@ if [[ "$deinterleave" = true ]]; then
     log_time "Deinterleaving mapped reads..."
     reformat.sh \
         in="$out_mapped_raw".fq.gz \
-        out1="$R1_mapped" out2="$R2_mapped"
+        out1="$R1_mapped" out2="$R2_mapped" \
+        overwrite=true
 
     log_time "Deinterleaving unmapped reads..."
     reformat.sh \
         in="$out_unmapped_raw".fq.gz \
-        out1="$R1_unmapped" out2="$R2_unmapped"
+        out1="$R1_unmapped" out2="$R2_unmapped" \
+        overwrite=true
     echo
 else
     # Just move the files, if wanting to keep them interleaved
