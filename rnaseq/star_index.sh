@@ -1,48 +1,77 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
+#SBATCH --time=2:00:00
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
+#SBATCH --mail-type=FAIL
 #SBATCH --job-name=star_index
 #SBATCH --output=slurm-star_index-%j.out
 
 # ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
+# Constants - generic
+DESCRIPTION="Index a genome or transcriptome with STAR"
+SCRIPT_VERSION="2023-08-13"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+TOOL_BINARY=STAR
+TOOL_NAME=STAR
+TOOL_DOCS="https://github.com/alexdobin/STAR, https://github.com/alexdobin/STAR/blob/master/doc/STARmanual.pdf"
+VERSION_COMMAND="$TOOL_BINARY --version"
+
+# Defaults - generics
+env=conda                           # Use a 'conda' env or a Singularity 'container'
+conda_path=/fs/project/PAS0471/jelmer/conda/star
+container_path=
+container_url=
+dl_container=false
+container_dir="$HOME/containers"
+strict_bash=true
+
+# Defaults - tool parameters
+index_size="auto"
+mem_bytes=4000000000
+
+# ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-# Help function
-Print_help() {
+script_help() {
+    echo "                          $0"
+    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
+    echo "        =============================================================="
+    echo "DESCRIPTION:"
+    echo "  $DESCRIPTION"
     echo
-    echo "======================================================================"
-    echo "                            $0"
-    echo "               INDEX A GENOME OR TRANSCRIPTOME WITH STAR"
-    echo "======================================================================"
-    echo
-    echo "USAGE:"
-    echo "  sbatch $0 -i <input-FASTA> -o <output-dir> [...]"
-    echo "  bash $0 -h"
+    echo "USAGE / EXAMPLE COMMANDS:"
+    echo "  - Basic usage:"
+    echo "      sbatch $0 -i data/ref/genome.fa --annot data/ref/annotation.gtf -o results/star_index"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--fasta      <file>  Input FASTA file"
-    echo "  -o/--outdir     <dir>   Output dir for index files (will be created if needed)"
+    echo "  -i/--infile         <file>  Input file: a nucleotide FASTA file with a genome or transcriptome assembly"
+    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --annot         <file>  Reference annotation (GFF/GFF3/GTF) file (GTF preferred)  [default: no annotation file, but this is not recommended]"
-    echo "  --index_size    <int>   Index size                                  [default: 'auto' => automatically determined from genome size]"
-    echo "  --read_len      <int>   Read length (only applies with --annot)     [default: '150' (bp)]"
-    echo "  --overhang      <int>   Overhang (only applies with --annot)        [default: 'auto' => read length minus 1]"
-    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to STAR"
+    echo "  --annot             <file>  Reference annotation (GFF/GFF3/GTF) file (GTF preferred)  [default: no annotation file, but this is not recommended]"
+    echo "  --index_size        <int>   Index size                              [default: $index_size => automatically determined from genome size]"
+    echo "  --read_len          <int>   Read length (only applies with --annot) [default: unset]"
+    echo "                              This will determine the overhang length, which is by default 100-1 = 99 bp."
+    echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --debug                 Run the script in debug mode (print all code)"
-    echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for STAR and exit"
-    echo "  -v/--version            Print the version of STAR and exit"
-    echo
-    echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i refdata/my_genome.fa -o refdata/star_index -a refdata/my_genome.gff"
+    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
+    echo "                                (NOTE: If no default '--container_url' is listed below,"
+    echo "                                 you'll have to provide one in order to run the script with a container.)"
+    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
+    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
+    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
+    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
+    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
+    echo "  --no_strict                 Don't use strict Bash settings ('set -euo pipefail') -- can be useful for troubleshooting"
+    echo "  -h/--help                   Print this help message and exit"
+    echo "  -v                          Print the version of this script and exit"
+    echo "  --version                   Print the version of $TOOL_NAME and exit"
     echo
     echo "NOTES:"
     echo "  The script will check how much memory has been allocated to the SLURM job (default: 64GB),"
@@ -50,256 +79,155 @@ Print_help() {
     echo "  When allocating more memory to the SLURM job,"
     echo "  wich can be necessary for large genomes, this will therefore be passed to STAR as well."
     echo
-    echo "SOFTWARE DOCUMENTATION:"
-    echo "  - https://github.com/alexdobin/STAR"
-    echo "  - https://github.com/alexdobin/STAR/blob/master/doc/STARmanual.pdf"
+    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
 }
 
-# Load software
-Load_software() {
-    set +u
-    module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    module load miniconda3/4.12.0-py39
-    source activate /fs/project/PAS0471/jelmer/conda/star-2.7.10a  # NOTE: This env includes samtools
-    set -u
-}
-
-# Print version
-Print_version() {
-    set +e
-    Load_software
-    STAR --version
-    set -e
-}
-
-# Print help for the focal program
-Print_help_program() {
-    Load_software
-    STAR --help
-}
-
-# Print SLURM job resource usage info
-Resource_usage() {
-    echo
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
-    echo
-}
-
-# Print SLURM job requested resources
-Print_resources() {
-    set +u
-    echo "# SLURM job information:"
-    echo "Account (project):    $SLURM_JOB_ACCOUNT"
-    echo "Job ID:               $SLURM_JOB_ID"
-    echo "Job name:             $SLURM_JOB_NAME"
-    echo "Memory (per node):    $SLURM_MEM_PER_NODE"
-    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
-    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
-    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
-    echo "======================================================================"
-    echo
-    set -u
-}
-
-# Set the number of threads/CPUs
-Set_threads() {
-    set +u
-    if [[ "$slurm" = true ]]; then
-        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-            threads="$SLURM_CPUS_PER_TASK"
-        elif [[ -n "$SLURM_NTASKS" ]]; then
-            threads="$SLURM_NTASKS"
-        else 
-            echo "WARNING: Can't detect nr of threads, setting to 1"
-            threads=1
-        fi
+# Function to source the script with Bash functions
+source_function_script() {
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$IS_SLURM" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
     else
-        threads=1
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
     fi
-    set -u
+    function_script=$(realpath "$script_dir"/../dev/"$(basename "$FUNCTION_SCRIPT_URL")")
+    # Download the function script if needed, then source it
+    if [[ ! -f "$function_script" ]]; then
+        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
+        function_script=$(basename "$FUNCTION_SCRIPT_URL")
+        wget "$FUNCTION_SCRIPT_URL" -O "$function_script"
+    fi
+    source "$function_script"
 }
 
-# Resource usage information
-Time() {
-    /usr/bin/time -f \
-        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
-        "$@"
-}   
-
-# Exit upon error with a message
-Die() {
-    error_message=${1}
-    error_args=${2-none}
-    
-    echo >&2
-    echo "=====================================================================" >&2
-    printf "$0: ERROR: %s\n" "$error_message" >&2
-    echo -e "\nFor help, run this script with the '-h' option" >&2
-    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
-    if [[ "$error_args" != "none" ]]; then
-        echo -e "\nArguments passed to the script:" >&2
-        echo "$error_args" >&2
-    fi
-    echo -e "\nEXITING..." >&2
-    echo "=====================================================================" >&2
-    echo >&2
-    exit 1
-}
-
-
-# ==============================================================================
-#                          CONSTANTS AND DEFAULTS
-# ==============================================================================
-# Option defaults
-index_size="auto"
-overhang="auto"
-read_len=150
-mem_bytes=4000000000
-
-debug=false
-slurm=true
-
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-# Placeholder defaults
-fasta=""
-outdir=""
-annot=""
-more_args=""
+# Initiate variables
+infile=
+annot= && annot_opt=
+read_len= && overhang_opt=
+outdir=
+opts=
+version_only=false
+threads=
 
 # Parse command-line args
-all_args="$*"
-
+all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --fasta )      shift && fasta=$1 ;;
+        -i | --infile )     shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
         --annot )           shift && annot=$1 ;;
         --index_size )      shift && index_size=$1 ;;
         --read_len )        shift && read_len=$1 ;;
-        --overhang )        shift && overhang=$1 ;;
-        --more_args )       shift && more_args=$1 ;;
-        -v | --version )    Print_version; exit 0 ;;
-        -h )                Print_help; exit 0 ;;
-        --help )            Print_help_program; exit 0;;
-        --debug )           debug=true ;;
-        * )                 Die "Invalid option $1" "$all_args" ;;
+        --opts )            shift && opts=$1 ;;
+        --env )             shift && env=$1 ;;
+        --no_strict )       strict_bash=false ;;
+        --dl_container )    dl_container=true ;;
+        --container_dir )   shift && container_dir=$1 ;;
+        --container_url )   shift && container_url=$1 && dl_container=true ;;
+        -h | --help )       script_help; exit 0 ;;
+        -v )                script_version; exit 0 ;;
+        --version )         version_only=true ;;
+        * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
 done
 
 # ==============================================================================
-#                          OTHER SETUP
+#                          INFRASTRUCTURE SETUP
 # ==============================================================================
-# Bash script settings
-set -euo pipefail
+# Strict Bash settings
+[[ "$strict_bash" == true ]] && set -euo pipefail
 
-# In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
+# Load software
+load_env "$conda_path" "$container_path" "$dl_container"
+[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
 
-# Check if this is a SLURM job
-[[ -z "$SLURM_JOB_ID" ]] && slurm=false
+# Check options provided to the script
+[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
+[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
+[[ -n "$annot" && ! -f "$annot" ]] && die "Annotation file $annot does not exist" "$all_opts"
 
-# Load software and set nr of threads
-Load_software
-Set_threads
+# Define outputs and final ops based on script parameters
+LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+[[ "$IS_SLURM" == true ]] && mem_bytes=$((SLURM_MEM_PER_NODE * 1000000))
+[[ -n "$annot" ]] && annot_opt="--sjdbGTFfile $annot"
 
-# Determine memory
-[[ "$slurm" = true ]] && mem_bytes=$((SLURM_MEM_PER_NODE * 1000000))
-
-# Check input
-[[ "$fasta" = "" ]] && Die "Please specify an input file with -i/--fasta" "$all_args"
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
-[[ ! -f "$fasta" ]] && Die "Input FASTA file $fasta does not exist"
-[[ "$annot" != "" ]] && [[ ! -f "$annot" ]] && Die "Input annotation file $annot does not exist"
-
-# Report - part I
+# ==============================================================================
+#                         REPORT PARSED OPTIONS
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "                    STARTING SCRIPT STAR_INDEX.SH"
-date
-echo "=========================================================================="
-echo "All arguments to this script:     $all_args"
-echo "Input FASTA file:                 $fasta"
-echo "Output dir:                       $outdir"
-echo "Number of threads/cores:          $threads"
-[[ "$annot" != "" ]] && echo "Read length:                      $read_len"
-[[ "$annot" != "" ]] && echo "Input annotation file:                   $annot"
-[[ $more_args != "" ]] && echo "Other arguments for STAR:         $more_args"
-echo
-echo "Listing the input file(s):"
-ls -lh "$fasta"
-echo "=========================================================================="
-
+echo "All options passed to this script:        $all_opts"
+echo "Input assembly FASTA:                     $infile"
+echo "Output dir:                               $outdir"
+[[ -n "$annot" ]] && echo "Input annotation file:                    $annot"
+[[ -n "$read_len" ]] && echo "Read length (for overhang size):                              $read_len"
+[[ "$index_size" != "auto" ]] && echo "Index size:                               $index_size"
+[[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
+log_time "Listing the input file(s):"
+ls -lh "$infile"
+[[ -n "$annot" ]] && ls -lh "$annot"
+set_threads "$IS_SLURM"
+[[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Create the output directory
-mkdir -pv "$outdir"/logs
-
 # STAR doesn't accept zipped FASTA files -- unzip if needed
-if [[ $fasta = *gz ]]; then
-    fasta_unzip=${fasta/.gz/}
-    if [[ ! -f $fasta_unzip ]]; then
-        echo "# Unzipping gzipped FASTA file..."
-        gunzip -c "$fasta" > "$fasta_unzip"
+if [[ $infile = *gz ]]; then
+    infile_unzip=${infile/.gz/}
+    if [[ ! -f $infile_unzip ]]; then
+        log_time "Unzipping the currently gzipped FASTA file..."
+        gunzip -c "$infile" > "$infile_unzip"
     else
-        echo "# Unzipped version of the FASTA file already exists:"
-        ls -lh "$fasta_unzip"
+        log_time "Using unzipped version of the FASTA file"
+        ls -lh "$infile_unzip"
     fi
-    fasta="$fasta_unzip"
+    infile="$infile_unzip"
 fi
 
 # Determine index size
-if [ "$index_size" = "auto" ]; then
-    echo -e "\n# Automatically determining the index size..."
-    genome_size=$(grep -v "^>" "$fasta" | wc -c)
+if [[ "$index_size" == "auto" ]]; then
+    log_time "Automatically determining the index size..."
+    genome_size=$(grep -v "^>" "$infile" | wc -c)
     index_size=$(python -c "import math; print(math.floor(math.log($genome_size, 2)/2 -1))")
-    echo "Genome size (autom. determined):  $genome_size"
-    echo "Index size (autom. determined):   $index_size"
-else
-    echo "Index size:                       $index_size"
+    log_time "Genome size (autom. determined):  $genome_size"
+    log_time "Index size (autom. determined):   $index_size"
 fi
 
-# If a GFF file is provided, build the appropriate argument for STAR
-if [ "$annot" != "" ]; then
+# If a GTF/GFF file is provided, build the appropriate argument for STAR
+if [[ -n "$read_len" ]]; then
     # Overhang length should be read length minus 1 - only if annot is included
-    [[ $overhang = "auto" ]] && overhang=$(( read_len - 1 ))
-    annot_arg="--sjdbGTFfile $annot --sjdbGTFtagExonParentTranscript Parent --sjdbOverhang $overhang"
-    echo "Overhang:                     $overhang"
-else
-    annot_arg=""
+    overhang=$(( read_len - 1 ))
+    overhang_opt="--sjdbOverhang $overhang"
+    log_time "Based on read length $read_len, setting overhang to: $overhang"
 fi
 
-# Report
-echo "=========================================================================="
-# Print reserved resources
-[[ "$slurm" = true ]] && Print_resources
-
-# Run STAR
-echo -e "\n# Now indexing with STAR...."
-Time STAR \
+log_time "Running $TOOL_NAME..."
+runstats $CONTAINER_PREFIX $TOOL_BINARY \
     --runMode genomeGenerate \
     --limitGenomeGenerateRAM "$mem_bytes" \
     --genomeDir "$outdir" \
-    --genomeFastaFiles "$fasta" \
+    --genomeFastaFiles "$infile" \
     --genomeSAindexNbases "$index_size" \
     --runThreadN "$threads" \
-    ${annot_arg}
+    $annot_opt \
+    $overhang_opt \
+    $opts
 
+#? 2023-08-13: Removed this option: '--sjdbGTFtagExonParentTranscript Parent'
 
-# ==============================================================================
-#                               WRAP-UP
-# ==============================================================================
-echo
-echo "========================================================================="
-echo "# Version used:"
-Print_version | tee "$outdir"/logs/version.txt
-echo -e "\n# Listing files in the output dir:"
-ls -lhd "$PWD"/"$outdir"/*
-[[ "$slurm" = true ]] && Resource_usage
-echo "# Done with script"
-date
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/*
+final_reporting "$LOG_DIR"
