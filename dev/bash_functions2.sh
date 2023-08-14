@@ -3,6 +3,24 @@
 # Constants
 OSC_MODULE=miniconda3
 
+# Defaults
+[[ -z "$env" ]] && env=conda
+[[ -z "$REPO_URL" ]] && REPO_URL=repo-URL
+[[ -z "$SCRIPT_NAME" ]] && SCRIPT_NAME=script-name
+[[ -z "$SCRIPT_VERSION" ]] && SCRIPT_VERSION=script-version
+[[ -z "$SCRIPT_AUTHOR" ]] && SCRIPT_AUTHOR=script-author
+[[ -z "$TOOL_NAME" ]] && TOOL_NAME=tool-name
+
+# Variables that should be loaded in the script calling these functions
+# conda_path        Absolute path to a Conda environment dir
+# container_url
+# container_path
+# TOOL_BINARY
+# REPO_URL
+# SCRIPT_NAME
+# SCRIPT_VERSION
+# SCRIPT_AUTHOR
+
 # Load Conda or Singularity env
 load_env() {
     if [[ "$env" == "conda" ]]; then
