@@ -1,351 +1,284 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=5:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
+#SBATCH --mail-type=FAIL
 #SBATCH --job-name=sortmerna
 #SBATCH --output=slurm-sortmerna-%j.out
 
 # ==============================================================================
-#                                   FUNCTIONS
-# ==============================================================================
-# Help function
-Print_help() {
-    echo
-    echo "======================================================================"
-    echo "                            $0"
-    echo " Run SortMeRNA to sort RNAseq reads into rRNA-derived and other reads"
-    echo "======================================================================"
-    echo
-    echo "USAGE:"
-    echo "  sbatch $0 -i <input R1 FASTQ file> -o <output dir> [...]"
-    echo "  bash $0 -h"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--R1         <file>  Input R1 FASTQ file (name of R2 will be inferred)"
-    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --repo                  Directory with SortMeRNA repo (for reference FASTA files)  [default: download repo]"
-    echo "  --leave-interleaved     Don't 'de-interleave' output FASTQ file                    [default: de-interleave]"
-    echo "  --more-args     <str>   Quoted string with additional argument(s) to pass to SortmeRNA"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                 Run the script in debug mode (print all code)"
-    echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for SortmeRNA and exit"
-    echo "  -v/--version            Print the version of SortmeRNA and exit"
-    echo
-    echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i data/S1_R1.fastq.gz -o results/sortmerna"
-    echo
-    echo "OUTPUT:"
-    echo "  - Aligned sequences will be placed in <output-dir>/mapped"
-    echo "  - Non-aligned sequences will be placed in <output-dir>/unmapped"
-    echo "Output sequence files will keep sample identifiers,"
-    echo "so the script can be run for multiple samples using the same <output-dir> (-o)"
-    echo
-    echo "SOFTWARE DOCUMENTATION:"
-    echo "  - Docs: https://github.com/biocore/sortmerna"
-    echo "  - Paper: https://academic.oup.com/bioinformatics/article/28/24/3211/246053"
-    echo
-}
-
-# Load software
-Load_software() {
-    set +u
-    module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /fs/ess/PAS0471/jelmer/conda/sortmerna-env # NOTE: this env also had BBMap installed
-    set -u
-}
-
-# Print version
-Print_version() {
-    set -e
-    Load_software
-    sortmerna --version
-    set +e
-}
-
-# Print help for the focal program
-Print_help_program() {
-    Load_software
-    sortmerna --help
-}
-
-# Print SLURM job resource usage info
-Resource_usage() {
-    echo
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
-    echo
-}
-
-# Print SLURM job requested resources
-Print_resources() {
-    set +u
-    echo "# SLURM job information:"
-    echo "Account (project):    $SLURM_JOB_ACCOUNT"
-    echo "Job ID:               $SLURM_JOB_ID"
-    echo "Job name:             $SLURM_JOB_NAME"
-    echo "Memory (per node):    $SLURM_MEM_PER_NODE"
-    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
-    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
-    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
-    echo "======================================================================"
-    echo
-    set -u
-}
-
-# Set the number of threads/CPUs
-Set_threads() {
-    set +u
-    if [[ "$slurm" = true ]]; then
-        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-            threads="$SLURM_CPUS_PER_TASK"
-        elif [[ -n "$SLURM_NTASKS" ]]; then
-            threads="$SLURM_NTASKS"
-        else 
-            echo "WARNING: Can't detect nr of threads, setting to 1"
-            threads=1
-        fi
-    else
-        threads=1
-    fi
-    set -u
-}
-
-# Resource usage information
-Time() {
-    /usr/bin/time -f \
-        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
-        "$@"
-}   
-
-# Exit upon error with a message
-Die() {
-    error_message=${1}
-    error_args=${2-none}
-    
-    echo
-    echo "====================================================================="
-    printf "$0: ERROR: %s\n" "$error_message" >&2
-    echo -e "\nFor help, run this script with the '-h' option"
-    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'"
-    if [[ "$error_args" != "none" ]]; then
-        echo -e "\nArguments passed to the script:"
-        echo "$error_args"
-    fi
-    echo -e "\nEXITING..." >&2
-    echo "====================================================================="
-    echo
-    exit 1
-}
-
-
-# ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-# Option defaults
+# Constants - generic
+DESCRIPTION="Run SortMeRNA to separate paired-end RNAseq reads into rRNA-derived and other reads
+Separate pairs of FASTQ files with reads classified as rRNA (mapped) and reads not classified
+as rRNA (unmapped)"
+SCRIPT_VERSION="2023-08-10"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+TOOL_BINARY=sortmerna
+TOOL_NAME=SortMeRNA
+TOOL_DOCS=https://github.com/biocore/sortmerna
+VERSION_COMMAND="$TOOL_BINARY --version"
+
+# Defaults - generics
+env=conda                           # Use a 'conda' env or a Singularity 'container'
+conda_path=/fs/ess/PAS0471/jelmer/conda/sortmerna-env
+container_path=
+container_url=
+dl_container=false
+container_dir="$HOME/containers"
+strict_bash=true
+
+# Constants - tool parameters
+# Paths to rRNA reference files within the SortMeRNA repo dir
+R18S_PATH=data/rRNA_databases/silva-euk-18s-id95.fasta  
+R28S_PATH=data/rRNA_databases/silva-euk-28s-id98.fasta
+
+# Defaults - tool parameters
 deinterleave=true
 
-debug=false
-dryrun=false && e=""
-slurm=true
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
+script_help() {
+    echo "                          $0"
+    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
+    echo "        =============================================================="
+    echo "DESCRIPTION:"
+    echo "  $DESCRIPTION"
+    echo
+    echo "USAGE / EXAMPLE COMMANDS:"
+    echo "  - Basic usage:"
+    echo "      sbatch $0 -i data/S1_R1.fastq.gz -o results/sortmerna"
+    echo "  - Loop:"
+    echo "      for R1 in data/fastq/*R1.fastq.gz; do"
+    echo "          sbatch $0 -i \$R1 -o results/sortmerna"
+    echo "      done"
+    echo
+    echo "OUTPUT:"
+    echo "  - Directory '<outdir>/by_sample/<sample_id> will contain e.g. SortMeRNA DB files and log files"
+    echo "  - Directories '<outdir>/mapped' and '<outdir>/unmapped' will contain FASTQ files (for all samples)" 
+    echo
+    echo "REQUIRED OPTIONS:"
+    echo "  -i/--R1             <file>  Input R1 FASTQ file (name of R2 will be inferred)"
+    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
+    echo "                                When running this script for multiple samples (looping over samples),"
+    echo "                                you can specify a single output dir for all of them (see example above)." 
+    echo
+    echo "OTHER KEY OPTIONS:"
+    echo "  --repo              <dir>   Directory with SortMeRNA repo (with rRNA db) [default: download repo]"
+    echo "  --as_is                     Don't 'de-interleave' output FASTQ file  [default: de-interleave]"
+    echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
+    echo
+    echo "UTILITY OPTIONS:"
+    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
+    echo "                                (NOTE: If no default '--container_url' is listed below,"
+    echo "                                 you'll have to provide one in order to run the script with a container.)"
+    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
+    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
+    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
+    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
+    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
+    echo "  --no_strict                 Don't use strict Bash settings ('set -euo pipefail') -- can be useful for troubleshooting"
+    echo "  -h/--help                   Print this help message and exit"
+    echo "  -v                          Print the version of this script and exit"
+    echo "  --version                   Print the version of $TOOL_NAME and exit"
+    echo
+    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
+}
 
+# Function to source the script with Bash functions
+source_function_script() {
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$IS_SLURM" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
+    else
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
+    fi
+    function_script=$(realpath "$script_dir"/../dev/"$(basename "$FUNCTION_SCRIPT_URL")")
+    # Download the function script if needed, then source it
+    if [[ ! -f "$function_script" ]]; then
+        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
+        function_script=$(basename "$FUNCTION_SCRIPT_URL")
+        wget "$FUNCTION_SCRIPT_URL" -O "$function_script"
+    fi
+    source "$function_script"
+}
+
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-# Placeholder defaults
-R1=""
-outdir=""
-repo_dir=""
-more_args=""
+# Initiate variables
+R1=
+outdir=
+opts=
+version_only=false
+threads=
+repo_dir=
 
 # Parse command-line args
-all_args="$*"
+all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --R1 )         shift && R1=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
-        --leave-interleaved ) deinterleave=false ;;
+        --as_is )           deinterleave=false ;;
         --repo )            repo_dir=false ;;
-        --more-args )       shift && more_args=$1 ;;
-        -v | --version )    Print_version; exit 0 ;;
-        -h )                Print_help; exit 0 ;;
-        --help )            Print_help_program; exit 0;;
-        --dryrun )          dryrun=true && e="echo ";;
-        --debug )           debug=true ;;
-        * )                 Die "Invalid option $1" "$all_args" ;;
+        --opts )            shift && opts=$1 ;;
+        --env )             shift && env=$1 ;;
+        --no_strict )       strict_bash=false ;;
+        --dl_container )    dl_container=true ;;
+        --container_dir )   shift && container_dir=$1 ;;
+        --container_url )   shift && container_url=$1 && dl_container=true ;;
+        -h | --help )       script_help; exit 0 ;;
+        -v )                script_version; exit 0 ;;
+        --version )         version_only=true ;;
+        * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
 done
 
-
 # ==============================================================================
-#                          OTHER SETUP
+#                          INFRASTRUCTURE SETUP
 # ==============================================================================
-# Bash script settings
-set -euo pipefail
+# Strict Bash settings
+[[ "$strict_bash" == true ]] && set -euo pipefail
 
-# In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
+# Load software
+load_env "$conda_path" "$container_path" "$dl_container"
+[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
 
-# Check if this is a SLURM job
-[[ -z "$SLURM_JOB_ID" ]] && slurm=false
+# Check options provided to the script
+[[ -z "$R1" ]] && die "No input file specified, do so with -i/--R1" "$all_opts"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
+[[ ! -f "$R1" ]] && die "Input file $R1 does not exist"
 
-# Load software and set nr of threads
-[[ "$dryrun" = false ]] && Load_software
-Set_threads
-
+# Define outputs based on script parameters
 # Infer the name of the R2 file
-file_ext=$(basename "$R1" | sed -E 's/.*(.fasta|.fastq.gz|.fq.gz)/\1/')
+file_ext=$(basename "$R1" | sed -E 's/.*(.fastq.gz|.fq.gz)/\1/')
 R1_suffix=$(basename "$R1" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
 R2_suffix=${R1_suffix/1/2}
 R2=${R1/$R1_suffix/$R2_suffix}
-sampleID=$(basename "$R1" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
-
-# Check input
-[[ "$R1" = "" ]] && Die "Please specify an input R1 file with -i/--R1" "$all_args"
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
-[[ ! -f "$R1" ]] && Die "Input file $R1 does not exist"
-[[ ! -f "$R2" ]] && Die "Input file $R2 does not exist"
-[[ "$R1" = "$R2" ]] && Die "Input file R1 and R2 refer to the same path ($R1)"
+sample_id=$(basename "$R1" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
+[[ ! -f "$R2" ]] && die "Input file $R2 does not exist"
+[[ "$R1" == "$R2" ]] && die "Input file $R1 and $R2 are the same ($R1)"
 
 # Define output files
-outdir_full="$outdir"/"$sampleID"
-out_mapped_raw="$outdir_full"/mapped_raw/"$sampleID"
-out_unmapped_raw="$outdir_full"/unmapped_raw/"$sampleID"
+outdir_sample="$outdir"/by_sample/"$sample_id"
+LOG_DIR="$outdir_sample"/logs
+out_mapped_raw="$outdir_sample"/mapped_raw/"$sample_id"
+out_unmapped_raw="$outdir_sample"/unmapped_raw/"$sample_id"
 
-R1_mapped="$outdir"/mapped/"$sampleID""$R1_suffix".fastq.gz
-R2_mapped="$outdir"/mapped/"$sampleID""$R2_suffix".fastq.gz
-R1_unmapped="$outdir"/unmapped/"$sampleID""$R1_suffix".fastq.gz
-R2_unmapped="$outdir"/unmapped/"$sampleID""$R2_suffix".fastq.gz
+R1_mapped="$outdir"/mapped/"$sample_id""$R1_suffix".fastq.gz
+R2_mapped="$outdir"/mapped/"$sample_id""$R2_suffix".fastq.gz
+R1_unmapped="$outdir"/unmapped/"$sample_id""$R1_suffix".fastq.gz
+R2_unmapped="$outdir"/unmapped/"$sample_id""$R2_suffix".fastq.gz
 
 # Reference FASTA files (to be downloaded)
-[[ $repo_dir = "" ]] && repo_dir="$outdir"/"$sampleID"/sortmerna_repo
-ref_18s="$repo_dir"/data/rRNA_databases/silva-euk-18s-id95.fasta
-ref_28s="$repo_dir"/data/rRNA_databases/silva-euk-28s-id98.fasta
+[[ -z $repo_dir ]] && repo_dir="$outdir_sample"/sortmerna_repo
+ref_18s="$repo_dir"/"$R18S_PATH"
+ref_28s="$repo_dir"/"$R28S_PATH"
 
-# Report
-echo
+# Make output dirs
+mkdir -p "$LOG_DIR" "$repo_dir" \
+    "$outdir"/mapped "$outdir"/unmapped \
+    "$outdir_sample"/mapped_raw "$outdir_sample"/unmapped_raw 
+
+# ==============================================================================
+#                         REPORT PARSED OPTIONS
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "                 STARTING SCRIPT SORTMERNA.SH"
-date
-echo "=========================================================================="
-echo "All arguments to this script:     $all_args"
-echo "R1 FASTQ file:                    $R1"
-echo "Output dir:                       $outdir"
-echo
-echo "SortMeRNA repo dir:               $repo_dir"
-echo "Deinterleave FASTQ files:         $deinterleave"
-echo "18S reference file:               $ref_18s"
-echo "28S reference file:               $ref_28s"
-echo "R2 FASTQ file:                    $R2"
-[[ $more_args != "" ]] && echo "Other arguments for SortMeRNA:    $more_args"
-echo "Number of threads/cores:          $threads"
-echo "Listing the input file(s):"
+echo "All options passed to this script:        $all_opts"
+echo "R1 input FASTQ:                           $R1"
+echo "R2 input FASTQ:                           $R2"
+echo "Output dir:                               $outdir"
+echo "SortMeRNA repo dir:                       $repo_dir"
+echo "Deinterleave FASTQ files:                 $deinterleave"
+echo "18S reference file:                       $ref_18s"
+echo "28S reference file:                       $ref_28s"
+[[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
+log_time "Listing the input file(s):"
 ls -lh "$R1" "$R2"
-[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
-echo "=========================================================================="
-
-# Print reserved resources
-[[ "$slurm" = true ]] && Print_resources
-
+set_threads "$IS_SLURM"
+[[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-if [[ "$dryrun" = false ]]; then
+# Remove kvdb dir if it already exists (or SortMeRNA will explainA)
+[[ -d "$outdir_sample"/kvdb ]] && rm -rf "$outdir_sample"/kvdb
 
-    # Make output dirs if needed
-    mkdir -p "$outdir"/mapped "$outdir"/unmapped \
-        "$outdir_full"/mapped_raw "$outdir_full"/unmapped_raw \
-        "$outdir"/logs
+# Clone sortmerna repo to get db FASTA files
+if [[ ! -f "$ref_18s" || ! -f "$ref_28s" ]]; then
+    log_time "Cloning SortMeRNA repo..."
+    n_seconds=$(( RANDOM % 50 + 1 ))
+    sleep "$n_seconds"s # Sleep for a while so git doesn't error when running this multiple times in parallel
+    git clone https://github.com/biocore/sortmerna "$repo_dir"
+fi
+# Check that db files are there
+[[ ! -f "$ref_18s" ]] && die "18s reference FASTA file $ref_18s not found"
+[[ ! -f "$ref_28s" ]] && die "28s reference FASTA file $ref_28s not found"
 
-    # GET DATABASE FILES -----------------------------------------------------------
-    # Clone sortmerna repo to get db FASTA files
-    if [[ ! -f "$ref_18s" && ! -f "$ref_28s" ]]; then
-        n_seconds=$(( RANDOM % 50 + 1 ))
-        sleep "$n_seconds"s # Sleep for a while so git doesn't error when running this multiple times in parallel
-        
-        mkdir -p "$repo_dir"
-        echo "# Cloning sortmerna repo..."
-        [[ ! -f "$ref_18s" && ! -f "$ref_28s" ]] && git clone https://github.com/biocore/sortmerna "$repo_dir"
-    fi
+# Run SortMeRNA
+log_time "Running $TOOL_NAME..."
+runstats $CONTAINER_PREFIX $TOOL_BINARY \
+    --ref "$ref_18s" \
+    --ref "$ref_28s" \
+    --reads "$R1" \
+    --reads "$R2" \
+    --fastx \
+    --aligned "$out_mapped_raw" \
+    --other "$out_unmapped_raw" \
+    --workdir "$outdir_sample" \
+    --paired_in \
+    --threads "$threads" \
+    $opts
 
-    # Check that db files are there
-    [[ ! -f "$ref_18s" ]] && Die "18s reference FASTA file $ref_18s not found"
-    [[ ! -f "$ref_28s" ]] && Die "28s reference FASTA file $ref_28s not found"
+#?--paired_in Flags the paired-end reads as Aligned, when either of them is Aligned.
 
-    # RUN SortMeRNA ----------------------------------------------------------------
-    echo -e "# Starting SortMeRNA run....\n"
-    Time sortmerna \
-        --ref "$ref_18s" \
-        --ref "$ref_28s" \
-        --reads "$R1" \
-        --reads "$R2" \
-        --fastx \
-        --aligned "$out_mapped_raw" \
-        --other "$out_unmapped_raw" \
-        --workdir "$outdir_full" \
-        --paired_in \
-        --threads "$threads" \
-        $more_args
+# De-interleave the output
+if [[ "$deinterleave" = true ]]; then
+    log_time "Deinterleaving mapped reads..."
+    reformat.sh \
+        in="$out_mapped_raw".fq.gz \
+        out1="$R1_mapped" out2="$R2_mapped" \
+        overwrite=true
 
-    #?--paired_in Flags the paired-end reads as Aligned, when either of them is Aligned.
-
-    # CONVERTING INTERLEAVED FASTQ BACK TO SEPARATED -------------------------------
-    if [[ "$deinterleave" = true ]]; then
-        echo -e "\n# Deinterleaving mapped reads..."
-        Time reformat.sh \
-            in="$out_mapped_raw".fq.gz \
-            out1="$R1_mapped" \
-            out2="$R2_mapped"
-
-        echo -e "\n# Deinterleaving unmapped reads..."
-        Time reformat.sh \
-            in="$out_unmapped_raw".fq.gz \
-            out1="$R1_unmapped" \
-            out2="$R2_unmapped"
-        
-        echo
-    else
-        mv -v "$out_mapped_raw".fq.gz "$outdir"/mapped
-        mv -v "$out_unmapped_raw".fq.gz "$outdir"/unmapped
-    fi
-
-    # HOUSEKEEPING -----------------------------------------------------------------
-    # Move log files to main dir
-    mv "$outdir_full"/mapped_raw/"$sampleID"*log "$outdir"/logs/
-
-    # Remove temporary files
-    rm -rv "$outdir_full"/mapped_raw "$outdir_full"/unmapped_raw
-
-    # QUANTIFY MAPPING SUCCESS -----------------------------------------------------
-    n_mapped=$(zcat "$R1_mapped" | awk '{ s++ } END{ print s/4 }')
-    n_unmapped=$(zcat "$R1_unmapped" | awk '{ s++ } END{ print s/4 }')
-    pct=$(python3 -c "print(round($n_mapped / ($n_unmapped + $n_mapped) * 100, 2))")
-    echo -e "\nNumber of reads mapped/unmapped, and % mapped:\t$sampleID\t$n_mapped\t$n_unmapped\t$pct"
-
+    log_time "Deinterleaving unmapped reads..."
+    reformat.sh \
+        in="$out_unmapped_raw".fq.gz \
+        out1="$R1_unmapped" out2="$R2_unmapped" \
+        overwrite=true
+    echo
+else
+    # Just move the files, if wanting to keep them interleaved
+    mv -v "$out_mapped_raw".fq.gz "$outdir"/mapped
+    mv -v "$out_unmapped_raw".fq.gz "$outdir"/unmapped
 fi
 
-# ==============================================================================
-#                               WRAP-UP
-# ==============================================================================
-echo
-echo "========================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing output files:"
-    [[ "$deinterleave" = true ]] && ls -lh "$R1_mapped" "$R2_mapped" "$R1_unmapped" "$R2_unmapped"
-    [[ "$slurm" = true ]] && Resource_usage
-fi
-echo "# Done with script"
-date
+# Move log files to main dir, remove temp files
+log_time "Removing temporary files..."
+mv "$outdir_sample"/mapped_raw/"$sample_id"*log "$LOG_DIR"
+rm -rv "$outdir_sample"/mapped_raw "$outdir_sample"/unmapped_raw
+
+# Quantify mapping success
+n_mapped=$(zcat "$R1_mapped" | awk '{ s++ } END{ print s/4 }')
+n_unmapped=$(zcat "$R1_unmapped" | awk '{ s++ } END{ print s/4 }')
+pct=$(python3 -c "print(round($n_mapped / ($n_unmapped + $n_mapped) * 100, 2))")
+log_time "Number of reads mapped/unmapped, and % mapped:\t$sample_id\t$n_mapped\t$n_unmapped\t$pct"
+
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/*
+[[ "$deinterleave" = true ]] && ls -lh "$R1_mapped" "$R2_mapped" "$R1_unmapped" "$R2_unmapped"
+final_reporting "$LOG_DIR"

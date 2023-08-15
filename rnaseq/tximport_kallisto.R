@@ -2,17 +2,12 @@
 #SBATCH --account=PAS0471
 #SBATCH --time=60
 #SBATCH --mem=170G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
 #SBATCH --job-name=tximport
 #SBATCH --output=slurm-tximport-%j.out
 
-
 # DESCRIPTION ------------------------------------------------------------------
 # This script will import Kallisto files into R and create a tximport object,
-# and if metadata is provided, also a DEseq2 object
-#TODO - Also accept Salmon counts
-
+# and if metadata is provided, will also create a DEseq2 object
 
 # SET-UP -----------------------------------------------------------------------
 # Load/install packages
@@ -28,7 +23,7 @@ suppressPackageStartupMessages( {
   if (!require(rhdf5)) BiocManager::install("rhdf5")
   if (!require(DESeq2)) BiocManager::install("DESeq2")
 } )
-packages <- c("argparse", "tximport", "rhdf5", "DESeq2", "tidyverse")
+packages <- c("argparse", "tximport", "rhdf5", "DESeq2")
 pacman::p_load(char = packages, install = TRUE)
 
 # Parse arguments
@@ -72,28 +67,25 @@ message("Transcript-to-gene map file:   ", tx2gene_file)
 message("======================================================================")
 message()
 
-
-# PROCESS KALLISTO COUNTS ------------------------------------------------------
-# Create output dir
+# PROCESS THE COUNTS -----------------------------------------------------------
+# Create the output dir
 dir.create(file.path(outdir, "logs"), recursive = TRUE, showWarnings = FALSE)
 
-# Read transcript-to-gene map
-tx2gene <- read_tsv(tx2gene_file,
-                     col_names = c("GENEID", "TXNAME"),
-                     col_types = "cc") |>
-  dplyr::select(TXNAME, GENEID)
+# Read the transcript-to-gene map
+tx2gene <- read.table(tx2gene_file, col.names = c("gene_id", "tx"))
+tx2gene <- tx2gene[, c(2, 1)]
 
-# Get Kallisto files
-kallisto_files <- list.files(indir, pattern = "abundance.h5$", recursive = TRUE,
-                             full.names = TRUE)
-message("# Showing the kallisto files: (", length(kallisto_files), " total)")
-print(kallisto_files)
+# Get Kallisto file names in a vector
+infiles <- list.files(indir, pattern = "abundance.h5$",
+                      recursive = TRUE, full.names = TRUE)
+message("# Showing the input files: (", length(infiles), " total)")
+print(infiles)
 
-# Import Kallisto transcript counts --
+# Import transcript counts --
 # create gene-level count estimates normalized by library size and transcript length
 # See https://bioconductor.org/packages/devel/bioc/vignettes/tximport/inst/doc/tximport.html
 message("\n# Now importing the count files...")
-txi <- tximport(kallisto_files,
+txi <- tximport(infiles,
                 type = "kallisto",
                 tx2gene = tx2gene,
                 countsFromAbundance = "lengthScaledTPM")
@@ -107,12 +99,15 @@ saveRDS(txi, txi_out)
 
 # CREATE DESEQ OBJECT ----------------------------------------------------------
 if (!is.null(meta_file)) {
+    message("\n# Now creating the DESeq object...")
+    
     # Read metadata
-    meta <- read.delim(meta_file) |> arrange(.data[[sample_id_column]])
+    meta <- read.delim(meta_file)
+    meta <- meta[order(meta[[sample_id_column]]), ]
     rownames(meta) <- meta[[sample_id_column]]
 
     # Name Kallisto files according to metadata
-    names(kallisto_files) <- meta[[sample_id_column]]
+    names(infiles) <- meta[[sample_id_column]]
 
     # Check that sample names are the same, and that samples are in the same order
     stopifnot(all(rownames(meta) == colnames(txi$counts)))
@@ -133,7 +128,7 @@ message("\n# Listing the output file(s):")
 system(paste("ls -lh", txi_out))
 if (!is.null(meta_file)) system(paste("ls -lh", dds_out))
 
-message("\n# Done with script tximport.R")
+message("\n# Done with script tximport_kallisto.R")
 Sys.time()
 message()
 sessionInfo()

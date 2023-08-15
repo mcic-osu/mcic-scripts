@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=3:00:00
+#SBATCH --time=8:00:00
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=48G
 #SBATCH --mail-type=FAIL
@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Construct a phylogenetic tree from a FASTA alignment using IQ-tree"
-SCRIPT_VERSION="2023-07-25"
+SCRIPT_VERSION="2023-07-31"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -33,6 +33,8 @@ container_dir="$HOME/containers"
 auto_cores=false                    # Don't use IQ-tree's 'AUTO' core mode
 ufboot= && boot_arg=                # No bootstrapping by default
 model= && model_arg=                # Use IQ-tree's default model (MFP => Pick model)
+modelset= && modelset_arg=          # Restrict ModelFinder model search to a set of models
+fast=false && fast_arg=             # Run IQ-Tree with "--fast" option
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -58,10 +60,12 @@ script_help() {
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --out_prefix        <str>   Output file prefix                          [default: basename of input file]"
-    echo "  --model             <str>   Mutation model                              [default: IQ-tree's default = MFP = Pick model]"
-    echo "  --ufboot            <int>   Nr of ultrafast bootstraps                  [default: no bootstrapping]"
-    echo "  --auto_cores                Use IQ-tree's 'AUTO' core mode              [default: use nr of cores for batch job]"
+    echo "  --out_prefix        <str>   Output file prefix                      [default: basename of input file]"
+    echo "  --fast                      Run IQ-Tree in fast mode                [default: $fast]"    
+    echo "  --model             <str>   Mutation model                          [default: IQ-tree's default = MFP = Pick model]"
+    echo "  --modelset          <str>   Restrict ModelFinder model search to a set of models [default: off]"
+    echo "  --ufboot            <int>   Nr of ultrafast bootstraps              [default: no bootstrapping]"
+    echo "  --auto_cores                Use IQ-tree's 'AUTO' core mode           [default: use nr of cores for batch job]"
     echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -122,9 +126,11 @@ while [ "$1" != "" ]; do
         -i | --infile )     shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
         --out_prefix )      shift && out_prefix=$1 ;;
+        --modelset )        shift && modelset=$1 ;;
         --model )           shift && model=$1 ;;
         --ufboot )          shift && ufboot=$1 ;;
         --auto_cores )      auto_cores=true ;;
+        --fast )            fast=true ;;
         --opts )            shift && opts=$1 ;;
         --env )             shift && env=$1 ;;
         --dl_container )    dl_container=true ;;
@@ -159,6 +165,7 @@ mem_gb=$((8*(SLURM_MEM_PER_NODE / 1000)/10))G   # 80% of available memory in GB
 [[ "$auto_cores" == true ]] && threads="AUTO"
 [[ -n "$ufboot" ]] && boot_arg="--ufboot $ufboot"
 [[ -n "$model" ]] && model_arg="-m $model"
+[[ -n "$modelset" ]] && modelset_arg="-mset $modelset"
 [[ -z "$out_prefix" ]] && out_prefix=$(basename "${infile%.*}")
 
 # ==============================================================================
@@ -170,7 +177,9 @@ echo "All options passed to this script:            $all_opts"
 echo "Input FASTA file:                             $infile"
 echo "Output dir:                                   $outdir"
 echo "Output file prefix:                           $out_prefix"
-echo "Use IQ-tree's 'AUTO' core mode:               $auto_cores"
+echo "Run IQ-Tree in fast mode:                     $fast"
+echo "Use IQ-Tree's 'AUTO' core mode:               $auto_cores"
+[[ -n "$modelset" ]] && echo "Model set for MFP:                            $modelset"
 [[ -n "$model" ]] && echo "Model:                                        $model"
 [[ -n "$ufboot" ]] && echo "Number of ultrafast bootstraps:               $ufboot"
 [[ -n $opts ]] && echo "Additional options for $TOOL_NAME:            $opts"
@@ -187,6 +196,8 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
     -s "$infile" \
     --prefix "$outdir"/"$out_prefix" \
     $model_arg \
+    $modelset_arg \
+    $fast_arg \
     $boot_arg \
     -nt "$threads" -ntmax "$threads" -mem "$mem_gb" \
     -redo \

@@ -60,6 +60,8 @@ script_help() {
     echo "      sbatch $0 --accession_file metadata/accession.txt -o results/refgenomes"
     echo "  - Also download annotation and proteome:"
     echo "      sbatch $0 --taxon 'human' --include 'genome,protein,gff3' -o results"
+    echo "  - Download a single accession:"
+    echo "      sbatch $0 --accession GCA_000001405.29 -o data/ref --assembly_source all"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
@@ -190,7 +192,7 @@ if [[ -n "$accession_file" ]]; then
     [[ ! -f "$accession_file" ]] && die "Input file $accession_file does not exist"
     data_arg=(accession --inputfile "$accession_file")
 elif [[ -n "$accession" ]]; then
-    data_arg=(accession --accession "$accession")
+    data_arg=(accession "$accession")
 elif [[ -n "$taxon" ]]; then
     data_arg=(taxon "$taxon")
 else
@@ -265,6 +267,8 @@ if [[ "$move_output" == true ]]; then
         if [[ $(basename "$file") == "cds_from_genomic.fna" ]]; then
             # Make sure cds_from_genomic.fna is distinct from the genome fna
             outfile="$acc_nr"_cds.fasta
+        elif [[ $(basename "$file") == "rna.fna" ]]; then
+            outfile="$acc_nr"_rna.fasta
         else
             outfile="$acc_nr"."${file##*.}"
         fi
@@ -287,6 +291,6 @@ ls -lh "$meta_all" "$meta_sel"
 
 # Clean up
 log_time "Removing original ZIP file and NCBI's README file..."
-rm -r README.md genomes.zip ncbi_dataset
+rm -r README.md genomes.zip
 
 final_reporting "$LOG_DIR"

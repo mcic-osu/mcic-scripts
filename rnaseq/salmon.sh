@@ -1,29 +1,29 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=2:00:00
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=64G
+#SBATCH --time=1:00:00
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32G
 #SBATCH --mail-type=FAIL
-#SBATCH --job-name=star_index
-#SBATCH --output=slurm-star_index-%j.out
+#SBATCH --job-name=salmon
+#SBATCH --output=slurm-salmon-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Index a genome or transcriptome with STAR"
-SCRIPT_VERSION="2023-08-13"
+DESCRIPTION="Quantifying RNASeq reads with Salmon in alignment-based mode (i.e., with a BAM file)"
+SCRIPT_VERSION="2023-08-14"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
-TOOL_BINARY=STAR
-TOOL_NAME=STAR
-TOOL_DOCS="https://github.com/alexdobin/STAR, https://github.com/alexdobin/STAR/blob/master/doc/STARmanual.pdf"
-VERSION_COMMAND="$TOOL_BINARY --version"
+TOOL_BINARY="salmon quant"
+TOOL_NAME=Salmon
+TOOL_DOCS=https://salmon.readthedocs.io/en/latest/salmon.html
+VERSION_COMMAND="salmon --version"
 
 # Defaults - generics
 env=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/project/PAS0471/jelmer/conda/star
+conda_path=/fs/ess/PAS0471/jelmer/conda/salmon # NOTE: Also includes RSEM
 container_path=
 container_url=
 dl_container=false
@@ -31,8 +31,7 @@ container_dir="$HOME/containers"
 strict_bash=true
 
 # Defaults - tool parameters
-index_size="auto"
-mem_bytes=4000000000
+libtype=ISR
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -46,17 +45,18 @@ script_help() {
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage:"
-    echo "      sbatch $0 -i data/ref/genome.fa --annot data/ref/annotation.gtf -o results/star_index"
+    echo "      sbatch $0 -i results/star/my.bam -a data/ref/annot.gtf --transcripts \\"
+    echo "          results/rsem/transcripts.fa -o results/salmon/sampleA"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile         <file>  Input file: a nucleotide FASTA file with a genome or transcriptome assembly"
-    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
+    echo "  -i/--infile         <file>  Input BAM file"
+    echo "  -a/--annot          <file>  Reference annotation (GFF/GTF) file"
+    echo "  --transcripts       <file>  Transcripts FASTA file - use mcic-scripts/rnaseq/rsem_prepref.sh to generate"
+    echo "  -o/--outdir         <dir>   Sample-specific (!) output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --annot             <file>  Reference annotation (GFF/GFF3/GTF) file (GTF preferred)  [default: no annotation file, but this is not recommended]"
-    echo "  --index_size        <int>   Index size                              [default: $index_size => automatically determined from genome size]"
-    echo "  --read_len          <int>   Read length (only applies with --annot) [default: unset]"
-    echo "                              This will determine the overhang length, which is by default 100-1 = 99 bp."
+    echo "  --libtype           <str>   RNAseq library type                     [default: $libtype]"
+    echo "                              (see https://salmon.readthedocs.io/en/latest/salmon.html#what-s-this-libtype)" 
     echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -72,12 +72,6 @@ script_help() {
     echo "  -h/--help                   Print this help message and exit"
     echo "  -v                          Print the version of this script and exit"
     echo "  --version                   Print the version of $TOOL_NAME and exit"
-    echo
-    echo "NOTES:"
-    echo "  The script will check how much memory has been allocated to the SLURM job (default: 64GB),"
-    echo "  and pass that to STAR via the 'limitGenomeGenerateRAM argument'."
-    echo "  When allocating more memory to the SLURM job,"
-    echo "  wich can be necessary for large genomes, this will therefore be passed to STAR as well."
     echo
     echo "TOOL DOCUMENTATION: $TOOL_DOCS"
 }
@@ -112,8 +106,8 @@ source_function_script
 # ==============================================================================
 # Initiate variables
 infile=
-annot= && annot_opt=
-read_len= && overhang_opt=
+annot=
+transcripts=
 outdir=
 opts=
 version_only=false
@@ -123,11 +117,11 @@ threads=
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infile )     shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
-        --annot )           shift && annot=$1 ;;
-        --index_size )      shift && index_size=$1 ;;
-        --read_len )        shift && read_len=$1 ;;
+        -i | --infile )     shift && infile=$1 ;;
+        -a | --annot )      shift && annot=$1 ;;
+        --transcripts )     shift && transcripts=$1 ;;
+        --libtype )         shift && libtype=$1 ;;
         --opts )            shift && opts=$1 ;;
         --env )             shift && env=$1 ;;
         --no_strict )       strict_bash=false ;;
@@ -156,12 +150,9 @@ load_env "$conda_path" "$container_path" "$dl_container"
 [[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
 [[ ! -f "$infile" ]] && die "Input file $infile does not exist"
-[[ -n "$annot" && ! -f "$annot" ]] && die "Annotation file $annot does not exist" "$all_opts"
 
-# Define outputs and final ops based on script parameters
+# Define outputs based on script parameters
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
-[[ "$IS_SLURM" == true ]] && mem_bytes=$((SLURM_MEM_PER_NODE * 1000000))
-[[ -n "$annot" ]] && annot_opt="--sjdbGTFfile $annot"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -169,64 +160,29 @@ LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options passed to this script:        $all_opts"
-echo "Input assembly FASTA:                     $infile"
+echo "Input BAM file:                           $infile"
+echo "Reference annotation file:                $annot"
+echo "Transcripts FASTA file:                   $transcripts"
 echo "Output dir:                               $outdir"
-[[ -n "$annot" ]] && echo "Input annotation file:                    $annot"
-[[ -n "$read_len" ]] && echo "Read length (for overhang size):                              $read_len"
-[[ "$index_size" != "auto" ]] && echo "Index size:                               $index_size"
+echo "RNAseq library type:                      $libtype"
 [[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
 log_time "Listing the input file(s):"
-ls -lh "$infile"
-[[ -n "$annot" ]] && ls -lh "$annot"
+ls -lh "$infile" "$annot"
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# STAR doesn't accept zipped FASTA files -- unzip if needed
-if [[ $infile = *gz ]]; then
-    infile_unzip=${infile/.gz/}
-    if [[ ! -f $infile_unzip ]]; then
-        log_time "Unzipping the currently gzipped FASTA file..."
-        gunzip -c "$infile" > "$infile_unzip"
-    else
-        log_time "Using unzipped version of the FASTA file"
-        ls -lh "$infile_unzip"
-    fi
-    infile="$infile_unzip"
-fi
-
-# Determine index size
-if [[ "$index_size" == "auto" ]]; then
-    log_time "Automatically determining the index size..."
-    genome_size=$(grep -v "^>" "$infile" | wc -c)
-    index_size=$(python -c "import math; print(math.floor(math.log($genome_size, 2)/2 -1))")
-    log_time "Genome size (autom. determined):  $genome_size"
-    log_time "Index size (autom. determined):   $index_size"
-fi
-
-# If a GTF/GFF file is provided, build the appropriate argument for STAR
-if [[ -n "$read_len" ]]; then
-    # Overhang length should be read length minus 1 - only if annot is included
-    overhang=$(( read_len - 1 ))
-    overhang_opt="--sjdbOverhang $overhang"
-    log_time "Based on read length $read_len, setting overhang to: $overhang"
-fi
-
 log_time "Running $TOOL_NAME..."
 runstats $CONTAINER_PREFIX $TOOL_BINARY \
-    --runMode genomeGenerate \
-    --limitGenomeGenerateRAM "$mem_bytes" \
-    --genomeDir "$outdir" \
-    --genomeFastaFiles "$infile" \
-    --genomeSAindexNbases "$index_size" \
-    --runThreadN "$threads" \
-    $annot_opt \
-    $overhang_opt \
+    --geneMap "$annot" \
+    --threads "$threads" \
+    --libType="$libtype" \
+    -t "$transcripts" \
+    -a "$infile" \
+    -o "$outdir" \
     $opts
-
-#? 2023-08-13: Removed this option: '--sjdbGTFtagExonParentTranscript Parent'
 
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
