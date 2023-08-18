@@ -36,7 +36,8 @@ parser$add_argument("-o", "--outdir",
                     help = "Output directory")
 parser$add_argument("--tx2gene",
                     type = "character", required = TRUE, default = NULL,
-                    help = "Transcript-to-gene map (TSV)")
+                    help = "Transcript-to-gene table: TSV format with no header,\n
+                    transcripts in column 1, genes in column 2, other columns will be discarded")
 parser$add_argument("--meta",
                     type = "character", required = FALSE, default = NULL,
                     help = "Metadata file (TSV), needed to create a DESeq object")
@@ -67,20 +68,16 @@ message("Transcript-to-gene map file:   ", tx2gene_file)
 message("======================================================================")
 message()
 
-#indir <- "results/salmon"
-#outdir <- "results/salmon/merged"
-#tx2gene_file <- "salmon_tx2gene.tsv"
-#meta_file <- "metadata/meta.tsv"
-#sample_id_column <- 1
-
 
 # PROCESS THE COUNTS -----------------------------------------------------------
 # Create the output dir
 dir.create(file.path(outdir, "logs"), recursive = TRUE, showWarnings = FALSE)
 
 # Read the transcript-to-gene map
-tx2gene <- read.table(tx2gene_file, col.names = c("tx", "gene_id", "gene_name"))
+tx2gene <- read.table(tx2gene_file)
+message("# The tx2gene table has ", ncol(tx2gene), " columns\n")
 tx2gene <- tx2gene[, 1:2]
+colnames(tx2gene) <- c("tx", "gene_id")
 
 # Get Salmon file names in a vector
 infiles <- list.files(indir, pattern = "quant.sf$",
@@ -105,8 +102,10 @@ saveRDS(txi, txi_out)
 
 # CREATE DESEQ OBJECT ----------------------------------------------------------
 if (!is.null(meta_file)) {
+  message("\n# Because a metadata file was provided, a DESeq object will be created")
+
   # Read metadata
-  meta <- read.delim(meta_file)
+  meta <- read.delim(meta_file, stringsAsFactors = TRUE)
   meta <- meta[order(meta[[sample_id_column]]), ]
   rownames(meta) <- meta[[sample_id_column]]
   
@@ -119,6 +118,7 @@ if (!is.null(meta_file)) {
   print(rownames(meta))
   
   # Create DESeq object
+  message("\n# Creating the DESeq object...")
   dds <- DESeqDataSetFromTximport(txi, meta, ~1)
   
   # Save DESeq object
