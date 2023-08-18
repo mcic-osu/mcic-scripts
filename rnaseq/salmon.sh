@@ -31,7 +31,9 @@ container_dir="$HOME/containers"
 strict_bash=true
 
 # Defaults - tool parameters
-libtype=ISR
+libtype=ISR                         # Default = reverse-stranded
+gcbias_opt="--gcBias"               # Include the --gcBias option
+#?(gcBias opt recommended here: http://bioconductor.org/packages/devel/bioc/vignettes/DESeq2/inst/doc/DESeq2.html)
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -56,7 +58,8 @@ script_help() {
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --libtype           <str>   RNAseq library type                     [default: $libtype]"
-    echo "                              (see https://salmon.readthedocs.io/en/latest/salmon.html#what-s-this-libtype)" 
+    echo "                              (see https://salmon.readthedocs.io/en/latest/salmon.html#what-s-this-libtype)"
+    echo "  --no_gcbias                 Don't use the Salmon '--gcBias' option  [default: use]"
     echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -124,6 +127,7 @@ while [ "$1" != "" ]; do
         --libtype )         shift && libtype=$1 ;;
         --opts )            shift && opts=$1 ;;
         --env )             shift && env=$1 ;;
+        --no_gcbias )       gcbias_opt= ;;
         --no_strict )       strict_bash=false ;;
         --dl_container )    dl_container=true ;;
         --container_dir )   shift && container_dir=$1 ;;
@@ -165,6 +169,7 @@ echo "Reference annotation file:                $annot"
 echo "Transcripts FASTA file:                   $transcripts"
 echo "Output dir:                               $outdir"
 echo "RNAseq library type:                      $libtype"
+[[ -n "$gcbias_opt" ]] && echo "Using Salmon's --gcBias option" 
 [[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
 log_time "Listing the input file(s):"
 ls -lh "$infile" "$annot"
@@ -182,6 +187,7 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
     -t "$transcripts" \
     -a "$infile" \
     -o "$outdir" \
+    "$gcbias_opt" \
     $opts
 
 log_time "Listing files in the output dir:"
