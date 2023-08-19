@@ -137,7 +137,7 @@ load_env "$conda_path" "$container_path" "$dl_container"
 [[ -d "$outdir" ]] && die "Outdir $outdir already exists, please remove or rename it"
 
 # Define outputs based on script parameters
-LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+LOG_DIR="$outdir"/logs
 mapfile -t gffs < <(find "$indir" -iname '*.gff' -or -iname '*.gff3')
 [[ ${#gffs[@]} -eq 0 ]] && die "No GFF files found in $indir..."
 
@@ -169,6 +169,9 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
 
 #? -e Creates a multiFASTA alignment of core genes
 #? -n aligns core genes with MAFFT
+
+# Make the log dir afterwards, or Roary would have used another outdir
+mkdir -p "$LOG_DIR"
 
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
