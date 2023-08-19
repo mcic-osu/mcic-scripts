@@ -15,7 +15,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Download genomes (and associated proteomes, annotations, etc) with the NCBI datasets tool"
-SCRIPT_VERSION="2023-07-31"
+SCRIPT_VERSION="2023-08-19"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -33,7 +33,7 @@ dl_container=false
 container_dir="$HOME/containers"
 
 # Defaults - tool parameters
-include="genome,seq-report"
+include="all"
 ref_only=false
 assembly_version=latest
 assembly_source=GenBank
@@ -68,7 +68,7 @@ script_help() {
     echo "To specify genomes to download, use _one_ of the following three options:"
     echo "  -t/--taxon          <str>   Taxon string, e.g. 'bos taurus' or 'nematoda'"
     echo "  -a/--accession_file <file>  Text file with list of NCBI accession numbers, one per line"
-    echo "  -A/--accession      <str>   A single accession number to download"
+    echo "  -A/--accession      <str>   A single accession number to download (e.g. 'GCA_003693625.1')"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --as_is                     Don't move all files into the output dir - keep subdir structure with one folder per genome"         
@@ -77,6 +77,7 @@ script_help() {
     echo "  --assembly_source   <str>   'GenBank', 'RefSeq', or 'all'           [default: $assembly_source]"
     echo "                                - 'GenBank' will likely return more records"
     echo "                                - 'RefSeq' will likely return more annotations and proteomes" 
+    echo "                                - Does not apply when you're directly requestion GCA_ (GenBank) or GCF_ (RefSeq) accession nrs"
     echo "  --assembly_version  <str>   'latest' or 'all'                       [default: $assembly_version]"
     echo "  --ref_only                  When specifying a taxon, only download 'reference genomes' [default: download all matching genomes]"
     echo "  --meta_fields       <str>   Comma-separated list of metadata fields for the 'selected' metadata file"
@@ -177,7 +178,7 @@ export NCBI_API_KEY=34618c91021ccd7f17429b650a087b585f08
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
 
 # Define outputs based on script parameters
-outdir=$(realpath "$outdir") # Make absolute because we will move into the outdir
+[[ ! "$outdir" =~ ^/ ]] && outdir="$PWD"/"$outdir"       # Make absolute because we will move into the outdir
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 meta_dir="$outdir"/metadata && mkdir -p "$meta_dir"
 meta_all="$meta_dir"/meta_all.tsv
@@ -193,6 +194,11 @@ if [[ -n "$accession_file" ]]; then
     data_arg=(accession --inputfile "$accession_file")
 elif [[ -n "$accession" ]]; then
     data_arg=(accession "$accession")
+    # If accession nr is GCA_ or GCF_, set --assembly-source to all
+    if echo "$accession" | grep -q "GC[AF]_"; then
+        log_time "The accession nr. contains GCA_/GCF_, so setting --assembly-source to 'all'"
+        assembly_source=all
+    fi
 elif [[ -n "$taxon" ]]; then
     data_arg=(taxon "$taxon")
 else
