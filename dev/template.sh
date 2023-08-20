@@ -29,6 +29,7 @@ container_url=
 dl_container=false
 container_dir="$HOME/containers"
 strict_bash=true
+version_only=false                 # When true, just print tool & script version info and exit
 
 # Constants - tool parameters
 #TODO
@@ -40,7 +41,7 @@ strict_bash=true
 #                                   FUNCTIONS
 # ==============================================================================
 script_help() {
-    echo "                          $0"
+    echo -e "\n                          $0"
     echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
     echo "        =============================================================="
     echo "DESCRIPTION:"
@@ -106,7 +107,6 @@ source_function_script
 infile=
 outdir=
 opts=
-version_only=false
 threads=
 
 # Parse command-line args
