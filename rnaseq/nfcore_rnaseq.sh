@@ -1,20 +1,19 @@
 #!/bin/bash
-
 #SBATCH --account=PAS0471
-#SBATCH --time=24:00:00
+#SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
 #SBATCH --mail-type=END,FAIL
-#SBATCH --job-name=nfcore_rnaseq
-#SBATCH --output=slurm-nfcore_rnaseq-%j.out
+#SBATCH --job-name=nfc_rnaseq
+#SBATCH --output=slurm-nfc_rnaseq-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run the Nextflow-core RNAseq pipeline from https://nf-co.re/rnaseq
-with aligner option STAR => Salmon"
-SCRIPT_VERSION="2023-08-10"
+  with aligner option STAR => Salmon"
+SCRIPT_VERSION="2023-08-20"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="nextflow run"
@@ -25,33 +24,39 @@ VERSION_COMMAND="nextflow -v"
 WORKFLOW_NAME=rnaseq      # The name of the nf-core workflow
 OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config
 OSC_CONFIG=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present here
+ALIGNER_OPT="--aligner star_salmon"
+RRNA_OPT="--remove_ribo_rna"
+SAVE_REF_OPT="--save_reference"
+SAVE_NONRIBO_OPT="--save_non_ribo_reads"
+SAVE_MERGED_FQ_OPT="--save_merged_fastq"
 
-# Defaults - generic
+# Defaults
+workflow_version=3.12.0                         # The version of the nf-core workflow
 conda_path=/fs/project/PAS0471/jelmer/conda/nextflow
 container_dir=/fs/project/PAS0471/containers
-
-# Parameter defaults
-workflow_version=3.12.0                         # The version of the nf-core workflow
+version_only=false                              # When true, just print tool & script version info and exit 
 workflow_dir_base=workflows/nfcore-rnaseq
 workflow_dir_full="$workflow_dir_base"/${workflow_version//./_}
 work_dir=/fs/scratch/PAS0471/$USER/nfcore-rnaseq
 profile="singularity"
 resume=true && resume_arg="-resume"
+biotype_qc=false
+salmon_gcbias=true
 
 # ==============================================================================
 #                                FUNCTIONS
 # ==============================================================================
-Print_help() {
-    echo "                          $0"
+script_help() {
+    echo -e "\n                          $0"
     echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
     echo "        =============================================="
     echo "DESCRIPTION:"
     echo "  $DESCRIPTION"
     echo
     echo "USAGE / EXAMPLES:"
-    echo "  sbatch $0 -i samplesheet.csv -f data/ref/my.fa -a data/ref/my.gtf -o results/nfc_rnaseq"
-    echo "  sbatch $0 -i samplesheet.csv -f data/ref/my.fa -a data/ref/my.gtf -o results/nfc_rnaseq \\"
-    echo "    -a \"--skip_bbsplit false --bbsplit_fasta_list contaminant_refs.tsv\""
+    echo "  sbatch $0 -i samplesheet.csv --ref_fasta data/ref/my.fa --ref_annot data/ref/my.gtf -o results/nfc_rnaseq"
+    echo "  sbatch $0 -i samplesheet.csv --ref_fasta data/ref/my.fa --ref_annot data/ref/my.gtf -o results/nfc_rnaseq \\"
+    echo "    --opts \"--skip_bbsplit false --bbsplit_fasta_list contaminant_refs.csv\""
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--samplesheet    <file>  Sample sheet containing paths to FASTQ files and sample info"
@@ -62,19 +67,22 @@ Print_help() {
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --workflow_version  <str>   Nf-core rnaseq workflow version         [default: $workflow_version]"
-    echo "  --workflow_dir      <dir>   Dir with/for the workflow repo          [default: $workflow_dir_base]"
-    echo "                                - If the correct version of the workflow is already present in this dir, it won't be downloaded again"
-    echo "  --opts              <str>   Additional options to pass to $TOOL_NAME run"
+    echo "  --biotype_qc                Run FeatureCounts biotype QC            [default: $biotype_qc]"
+    echo "                                Turned off by default because this will often result in errors"
+    echo "  --no_gcbias                 Don't use the Salmon --gcBias option    [default: use this option]"
+    echo "  --opts              <str>   Additional workflow parameters, see example above"
     echo
     echo "NEXTFLOW-RELATED OPTIONS:"
     echo "  --restart                   Restart workflow from the beginning     [default: resume workflow if possible]"
+    echo "  --workflow_dir      <dir>   Dir with/for the workflow repo          [default: $workflow_dir_base]"
+    echo "                                - If the correct version of the workflow is already present in this dir, it won't be downloaded again"
     echo "  --container_dir     <dir>   Directory with container images         [default: $container_dir]"
-    echo "                                - Required images will be downloaded here when not already present here" 
+    echo "                                - Required container images will be downloaded here when not already present" 
     echo "  --config            <file>  Additional config file                  [default: none]"
     echo "                                - Settings in this file will override default settings"
-    echo "                                - Note that the mcic-scripts OSC config file will always be included, too"
+    echo "                                - Note that the mcic-scripts OSC config file will always be included"
     echo "                                  (https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config)"
-    echo "  --profile            <str>  'Profile' to use from one of the config files [default: $profile]"
+    echo "  --profile            <str>  'Profile' from a config file to use     [default: $profile]"
     echo "  --work_dir           <dir>  Scratch (work) dir for the workflow     [default: $work_dir]"
     echo "                                - This is where the workflow results will be stored before final results are copied to the output dir."
     echo "  -h/--help                   Print this help message and exit"
@@ -91,7 +99,7 @@ Print_help() {
     echo "SOME KEY OUTPUT FILES:"
     echo "  - HTML file with summary of results: <outdir>/multiqc/star_salmon/multiqc_report.html"
     echo "  - Gene counts for use with DESeq2 in <outdir>/star_salmon/salmon.merged.gene_counts_length_scaled.rds"
-    echo "    Use the script 'mcic-scripts/R_templates/nfcore-rnaseq_load-counts.R' to get started with that."
+    echo "    Use the script 'mcic-scripts/rnaseq/nfcore_rnaseq_mkdeseq.R' to get started with that."
     echo
     echo "NFCORE RNASEQ WORKFLOW DOCUMENTATION:"
     echo "   - https://nf-co.re/rnaseq "
@@ -146,14 +154,15 @@ source_function_script $IS_SLURM
 # ==============================================================================
 #                     PARSE COMMAND-LINE OPTIONS
 # ==============================================================================
-samplesheet=""
-ref_annot=""
-ref_fasta=""
-outdir=""
-config_file=""
-opts=""
-version_only=false
+samplesheet=
+ref_annot=
+ref_fasta=
+outdir=
+config_file=
+opts=
 threads=
+biotype_opt=
+salmon_gcbias_opt=
 
 # Parse command-line options
 all_opts="$*"
@@ -163,6 +172,8 @@ while [ "$1" != "" ]; do
         -o | --outdir )             shift && outdir=$1 ;;
         --ref_annot )               shift && ref_annot=$1 ;;
         --ref_fasta )               shift && ref_fasta=$1 ;;
+        --biotype_qc )              biotype_qc=true ;;
+        --no_gcbias )               salmon_gcbias=false ;;
         --container_dir )           shift && container_dir=$1 ;;
         --opts )                    shift && opts=$1 ;;
         --config | -config )        shift && config_file=$1 ;;
@@ -178,10 +189,10 @@ while [ "$1" != "" ]; do
 done
 
 # Check input
-[[ "$samplesheet" = "" ]] && die "Please specify a samplesheet with -i" "$all_args"
-[[ "$ref_fasta" = "" ]] && die "Please specify a genome FASTA file with -f" "$all_args"
-[[ "$ref_annot" = "" ]] && die "Please specify an annotation (GFF/GTF) file with -g" "$all_args"
-[[ "$outdir" = "" ]] && die "Please specify an output dir with -o" "$all_args"
+[[ -z "$samplesheet" ]] && die "Please specify a samplesheet with -i" "$all_opts"
+[[ -z "$ref_fasta" ]] && die "Please specify a genome FASTA file with -f" "$all_opts"
+[[ -z "$ref_annot" ]] && die "Please specify an annotation (GFF/GTF) file with -g" "$all_opts"
+[[ -z "$outdir" ]] && die "Please specify an output dir with -o" "$all_opts"
 [[ ! -f "$samplesheet" ]] && die "Samplesheet $samplesheet does not exist"
 [[ ! -f "$ref_fasta" ]] && die "Reference FASTA file $ref_fasta does not exist"
 [[ ! -f "$ref_annot" ]] && die "Reference annotation file $ref_annot does not exist"
@@ -204,12 +215,16 @@ config_arg="-c $OSC_CONFIG"
 
 # Setup Nextflow arguments: annotation filetype
 if [[ "$ref_annot" =~ .*\.gff3? ]]; then
-    annot_arg="--gff $ref_annot"
+    annot_opt="--gff $ref_annot"
 elif [[ "$ref_annot" =~ .*\.gtf ]]; then
-    annot_arg="--gtf $ref_annot"
+    annot_opt="--gtf $ref_annot"
 else
-    die "Unknown annotation file format"
+    die "Unknown file format of annotation file $ref_annot (should be '.gff'. , 'gff3', or '.gtf')"
 fi
+
+# Other opts
+[[ "$biotype_qc" == false ]] && biotype_opt="--skip_biotype_qc"
+[[ "$salmon_gcbias" == true ]] && salmon_gcbias_opt="--extra_salmon_quant_args '--gcBias'"
 
 # Other output dirs
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
@@ -229,6 +244,8 @@ echo "Reference genome annotation file: $ref_annot"
 echo "Output dir:                       $outdir"
 echo
 echo "SETTINGS:"
+echo "Run biotype QC:                   $biotype_qc"
+echo "Use Salmon '--gcBias' option:     $salmon_gcbias"
 [[ -n "$opts" ]] && echo "Additional options:               $opts"
 echo
 echo "NEXTFLOW-RELATED SETTINGS:"
@@ -276,12 +293,14 @@ runstats $TOOL_BINARY \
     --input "$samplesheet" \
     --outdir "$outdir" \
     --fasta "$ref_fasta" \
-    $annot_arg \
-    --aligner star_salmon \
-    --remove_ribo_rna \
-    --save_reference \
-    --save_non_ribo_reads \
-    --save_merged_fastq \
+    $annot_opt \
+    $ALIGNER_OPT \
+    $RRNA_OPT \
+    $SAVE_REF_OPT \
+    $SAVE_MERGED_FQ_OPT \
+    $SAVE_NONRIBO_OPT \
+    $biotype_opt \
+    $salmon_gcbias_opt \
     -work-dir "$work_dir" \
     -with-report "$trace_dir"/report.html \
     -with-trace "$trace_dir"/trace.txt \
