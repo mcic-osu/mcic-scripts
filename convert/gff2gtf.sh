@@ -73,7 +73,9 @@ mkdir -p "$outdir"
 
 # CONVERT GFF TO GTF -----------------------------------------------------------
 gffread "$gff" -T -o "$gtf"
-    
+
+#? Command from nf-core RNAseq:
+#gffread GCA_003693625.1.gff --keep-exon-attrs -F -T -o GCA_003693625.1.gtf
 
 # WRAP UP ----------------------------------------------------------------------
 echo -e "\n## Listing the input and output file:"
