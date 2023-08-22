@@ -15,7 +15,11 @@
 packages <- c("argparse", "ggtree", "ggplot2")
 pacman::p_load(char = packages, install = TRUE)
 
-# Parse command-line arguments
+# Constants
+LABEL_SIZE <- 4    # Tip labels
+XLAB_SIZE <- 12    # X-axis labels (years)
+
+# Variables: parse command-line arguments
 parser <- ArgumentParser()
 parser$add_argument("-i", "--tree",
                     type = "character", required = TRUE,
@@ -40,6 +44,9 @@ parser$add_argument("--annot",
 parser$add_argument("--color_column",
                     type = "character", default = NULL,
                     help = "Name of annotation file column to color tip labels by")
+parser$add_argument("--tiplab_column",
+                    type = "character", default = NULL,
+                    help = "Name of annotation file column to use as tip labels (instead of labels in the tree file)")                    
 args <- parser$parse_args()
 
 # Save args from args list into separate variables
@@ -50,10 +57,7 @@ has_header <- args$header
 mrsd <- args$mrsd
 annot_file <- args$annot
 color_column <- args$color_column
-
-# Constants
-LABEL_SIZE <- 4    # Tip labels
-XLAB_SIZE <- 12    # X-axis labels (years)
+tiplab_column <- args$tiplab_column
 
 # Define the output file name, if needed
 if (is.null(figure_file)) {
@@ -61,6 +65,23 @@ if (is.null(figure_file)) {
     dirname(tree_file),
     paste0(tools::file_path_sans_ext(basename(tree_file)), ".png")
     )
+}
+
+# Report
+message("\n# Starting script ggtimetree.R")
+message("# Input tree file:          ", tree_file)
+if (!is.null(dates_file)) message("# Input dates file:         ", dates_file)
+message("# Output figure file:       ", figure_file, "\n")
+
+
+# READ AND PROCESS THE INPUT FILES ---------------------------------------------
+# Read the tree
+tree_file_ext <- tools::file_ext(tree_file)
+if (tree_file_ext %in% c("nex", "nexus")) {
+  #tree <- treeio::read.nexus(tree_file) # Failed with treetime-tree
+  tree <- ape::read.nexus(tree_file)
+} else {
+  tree <- treeio::read.tree(tree_file)
 }
 
 # Get the most recent sampling date from the dates file
@@ -73,34 +94,38 @@ if (!is.null(dates_file)) {
   mrsd <- ifelse(nchar(mrsd) == 7, paste0(mrsd, "-15"), mrsd)
 }
 if (is.null(mrsd)) stop("No most recent sample date, use --dates or --mrsd")
-
-# Report
-message("\n# Starting script ggtimetree.R")
-message("# Input tree file:          ", tree_file)
-if (!is.null(dates_file)) message("# Input dates file:         ", dates_file)
 message("# Most recent sample date:  ", mrsd)
-message("# Output figure file:       ", figure_file, "\n")
-
-
-# PLOT THE TREE ----------------------------------------------------------------
-# Read the tree
-tree_file_ext <- tools::file_ext(tree_file)
-if (tree_file_ext %in% c("nex", "nexus")) {
-  #tree <- treeio::read.nexus(tree_file) # Failed with treetime-tree
-  tree <- ape::read.nexus(tree_file)
-} else {
-  tree <- treeio::read.tree(tree_file)
-}
 
 # Read the annotation
-if (!is.null(annot_file)) annot <- read.delim(annot_file)
+if (!is.null(annot_file)) {
+  annot <- read.delim(annot_file)
+  if (!is.null(tiplab_column)) annot$tiplab <- annot[[tiplab_column]]
+  tiplab_column <- "tiplab"
+  message("# Showing the first few lines of the annotation dataframe:")
+  print(head(annot))
+  cat("\n")
+}
 
-# Plot the tree
+# PLOT THE TREE ----------------------------------------------------------------
+# Base tree
 p <- ggtree(tree, layout = "rectangular", mrsd = mrsd)
+
+# Add annotation dataframe if provided
 if (!is.null(annot_file)) p <- p %<+% annot
+
+# Tip labels
+if (!is.null(tiplab_column)) {
+  message("Using custom tiplab")
+  p <- p + geom_tiplab(aes_string(color = color_column, label = tiplab_column),
+                       align = TRUE, linesize= 0, size = LABEL_SIZE)
+} else {
+  message("Using default tiplab")
+  p <- p + geom_tiplab(aes_string(color = color_column),
+                       align = TRUE, linesize= 0, size = LABEL_SIZE)
+}
+
+# Formatting
 p <- p +
-  geom_tiplab(aes_string(color = color_column),
-              align = TRUE, linesize= 0, size = LABEL_SIZE) +
   geom_rootedge(rootedge = sum(tree$edge.length) / 50) +
   coord_cartesian(clip = "off") +
   scale_x_continuous(n.breaks = 8, labels = scales::comma) +
@@ -117,7 +142,7 @@ ggsave(figure_file, p, width = 8, height = 8, dpi = "retina")
 
 
 # WRAP UP ----------------------------------------------------------------------
-message("# Listing the output file:")
+message("\n# Listing the output file:")
 system(paste("ls -lh", figure_file))
 message("\n# Done with script ggtimetree.R")
 Sys.time()
