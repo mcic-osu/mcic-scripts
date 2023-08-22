@@ -191,7 +191,7 @@ runstats $TOOL_BINARY \
 
 # Have to run maskrc-svg.py using a container because the Conda env doesn't work
 log_time "Running maskrc-svg.py..."
-singularity exec "$CONTAINER" \
+runstats singularity exec "$CONTAINER" maskrc-svg.py \
     maskrc-svg.py \
     --aln "$infile" \
     --symbol '-' \
