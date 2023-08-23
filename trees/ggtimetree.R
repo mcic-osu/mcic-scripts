@@ -99,8 +99,10 @@ message("# Most recent sample date:  ", mrsd)
 # Read the annotation
 if (!is.null(annot_file)) {
   annot <- read.delim(annot_file)
-  if (!is.null(tiplab_column)) annot$tiplab <- annot[[tiplab_column]]
-  tiplab_column <- "tiplab"
+  if (!is.null(tiplab_column)) {
+    annot$tiplab <- annot[[tiplab_column]]
+    tiplab_column <- "tiplab"
+  }
   message("# Showing the first few lines of the annotation dataframe:")
   print(head(annot))
   cat("\n")
