@@ -35,7 +35,7 @@ strict_bash=true
 version_only=false                 # When true, just print tool & script version info and exit
 
 # Defaults - tool parameters
-#TODO
+use_fasttree=false && tree_opt=
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -58,6 +58,7 @@ script_help() {
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
+    echo "  --use_fasttree              Use Fasttree instead of RaxML to build the tree [default: $use_fasttree]"
     echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -121,6 +122,7 @@ while [ "$1" != "" ]; do
         -o | --outdir )     shift && outdir=$1 ;;
         --opts )            shift && opts=$1 ;;
         --env )             shift && env=$1 ;;
+        --use_fasttree )    use_fasttree=false && tree_opt="--use-fasttree" ;;
         --no_strict )       strict_bash=false ;;
         --dl_container )    dl_container=true ;;
         --container_dir )   shift && container_dir=$1 ;;
@@ -164,6 +166,7 @@ echo "Reference genome FASTA:                   $ref"
 echo "Input dir with genomes:                   $indir"
 echo "Number of input genomes:                  ${#genomes[@]}"
 echo "Output dir:                               $outdir"
+echo "Use Fasttree (instead of RaxML):          $use_fasttree"
 [[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
 log_time "Listing the reference FASTA file:"
 ls -lh "$ref"
@@ -182,10 +185,12 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
     --reference "$ref" \
     --vcf \
     --curated \
-    --use-fasttree \
+    $tree_opt \
     --threads "$threads" \
     $opts \
     --sequences "${genomes[@]}"
+
+#? --curated will make the program use all provided genomes - otherwise it will exclude divergent ones
 
 # Create a multi-FASTA alignment file (https://harvest.readthedocs.io/en/latest/content/harvest/quickstart.html)
 log_time "Running Harvesttool to convert to a FASTA alignment file..."
