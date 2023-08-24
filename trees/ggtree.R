@@ -74,7 +74,7 @@ message("\n# Starting script ggtree.R")
 message("# Input tree file:                         ", tree_file)
 message("# Output figure file:                      ", figure_file)
 if (!is.null(annot_file)) message("# Annotation/metadata file:                ", annot_file)
-if (!is.null(tiplab_column)) message("# Metadata column for tip labels:  ",      tiplab_column)
+if (!is.null(tiplab_column)) message("# Metadata column for tip labels:          ",      tiplab_column)
 if (!is.null(color_column)) message("# Metadata column for colors:              ", color_column)
 if (!is.null(root)) message("# ID of sample that should be the root:    ", root)
 message()
@@ -133,7 +133,8 @@ if (!is.null(tiplab_column)) {
 # Make the plot
 p <- p +
   geom_rootedge(rootedge = sum(tree$edge.length) / 50) +
-  theme(plot.margin = margin(0.2, 2, 0.2, 0.2, "cm"))
+  theme(plot.margin = margin(0.2, 1, 0.2, 0.2, "cm"),
+        legend.box.spacing = unit(25, "pt"))
 if(layout == "rectangular") p <- p + coord_cartesian(clip = "off")
 
 # Save the plot to file
