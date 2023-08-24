@@ -15,7 +15,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Download genomes (and associated proteomes, annotations, etc) with the NCBI datasets tool"
-SCRIPT_VERSION="2023-08-19"
+SCRIPT_VERSION="2023-08-24"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -31,10 +31,12 @@ container_path=
 container_url=
 dl_container=false
 container_dir="$HOME/containers"
+version_only=false
 
 # Defaults - tool parameters
 include="all"
 ref_only=false
+meta_only=false
 assembly_version=latest
 assembly_source=GenBank
 move_output=true
@@ -83,6 +85,7 @@ script_help() {
     echo "  --meta_fields       <str>   Comma-separated list of metadata fields for the 'selected' metadata file"
     echo "                                (Note: a metadata file with all possible metadata will also be produced.)"
     echo "                                [default: $meta_fields]"
+    echo "  --meta_only                 Don't download genomes, only metadata   [default: $meta_only]"
     echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -134,7 +137,6 @@ accession_file=
 accession=
 taxon=
 opts=
-version_only=false
 
 # Parse command-line args
 all_opts="$*"
@@ -150,6 +152,7 @@ while [ "$1" != "" ]; do
         --ref_only )            ref_only=true ;;
         --meta_fields )         shift && meta_fields=$1 ;;
         --as_is )               move_output=false ;;
+        --meta_only )           meta_only=true ;;
         --opts )                shift && opts=$1 ;;
         --env )                 shift && env=$1 ;;
         --dl_container )        dl_container=true ;;
@@ -224,6 +227,7 @@ echo "What to download for each genome:         $include"
 echo "Assembly source (GenBank vs RefSeq):      $assembly_source"
 echo "Download 'reference' genomes only:        $ref_only"
 echo "Which assembly version(s) to download:    $assembly_version"
+echo "Download metadata only?                   $meta_only"
 [[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
 [[ -n "$accession_file" ]] && log_time "Listing the input file(s):"
 [[ -n "$accession_file" ]] && ls -lh "$accession_file"
@@ -251,52 +255,54 @@ log_time "Showing genome metadata file $meta_sel"
 column -ts $'\t' "$meta_sel"
 
 # Download the genomes
-log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
-    "${data_arg[@]}" \
-    --include "$include" \
-    --filename genomes.zip \
-    --no-progressbar \
-    --api-key "$NCBI_API_KEY" \
-    $opts
+if [[ "$meta_only" == false ]]; then
+    log_time "Downloading the genomes..."
+    runstats $CONTAINER_PREFIX $TOOL_BINARY \
+        "${data_arg[@]}" \
+        --include "$include" \
+        --filename genomes.zip \
+        --no-progressbar \
+        --api-key "$NCBI_API_KEY" \
+        $opts
 
-# Process the output - unzip the archive
-log_time "Unzipping the downloaded archive..."
-unzip -q -o genomes.zip
+    # Process the output - unzip the archive
+    log_time "Unzipping the downloaded archive..."
+    unzip -q -o genomes.zip
 
-# Process the output - move the genomic data files
-if [[ "$move_output" == true ]]; then
-    log_time "Moving and renaming the downloaded files..."
+    # Process the output - move the genomic data files
+    if [[ "$move_output" == true ]]; then
+        log_time "Moving and renaming the downloaded files..."
 
-    while IFS= read -r -d '' file; do
-        acc_nr=$(dirname "$file" | xargs basename)
-        if [[ $(basename "$file") == "cds_from_genomic.fna" ]]; then
-            # Make sure cds_from_genomic.fna is distinct from the genome fna
-            outfile="$acc_nr"_cds.fasta
-        elif [[ $(basename "$file") == "rna.fna" ]]; then
-            outfile="$acc_nr"_rna.fasta
-        else
-            outfile="$acc_nr"."${file##*.}"
-        fi
-        mv -v "$file" "$outfile"
-    done < <(find ncbi_dataset -type f -wholename "*data/GC*" -print0)
+        while IFS= read -r -d '' file; do
+            acc_nr=$(dirname "$file" | xargs basename)
+            if [[ $(basename "$file") == "cds_from_genomic.fna" ]]; then
+                # Make sure cds_from_genomic.fna is distinct from the genome fna
+                outfile="$acc_nr"_cds.fasta
+            elif [[ $(basename "$file") == "rna.fna" ]]; then
+                outfile="$acc_nr"_rna.fasta
+            else
+                outfile="$acc_nr"."${file##*.}"
+            fi
+            mv -v "$file" "$outfile"
+        done < <(find ncbi_dataset -type f -wholename "*data/GC*" -print0)
 
-    echo
-    echo "# Nr output nucleotide FASTAs:          $(find . -name "*.fna" | wc -l)"
-    echo "# Nr output proteomes:                  $(find . -name "*.faa" | wc -l)"
-    echo "# Nr output GFF files:                  $(find . -name "*.gff" | wc -l)"
-    echo "# Nr output GTF files:                  $(find . -name "*.gtf" | wc -l)"
+        echo
+        echo "# Nr output nucleotide FASTAs:          $(find . -name "*.fna" | wc -l)"
+        echo "# Nr output proteomes:                  $(find . -name "*.faa" | wc -l)"
+        echo "# Nr output GFF files:                  $(find . -name "*.gff" | wc -l)"
+        echo "# Nr output GTF files:                  $(find . -name "*.gtf" | wc -l)"
+    fi
+
+    # Report nr of input accessions again, for comparison
+    [[ -n "$accession_file" ]] && log_time "Number of input accessions:                   $(wc -l < "$accession_file")"
+
+    # Clean up
+    log_time "Removing original ZIP file and NCBI's README file..."
+    rm -r README.md genomes.zip
 fi
-
-# Report nr of input accessions again, for comparison
-[[ -n "$accession_file" ]] && log_time "Number of input accessions:                   $(wc -l < "$accession_file")"
 
 # Show output metadata files
 log_time "Output metadata files:"
 ls -lh "$meta_all" "$meta_sel"
-
-# Clean up
-log_time "Removing original ZIP file and NCBI's README file..."
-rm -r README.md genomes.zip
 
 final_reporting "$LOG_DIR"
