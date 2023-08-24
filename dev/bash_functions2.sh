@@ -178,7 +178,7 @@ die() {
     log_time "For help, run this script with the '-h' option" >&2
     
     if [[ "$error_args" != "none" ]]; then
-        log_time "Arguments passed to the script:" >&2
+        log_time "Options passed to the script:" >&2
         echo "$error_args" >&2
     fi
     

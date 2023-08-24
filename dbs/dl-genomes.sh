@@ -57,7 +57,7 @@ script_help() {
     echo "  - Download all C. elegans genomes:"
     echo "      sbatch $0 --taxon 'Caenorhabditis elegans' -o results/refgenome"
     echo "  - Download all reference nematode genomes:"
-    echo "      sbatch $0 --taxon 'nematoda' --reference -o results/refgenomes"
+    echo "      sbatch $0 --taxon 'nematoda' --ref_only -o results/refgenomes"
     echo "  - Download a list of accessions:"
     echo "      sbatch $0 --accession_file metadata/accession.txt -o results/refgenomes"
     echo "  - Also download annotation and proteome:"

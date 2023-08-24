@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=6:00:00
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
+#SBATCH --cpus-per-task=12
+#SBATCH --mem=50G
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=clonalframeml
 #SBATCH --output=slurm-clonalframeml-%j.out
@@ -25,7 +25,7 @@ TOOL_DOCS=https://github.com/xavierdidelot/ClonalFrameML
 VERSION_COMMAND="$TOOL_BINARY | head -n 1"
 
 # Defaults - parameters
-tree_tool=iqtree
+tree_tool=iqtree            #! NOTE: ClonalFrameML may not accept FastTree trees?! Have had problems with this at least
 force_tree=false            # If tree is found, don't rerun tree-building
 
 # ==============================================================================
@@ -167,32 +167,39 @@ ls -lh "$infile"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-if [[ ! -f "$outdir"/"$out_prefix".iqtree || "$force_tree" == true ]]; then
+# Get starting tree
+if [[ ! -f "$outdir"/"$out_prefix".treefile || "$force_tree" == true ]]; then
     log_time "Running $tree_tool to get a starting tree for ClonalFrameML..."
     
     if [[ "$tree_tool" == "iqtree" ]]; then
         runstats iqtree \
             -s "$infile" --prefix "$outdir"/"$out_prefix" \
             -m MFP -fast -redo -nt "$threads" -ntmax "$threads" -mem "$mem_gb"
-    
     elif [[ "$tree_tool" == "fasttree" ]]; then
         runstats fasttree -nt -gtr < "$infile" > "$outdir"/"$out_prefix".treefile
     fi
 else
     log_time "Tree file $outdir/$out_prefix.treefile exists, skipping tree-building..."
 fi
+log_time "Tree file:"
+ls -lh "$outdir"/"$out_prefix".treefile
 
-log_time "Running ClonalFrameML..."
-runstats $TOOL_BINARY \
-    "$outdir"/"$out_prefix".treefile \
-    "$infile" \
-    "$outdir"/"$out_prefix" \
-    $more_args
+# Run ClonalFrameML
+if [[ ! -s "$outdir"/"$out_prefix".labelled_tree.newick ]]; then
+    log_time "Running ClonalFrameML..."
+    runstats $TOOL_BINARY \
+        "$outdir"/"$out_prefix".treefile \
+        "$infile" \
+        "$outdir"/"$out_prefix" \
+        $more_args
+else
+    log_time "ClonalFrameML output file $outdir/$out_prefix.labelled_tree.newick exists, skipping ClonalFrameML..."
+fi
 
+# Run maskrc-svg.py to HGT-mask the alignment
 # Have to run maskrc-svg.py using a container because the Conda env doesn't work
 log_time "Running maskrc-svg.py..."
 runstats singularity exec "$CONTAINER" maskrc-svg.py \
-    maskrc-svg.py \
     --aln "$infile" \
     --symbol '-' \
     --out "$outdir"/"$out_prefix".masked.aln \
