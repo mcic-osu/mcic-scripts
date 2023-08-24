@@ -40,7 +40,7 @@ parser$add_argument("--mrsd",
                     help = "Most recent sampling date in YYYY-MM-DD format (use either --dates or --mrsd)")
 parser$add_argument("--annot",
                     type = "character", default = NULL,
-                    help = "Input annotation file")
+                    help = "Input annotation/metadata file")
 parser$add_argument("--color_column",
                     type = "character", default = NULL,
                     help = "Name of annotation file column to color tip labels by")
@@ -69,16 +69,20 @@ if (is.null(figure_file)) {
 
 # Report
 message("\n# Starting script ggtimetree.R")
-message("# Input tree file:          ", tree_file)
-if (!is.null(dates_file)) message("# Input dates file:         ", dates_file)
-message("# Output figure file:       ", figure_file, "\n")
+message("# Input tree file:                 ", tree_file)
+if (!is.null(dates_file)) message("# Input dates file:                ", dates_file)
+if (!is.null(annot_file)) message("# Annotation/metadata file:        ", annot_file)
+if (!is.null(tiplab_column)) message("# Metadata column for tip labels: ", tiplab_column)
+if (!is.null(color_column)) message("# Metadata column for colors:      ", color_column)
+if (!is.null(mrsd)) message("# Most recent sampling date:       ", mrsd)
+message("# Output figure file:       ", figure_file)
+message()
 
 
 # READ AND PROCESS THE INPUT FILES ---------------------------------------------
 # Read the tree
 tree_file_ext <- tools::file_ext(tree_file)
 if (tree_file_ext %in% c("nex", "nexus")) {
-  #tree <- treeio::read.nexus(tree_file) # Failed with treetime-tree
   tree <- ape::read.nexus(tree_file)
 } else {
   tree <- treeio::read.tree(tree_file)
@@ -117,13 +121,13 @@ if (!is.null(annot_file)) p <- p %<+% annot
 
 # Tip labels
 if (!is.null(tiplab_column)) {
-  message("Using custom tiplab")
+  message("# Using custom tip labels...")
   p <- p + geom_tiplab(aes_string(color = color_column, label = tiplab_column),
-                       align = TRUE, linesize= 0, size = LABEL_SIZE)
+                       align = TRUE, linesize = 0, size = LABEL_SIZE)
 } else {
-  message("Using default tiplab")
+  message("# Using default tip labels...")
   p <- p + geom_tiplab(aes_string(color = color_column),
-                       align = TRUE, linesize= 0, size = LABEL_SIZE)
+                       align = TRUE, linesize = 0, size = LABEL_SIZE)
 }
 
 # Formatting
