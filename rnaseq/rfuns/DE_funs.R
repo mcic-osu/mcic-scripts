@@ -54,7 +54,7 @@ extract_DE <- function(
       group_by(gene, .data[[fac]]) |>
       summarize(mean = mean(count), .groups = "drop") |>
       pivot_wider(id_cols = gene, values_from = mean, names_from = all_of(fac))
-    colnames(group_means)[2:3] <- c("mean_A", "mean_B")
+    colnames(group_means)[2:3] <- c("mean1", "mean2")
     
     overall_means <- fcount_df |>
       group_by(gene) |>
@@ -67,7 +67,7 @@ extract_DE <- function(
     # Determine whether a gene is DE
     res <- res |>
       mutate(
-        isDE = ifelse(padj < p_tres & abs(lfc) > lfc_tres & (mean_A > mean_tres | mean_B > mean_tres),
+        isDE = ifelse(padj < p_tres & abs(lfc) > lfc_tres & (mean1 > mean_tres | mean2 > mean_tres),
                       TRUE, FALSE)
         )
   } else {
@@ -93,13 +93,33 @@ extract_DE <- function(
   # Arrange by p-value, remove pvalue column
   res <- res |>
     dplyr::select(-pvalue) |> 
-    arrange(padj)
+    arrange(padj, -abs(lfc))
   
   # Report
-  nsig <- sum(res$isDE, na.rm = TRUE)
-  message(comp[1], " vs ", comp[2], " - Nr DEGs: ", nsig)
+  n_sig <- sum(res$isDE, na.rm = TRUE)
+  n_up <- nrow(dplyr::filter(res, lfc > 0 & isDE == TRUE))
+  n_down <- nrow(dplyr::filter(res, lfc < 0 & isDE == TRUE))
+  message(comp[1], " vs ", comp[2], " - Nr DEG: ", n_sig,
+          " (", n_up, "/", n_down, " up/down in group1)")
   
   return(res)
+}
+
+# Run the extract_DE function for all pairwise comparisons of a factor
+extract_DE_all <- function(dds, fac, count_df = NULL) {
+  lvls <- levels(colData(dds)[[fac]])
+  combs <- as.list(as.data.frame(combn(lvls, 2)))
+  
+  extract_DE2 <- function(lvl1, lvl2) {
+    extract_DE(
+      comp = c(lvl1, lvl2),
+      fac = fac,
+      dds = dds,
+      count_df = count_df
+    )
+  } 
+  
+  map_dfr(.x = combs, .f = ~extract_DE2(.x[1], .x[2]))
 }
 
 # Function to provide shrunken LFC estimates
@@ -483,7 +503,7 @@ cheatmap <- function(
 # Heatmap plot showing abundances for multiple/many genes
 pheat <- function(genes,
                   count_mat,
-                  meta_df,
+                  meta_df,                    # Should have sample IDs as rownames!
                   groups = NULL,
                   show_rownames = TRUE,
                   show_colnames = FALSE,
