@@ -22,12 +22,12 @@ TOOL_DOCS=https://github.com/FelixKrueger/TrimGalore/blob/master/Docs/Trim_Galor
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env=conda                           # Use a 'conda' env or a Singularity 'container'
+env=container              # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/project/PAS0471/jelmer/conda/trimgalore
 container_path=
-container_url=
+container_url=docker://quay.io/biocontainers/trim-galore:0.6.10--hdfd78af_0
 dl_container=false
-container_dir="$HOME/containers"
+container_dir=/fs/project/PAS0471/containers
 
 # Defaults - tool parameters
 quality=20                 # => 20 is also the TrimGalore default
