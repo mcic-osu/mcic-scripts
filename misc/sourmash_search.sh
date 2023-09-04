@@ -51,8 +51,8 @@ script_help() {
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--infile         <file>  Input FASTA file (the query) with .fasta / .fa / .fna extension"
-    echo "  --db                <file>  Path to a Sourmash database"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
+    echo "  --db                <file>  Path to a Sourmash database"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --n_results         <int>   Number of results (matches) to return   [default: $n_results]"
@@ -153,7 +153,7 @@ load_env "$conda_path" "$container_path" "$dl_container"
 [[ ! -f "$db" ]] && die "Database file $db does not exist"
 
 # Define outputs based on script parameters
-LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+LOG_DIR="$PWD"/"$outdir"/logs && mkdir -p "$LOG_DIR"
 infile=$(realpath "$infile") # Make paths absolute because we have to move into the outdir
 db=$(realpath "$db")
 infile_signature=$(basename "$infile").sig
@@ -200,6 +200,6 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
 # Report
 log_time "Showing the contents of the main output file ($PWD/$sample_id.txt):"
 cat "$sample_id".txt
-
-ls -lhd "$(realpath "$outdir")"/*
+log_time "Listing the files in the output dir:"
+ls -lh
 final_reporting "$LOG_DIR"
