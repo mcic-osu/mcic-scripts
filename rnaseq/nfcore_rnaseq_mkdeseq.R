@@ -2,16 +2,12 @@
 #SBATCH --account=PAS0471
 #SBATCH --time=10
 #SBATCH --mem=4G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
 #SBATCH --job-name=make_dds
 #SBATCH --output=slurm-make_dds-%j.out
-
 
 # DESCRIPTION ------------------------------------------------------------------
 # This script will create a DESeq object from one of the RDS files that the
 # nf-core RNAseq pipeline produces.
-
 
 # SETUP ------------------------------------------------------------------------
 # Load/install packages
@@ -54,13 +50,13 @@ parser$add_argument("--id_col",
 args <- parser$parse_args()
 
 indir <- args$indir
-outfile <- args$outdir
+outfile <- args$outfile
 meta_file <- args$meta
 sample_id_column <- args$id_col
 
 # Define input files
 infile_part <- "star_salmon/salmon.merged.gene_counts_length_scaled.rds"
-infile <- file.path(indir, infile_rds_part)
+infile <- file.path(indir, infile_part)
 
 # Output files
 outdir <- dirname(outfile)
@@ -71,7 +67,7 @@ message("Starting script nfc-rnaseq_make-deseq.R")
 Sys.time()
 message()
 message("Input dir:                        ", indir)
-message("Input RDS file:                   ", infile_rds)
+message("Input RDS file:                   ", infile)
 message("Output RDS file (DESeq object):   ", outfile)
 if (!is.null(meta_file)) message("Input metadata file:              ", meta_file)
 message("======================================================================")
@@ -80,15 +76,15 @@ message()
 
 # CREATE THE DESEQ OBJECT ------------------------------------------------------
 # Load counts
-count_obj <- readRDS(infile_rds)
+count_obj <- readRDS(infile)
 count_mat <- round(assays(count_obj)$counts)
 
 # Metadata
 if (!is.null(meta_file)) {
-  meta_df <- read.delim(metadata_file, header = TRUE, sep = "\t")
+  meta_df <- read.delim(meta_file, header = TRUE, sep = "\t")
   
   # Sample IDs as rownames
-  rownames(meta_df) <- meta_df[[id_col]]
+  rownames(meta_df) <- meta_df[[sample_id_column]]
   
   # Sort by sample ID
   meta_df <- meta_df[order(meta_df[[1]]), ]
@@ -98,16 +94,16 @@ if (!is.null(meta_file)) {
   meta_df[cols] <- lapply(meta_df[cols], as.factor)
   
   # Check that sample names are the same, and that samples are in the same order
-  stopifnot(all(rownames(meta) == colnames(count_mat)))
+  stopifnot(all(rownames(meta_df) == colnames(count_mat)))
   
   # Report
   message("\n# Sample names:")
-  print(rownames(meta))
+  print(rownames(meta_df))
   message("\n# Dimensions of count matrix:")
   dim(count_mat)
   
 } else {
-  meta_df <- counts@colData
+  meta_df <- count_obj@colData
 }
 
 # Create DESeq object (For now, set design to dummy `~1` => intercept only)

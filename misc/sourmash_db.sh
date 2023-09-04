@@ -52,9 +52,11 @@ script_help() {
     echo "REQUIRED OPTIONS:"
     echo "  -i/--indir          <file>  Input dir with FASTA files (extensions .fa/.fasta/.fna)"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
+    echo "                                The name of the database file will be: <outdir>/<db_name>.sbt.zip"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --db_name           <str>   Name (prefix) for the database files    [default: $db_name]"
+    echo "                                The name of the database file will be: <outdir>/<db_name>.sbt.zip"
     echo "  --kmer_size         <int>   Kmer size (should be an odd integer)    [default: $kmer_size]"
     echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
     echo
@@ -146,9 +148,10 @@ load_env "$conda_path" "$container_path" "$dl_container"
 [[ ! -d "$indir" ]] && die "Input dir $indir does not exist"
 
 # Define outputs based on script parameters
-LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
-# If needed, make dirs absolute because we have to move into the outdir
-indir=$(realpath "$indir")
+LOG_DIR="$PWD"/"$outdir"/logs && mkdir -p "$LOG_DIR"
+sig_dir="$PWD"/"$outdir"/signatures && mkdir -p "$sig_dir"
+indir=$(realpath "$indir") # Make dirs absolute because we have to move into the outdir
+
 # Get input files
 mapfile -t infiles < <(find "$indir" -iname '*fasta' -or -iname '*fa' -or -iname '*fna' -or -iname '*fna.gz')
 [[ ${#infiles[@]} -eq 0 ]] && die "No .fa/.fasta/.fna/.fna.gz files found in indir $indir"
@@ -172,8 +175,8 @@ set_threads "$IS_SLURM"
 #                               RUN
 # ==============================================================================
 # Move to output dir
-log_time "Moving into the output dir $outdir..."
-cd "$outdir" || exit
+log_time "Moving into the output dir $sig_dir..."
+cd "$sig_dir" || exit
 
 # Create signatures (sketches) for each input file
 log_time "Creating genome sketches for each FASTA file..."
@@ -186,8 +189,9 @@ done
 
 # Create the database
 log_time "Creating the database with all genome sketches..."
+cd ..
 runstats $CONTAINER_PREFIX $TOOL_BINARY \
-    index -k"$kmer_size" "$db_name" $opts ./*.sig
+    index -k"$kmer_size" "$db_name" $opts "$sig_dir"/*.sig
 
 # Report
 log_time "Listing files in the output dir:"

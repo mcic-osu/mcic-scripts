@@ -112,11 +112,11 @@ source_function_script
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
+version_only=false
 infile=
 outdir=
 out_prefix=
 opts=
-version_only=false
 threads=
 
 # Parse command-line args
@@ -130,7 +130,7 @@ while [ "$1" != "" ]; do
         --model )           shift && model=$1 ;;
         --ufboot )          shift && ufboot=$1 ;;
         --auto_cores )      auto_cores=true ;;
-        --fast )            fast=true ;;
+        --fast )            fast=true && fast_arg="-fast" ;;
         --opts )            shift && opts=$1 ;;
         --env )             shift && env=$1 ;;
         --dl_container )    dl_container=true ;;
