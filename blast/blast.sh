@@ -18,7 +18,7 @@ though it will be quicker to split a multiFASTA file,
 and submit a separate job for each single-sequence FASTA file.
 Additionally, download sequences (e.g. with --download_genomes)
 will not be separated by query sequence"
-SCRIPT_VERSION="2023-09-03"
+SCRIPT_VERSION="2023-09-05"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -51,8 +51,8 @@ evalue="1e-6"                       # E-value threshold
 pct_id=                             # % identity threshold (empty => no threshold)
 pct_cov=                            # Threshold for % of query covered by the alignment length (empty => no threshold)
 force=false                         # Don't rerun BLAST if the output file already exists
-to_dl_genomes=false                 # Download full genomes of hits?
-to_dl_accessions=false              # Download full accessions of hits?
+to_dl_genomes=false                 # Download full genomes of subjects?
+to_dl_subjects=false                # Download full subjects?
 to_dl_aligned=false                 # Download aligned sequences?
 
 # ==============================================================================
@@ -71,7 +71,7 @@ script_help() {
     echo "  - Limit online BLAST database to specific taxa (using NCBI taxon IDs):"
     echo "      sbatch $0 -i my_seq.fa -o results/blast --tax_ids '343,56448'"
     echo "  - Download aligned parts of sequences, full accessions, and full genomes:"
-    echo "      sbatch $0 -i my_seq.fa -o results/blast --dl_aligned --dl_accessions --dl_genomes"
+    echo "      sbatch $0 -i my_seq.fa -o results/blast --dl_aligned --dl_subjects --dl_genomes"
     echo "  - Use % identity and query coverage thresholds:"
     echo "      sbatch $0 -i my_seq.fa -o results/blast --pct_id 90 --pct_cov 90"
     echo "  - Keep only the best 10 hits per query:"
@@ -103,7 +103,7 @@ script_help() {
     echo
     echo "SEQUENCE DOWNLOAD OPTIONS:"
     echo "  --dl_aligned        <str>   Download aligned parts of subject (db) sequences        [default: $to_dl_aligned]"
-    echo "  --dl_accessions     <str>   Download full subject (db) sequences that were aligned  [default: $to_dl_accessions]"
+    echo "  --dl_subjects     <str>   Download full subject (db) sequences that were aligned  [default: $to_dl_subjects]"
     echo "  --dl_genomes        <str>   Download full genomes of sequences that were aligned    [default: $to_dl_genomes]"
     echo
     echo "UTILITY OPTIONS:"
@@ -291,9 +291,9 @@ dl_genomes() {
     ls -lh "$outdir"/genomes
 }
 
-dl_accessions() {
+dl_subjects() {
     echo -e "\n================================================================"
-    log_time "Now downloading full aligned accessions..."
+    log_time "Now downloading full aligned subjects..."
     log_time "Number of downloads: $(cut -f 2 "$blast_out_final" | sort -u | wc -l)"
     mkdir -p "$outdir"/accessions
 
@@ -303,13 +303,13 @@ dl_accessions() {
         efetch -db nuccore -format fasta -id "$accession" > "$outfile"
     done < <(cut -f 2 "$blast_out_final" | sort -u)
 
-    log_time "Listing the accession output files:"
+    log_time "Listing the subject output FASTA files:"
     ls -lh "$outdir"/accessions
 }
 
 dl_aligned() {
     echo -e "\n================================================================"
-    log_time "Now downloading the aligned parts of sequences..."
+    log_time "Now downloading the aligned parts of subjects..."
     log_time "Number of downloads: $(cut -f 2,9,10 "$blast_out_final" | sort -u | wc -l)"
     mkdir -p "$outdir"/aligned_only/concat
 
@@ -353,7 +353,7 @@ while [ "$1" != "" ]; do
         --pct_id )          shift && pct_id=$1 ;;
         --pct_cov )         shift && pct_cov=$1 ;;
         --dl_genomes )      to_dl_genomes=true ;;
-        --dl_accessions )   to_dl_accessions=true ;;
+        --dl_subjects )   to_dl_subjects=true ;;
         --dl_aligned )      to_dl_aligned=true ;;
         --env )             shift && env=$1 ;;
         --no_strict )       strict_bash=false ;;
@@ -438,7 +438,7 @@ if [[ -n "$tax_ids" ]]; then
 fi
 echo
 echo "Download full genomes?                    $to_dl_genomes"
-echo "Download full accessions?                 $to_dl_accessions"
+echo "Download full subjects?                   $to_dl_subjects"
 echo "Download aligned parts of sequences?      $to_dl_aligned"
 log_time "Listing the input file(s):"
 ls -lh "$infile"
@@ -460,8 +460,8 @@ process_blast
 # Download aligned parts of sequences
 [[ "$to_dl_aligned" == true ]] && dl_aligned
 
-# Download accessions (matched contigs/Genbank entries only)
-[[ "$to_dl_accessions" == true ]] && dl_accessions
+# Download full subjects (matched contigs/Genbank entries only)
+[[ "$to_dl_subjects" == true ]] && dl_subjects
 
 # Download full genomes
 [[ "$to_dl_genomes" == true ]] && dl_genomes
