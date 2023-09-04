@@ -11,8 +11,14 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Run NCBI BLAST and optionally download aligned sequences and/or genomes"
-SCRIPT_VERSION="2023-09-02"
+DESCRIPTION="Run NCBI BLAST on an input (query) FASTA file,
+and optionally download aligned sequences and/or genomes
+The FASTA file can contain multiple/many sequences,
+though it will be quicker to split a multiFASTA file,
+and submit a separate job for each single-sequence FASTA file.
+Additionally, download sequences (e.g. with --download_genomes)
+will not be separated by query sequence"
+SCRIPT_VERSION="2023-09-03"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -72,7 +78,7 @@ script_help() {
     echo "      sbatch $0 -i my_seq.fa -o results/blast --top_n 10"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile         <file>  Input file"
+    echo "  -i/--infile         <file>  Input FASTA file (can contain one or more sequences)"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
     echo "BLAST OPTIONS:"
@@ -83,12 +89,17 @@ script_help() {
     echo "  --force                     Run BLAST even if the output file already exists        [default: $force]"
     echo
     echo "BLAST THRESHOLD AND FILTERING OPTIONS:"
-    echo "  --evalue            <num>   E-value threshold in scientific notation                [default: $evalue]"
-    echo "  --pct_id            <num>   Percentage identity threshold                           [default: none]"
-    echo "  --pct_cov           <num>   Threshold for % of query covered by the alignment       [default: none]"
-    echo "  --top_n             <int>   Only keep the top N hits for each query                 [default: keep all]"
     echo "  --tax_ids           <str>   Comma-separated list of NCBI taxon IDs (just the numbers, no 'txid' prefix)"
     echo "                              The BLAST search will be limited to these taxa          [default: use full database]"
+    echo "  --evalue            <num>   E-value threshold in scientific notation                [default: $evalue]"
+    echo "                                This option will be passed to BLAST, so even the raw"
+    echo "                                BLAST output will not contain hits that do not pass this"
+    echo "  --pct_id            <num>   Percentage identity threshold                           [default: none]"
+    echo "                                This threshold will be applied after running blast"
+    echo "  --pct_cov           <num>   Threshold for % of query covered by the alignment       [default: none]"
+    echo "                                This threshold will be applied after running blast"
+    echo "  --top_n             <int>   Only keep the top N hits for each query                 [default: keep all]"
+    echo "                                This threshold will be applied after running blast"
     echo
     echo "SEQUENCE DOWNLOAD OPTIONS:"
     echo "  --dl_aligned        <str>   Download aligned parts of subject (db) sequences        [default: $to_dl_aligned]"
@@ -107,7 +118,7 @@ script_help() {
     echo "  --no_strict                 Don't use strict Bash settings ('set -euo pipefail') -- can be useful for troubleshooting"
     echo "  -h/--help                   Print this help message and exit"
     echo "  -v                          Print the version of this script and exit"
-    echo "  --version                   Print the version of Blast and exit"
+    echo "  --version                   Print the version of BLAST and the NCBI datasets tool and exit"
     echo
 }
 
@@ -211,6 +222,7 @@ process_blast() {
 dl_genomes() {
     echo -e "\n================================================================"
     log_time "Now downloading full genomes of matched sequences..."
+    mkdir -p "$outdir"/genomes
 
     # Move into outdir & define output files
     assembly_list="$outdir"/genomes/assemblies.txt      # For 'datasets' download command
@@ -283,6 +295,7 @@ dl_accessions() {
     echo -e "\n================================================================"
     log_time "Now downloading full aligned accessions..."
     log_time "Number of downloads: $(cut -f 2 "$blast_out_final" | sort -u | wc -l)"
+    mkdir -p "$outdir"/accessions
 
     while read -r accession; do
         log_time "Accession: $accession"
@@ -298,6 +311,7 @@ dl_aligned() {
     echo -e "\n================================================================"
     log_time "Now downloading the aligned parts of sequences..."
     log_time "Number of downloads: $(cut -f 2,9,10 "$blast_out_final" | sort -u | wc -l)"
+    mkdir -p "$outdir"/aligned_only/concat
 
     while read -r accession start stop; do
         log_time "Accession: $accession     Start pos: $start     Stop pos: $stop"
@@ -308,6 +322,10 @@ dl_aligned() {
 
     log_time "Listing the aligned-only output files:"
     ls -lh "$outdir"/aligned_only
+
+    log_time "Creating a multi-FASTA file with all aligned-only sequences..."
+    cat "$outdir"/aligned_only/*fa > "$outdir"/aligned_only/concat/all.fa
+    ls -lh "$outdir"/aligned_only/concat/all.fa
 }
 
 # ==============================================================================
@@ -378,7 +396,7 @@ blast_out_sorted="$outdir"/blast_out_sorted.tsv
 blast_out_final="$outdir"/blast_out_final.tsv
 
 # Create the output dirs
-mkdir -p "$outdir"/aligned_only "$outdir"/genomes "$outdir"/accessions "$outdir"/logs
+mkdir -p "$outdir"/logs
 
 # Build BLAST taxon ID option (format: -entrez_query "txid343[Organism:exp] OR txid56448[Organism:exp]")
 tax_arg=
