@@ -7,7 +7,6 @@
 #SBATCH --job-name=parsnp
 #SBATCH --output=slurm-parsnp-%j.out
 
-#TODO - Currently has several hardcoded options
 #TODO - Can also do recombination filtration
 
 # ==============================================================================
@@ -25,10 +24,10 @@ TOOL_DOCS=https://harvest.readthedocs.io/en/latest/content/parsnp
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env=conda                           # Use a 'conda' env or a Singularity 'container'
+env=container                      # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/parsnp
 container_path=
-container_url=
+container_url=https://depot.galaxyproject.org/singularity/parsnp:1.7.4--hd03093a_1
 dl_container=false
 container_dir="$HOME/containers"
 strict_bash=true
@@ -36,6 +35,7 @@ version_only=false                 # When true, just print tool & script version
 
 # Defaults - tool parameters
 use_fasttree=false && tree_opt=
+keep_all=false && curated_opt="--curated" # Keep all genomes, i.e. use the --curated flag of Parsnp? Or remove too-divergent genomes?
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -58,6 +58,7 @@ script_help() {
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
+    echo "  --keep_all                  Keep all genomes [default: allow Parsnp to remove too-divergent genomes]"
     echo "  --use_fasttree              Use Fasttree instead of RaxML to build the tree [default: $use_fasttree]"
     echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
     echo
@@ -120,13 +121,14 @@ while [ "$1" != "" ]; do
         -i | --indir )      shift && indir=$1 ;;
         -r | --ref )        shift && ref=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
-        --opts )            shift && opts=$1 ;;
-        --env )             shift && env=$1 ;;
         --use_fasttree )    use_fasttree=false && tree_opt="--use-fasttree" ;;
+        --keep_all )        keep_all=true && curated_opt= ;;
         --no_strict )       strict_bash=false ;;
+        --env )             shift && env=$1 ;;
         --dl_container )    dl_container=true ;;
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 && dl_container=true ;;
+        --opts )            shift && opts=$1 ;;
         -h | --help )       script_help; exit 0 ;;
         -v )                script_version; exit 0 ;;
         --version )         version_only=true ;;
@@ -167,6 +169,7 @@ echo "Input dir with genomes:                   $indir"
 echo "Number of input genomes:                  ${#genomes[@]}"
 echo "Output dir:                               $outdir"
 echo "Use Fasttree (instead of RaxML):          $use_fasttree"
+echo "Keep all genomes?                         $keep_all" 
 [[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
 log_time "Listing the reference FASTA file:"
 ls -lh "$ref"
@@ -183,10 +186,10 @@ log_time "Running $TOOL_NAME..."
 runstats $CONTAINER_PREFIX $TOOL_BINARY \
     --output-dir "$outdir" \
     --reference "$ref" \
-    --vcf \
-    --curated \
+    --vcf${curated_opt} \
     $tree_opt \
     --threads "$threads" \
+    --verbose \
     $opts \
     --sequences "${genomes[@]}"
 

@@ -12,14 +12,16 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Create a local phylogenetic tree with Parsnp"
-SCRIPT_VERSION="2023-08-24"
+SCRIPT_VERSION="2023-09-03"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
+PARSNP_CONTAINER_PREFIX="singularity exec /users/PAS0471/jelmer/containers/parsnp_1.7.4--hd03093a_1.sif"
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
 
 # Defaults
 color_column=pathovar               # Name of the metadata column to color tip labels by
 tiplab_column=isolate               # Name of the metadata column with alternative tip labels
+keep_all=true && curated_opt=" --curated" # Keep all genomes, i.e. use the --curated flag of Parsnp? Or remove too-divergent genomes?
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -42,6 +44,7 @@ script_help() {
     echo "  --bed               <file>  BED file with genomic coordinates of focal region"
     echo
     echo "OTHER KEY OPTIONS:"
+    echo "  --allow_filter              Allow Parsnp to remove too-divergent genomes [default: keep all genomes]"
     echo "  --root              <str>   ID of the genome to root the tree with  [default: no rerooting]"
     echo "  --meta              <file>  File with metadata to plot the tree"
     echo "  --color_column      <str>   Name of the metadata column to color tip labels by ('NULL' to ignore) [default: $color_column]"
@@ -101,6 +104,7 @@ while [ "$1" != "" ]; do
         --color_column )    shift && color_column=$1 ;;
         --tiplab_column )   shift && tiplab_column=$1 ;;
         --root )            shift && root=$1 ;;
+        --allow_filter )    keep_all=false && curated_opt= ;;
         -o | --outdir )     shift && outdir=$1 ;;
         -h | --help )       script_help; exit 0 ;;
         -v )                script_version; exit 0 ;;
@@ -153,6 +157,7 @@ echo "Input dir with genomes:                   $indir"
 echo "BED file with locus coordinates:          $bedfile"
 [[ -n "$meta" ]] && echo "Metadata file:                            $meta"
 [[ -n "$root" ]] && echo "Tree root:                                $root"
+echo "Keep all genomes?                         $keep_all"            
 echo "Locus ID:                                 $locus_id"
 echo "Number of input genomes:                  ${#genomes[@]}"
 log_time "Listing the reference FASTA file:"
@@ -176,20 +181,21 @@ ls -lh "$outdir"/"$locus_id".fa
 
 # Run Parsnp
 log_time "Running Parsnp..."
-conda deactivate && source activate /fs/ess/PAS0471/jelmer/conda/parsnp
-runstats parsnp \
+runstats $PARSNP_CONTAINER_PREFIX parsnp \
     --output-dir "$outdir" \
     --reference "$outdir"/"$locus_id".fa \
-    --vcf \
-    --curated \
+    --vcf${curated_opt} \
     --threads "$threads" \
+    --verbose \
     --sequences "${genomes[@]}"
 log_time "Showing the parsnp output tree file:"
 ls -lh "$tree_org"
 
 # Create a multi-FASTA alignment file (https://harvest.readthedocs.io/en/latest/content/harvest/quickstart.html)
 log_time "Running Harvesttool to convert to a FASTA alignment file..."
-runstats harvesttools -i "$outdir"/parsnp.ggr -M "$outdir"/parsnp.aln
+runstats $PARSNP_CONTAINER_PREFIX harvesttools \
+    -i "$outdir"/parsnp.ggr \
+    -M "$outdir"/parsnp.aln
 
 # Fix the sample IDs in the tree, so they match the IDs in the metadata file
 log_time "Fixing the sample IDs in the tree..."
