@@ -46,7 +46,7 @@ BLAST_FORMAT="6 qseqid sacc pident length mismatch gapopen qstart qend sstart se
 local=false && remote_opt="-remote" # Run BLAST locally (own db) or remotely (NCBI's db over the internet)
 db=nt                               # BLAST db
 blast_type=blastn                   # BLAST type
-top_n_query=                        # Keep the top-N hits only for each query (empty => keep all)
+top_n_query=100                     # Keep the top-N hits only for each query (empty => keep all)
 top_n_subject=                      # Keep the top-N hits only for each subject, per query (empty => keep all)
 evalue="1e-6"                       # E-value threshold
 pct_id=                             # % identity threshold (empty => no threshold)
@@ -98,7 +98,7 @@ script_help() {
     echo "                                This threshold will be applied *after* running BLAST"
     echo "  --pct_cov           <num>   Threshold for % of query covered by the alignment       [default: none]"
     echo "                                This threshold will be applied *after* running BLAST"
-    echo "  --top_n_query       <int>   Only keep the top N hits for each query                 [default: keep all]"
+    echo "  --top_n_query       <int>   Only keep the top N hits for each query                 [default: $top_n_query]"
     echo "                                This threshold will be applied *after* running BLAST"
     echo "  --top_n_subject     <int>   Only keep the top N hits for each subject, per query    [default: keep all]"
     echo "                                This threshold will be applied *after* running BLAST"
