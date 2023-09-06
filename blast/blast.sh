@@ -12,13 +12,13 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run NCBI BLAST on an input (query) FASTA file,
-and optionally download aligned sequences and/or genomes
-The FASTA file can contain multiple/many sequences,
+and optionally download aligned sequences and/or genomes.
+The input (query) FASTA file can contain multiple or even many sequences,
 though it will be quicker to split a multiFASTA file,
 and submit a separate job for each single-sequence FASTA file.
-Additionally, download sequences (e.g. with --download_genomes)
-will not be separated by query sequence"
-SCRIPT_VERSION="2023-09-05"
+Additionally, downloaded sequences (e.g. with --download_genomes)
+are currently not separately output for each query."
+SCRIPT_VERSION="2023-09-06"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -46,7 +46,8 @@ BLAST_FORMAT="6 qseqid sacc pident length mismatch gapopen qstart qend sstart se
 local=false && remote_opt="-remote" # Run BLAST locally (own db) or remotely (NCBI's db over the internet)
 db=nt                               # BLAST db
 blast_type=blastn                   # BLAST type
-top_n=                              # Keep the top-N hits only (empty => keep all)
+top_n_query=                        # Keep the top-N hits only for each query (empty => keep all)
+top_n_subject=                      # Keep the top-N hits only for each subject, per query (empty => keep all)
 evalue="1e-6"                       # E-value threshold
 pct_id=                             # % identity threshold (empty => no threshold)
 pct_cov=                            # Threshold for % of query covered by the alignment length (empty => no threshold)
@@ -70,7 +71,7 @@ script_help() {
     echo "      sbatch $0 -i my_seq.fa -o results/blast"
     echo "  - Limit online BLAST database to specific taxa (using NCBI taxon IDs):"
     echo "      sbatch $0 -i my_seq.fa -o results/blast --tax_ids '343,56448'"
-    echo "  - Download aligned parts of sequences, full accessions, and full genomes:"
+    echo "  - Download aligned parts of sequences, full subjects, and full genomes:"
     echo "      sbatch $0 -i my_seq.fa -o results/blast --dl_aligned --dl_subjects --dl_genomes"
     echo "  - Use % identity and query coverage thresholds:"
     echo "      sbatch $0 -i my_seq.fa -o results/blast --pct_id 90 --pct_cov 90"
@@ -92,18 +93,19 @@ script_help() {
     echo "  --tax_ids           <str>   Comma-separated list of NCBI taxon IDs (just the numbers, no 'txid' prefix)"
     echo "                              The BLAST search will be limited to these taxa          [default: use full database]"
     echo "  --evalue            <num>   E-value threshold in scientific notation                [default: $evalue]"
-    echo "                                This option will be passed to BLAST, so even the raw"
-    echo "                                BLAST output will not contain hits that do not pass this"
+    echo "                                This option will be applied during the BLAST run"
     echo "  --pct_id            <num>   Percentage identity threshold                           [default: none]"
-    echo "                                This threshold will be applied after running blast"
+    echo "                                This threshold will be applied *after* running BLAST"
     echo "  --pct_cov           <num>   Threshold for % of query covered by the alignment       [default: none]"
-    echo "                                This threshold will be applied after running blast"
-    echo "  --top_n             <int>   Only keep the top N hits for each query                 [default: keep all]"
-    echo "                                This threshold will be applied after running blast"
+    echo "                                This threshold will be applied *after* running BLAST"
+    echo "  --top_n_query       <int>   Only keep the top N hits for each query                 [default: keep all]"
+    echo "                                This threshold will be applied *after* running BLAST"
+    echo "  --top_n_subject     <int>   Only keep the top N hits for each subject, per query    [default: keep all]"
+    echo "                                This threshold will be applied *after* running BLAST"
     echo
     echo "SEQUENCE DOWNLOAD OPTIONS:"
     echo "  --dl_aligned        <str>   Download aligned parts of subject (db) sequences        [default: $to_dl_aligned]"
-    echo "  --dl_subjects     <str>   Download full subject (db) sequences that were aligned  [default: $to_dl_subjects]"
+    echo "  --dl_subjects     <str>     Download full subject (db) sequences that were aligned  [default: $to_dl_subjects]"
     echo "  --dl_genomes        <str>   Download full genomes of sequences that were aligned    [default: $to_dl_genomes]"
     echo
     echo "UTILITY OPTIONS:"
@@ -153,14 +155,13 @@ source_function_script
 run_blast() {
     log_time "Now running BLAST..."
     runstats blastn \
-        "${remote_opt}""${thread_opt}" \
         -task "$blast_type" \
         -db "$db" \
         -query "$infile" \
         -out "$blast_out_raw" \
-        -evalue $evalue \
         -outfmt "$BLAST_FORMAT" \
-        "${tax_arg[@]}"
+        -evalue $evalue \
+        ${remote_opt}${thread_opt}${tax_opt}${spacer}"${tax_optarg}"
 }
 
 process_blast() {
@@ -170,44 +171,62 @@ process_blast() {
     log_time "Sorting BLAST output by goodness of the match"
     sort -k1,1 -k11,11g -k12,12gr -k3,3gr "$blast_out_raw" > "$blast_out_sorted"
 
-    # Filter by percent identity
+    # 1. Filter by percent identity
     if [[ -n "$pct_id" ]]; then
         log_time "Filtering output using a percent identity threshold of $pct_id"
         blast_out_id="$outdir"/blast_out_pctid.tsv
         
         awk -F"\t" -v OFS="\t" -v pct_id="$pct_id" \
             '$3 >= pct_id' "$blast_out_sorted" > "$blast_out_id"
-        log_time "Nr of retained hits: $(wc -l < "$blast_out_id")"
+        log_time "Retained $(wc -l < "$blast_out_id") of $(wc -l < "$blast_out_sorted") hits"
     else
         blast_out_id="$blast_out_sorted"
     fi
 
-    # Filter by percent coverage
+    # 2. Filter by percent coverage
     if [[ -n "$pct_cov" ]]; then
         log_time "Filtering output using a percent coverage threshold of $pct_cov"
         blast_out_cov="$outdir"/blast_out_cov.tsv
 
         awk -F"\t" -v OFS="\t" -v pct_cov="$pct_cov" \
-            '$14 >= pct_cov' "$blast_out_sorted" > "$blast_out_cov"
-        log_time "Nr of retained hits: $(wc -l < "$blast_out_cov")"
+            '$14 >= pct_cov' "$blast_out_id" > "$blast_out_cov"
+        log_time "Retained $(wc -l < "$blast_out_cov") of $(wc -l < "$blast_out_id") hits"
     else
         blast_out_cov="$blast_out_id"
     fi
 
-    # Only retain top N matches
-    if [[ -n "$top_n" ]]; then
-        log_time "Getting the top $top_n hits for each query"
+    # 3. Only retain top-N matches per query
+    if [[ -n "$top_n_query" ]]; then
+        log_time "Getting the top $top_n_query hits for each query"
+        blast_out_topq="$outdir"/blast_out_topq.tsv
+
         while read -r query; do
-            grep -w -m "$top_n" "$query" "$blast_out_sorted"
-        done < <(cut -f1 "$blast_out_sorted" | sort -u) > "$blast_out_final"
+            grep -w -m "$top_n_query" "$query" "$blast_out_cov"
+        done < <(cut -f1 "$blast_out_cov" | sort -u) > "$blast_out_topq"
+        
+        log_time "Retained $(wc -l < "$blast_out_topq") of $(wc -l < "$blast_out_cov") hits"
     else
-        cp "$blast_out_cov" "$blast_out_final"
+        blast_out_topq="$blast_out_cov"
+    fi
+
+    # 4. Only retain top-N matches per query
+    if [[ -n "$top_n_subject" ]]; then
+        log_time "Getting the top $top_n_subject hits for each subject"
+        
+        while read -r subject; do
+            grep -w -m "$top_n_subject" "$subject" "$blast_out_topq"
+        done < <(cut -f2 "$blast_out_topq" | sort -u) > "$blast_out_final"
+        
+        log_time "Retained $(wc -l < "$blast_out_final") of $(wc -l < "$blast_out_topq") hits"
+    else
+        cp "$blast_out_topq" "$blast_out_final"
     fi
 
     # Report & clean
     [[ -f "$blast_out_cov" ]] && rm "$blast_out_cov"
     [[ -f "$blast_out_id" ]] && rm "$blast_out_id"
     [[ -f "$blast_out_sorted" ]] && rm "$blast_out_sorted"
+    [[ -f "$blast_out_topq" ]] && rm "$blast_out_topq"
 
     log_time "Listing the final BLAST output file:"
     ls -lh "$blast_out_final"
@@ -215,8 +234,8 @@ process_blast() {
     log_time "Showing the first few lines of the final BLAST output file:"
     head -n 5 "$blast_out_final"
 
-    n_accessions=$(cut -f 2 "$blast_out_final" | sort -u | wc -l)
-    log_time "Nr of distinct accessions in the final BLAST output file: $n_accessions"
+    n_subjects=$(cut -f 2 "$blast_out_final" | sort -u | wc -l)
+    log_time "Nr of distinct subjects in the final BLAST output file: $n_subjects"
 }
 
 dl_genomes() {
@@ -248,14 +267,14 @@ dl_genomes() {
         if [[ -n "$assembly" ]]; then
             echo "$assembly" >> "$assembly_list"
         else
-            log_time "WARNING: No assembly found for accession $accession"
+            log_time "WARNING: No assembly found for subject $accession"
         fi
         echo -e "${accession}\t${assembly}" | tee -a "$assembly_lookup"
     
     done 9< <(cut -f 2 "$blast_out_final" | sort -u)
     
     # Report
-    log_time "Listing the assembly list and accession-to-assembly lookup table files:"
+    log_time "Listing the assembly list and subject-to-assembly lookup table files:"
     ls -lh "$assembly_list" "$assembly_lookup"
     log_time "Number of distinct genomes to be downloaded: $(wc -l < "$assembly_list")"
 
@@ -288,44 +307,44 @@ dl_genomes() {
     # Clean up & report
     rm -r "$outdir"/genomes/README.md "$outdir"/genomes/ncbi_dataset "$outdir"/genomes/genomes.zip
     log_time "Listing the downloaded genomes..."
-    ls -lh "$outdir"/genomes
+    ls -lh "$outdir"/genomes/*fna
 }
 
 dl_subjects() {
     echo -e "\n================================================================"
     log_time "Now downloading full aligned subjects..."
     log_time "Number of downloads: $(cut -f 2 "$blast_out_final" | sort -u | wc -l)"
-    mkdir -p "$outdir"/accessions
+    mkdir -p "$outdir"/subjects
 
     while read -r accession; do
-        log_time "Accession: $accession"
-        outfile="$outdir"/accessions/"$accession".fa
+        log_time "Subject: $accession"
+        outfile="$outdir"/subjects/"$accession".fa
         efetch -db nuccore -format fasta -id "$accession" > "$outfile"
     done < <(cut -f 2 "$blast_out_final" | sort -u)
 
     log_time "Listing the subject output FASTA files:"
-    ls -lh "$outdir"/accessions
+    ls -lh "$outdir"/subjects
 }
 
 dl_aligned() {
     echo -e "\n================================================================"
     log_time "Now downloading the aligned parts of subjects..."
     log_time "Number of downloads: $(cut -f 2,9,10 "$blast_out_final" | sort -u | wc -l)"
-    mkdir -p "$outdir"/aligned_only/concat
+    mkdir -p "$outdir"/aligned/concat
 
     while read -r accession start stop; do
-        log_time "Accession: $accession     Start pos: $start     Stop pos: $stop"
-        outfile="$outdir"/aligned_only/"$accession"_"$start"-"$stop".fa
+        log_time "Subject: $accession     Start pos: $start     Stop pos: $stop"
+        outfile="$outdir"/aligned/"$accession"_"$start"-"$stop".fa
         efetch -db nuccore -format fasta \
             -id "$accession" -seq_start "$start" -seq_stop "$stop" > "$outfile"
     done < <(cut -f 2,9,10 "$blast_out_final" | sort -u)
 
     log_time "Listing the aligned-only output files:"
-    ls -lh "$outdir"/aligned_only
+    ls -lh "$outdir"/aligned
 
     log_time "Creating a multi-FASTA file with all aligned-only sequences..."
-    cat "$outdir"/aligned_only/*fa > "$outdir"/aligned_only/concat/all.fa
-    ls -lh "$outdir"/aligned_only/concat/all.fa
+    cat "$outdir"/aligned/*fa > "$outdir"/aligned/concat/all.fa
+    ls -lh "$outdir"/aligned/concat/all.fa
 }
 
 # ==============================================================================
@@ -334,8 +353,9 @@ dl_aligned() {
 # Initiate variables
 infile=
 outdir=
-tax_ids=
+tax_ids= && tax_opt= && tax_optarg=
 threads= && thread_opt=
+spacer=
 
 # Parse command-line args
 all_opts="$*"
@@ -348,7 +368,8 @@ while [ "$1" != "" ]; do
         --blast_type )      shift && blast_type=$1 ;;
         --local )           local=true && remote_opt= ;;
         --force )           force=true ;;
-        --top_n )           shift && top_n=$1 ;;
+        --top_n_query )     shift && top_n_query=$1 ;;
+        --top_n_subject )   shift && top_n_subject=$1 ;;
         --evalue )          shift && evalue=$1 ;;
         --pct_id )          shift && pct_id=$1 ;;
         --pct_cov )         shift && pct_cov=$1 ;;
@@ -399,14 +420,18 @@ blast_out_final="$outdir"/blast_out_final.tsv
 mkdir -p "$outdir"/logs
 
 # Build BLAST taxon ID option (format: -entrez_query "txid343[Organism:exp] OR txid56448[Organism:exp]")
-tax_arg=
 if [[ -n "$tax_ids" ]]; then
+    spacer=" "
+    tax_opt=" -entrez_query"
     IFS=',' read -ra tax_array <<< "$tax_ids"
+
     for tax_id in "${tax_array[@]}"; do
-        [[ -n "$tax_arg" ]] && tax_arg="$tax_arg OR txid$tax_id[Organism:exp]"
-        [[ -z "$tax_arg" ]] && tax_arg="txid$tax_id[Organism:exp]"
+        if [[ -z "$tax_optarg" ]]; then
+            tax_optarg="txid$tax_id[Organism:exp]"
+        else
+            tax_optarg="$tax_optarg OR txid$tax_id[Organism:exp]"
+        fi
     done
-    tax_arg=(-entrez_query "$tax_arg")
 fi
 
 # Build BLAST nr threads option (only allowed for local BLAST)
@@ -429,12 +454,13 @@ echo
 echo "Evalue threshold:                         $evalue"
 [[ -n "$pct_id" ]] && echo "Percent identity threshold:               $pct_id"
 [[ -n "$pct_cov" ]] && echo "Alignment coverage threshold:             $pct_cov"
-[[ -n "$top_n" ]] && echo "Subset output to top N hits:              $top_n"
+[[ -n "$top_n_query" ]] && echo "Filter to top N hits per query:           $top_n_query"
+[[ -n "$top_n_subject" ]] && echo "Filter to top N hits per subject:         $top_n_subject"
 if [[ -n "$tax_ids" ]]; then
     echo
     echo "Taxon IDs:                                $tax_ids"
     echo "Nr of taxonomic IDs:                      ${#tax_array[@]}"
-    echo "Taxonomic selection option:               ${tax_arg[*]}"
+    echo "Taxonomic selection option:               $tax_optarg"
 fi
 echo
 echo "Download full genomes?                    $to_dl_genomes"
@@ -456,6 +482,7 @@ fi
 
 # Process BLAST output
 process_blast
+[[ "$n_subjects" -eq 0 ]] && echo "ERROR: No BLAST hits remained after filtering" && exit 1 
 
 # Download aligned parts of sequences
 [[ "$to_dl_aligned" == true ]] && dl_aligned
