@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
+#SBATCH --time=6:00:00
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name=clinker
 #SBATCH --output=slurm-clinker-%j.out
@@ -11,7 +11,7 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Run Clinker to ...." #TODO
+DESCRIPTION="Run Clinker to create per-gene alignments and gene cluster figures"
 SCRIPT_VERSION="2023-09-06"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
@@ -32,7 +32,8 @@ strict_bash=true
 version_only=false                 # When true, just print tool & script version info and exit
 
 # Defaults - tool parameters
-#TODO
+file_ext=gff
+run_id=clinker
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -49,10 +50,12 @@ script_help() {
     echo "      sbatch $0 -i results/genome_annotations -o results/clinker"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--indir          <file>  Input dir with ..." #TODO
+    echo "  -i/--indir          <file>  Input dir with either GFF or Genbank files"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
+    echo "  --file_ext          <str>   File extension (type), 'gff' or 'gbk'   [default: $file_ext]"
+    echo "  --run_id            <str>   Run ID: basename of output files        [default: $run_id]"
     echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -111,6 +114,8 @@ while [ "$1" != "" ]; do
     case "$1" in
         -i | --indir )      shift && indir=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
+        --file_ext )        shift && file_ext=$1 ;;
+        --run_id )          shift && run_id=$1 ;;
         --opts )            shift && opts=$1 ;;
         --env )             shift && env=$1 ;;
         --no_strict )       strict_bash=false ;;
@@ -150,7 +155,9 @@ log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options passed to this script:        $all_opts"
 echo "Input dir:                                $indir"
+echo "Input file extension:                     $file_ext"
 echo "Output dir:                               $outdir"
+echo "Run ID:                                   $run_id"
 [[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
 log_time "Listing the input file(s):"
 ls -lh "$indir"
@@ -162,10 +169,10 @@ ls -lh "$indir"
 log_time "Running $TOOL_NAME..."
 runstats $CONTAINER_PREFIX $TOOL_BINARY \
     --force \
-    --output "$outdir"/aln.fa \
-    --plot "$outdir"/plot.HTML \
+    --output "$outdir"/"$run_id".fa \
+    --plot "$outdir"/"$run_id".html \
     $opts \
-    "$indir"/*gff
+    "$indir"/*${file_ext}
 
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
