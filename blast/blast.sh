@@ -11,13 +11,18 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Run NCBI BLAST on an input (query) FASTA file,
-and optionally download aligned sequences and/or genomes.
-The input (query) FASTA file can contain multiple or even many sequences,
-though it will be quicker to split a multiFASTA file,
+DESCRIPTION="Run NCBI BLAST on an input (query) FASTA file, and optionally download
+aligned sequences and/or genomes. The input (query) FASTA file can contain multiple
+or even many sequences, though it will be quicker to split a multiFASTA file,
 and submit a separate job for each single-sequence FASTA file.
-Additionally, downloaded sequences (e.g. with --download_genomes)
-are currently not separately output for each query."
+Additionally, downloaded sequences (e.g. with --download_genomes) are currently not
+output separately for each query.
+
+OUTPUT:
+  All output will be placed inside the specified output dir.
+  The output will include TSV files with raw ('blast_out_raw.tsv') and filtered
+  ('blast_out_filtered.tsv'), and if requested, downloaded sequences in separate
+  subdirectories."
 SCRIPT_VERSION="2023-09-06"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
@@ -37,15 +42,22 @@ strict_bash=true
 version_only=false                  # When true, just print tool & script version info and exit
 
 # Constants - settings
+# - With genome download, get separate metadata file:
 META_FIELDS="accession,assminfo-name,organism-name,assminfo-refseq-category,assminfo-level,assmstats-number-of-contigs,assmstats-contig-n50"
+# - Can't get scientific name of subject seq to be included ('ssciname' / 'sscinames')
+# - In addition to the 'qcovhsp' included above, there is also 'qcovs', which will contain the total coverage across all HSPs
 BLAST_FORMAT="6 qseqid sacc pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen qcovhsp stitle staxids"
-#> Can't get scientific name of subject seq to be included ('ssciname' / 'sscinames')
-#> In addition to the 'qcovhsp' included above, there is also 'qcovs', which will contain the total coverage across all HSPs
 
 # Defaults - settings
-local=false && remote_opt="-remote" # Run BLAST locally (own db) or remotely (NCBI's db over the internet)
-db=nt                               # BLAST db
+local=false && remote_opt=" -remote" # Run BLAST locally (own db) or remotely (NCBI's db over the internet)
+remote_db_nt=nt                     # Default remote db for BLAST-to-nucleotide (blastn, tblastx, tblastn)
+remote_db_aa=nr                     # Default remote db for BLAST-to-protein (blastp and blastx)
+local_db_nt=/fs/project/pub_data/blast-database/2023-06/nt # Default local DB for nucleotide BLAST
+local_db_aa=/fs/project/pub_data/blast-database/2023-06/nr # Default local DB for protein BLAST
 blast_type=blastn                   # BLAST type
+db_type=nuc                         # 'prot' (proteins/amino acids) or 'nuc' (nucleotides)  (automatically determined)
+dl_db=nuccore                       # 'nuccore' for nucleotide db, 'protein' for protein db (automatically determined)
+blast_task=                         # 'task' within BLAST type, e.g. 'megablast' for blastn
 top_n_query=100                     # Keep the top-N hits only for each query (empty => keep all)
 top_n_subject=                      # Keep the top-N hits only for each subject, per query (empty => keep all)
 evalue="1e-6"                       # E-value threshold
@@ -55,6 +67,7 @@ force=false                         # Don't rerun BLAST if the output file alrea
 to_dl_genomes=false                 # Download full genomes of subjects?
 to_dl_subjects=false                # Download full subjects?
 to_dl_aligned=false                 # Download aligned sequences?
+add_header=true                     # Add column header to final BLAST output file
 
 # ==============================================================================
 #                           GENERIC FUNCTIONS
@@ -69,12 +82,19 @@ script_help() {
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage - will run BLAST remotely with the nt database & no output filtering or sequence downloading:"
     echo "      sbatch $0 -i my_seq.fa -o results/blast"
+    echo
+    echo "  - Run a local BLAST using OSCs June 2023 BLAST db (used by default with --local):"
+    echo "      sbatch $0 -i my_seq.fa -o results/blast --local"
+    echo
     echo "  - Limit online BLAST database to specific taxa (using NCBI taxon IDs):"
     echo "      sbatch $0 -i my_seq.fa -o results/blast --tax_ids '343,56448'"
+    echo
     echo "  - Download aligned parts of sequences, full subjects, and full genomes:"
     echo "      sbatch $0 -i my_seq.fa -o results/blast --dl_aligned --dl_subjects --dl_genomes"
+    echo
     echo "  - Use % identity and query coverage thresholds:"
     echo "      sbatch $0 -i my_seq.fa -o results/blast --pct_id 90 --pct_cov 90"
+    echo
     echo "  - Keep only the best 10 hits per query:"
     echo "      sbatch $0 -i my_seq.fa -o results/blast --top_n 10"
     echo
@@ -82,16 +102,24 @@ script_help() {
     echo "  -i/--infile         <file>  Input FASTA file (can contain one or more sequences)"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
-    echo "BLAST OPTIONS:"
-    echo "  --local                     Run BLAST with a local database                         [default: $local]"
-    echo "  --db                <str>   If running remotely: an NCBI database name like 'nt' or 'nr' [default: $db]"
-    echo "                              If running locally: the prefix (dir + db name, no file extensions) of a local BLAST db"
-    echo "  --blast_type        <str>   Blast type, e.g. 'blastn' or 'blastp'                   [default: $blast_type]"
+    echo
+    echo "GENERAL OPTIONS (OPTIONAL):"
+    echo "  --no_header                 Don't add column headers to final BLAST output TSV file [default: add]"
+    echo "                                The header won't be added to the raw output file, which can be used for filtering"
     echo "  --force                     Run BLAST even if the output file already exists        [default: $force]"
     echo
-    echo "BLAST THRESHOLD AND FILTERING OPTIONS:"
+    echo "BLAST OPTIONS (OPTIONAL):"
+    echo "  --local                     Run BLAST with a local (on-disk) database               [default: $local]"
+    echo "  --db                <str>   - If running remotely: NCBI database name like nt/nr    [default: nt for nucleotide, nr for protein]"
+    echo "                              - If running locally: default is nt or nr from '/fs/project/pub_data/blast-database/2023-06'"
+    echo "                              - To run with a custom local db, specifiy the prefix (dir + db name, no file extensions) of a local BLAST db"
+    echo "  --blast_type        <str>   Blast type: 'blastn', 'blastp', 'blastx', 'tblastx', or 'tblastn' [default: $blast_type]"
+    echo "  --blast_task        <str>   Task for blastn or blastp, e.g. 'megablast' for blastn  [default: BLAST program default]"
+    echo "                                See https://www.ncbi.nlm.nih.gov/books/NBK569839/#usrman_BLAST_feat.Tasks"
+    echo
+    echo "BLAST THRESHOLD AND FILTERING OPTIONS (OPTIONAL):"
     echo "  --tax_ids           <str>   Comma-separated list of NCBI taxon IDs (just the numbers, no 'txid' prefix)"
-    echo "                              The BLAST search will be limited to these taxa          [default: use full database]"
+    echo "                                The BLAST search will be limited to these taxa        [default: use full database]"
     echo "  --evalue            <num>   E-value threshold in scientific notation                [default: $evalue]"
     echo "                                This option will be applied during the BLAST run"
     echo "  --pct_id            <num>   Percentage identity threshold                           [default: none]"
@@ -103,12 +131,12 @@ script_help() {
     echo "  --top_n_subject     <int>   Only keep the top N hits for each subject, per query    [default: keep all]"
     echo "                                This threshold will be applied *after* running BLAST"
     echo
-    echo "SEQUENCE DOWNLOAD OPTIONS:"
+    echo "SEQUENCE DOWNLOAD OPTIONS (OPTIONAL):"
     echo "  --dl_aligned        <str>   Download aligned parts of subject (db) sequences        [default: $to_dl_aligned]"
-    echo "  --dl_subjects     <str>     Download full subject (db) sequences that were aligned  [default: $to_dl_subjects]"
+    echo "  --dl_subjects       <str>   Download full subject (db) sequences that were aligned  [default: $to_dl_subjects]"
     echo "  --dl_genomes        <str>   Download full genomes of sequences that were aligned    [default: $to_dl_genomes]"
     echo
-    echo "UTILITY OPTIONS:"
+    echo "UTILITY OPTIONS (OPTIONAL):"
     echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
     echo "                                (NOTE: If no default '--container_url' is listed below,"
     echo "                                 you'll have to provide one in order to run the script with a container.)"
@@ -154,14 +182,14 @@ source_function_script
 # ==============================================================================
 run_blast() {
     log_time "Now running BLAST..."
-    runstats blastn \
-        -task "$blast_type" \
+    #(Options need to be awkwardly collapsed like this or BLAST will choke on the empty spaces)
+    runstats "$blast_type" \
         -db "$db" \
         -query "$infile" \
         -out "$blast_out_raw" \
         -outfmt "$BLAST_FORMAT" \
         -evalue $evalue \
-        ${remote_opt}${thread_opt}${tax_opt}${spacer}"${tax_optarg}"
+        ${task_opt}${remote_opt}${thread_opt}${tax_opt}${spacer}"${tax_optarg}"
 }
 
 process_blast() {
@@ -209,7 +237,7 @@ process_blast() {
         blast_out_topq="$blast_out_cov"
     fi
 
-    # 4. Only retain top-N matches per query
+    # 4. Only retain top-N matches per subject
     if [[ -n "$top_n_subject" ]]; then
         log_time "Getting the top $top_n_subject hits for each subject"
         
@@ -222,7 +250,7 @@ process_blast() {
         cp "$blast_out_topq" "$blast_out_final"
     fi
 
-    # Report & clean
+    # Clean & report
     [[ -f "$blast_out_cov" ]] && rm "$blast_out_cov"
     [[ -f "$blast_out_id" ]] && rm "$blast_out_id"
     [[ -f "$blast_out_sorted" ]] && rm "$blast_out_sorted"
@@ -255,15 +283,16 @@ dl_genomes() {
     while read -r -u 9 accession; do
         # First attempt to get assembly ID
         #(Note: 'head' at end because in some cases, multiple assembly versions are associated with an accession)
-        assembly=$(esearch -db nuccore -query "$accession" | elink -target assembly |
+        assembly=$(esearch -db "$dl_db" -query "$accession" | elink -target assembly |
                    esummary | xtract -pattern DocumentSummary -element RefSeq | head -n 1)
         
         # If needed, second attempt to get assembly ID
         if [[ -z "$assembly" ]]; then
-            assembly=$(esearch -db nuccore -query "$accession" | elink -target assembly |
+            assembly=$(esearch -db "$dl_db" -query "$accession" | elink -target assembly |
                        esummary | xtract -pattern DocumentSummary -element AssemblyAccession | head -n 1)
         fi
         
+        # Add the retrieved assembly ID to assembly list and lookup files 
         if [[ -n "$assembly" ]]; then
             echo "$assembly" >> "$assembly_list"
         else
@@ -312,18 +341,22 @@ dl_genomes() {
 
 dl_subjects() {
     echo -e "\n================================================================"
-    log_time "Now downloading full aligned subjects..."
+    log_time "Now downloading full subjects..."
     log_time "Number of downloads: $(cut -f 2 "$blast_out_final" | sort -u | wc -l)"
-    mkdir -p "$outdir"/subjects
+    mkdir -p "$outdir"/subjects/concat
 
     while read -r accession; do
         log_time "Subject: $accession"
         outfile="$outdir"/subjects/"$accession".fa
-        efetch -db nuccore -format fasta -id "$accession" > "$outfile"
+        efetch -db "$dl_db" -format fasta -id "$accession" > "$outfile"
     done < <(cut -f 2 "$blast_out_final" | sort -u)
 
     log_time "Listing the subject output FASTA files:"
     ls -lh "$outdir"/subjects
+
+    log_time "Creating a multi-FASTA file with all subject sequences..."
+    cat "$outdir"/subjects/*fa > "$outdir"/subjects/concat/all.fa
+    ls -lh "$outdir"/subjects/concat/all.fa
 }
 
 dl_aligned() {
@@ -335,7 +368,7 @@ dl_aligned() {
     while read -r accession start stop; do
         log_time "Subject: $accession     Start pos: $start     Stop pos: $stop"
         outfile="$outdir"/aligned/"$accession"_"$start"-"$stop".fa
-        efetch -db nuccore -format fasta \
+        efetch -db "$dl_db" -format fasta \
             -id "$accession" -seq_start "$start" -seq_stop "$stop" > "$outfile"
     done < <(cut -f 2,9,10 "$blast_out_final" | sort -u)
 
@@ -354,8 +387,10 @@ dl_aligned() {
 infile=
 outdir=
 tax_ids= && tax_opt= && tax_optarg=
+task_opt=
 threads= && thread_opt=
 spacer=
+db=
 
 # Parse command-line args
 all_opts="$*"
@@ -363,18 +398,20 @@ while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
+        --force )           force=true ;;
+        --no_header )       add_header=false ;;
         --tax_ids )         shift && tax_ids=$1 ;;
         --db )              shift && db=$1 ;;
         --blast_type )      shift && blast_type=$1 ;;
+        --blast_task )      shift && blast_task=$1 ;;
         --local )           local=true && remote_opt= ;;
-        --force )           force=true ;;
         --top_n_query )     shift && top_n_query=$1 ;;
         --top_n_subject )   shift && top_n_subject=$1 ;;
         --evalue )          shift && evalue=$1 ;;
         --pct_id )          shift && pct_id=$1 ;;
         --pct_cov )         shift && pct_cov=$1 ;;
         --dl_genomes )      to_dl_genomes=true ;;
-        --dl_subjects )   to_dl_subjects=true ;;
+        --dl_subjects )     to_dl_subjects=true ;;
         --dl_aligned )      to_dl_aligned=true ;;
         --env )             shift && env=$1 ;;
         --no_strict )       strict_bash=false ;;
@@ -419,6 +456,9 @@ blast_out_final="$outdir"/blast_out_final.tsv
 # Create the output dirs
 mkdir -p "$outdir"/logs
 
+# BLAST task option
+[[ -n "$blast_task" ]] && task_opt=" -task $blast_task"
+
 # Build BLAST taxon ID option (format: -entrez_query "txid343[Organism:exp] OR txid56448[Organism:exp]")
 if [[ -n "$tax_ids" ]]; then
     spacer=" "
@@ -434,9 +474,29 @@ if [[ -n "$tax_ids" ]]; then
     done
 fi
 
-# Build BLAST nr threads option (only allowed for local BLAST)
-set_threads "$IS_SLURM"
-[[ "$local" == true ]] && thread_opt=" -num_threads $threads"
+# Defaults based on the type of BLAST
+[[ "$blast_type" == "blastx" || "$blast_type" == "blastp" ]] && db_type=prot
+[[ "$db_type" == "prot" ]] && dl_db=protein
+
+if [[ "$local" == true ]]; then
+    # Local BLAST nr of cores
+    set_threads "$IS_SLURM"
+    thread_opt=" -num_threads $threads"
+
+    # Local BLAST default db
+    if [[ "$db_type" == "prot" ]]; then
+        [[ -z "$db" ]] && db="$local_db_aa"
+    else
+        [[ -z "$db" ]] && db="$local_db_nt"
+    fi
+else
+    # Remote BLAST default DB
+    if [[ "$db_type" == "prot" ]]; then
+        [[ -z "$db" ]] && db="$remote_db_aa"
+    else
+        [[ -z "$db" ]] && db="$remote_db_nt"
+    fi
+fi
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -446,10 +506,14 @@ echo "==========================================================================
 echo "All options passed to this script:        $all_opts"
 echo "Input file:                               $infile"
 echo "Output dir:                               $outdir"
+echo
 echo "BLAST db:                                 $db"
 echo "BLAST type:                               $blast_type"
+[[ -n "$blast_task" ]] && echo "BLAST task:                               $blast_task"
 echo "Run BLAST locally?                        $local"
+echo
 echo "Force BLAST run even if output exists?    $force"
+echo "Add column header to BLAST output>        $add_header"
 echo
 echo "Evalue threshold:                         $evalue"
 [[ -n "$pct_id" ]] && echo "Percent identity threshold:               $pct_id"
@@ -493,11 +557,16 @@ process_blast
 # Download full genomes
 [[ "$to_dl_genomes" == true ]] && dl_genomes
 
+# Add header to the final BLAST output file
+if [[ "$add_header" == true ]]; then
+    header=$(echo "$BLAST_FORMAT" | sed 's/6 //' | tr " " "\t") 
+    sed -i "1s/^/$header\n/" "$blast_out_final"
+fi
+
 # Final reporting
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
 final_reporting "$LOG_DIR"
-
 
 # ==============================================================================
 #                              SANDBOX
