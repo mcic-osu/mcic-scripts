@@ -11,8 +11,8 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Run BBSplit to 'competitively' map reads to two separate genomes"
-SCRIPT_VERSION="2023-08-28"
+DESCRIPTION="Run BBSplit to 'competitively' map reads to two or three separate genomes"
+SCRIPT_VERSION="2023-09-11"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -111,6 +111,7 @@ R1=
 R2=
 ref1=
 ref2=
+ref3=
 outdir=
 opts=
 
@@ -121,6 +122,7 @@ while [ "$1" != "" ]; do
         -i | --R1 )         shift && R1=$1 ;;
         --ref1 )            shift && ref1=$1 ;;
         --ref2 )            shift && ref2=$1 ;;
+        --ref3 )            shift && ref3=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
         --ambiguous2 )      shift && ambiguous2=$1 ;;
         --opts )            shift && opts=$1 ;;
@@ -156,26 +158,39 @@ load_env "$conda_path" "$container_path" "$dl_container"
 [[ ! -f "$R1" ]] && die "Input R1 file $R1 does not exist"
 [[ ! -f "$ref1" ]] && die "First reference genome file $ref1 does not exist"
 [[ ! -f "$ref2" ]] && die "Second reference genome file $ref2 does not exist"
+[[ -n "$ref3" && ! -f "$ref2" ]] && die "Second reference genome file $ref2 does not exist"
 
 # Define outputs based on script parameters
 [[ ! "$outdir" =~ ^/ ]] && outdir="$PWD"/"$outdir"
 [[ ! "$R1" =~ ^/ ]] && R1="$PWD"/"$R1"
 [[ ! "$ref1" =~ ^/ ]] && ref1="$PWD"/"$ref1"
 [[ ! "$ref2" =~ ^/ ]] && ref2="$PWD"/"$ref2"
+[[ -n "$ref3" && ! "$ref3" =~ ^/ ]] && ref3="$PWD"/"$ref3"
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 
 file_ext=$(basename "$R1" | sed -E 's/.*(.fasta|.fastq.gz|.fq.gz)$/\1/')
 R1_suffix=$(basename "$R1" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
 sample_id=$(basename "$R1" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
+
+# Define R2
 if [[ "$single_end" == false ]]; then
     R2_suffix=${R1_suffix/1/2}
     R2=${R1/$R1_suffix/$R2_suffix}
     [[ ! -f "$R2" ]] && die "Input R2 file $R2 does not exist"
 fi
+
+# Set memory
 if [[ "$IS_SLURM" == true ]]; then
     mem=$(( SLURM_MEM_PER_NODE - 2500 ))M
 else
     mem=4000M
+fi
+
+# Ref opt
+if [[ -n "$ref3" ]]; then
+    ref_opt="$ref1","$ref2","$ref3"
+else
+    ref_opt="$ref1","$ref2"
 fi
 
 # ==============================================================================
@@ -188,12 +203,15 @@ echo "Input R1 FASTQ file:                      $R1"
 [[ "$single_end" == "false" ]] && echo "Input R2 FASTQ file:                      $R2"
 echo "First reference genome FASTA:             $ref1"
 echo "Second reference genome FASTA:            $ref2"
+[[ -n "$ref3" ]] && echo "Third reference genome FASTA:             $ref3"
+echo "Reference option:                         $ref_opt"
 echo "What to do with ambiguously mapping reads: $ambiguous2"
 echo "Input reads are single-end:               $single_end"
 echo "Output dir:                               $outdir"
 [[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
 log_time "Listing the input file(s):"
 ls -lh "$R1" "$ref1" "$ref2"
+[[ -n "$ref3" ]] && ls -lh "$ref3"
 [[ "$single_end" == "false" ]] && ls -lh "$R2"
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
@@ -208,7 +226,7 @@ log_time "Running $TOOL_NAME..."
 runstats $CONTAINER_PREFIX $TOOL_BINARY \
     in="$R1" \
     in2="$R2" \
-    ref="$ref1","$ref2" \
+    ref="$ref_opt" \
     ambiguous2="$ambiguous2" \
     basename="$outdir"/"$sample_id"_%.fq \
     scafstats="$outdir"/"$sample_id"_scafstats.txt \
