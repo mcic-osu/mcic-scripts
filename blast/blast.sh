@@ -28,6 +28,7 @@ SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
 VERSION_COMMAND="blastn -version; datasets --version"
+TOOL_NAME="NCBI BLAST+ and datasets" 
 export NCBI_API_KEY=34618c91021ccd7f17429b650a087b585f08
 export LC_ALL=C                     # Locale for sorting
 
@@ -513,7 +514,7 @@ echo "BLAST type:                               $blast_type"
 echo "Run BLAST locally?                        $local"
 echo
 echo "Force BLAST run even if output exists?    $force"
-echo "Add column header to BLAST output>        $add_header"
+echo "Add column header to BLAST output?        $add_header"
 echo
 echo "Evalue threshold:                         $evalue"
 [[ -n "$pct_id" ]] && echo "Percent identity threshold:               $pct_id"
