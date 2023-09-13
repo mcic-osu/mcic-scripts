@@ -91,7 +91,7 @@ source_function_script() {
     if [[ ! -f "$function_script" ]]; then
         echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
         function_script=$(basename "$FUNCTION_SCRIPT_URL")
-        wget "$FUNCTION_SCRIPT_URL" -O "$function_script"
+        wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script"
     fi
     source "$function_script"
 }
