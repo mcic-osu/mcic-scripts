@@ -57,7 +57,7 @@ parser$add_argument("--tiplab_column",
                     type = "character", default = NULL,
                     help = "Name of annotation file column to use as tip labels (instead of labels in the tree file)")
 parser$add_argument("--right_margin",
-                    type = "numeric", default = 2,
+                    type = "numeric", default = 3,
                     help = "Size of the plot's right margin: extend to avoid truncated tip labels, etc.")
 
 args <- parser$parse_args()
@@ -143,7 +143,7 @@ if (!is.null(tiplab_column)) {
 p <- p +
   geom_rootedge(rootedge = sum(tree$edge.length) / 50) +
   theme(plot.margin = margin(0.2, right_margin, 0.2, 0.2, "cm"),
-        legend.box.spacing = unit(25, "pt"))
+        legend.box.spacing = unit(50, "pt"))
 if(layout == "rectangular") p <- p + coord_cartesian(clip = "off")
 
 # Save the plot to file
