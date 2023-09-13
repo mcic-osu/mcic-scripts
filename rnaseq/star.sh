@@ -62,12 +62,14 @@ script_help() {
     echo "REQUIRED OPTIONS:"
     echo "  -r/--index_dir      <dir>   Input STAR reference genome index dir (First create index with 'mcic-scripts/rnaseq/star_index.sh')"
     echo "  -o/--outdir         <dir>   BAM output dir"
+    echo "  --annot             <file>  Ref. annotation file (GFF/GTF - GTF preferred)"
+    echo "                                NOTE: If you don't have or want to use an annotation file,"
+    echi "                                omit this this option *and* use the option '--no_transcriptome'."
     echo "  To specify the input reads, use one of the following to options:"
     echo "    -i/--R1           <file>  Input gzipped (R1) FASTQ file path (If R1, name of R2 will be inferred unless using '--single_end')"
     echo "    --fofn            <file>  A File of File Names (FOFN), with one line per input file (not meant for more than 1 sample!)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --annot             <file>  Ref. annotation file (GFF/GTF - GTF preferred) [default: no annotation file, but this is not recommended]"
     echo "  --no_transcriptome          Don't use '--quantMode TranscriptomeSAM'    [default: use this option, so Salmon can use the output]"
     echo "  --output_unmapped           Output unmapped reads back as FASTQ file    [default: don't output]"
     echo "  --R2                <file>  Input R2 FASTQ file (in case of non-standard naming) [default: infer R2 file name]"
@@ -128,7 +130,7 @@ source_function_script
 R1_in= && R2_in= && fofn=
 declare -a infiles
 index_dir=
-annot= && annot_tags=
+annot= && annot_tags= && annot_opt=
 outdir=
 opts=
 version_only=false
@@ -147,7 +149,7 @@ while [ "$1" != "" ]; do
         --max_map )             shift && max_map=$1 ;;
         --intron_min )          shift && intron_min=$1 ;;
         --intron_max )          shift && intron_max=$1 ;;
-        --output_unmapped )     shift && output_unmapped=$1 ;;
+        --output_unmapped )     output_unmapped=true ;;
         --no_transcriptome )    quantmode_opt= ;;
         --index_bam )           index_bam=true ;;
         --sort )                shift && sort_bam=$1 ;;
@@ -225,6 +227,8 @@ mkdir -p "$outdir"/bam "$starlog_dir"
 
 # If a GFF/GTF file is provided, build the appropriate argument for STAR
 if [[ -n "$annot" ]]; then
+    annot_opt="--sjdbGTFfile $annot"
+    
     if [[ "$annot" =~ .*\.gff3? ]]; then
         annot_tags="--sjdbGTFtagExonParentTranscript Parent"
     elif [[ "$annot" =~ .*\.gtf ]]; then
@@ -280,6 +284,7 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
+# Align with STAR
 log_time "Running $TOOL_NAME..."
 runstats $CONTAINER_PREFIX $TOOL_BINARY \
     --genomeDir "$index_dir" \
@@ -297,7 +302,8 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
     --runRNGseed 0 \
     --alignSJDBoverhangMin 1 \
     --quantTranscriptomeBan "Singleend" \
-    --sjdbGTFfile $annot $annot_tags \
+    $annot_opt \
+    $annot_tags \
     $quantmode_opt \
     $unmapped_opt \
     $output_opt \
@@ -310,9 +316,9 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
 #? --alignSJDBoverhangMin 1 => Using this following the nf-core RNAseq workflow
 #? --runRNGseed 0 => Using this following the nf-core RNAseq workflow
 
-# Sort with samtools sort
-# STAR may fail to sort on some large BAM files, or BAM files with a lot of
-# reads mapping to similar positions. In that case, could use samtools sort. 
+# Sort BAM with samtools sort
+#   (STAR may fail to sort on some large BAM files, or BAM files with a lot of
+#    reads mapping to similar positions. In that case, could use samtools sort.)
 if [[ "$sort_bam" == "samtools" ]]; then
     log_time "Sorting the BAM file with samtools sort..."
     bam_unsorted="$outfile_prefix"Aligned.out.bam
@@ -361,16 +367,22 @@ if [[ "$output_unmapped" == true ]]; then
 fi
 
 # Move STAR log files
-log_time "Moving the STAR log files...."
+log_time "Moving the STAR log files..."
 mv -v "$outfile_prefix"Log*out "$starlog_dir"
 
+# Show alignment % lines from STAR log
+log_time "Showing alignment rate lines from $starlog_dir/${sampleID}_Log.final.out..."
+grep "Uniquely mapped reads %" "$starlog_dir"/"$sampleID"_Log.final.out
+grep "% of reads mapped to multiple loci" "$starlog_dir"/"$sampleID"_Log.final.out
+
+# List output files
 log_time "Listing the output BAM file(s):"
 ls -lh "$final_bam"
 [[ -n "$quantmode_opt" ]] && ls -lh "$map2trans_bam"
-
 if [[ "$output_unmapped" == true ]]; then
     log_time "Listing the FASTQ files with unmapped reads:"
     ls -lh "$unmapped_dir/$sampleID"*fastq.gz
 fi
 
+# Final reporting
 final_reporting "$LOG_DIR"

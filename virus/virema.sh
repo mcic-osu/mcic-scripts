@@ -1,39 +1,35 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=2:00:00
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=64G
+#SBATCH --cpus-per-task=30
+#SBATCH --time=24:00:00
 #SBATCH --mail-type=FAIL
-#SBATCH --job-name=bbsplit
-#SBATCH --output=slurm-bbsplit-%j.out
+#SBATCH --job-name=virema
+#SBATCH --output=slurm-virema-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Run BBSplit to 'competitively' map reads to two or three separate genomes"
-SCRIPT_VERSION="2023-09-11"
+DESCRIPTION="Run ViReMa to detect viral recombination"
+SCRIPT_VERSION="2023-09-12"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
-TOOL_BINARY=bbsplit.sh
-TOOL_NAME=BBSplit
-TOOL_DOCS=https://jgi.doe.gov/data-and-tools/software-tools/bbtools/bb-tools-user-guide/bbmap-guide/
+VIREMA_BIN=/fs/ess/PAS0471/jelmer/conda/virema/bin/ViReMa.py
+TOOL_BINARY="python3 $VIREMA_BIN"
+TOOL_NAME=ViReMa
+TOOL_DOCS=https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10025937/
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
 env=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/bbmap
+conda_path=/fs/ess/PAS0471/jelmer/conda/virema
 container_path=
 container_url=
 dl_container=false
 container_dir="$HOME/containers"
 strict_bash=true
 version_only=false                 # When true, just print tool & script version info and exit
-
-# Defaults - tool parameters
-single_end=false
-ambiguous2="split"
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -47,18 +43,16 @@ script_help() {
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage:"
-    echo "      sbatch $0 -i sampleA.fastq.gz --ref1 assemblyA.fasta --ref2 assemblyB.fasta -o results/bbsplit"
+    echo "      sbatch $0 -i results/trim/concat.fastq.gz --viral_fa data/ref/virus.fa -o results/virema"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--R1             <file>  R1 input FASTQ file (name of R2 file will be inferred unless --single_end is used)"
-    echo "  --ref1              <file>  First reference genome FASTA file"
-    echo "  --ref2              <file>  Second reference genome FASTA file"
+    echo "  -i/--fastq          <file>  Input interleaved FASTQ file"
+    echo "  --virus_fa          <file>  Viral reference genome FASTA file"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --ambiguous2        <str>   Set behavior only for reads that map ambiguously to multiple different references"
-    echo "                              'best', 'toss', 'all', or 'split'       [default: $ambiguous2]"
-    echo "  --single_end                Sequences are single-end; don't look for R2 file"
+    echo "  --pad               <int>   Enter number of A's to add to 3' end of viral genome. 'Pads' are required if recombination occurs at end of genome."
+    echo "  --host_idx          <prefix> Bowtie1 host genome index prefix"
     echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -107,27 +101,25 @@ source_function_script
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
-R1=
-R2=
-ref1=
-ref2=
-ref3=
+infile=
 outdir=
+virus_fa=
+host_idx= && host_opt=
+pad= && pad_opt=
 opts=
+threads=
 
 # Parse command-line args
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --R1 )         shift && R1=$1 ;;
-        --ref1 )            shift && ref1=$1 ;;
-        --ref2 )            shift && ref2=$1 ;;
-        --ref3 )            shift && ref3=$1 ;;
+        -i | --fastq )      shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
-        --ambiguous2 )      shift && ambiguous2=$1 ;;
+        --virus_fa )        shift && virus_fa=$1 ;;
+        --host_idx )        shift && host_idx=$1 ;;
+        --pad )             shift && pad=$1 ;;
         --opts )            shift && opts=$1 ;;
         --env )             shift && env=$1 ;;
-        --single_end )      single_end=true ;;
         --no_strict )       strict_bash=false ;;
         --dl_container )    dl_container=true ;;
         --container_dir )   shift && container_dir=$1 ;;
@@ -151,47 +143,17 @@ load_env "$conda_path" "$container_path" "$dl_container"
 [[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
-[[ -z "$R1" ]] && die "No R1 input file specified, do so with -i/--R1" "$all_opts"
-[[ -z "$ref1" ]] && die "No first reference genome file specified, do so with --ref1" "$all_opts"
-[[ -z "$ref2" ]] && die "No second reference genome file specified, do so with --ref2" "$all_opts"
+[[ -z "$infile" ]] && die "No input FASTQ file specified, do so with -i/--fastq" "$all_opts"
+[[ -z "$virus_fa" ]] && die "No virus FASTA file specified, do so with --virus_fa" "$all_opts"
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
-[[ ! -f "$R1" ]] && die "Input R1 file $R1 does not exist"
-[[ ! -f "$ref1" ]] && die "First reference genome file $ref1 does not exist"
-[[ ! -f "$ref2" ]] && die "Second reference genome file $ref2 does not exist"
-[[ -n "$ref3" && ! -f "$ref2" ]] && die "Second reference genome file $ref2 does not exist"
+[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
+[[ ! -f "$virus_fa" ]] && die "Input file $virus_fa does not exist"
 
 # Define outputs based on script parameters
-[[ ! "$outdir" =~ ^/ ]] && outdir="$PWD"/"$outdir"
-[[ ! "$R1" =~ ^/ ]] && R1="$PWD"/"$R1"
-[[ ! "$ref1" =~ ^/ ]] && ref1="$PWD"/"$ref1"
-[[ ! "$ref2" =~ ^/ ]] && ref2="$PWD"/"$ref2"
-[[ -n "$ref3" && ! "$ref3" =~ ^/ ]] && ref3="$PWD"/"$ref3"
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
-
-file_ext=$(basename "$R1" | sed -E 's/.*(.fasta|.fastq.gz|.fq.gz)$/\1/')
-R1_suffix=$(basename "$R1" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
-sample_id=$(basename "$R1" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
-
-# Define R2
-if [[ "$single_end" == false ]]; then
-    R2_suffix=${R1_suffix/1/2}
-    R2=${R1/$R1_suffix/$R2_suffix}
-    [[ ! -f "$R2" ]] && die "Input R2 file $R2 does not exist"
-fi
-
-# Set memory
-if [[ "$IS_SLURM" == true ]]; then
-    mem=$(( SLURM_MEM_PER_NODE - 2500 ))M
-else
-    mem=4000M
-fi
-
-# Ref opt
-if [[ -n "$ref3" ]]; then
-    ref_opt="$ref1","$ref2","$ref3"
-else
-    ref_opt="$ref1","$ref2"
-fi
+sample_id=$(basename "$infile" .fastq.gz)
+[[ -n $host_idx ]] && host_opt="--Host_Index $host_idx"
+[[ -n $pad ]] && pad_opt="--Pad $pad"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -199,45 +161,39 @@ fi
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options passed to this script:        $all_opts"
-echo "Input R1 FASTQ file:                      $R1"
-[[ "$single_end" == "false" ]] && echo "Input R2 FASTQ file:                      $R2"
-echo "First reference genome FASTA:             $ref1"
-echo "Second reference genome FASTA:            $ref2"
-[[ -n "$ref3" ]] && echo "Third reference genome FASTA:             $ref3"
-echo "Reference option:                         $ref_opt"
-echo "What to do with ambiguously mapping reads: $ambiguous2"
-echo "Input reads are single-end:               $single_end"
+echo "Input file:                               $infile"
 echo "Output dir:                               $outdir"
+echo "Virus FASTA file:                         $virus_fa"
+[[ -n $host_idx ]] && echo "Host genome index:                        $host_idx"
 [[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
 log_time "Listing the input file(s):"
-ls -lh "$R1" "$ref1" "$ref2"
-[[ -n "$ref3" ]] && ls -lh "$ref3"
-[[ "$single_end" == "false" ]] && ls -lh "$R2"
+ls -lh "$infile" "$virus_fa"
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-log_time "Moving into the output dir $outdir..."
-cd  "$outdir" || exit
-
 log_time "Running $TOOL_NAME..."
 runstats $CONTAINER_PREFIX $TOOL_BINARY \
-    in="$R1" \
-    in2="$R2" \
-    ref="$ref_opt" \
-    ambiguous2="$ambiguous2" \
-    basename="$outdir"/"$sample_id"_%.fq \
-    scafstats="$outdir"/"$sample_id"_scafstats.txt \
-    refstats="$outdir"/"$sample_id"_refstats.txt \
-    maxindel=150000 \
-    threads="$threads" \
-    -Xmx"$mem" \
-    $opts
+    --Output_Dir "$outdir" \
+    --Output_Tag "$sample_id" \
+    --p "$threads" \
+    -BED \
+    --MicroInDel_Length 5 \
+    --Defuzz 0 \
+    -FuzzEntry \
+    -Overwrite \
+    $host_opt \
+    $pad_opt \
+    $opts \
+    "$virus_fa" \
+    "$infile" \
+    "$sample_id".sam
 
-#? maxindel=150000 from nf-core RNAseq workflow
-#? nf-core rnaseq workflow has ambigous2=all
+#? --p = nr of cores
+#? --Pad PAD             Enter number of A's to add to 3' end of viral genome. 'Pads' are required if recombination occurs as end of genome. Default is off
+#? Output SAM file should be file name only, not dir!
 
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
