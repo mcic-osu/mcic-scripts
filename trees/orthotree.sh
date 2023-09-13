@@ -21,7 +21,7 @@ conda_path=/fs/ess/PAS0471/jelmer/conda/iqtree
 # Defaults
 color_column=pathovar               # Name of the metadata column to color tip labels by
 tiplab_column=isolate               # Name of the metadata column with alternative tip labels
-ufboot= && boot_opt=                #TODO add as option
+ufboot=1000 && boot_opt=            #TODO add as option
 
 # ==============================================================================
 #                                   FUNCTIONS
