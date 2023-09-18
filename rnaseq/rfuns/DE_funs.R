@@ -7,13 +7,36 @@ library(tidyverse)
 # Run DE analysis
 run_DE <- function(
   dds,
+  design = NULL,
+  subset_factor = NULL,
+  subset_levels = NULL,
+  extract_factor = NULL,
+  count_df = NULL,
   minReplicatesForReplace = 7,
   ...
 ) {
+  nsample_org <- ncol(dds)
   
-  DESeq(dds,
-        minReplicatesForReplace = minReplicatesForReplace,
-        ...)
+  if (!is.null(design)) design(dds) <- design
+  
+  if (!is.null(subset_factor)) {
+    dds <- dds[, dds[[subset_factor]] %in% subset_levels]
+    message("\nAfter subsetting ", subset_factor, " to keep ", subset_levels, " only, ",
+            ncol(dds), " out of ", nsample_org, " samples are left")
+  }
+  
+  dds <- suppressMessages(
+    DESeq(dds,
+          minReplicatesForReplace = minReplicatesForReplace,
+          ...)
+  )
+  
+  if (! is.null(extract_factor)) {
+    DE_res <- extract_DE_all(dds, fac = extract_factor, count_df = count_df)
+    return(DE_res)
+  } else {
+    return(dds)
+  }
 }
 
 
@@ -190,7 +213,7 @@ norm_counts <- function(
     count_mat <- assay(vst(dds, blind = TRUE))
   }
   if (transform == "rlog") {
-    # Suppress meesages to avoid "vst is much faster transformation - message"
+    # Suppress messages to avoid "vst is much faster transformation - message"
     count_mat <- suppressMessages(assay(rlog(dds, blind = TRUE)))
   }
   if (transform == "lib_size") {
@@ -202,9 +225,9 @@ norm_counts <- function(
   if (return_matrix == TRUE) return(count_mat)
 
   # Get metadata from dds if not provided
-  meta_df <- colData(dds) |>
-    as.data.frame() |>
-    rownames_to_column("sample")
+  meta_df <- as.data.frame(colData(dds))
+  meta_df$sample <- rownames(meta_df)
+  rownames(meta_df) <- NULL
 
   # Get a long-format count df with metadata
   count_df <- as.data.frame(count_mat) |>
@@ -772,26 +795,28 @@ pca_plot <- function(
     fill = NULL,
     shape = NULL,                 # Vary point shape by this variable from the metadata
     pt_size = 5,
+    pt_shape = NULL,
     add_ids = FALSE,              # Add sample names to points TRUE/FALSE
-    title = NULL)                 # Add a title as a string; "NULL" is no title
-{
-  
+    title = NULL,                 # Add a title as a string; "NULL" is no title
+    interactive = FALSE,          # Use ggiraph to make the plot interactive
+                                  # NOTE: need to call 'girafe(ggobj = p)' on output!
+    pc_var = TRUE                 # Indicate % of variation in axis titles
+) {
   if (class(pca_res) == "pca") {
     # Extract the data from the PCAtools object
-    meta <- as.data.frame(pca_res$metadata) |>
-      rownames_to_column("sample")
-    
-    df <- as.data.frame(pca_res$rotated) |>
-      rownames_to_column("sample") |>
-      dplyr::left_join(meta, by = "sample")
+    meta <- as.data.frame(pca_res$metadata)
+    meta$sample <- rownames(meta)
+    df <- as.data.frame(pca_res$rotated)
+    df$sample <- rownames(df)
+    df <- dplyr::left_join(df, meta, by = "sample")
     
     percent_var <- round(pca_res$variance, 2)
     
   } else {
     percent_var <- pca_res$percent_var
     
-    df <- pca_res$df |>
-      rownames_to_column("sample")
+    df <- pca_res$df
+    df$sample <- rownames(df)
   }
   
   # Sample names
@@ -799,32 +824,65 @@ pca_plot <- function(
   if (add_ids == FALSE) names <- 0
   
   # Axis labels
-  x_nr <- as.integer(sub("PC", "", x))
-  y_nr <- as.integer(sub("PC", "", y))
-  x_lab <- paste0(x, " (", percent_var[x_nr], "% of variance)")
-  y_lab <- paste0(y, " (", percent_var[y_nr], "% of variance)")
+  if (pc_var == TRUE) {
+    x_nr <- as.integer(sub("PC", "", x))
+    y_nr <- as.integer(sub("PC", "", y))
+    x_lab <- paste0(x, " (", percent_var[x_nr], "% of variance)")
+    y_lab <- paste0(y, " (", percent_var[y_nr], "% of variance)")
+  } else {
+    x_lab <- x
+    y_lab <- y
+  }
   
   # Create the base plot
-  p <- ggplot(data = df,
-              aes(x = .data[[x]],
-                  y = .data[[y]]))
+  p <- ggplot(data = df) +
+    aes(x = .data[[x]], y = .data[[y]])
   
-  # Color and shape aesthethics
+  # Color aesthethic
   if (!is.null(col)) {
     p <- p +
       aes(color = .data[[col]]) +
       scale_color_brewer(palette = "Dark2")
   }
+  
+  # Fill aesthetic
   if (!is.null(fill)) {
     p <- p +
       aes(fill = .data[[fill]]) +
       scale_fill_brewer(palette = "Dark2")
+    if (is.null(shape)) pt_shape <- 21
   }
-  if (!is.null(shape)) p <- p + aes(shape = .data[[shape]])
+  
+  # Shape aesthetic
+  if (!is.null(shape)) {
+    n_shapes <- length(unique(df[[shape]]))
+    shapes <- c(21:25)[1:n_shapes]
+    
+    p <- p +
+      aes(shape = .data[[shape]]) +
+      scale_shape_manual(values = shapes) +
+      guides(fill = guide_legend(override.aes = list(shape = 21)))
+  }
+  
+  # Add points
+  if (interactive == FALSE) {
+    if (is.null(shape)) {
+      p <- p + geom_point(size = pt_size, shape = pt_shape)
+    } else {
+      if (!is.null(shape)) p <- p + geom_point(size = pt_size)
+    }
+  } else {
+    if (!require(ggiraph)) install.packages("ggiraph")
+    if (is.null(shape)) {
+      p <- p + geom_point_interactive(aes(tooltip = sample),
+                                      size = pt_size, shape = pt_shape)
+    } else {
+      p <- p + geom_point_interactive(aes(tooltip = sample), size = pt_size)
+    }
+  }
   
   # Plot polishing
   p <- p +
-    geom_point(size = pt_size) +
     labs(x = x_lab, y = y_lab, title = title) +
     theme(panel.grid.minor = element_blank(),
           axis.text.x = element_text(size = 10),
@@ -832,13 +890,17 @@ pca_plot <- function(
           plot.title = element_text(hjust = 0.5,
                                     color = "grey20"))
   
+  # Add sample IDs
   if (add_ids == TRUE) {
+    if (!require(ggrepel)) install.packages("ggrepel")
     p <- p +
-      geom_text_repel(aes(label = .data[[1]]),
-                      max.overlaps = 20, point.padding = 3)
+      ggrepel::geom_text_repel(
+        aes(label = sample), max.overlaps = 20, point.padding = 3
+        )
   }
   
   return(p)
+  #if (interactive == FALSE) return(p) else girafe(ggobj = p)
 }
 
 
