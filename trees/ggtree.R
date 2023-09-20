@@ -4,11 +4,6 @@
 #SBATCH --job-name=ggtree
 #SBATCH --output=slurm-ggtree-%j.out
 
-#TODO - Add node labels (bootstrap)
-#p <- p +
-#  geom_text2(aes(subset = !isTip, label = label),
-#             color = "grey50", nudge_y = 0.4, nudge_x = -0.05, size = 3)
-
 #? From an input tree file, this script will plot the tree with ggtree
 #? (All tree file formats should be supported)
 
@@ -47,6 +42,12 @@ parser$add_argument("--root",
 parser$add_argument("--annot",
                     type = "character", default = NULL,
                     help = "Input annotation/metadata file")
+parser$add_argument("--boot",
+                    action = "store_true", required = FALSE, default = TRUE,
+                    help = "Show bootstrap values")
+parser$add_argument("--boot_thres",
+                    type = "numeric", default = 95,
+                    help = "Only show bootstrap values below this threshold")
 parser$add_argument("--layout",
                     type = "character", default = "rectangular",
                     help = "Tree layout")
@@ -69,6 +70,8 @@ color_column <- args$color_column
 tiplab_column <- args$tiplab_column
 root <- args$root
 right_margin <- args$right_margin
+boot <- args$boot
+boot_thres <- args$boot_thres
 
 # Define the output file name, if needed
 if (is.null(figure_file)) {
@@ -86,6 +89,7 @@ if (!is.null(annot_file)) message("# Annotation/metadata file:                ",
 if (!is.null(tiplab_column)) message("# Metadata column for tip labels:          ",      tiplab_column)
 if (!is.null(color_column)) message("# Metadata column for colors:              ", color_column)
 if (!is.null(root)) message("# ID of sample that should be the root:    ", root)
+message("# Add bootstrap vals to tree:              ", boot)
 message()
 
 
@@ -139,7 +143,17 @@ if (!is.null(tiplab_column)) {
                        align = TRUE, linesize = 0, size = LABEL_SIZE)
 }
 
-# Make the plot
+# Bootstrap labels
+if (boot == TRUE) {
+  p <- p + geom_text2(
+    aes(aes(subset = !is.na(as.numeric(label)) & as.numeric(label) < boot_thres,
+            label = label),
+        color = "grey50", size = 3,
+        nudge_y = 0.4, nudge_x = -(tree_size / 150))
+  )
+}
+
+# Finalize the plot
 p <- p +
   geom_rootedge(rootedge = sum(tree$edge.length) / 50) +
   theme(plot.margin = margin(0.2, right_margin, 0.2, 0.2, "cm"),
