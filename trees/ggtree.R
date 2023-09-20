@@ -126,6 +126,8 @@ if (! is.null(root)) {
   tree <- ape::root(tree, outgroup = root) 
 }
 
+# Get the size of the tree along the x-axis
+tree_size <- sum(tree$edge.length)
 
 # PLOT THE TREE ----------------------------------------------------------------
 # Base tree
@@ -135,27 +137,36 @@ p <- ggtree(tree, layout = layout)
 if (!is.null(annot_file)) p <- p %<+% annot
 
 # Tip labels
-if (!is.null(tiplab_column)) {
+if (!is.null(tiplab_column) & !is.null(color_column)) {
   p <- p + geom_tiplab(aes_string(color = color_column, label = tiplab_column),
                        align = TRUE, linesize = 0, size = LABEL_SIZE)
-} else {
+}
+if (!is.null(color_column) & is.null(tiplab_column)) {
   p <- p + geom_tiplab(aes_string(color = color_column),
                        align = TRUE, linesize = 0, size = LABEL_SIZE)
+}
+if (is.null(color_column) & !is.null(tiplab_column)) {
+  p <- p + geom_tiplab(aes_string(label = tiplab_column),
+                       align = TRUE, linesize = 0, size = LABEL_SIZE)
+}
+if (is.null(color_column) & is.null(tiplab_column)) {
+  p <- p + geom_tiplab(align = TRUE, linesize = 0, size = LABEL_SIZE)
 }
 
 # Bootstrap labels
 if (boot == TRUE) {
   p <- p + geom_text2(
-    aes(aes(subset = !is.na(as.numeric(label)) & as.numeric(label) < boot_thres,
-            label = label),
-        color = "grey50", size = 3,
-        nudge_y = 0.4, nudge_x = -(tree_size / 150))
+    #aes(subset = !isTip, label = label),
+    aes(subset = !is.na(as.numeric(label)) & as.numeric(label) < boot_thres,
+        label = label),
+    color = "grey50", size = 3,
+    nudge_y = 0.4, nudge_x = -(tree_size / 100)
   )
 }
 
 # Finalize the plot
 p <- p +
-  geom_rootedge(rootedge = sum(tree$edge.length) / 50) +
+  geom_rootedge(rootedge = tree_size / 50) +
   theme(plot.margin = margin(0.2, right_margin, 0.2, 0.2, "cm"),
         legend.box.spacing = unit(50, "pt"))
 if(layout == "rectangular") p <- p + coord_cartesian(clip = "off")

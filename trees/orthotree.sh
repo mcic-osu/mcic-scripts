@@ -11,8 +11,9 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Create a phylogenetic ortholog tree"
-SCRIPT_VERSION="2023-09-13"
+DESCRIPTION="Create both a nucleotide and a protein phylogenetic tree for a gene
+in a focal genome based on its Orthofinder orthogroup"
+SCRIPT_VERSION="2023-09-20"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -21,7 +22,7 @@ conda_path=/fs/ess/PAS0471/jelmer/conda/iqtree
 # Defaults
 color_column=pathovar               # Name of the metadata column to color tip labels by
 tiplab_column=isolate               # Name of the metadata column with alternative tip labels
-ufboot=1000 && boot_opt=            #TODO add as option
+nboot=1000 && boot_opt=            
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -45,7 +46,7 @@ script_help() {
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --allow_filter              Allow Parsnp to remove too-divergent genomes [default: keep all genomes]"
+    echo "  --nboot             <int>   Number of Ultrafast IQ-tree bootstraps  [default: $nboot]"
     echo "  --root              <str>   ID of the genome to root the tree with  [default: no rerooting]"
     echo "  --meta              <file>  File with metadata to plot the tree"
     echo "  --color_column      <str>   Name of the metadata column to color tip labels by ('NULL' to ignore) [default: $color_column]"
@@ -106,6 +107,7 @@ while [ "$1" != "" ]; do
         --color_column )    shift && color_column=$1 ;;
         --tiplab_column )   shift && tiplab_column=$1 ;;
         --root )            shift && root=$1 ;;
+        --nboot )           shift && nboot=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
         -h | --help )       script_help; exit 0 ;;
         -v )                script_version; exit 0 ;;
@@ -154,9 +156,9 @@ asm_list="$outdir"/assembly_list.txt
 msa="$outdir"/msa_prot.faa
 
 # Options
+[[ "$nboot" -gt 0 ]] && boot_opt="--ufboot $nboot"
 [[ -n "$root" ]] && root_opt="--root $root"
 [[ -n "$meta" ]] && meta_opt="--annot $meta --color_column $color_column --tiplab_column $tiplab_column"
-[[ -n "$ufboot" ]] && boot_opt="--ufboot $ufboot"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -169,6 +171,7 @@ echo "Reference genome FASTA:                   $ref_fna"
 echo "Reference genome GFF:                     $ref_gff_org"
 echo "Input dir with genomes:                   $indir"
 echo "BED file with locus coordinates:          $bedfile"
+echo "Number of bootstraps:                     $nboot"
 [[ -n "$meta" ]] && echo "Metadata file:                            $meta"
 [[ -n "$root" ]] && echo "Tree root:                                $root"
 echo "Locus ID:                                 $locus_id"
@@ -196,6 +199,15 @@ log_time "Getting the focal gene ID and Orthogroup..."
 gene_id=$(bedtools intersect -F 0.9 -a "$ref_gff" -b "$bedfile" | sed -E 's/.*ID=([^;]+);.*/\1/')
 OG=$(grep "$gene_id" "$ortho_dir"/Orthogroups/Orthogroups.tsv | cut -f1)
 log_time "Gene ID: $gene_id       Orthogroup: $OG"
+
+# Assign the correct tree files, this will depend on whether bootstraps were done
+if [[ "$nboot" -gt 0 ]]; then
+    nuc_tree="$outdir"/trees/"$OG"_nuc.contree
+    prot_tree="$outdir"/trees/"$OG"_prot.contree
+else
+    nuc_tree="$outdir"/trees/"$OG"_nuc.treefile
+    prot_tree="$outdir"/trees/"$OG"_prot.treefile
+fi
 
 # ==============================================================================
 #                           RUN - PROTEIN TREE
@@ -294,8 +306,8 @@ ls -lh "$outdir"/logs/iqtree_"$OG"_nuc.log
 # Plot the trees
 log_time "Plotting the trees..."
 source activate /fs/ess/PAS0471/jelmer/conda/r_tree
-Rscript mcic-scripts/trees/ggtree.R -i "$outdir"/trees/"$OG"_nuc.treefile $root_opt $meta_opt
-Rscript mcic-scripts/trees/ggtree.R -i "$outdir"/trees/"$OG"_prot.treefile $root_opt $meta_opt
+runstats Rscript mcic-scripts/trees/ggtree.R -i "$nuc_tree" $root_opt $meta_opt
+runstats Rscript mcic-scripts/trees/ggtree.R -i "$prot_tree" $root_opt $meta_opt
 
 # Report
 log_time "Done with script orthotree.sh"
