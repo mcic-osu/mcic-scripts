@@ -22,7 +22,7 @@ conda_path=/fs/ess/PAS0471/jelmer/conda/iqtree
 # Defaults
 color_column=pathovar               # Name of the metadata column to color tip labels by
 tiplab_column=isolate               # Name of the metadata column with alternative tip labels
-nboot=1000 && boot_opt=            
+nboot=1000                          # Number of IQ-tree ultrafast bootstraps
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -93,6 +93,7 @@ outdir=
 meta= && meta_opt=
 bedfile=
 root= && root_opt=
+boot_opt=
 threads=
 
 # Parse command-line args
@@ -248,18 +249,28 @@ grep ">" "$msa" | while read -r asm_id gene_id; do
     asm_focal="$indir"/"$asm_id".fna
     # Output    
     gene_fna="$outdir"/fna_each/"$asm_id"__"$gene_id".fna
+    tmp_gff="$outdir"/fna_each/"$asm_id"_"$gene_id".tmp
     log_time "asm_id: $asm_id  /  gene_id: $gene_id"
 
     # Create nucleotide FASTA
-    if grep -q "$gene_id" "$gff_focal"; then
+    awk '$3 == "CDS"' "$gff_focal" | grep "$gene_id" > "$tmp_gff"
+    if [[ -s "$tmp_gff" ]]; then
         # Extract FASTA by coords
-        bedtools getfasta -fi "$asm_focal" -bed <(grep "$gene_id" "$gff_focal") > "$gene_fna"
+        bedtools getfasta -fi "$asm_focal" -bed "$tmp_gff" > "$gene_fna"
+        
         # Prepend assembly ID + gene ID to header
         #sed -i "s/>/>${asm_id}_${gene_id} /" "$gene_fna" #! Use this if there are >1 genes per assembly
         sed -i "s/>/>${asm_id} /" "$gene_fna"
-        set +e +u +o pipefail
-        [[ ! -s "$gene_fna" ]] && echo "WARNING: FASTA $gene_fna is empty"
-        set -euo pipefail
+        
+        # Check nr of entries in the FASTA
+        n_entry=$(grep -c "^>" "$gene_fna")
+        [[ "$n_entry" -eq 0 ]] && echo "WARNING: FASTA $gene_fna is empty "
+        if [[ "$n_entry" -gt 1 ]]; then
+            echo "WARNING: FASTA $gene_fna contains >1 entries: $n_entry
+            ls -lh $gene_fna" "$tmp_gff"
+        else
+            rm "$tmp_gff"
+        fi
     else
         log_time "WARNING: Gene not found ($asm_id / $gene_id)"
     fi
@@ -269,7 +280,7 @@ grep ">" "$msa" | while read -r asm_id gene_id; do
 done
 
 # Check for assemblies that are present twice
-log_time "Printing assemblies with multiple copies of the focal gene:"
+log_time "Printing assemblies with multiple copies of the focal gene (none if there's no output below):"
 sort "$asm_list" | uniq -c | awk '$1 > 1' | sort -nr
 
 # Make nucleotide tree

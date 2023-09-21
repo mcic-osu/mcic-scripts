@@ -12,16 +12,21 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Create a local phylogenetic tree with Parsnp"
-SCRIPT_VERSION="2023-09-03"
+SCRIPT_VERSION="2023-09-20"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 PARSNP_CONTAINER_PREFIX="singularity exec /users/PAS0471/jelmer/containers/parsnp_1.7.4--hd03093a_1.sif"
+MODULE=miniconda3/23.3.1-py310
+IQTREE_CONDA=/fs/ess/PAS0471/jelmer/conda/iqtree
+BEDTOOLS_CONDA=/fs/ess/PAS0471/jelmer/conda/bedtools
+TREE_CONDA=/fs/ess/PAS0471/jelmer/conda/r_tree
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
 
 # Defaults
 color_column=pathovar               # Name of the metadata column to color tip labels by
 tiplab_column=isolate               # Name of the metadata column with alternative tip labels
 keep_all=true && curated_opt=" --curated" # Keep all genomes, i.e. use the --curated flag of Parsnp? Or remove too-divergent genomes?
+nboot=1000                          # Number of IQ-tree ultrafast bootstraps
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -44,6 +49,7 @@ script_help() {
     echo "  --bed               <file>  BED file with genomic coordinates of focal region"
     echo
     echo "OTHER KEY OPTIONS:"
+    echo "  --nboot             <int>   Number of Ultrafast IQ-tree bootstraps  [default: $nboot]"
     echo "  --allow_filter              Allow Parsnp to remove too-divergent genomes [default: keep all genomes]"
     echo "  --root              <str>   ID of the genome to root the tree with  [default: no rerooting]"
     echo "  --meta              <file>  File with metadata to plot the tree"
@@ -91,6 +97,7 @@ outdir=
 meta= && meta_opt=
 bedfile=
 root= && root_opt=
+boot_opt=
 threads=
 
 # Parse command-line args
@@ -103,6 +110,7 @@ while [ "$1" != "" ]; do
         --meta )            shift && meta=$1 ;;
         --color_column )    shift && color_column=$1 ;;
         --tiplab_column )   shift && tiplab_column=$1 ;;
+        --nboot )           shift && nboot=$1 ;;
         --root )            shift && root=$1 ;;
         --allow_filter )    keep_all=false && curated_opt= ;;
         -o | --outdir )     shift && outdir=$1 ;;
@@ -130,6 +138,7 @@ set -euo pipefail
 
 # Define outputs based on script parameters
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+mem_gb=$((8*(SLURM_MEM_PER_NODE / 1000)/10))G   # 80% of available memory in GB
 
 # Inputs
 mapfile -t genomes < <(find "$indir" -iname '*.fasta' -or -iname '*.fa' -or -iname '*.fna' | grep -v "$ref_id")
@@ -138,10 +147,18 @@ ref="$indir"/"$ref_id".fna
 
 # Outputs
 locus_id=$(basename "$bedfile" .bed)
-tree_org="$outdir"/parsnp.tree
-tree=${tree_org/.tree/_fixnames.tree}
+parsnp_tree_org="$outdir"/parsnp.tree
+parsnp_tree=${parsnp_tree_org/.tree/_fixnames.tree}
+iqtree_org="$outdir"/"$locus_id".contree
+iqtree=${iqtree_org/.contree/_fixnames.tree}
+if [[ "$nboot" -gt 0 ]]; then
+    final_tree="$iqtree"
+else
+    final_tree="$parsnp_tree"
+fi
 
-# Tree plot script options
+# Other options
+[[ "$nboot" -gt 0 ]] && boot_opt="--ufboot $nboot"
 [[ -n "$root" ]] && root_opt="--root $root"
 [[ -n "$meta" ]] && meta_opt="--annot $meta --color_column $color_column --tiplab_column $tiplab_column"
 
@@ -155,10 +172,12 @@ echo "Output dir:                               $outdir"
 echo "Reference genome FASTA:                   $ref"
 echo "Input dir with genomes:                   $indir"
 echo "BED file with locus coordinates:          $bedfile"
+echo "Number of bootstraps:                     $nboot"
 [[ -n "$meta" ]] && echo "Metadata file:                            $meta"
 [[ -n "$root" ]] && echo "Tree root:                                $root"
 echo "Keep all genomes?                         $keep_all"            
 echo "Locus ID:                                 $locus_id"
+echo "Final output tree file:                   $final_tree"
 echo "Number of input genomes:                  ${#genomes[@]}"
 log_time "Listing the reference FASTA file:"
 ls -lh "$ref"
@@ -170,11 +189,11 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-module load miniconda3/23.3.1-py310
+module load "$MODULE"
 
 # Extract FASTA from BED file with all desired regions
+source activate "$BEDTOOLS_CONDA"
 log_time "Running bedtools getfasta..."
-source activate /fs/ess/PAS0471/jelmer/conda/bedtools
 bedtools getfasta -fi "$ref" -bed "$bedfile" -fo "$outdir"/"$locus_id".fa
 log_time "Showing the bedtools output FASTA file:"
 ls -lh "$outdir"/"$locus_id".fa
@@ -189,22 +208,42 @@ runstats $PARSNP_CONTAINER_PREFIX parsnp \
     --verbose \
     --sequences "${genomes[@]}"
 log_time "Showing the parsnp output tree file:"
-ls -lh "$tree_org"
+ls -lh "$parsnp_tree_org"
 
 # Create a multi-FASTA alignment file (https://harvest.readthedocs.io/en/latest/content/harvest/quickstart.html)
 log_time "Running Harvesttool to convert to a FASTA alignment file..."
-runstats $PARSNP_CONTAINER_PREFIX harvesttools \
-    -i "$outdir"/parsnp.ggr \
-    -M "$outdir"/parsnp.aln
+runstats $PARSNP_CONTAINER_PREFIX harvesttools -i "$outdir"/parsnp.ggr -M "$outdir"/parsnp.aln
 
 # Fix the sample IDs in the tree, so they match the IDs in the metadata file
-log_time "Fixing the sample IDs in the tree..."
-sed -e 's/.fna//g' -e "s/$locus_id.fa.ref/$ref_id/g" -e "s/'//g" "$tree_org" > "$tree"
-    
-# Plot the tree
+log_time "Fixing the sample IDs in the Parsnp tree..."
+sed -e 's/.fna//g' -e "s/$locus_id.fa.ref/$ref_id/g" -e "s/'//g" "$parsnp_tree_org" > "$parsnp_tree"
+
+# Run IQtree to get bootstrap
+if [[ "$nboot" -gt 0 ]]; then
+    log_time "Now running IQ-tree..."
+
+    conda deactivate && source activate "$IQTREE_CONDA" 
+
+    runstats iqtree \
+        -s "$outdir"/parsnp.aln \
+        --prefix "$outdir"/"$locus_id" \
+        $boot_opt \
+        -nt "$threads" -ntmax "$threads" -mem "$mem_gb" \
+        -redo \
+        > "$outdir"/logs/iqtree_"$locus_id".log
+
+    log_time "...Done. IQtree log:"
+    ls -lh "$outdir"/logs/iqtree_"$locus_id".log
+
+    log_time "Fixing the sample IDs in the IQtree tree..."
+    sed -e 's/.fna//g' -e "s/$locus_id.fa.ref/$ref_id/g" -e "s/'//g" "$iqtree_org" > "$iqtree"
+fi
+
+# Plot the tree (Note: module purge etc is necessary or r_tree Conda env gives weird errors)
+for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
+module purge && module load "$MODULE" && conda activate "$TREE_CONDA"
 log_time "Plotting the tree..."
-conda deactivate && source activate /fs/ess/PAS0471/jelmer/conda/r_tree
-runstats Rscript mcic-scripts/trees/ggtree.R -i "$tree" $root_opt $meta_opt
+runstats Rscript mcic-scripts/trees/ggtree.R -i "$final_tree" $root_opt $meta_opt
 
 # Report
 log_time "Listing files in the output dir:"
