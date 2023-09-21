@@ -115,6 +115,12 @@ if (!is.null(annot_file)) {
 
   message("\n# Are all tip labels in the annotation df?")
   print(all(tree$tip.label %in% annot[[1]]))
+  
+  message("\n# If any, the following tip labels are not in the annotation df:")
+  print(tree$tip.label[which(! tree$tip.label %in% annot[[1]])])
+  
+  message("\n# If any, the following annotation df samples are not in the tree:")
+  print(annot[[1]][which(! annot[[1]] %in% tree$tip.label)])
 }
 
 # Tiplab size
@@ -130,6 +136,8 @@ if (! is.null(root)) {
 tree_size <- sum(tree$edge.length)
 
 # PLOT THE TREE ----------------------------------------------------------------
+message()
+
 # Base tree
 p <- ggtree(tree, layout = layout)
 
