@@ -101,10 +101,19 @@ nseqs <- length(tree$tip.label)
 # Read the annotation
 if (!is.null(annot_file)) {
   annot <- read.delim(annot_file)
+  
+  if (!is.null(tiplab_column)) {
+    if (! tiplab_column %in% colnames(annot))
+      stop("Tiplab column name ", tiplab_column, " does not exist in the dataframe")
+    if (! color_column %in% colnames(annot))
+      stop("Color column name ", color_column, " does not exist in the dataframe")
+  }
+    
   if (!is.null(tiplab_column)) {
     annot$tiplab <- annot[[tiplab_column]]
     tiplab_column <- "tiplab"
   }
+  
   message("\n# Showing the first few lines of the annotation dataframe:")
   print(head(annot))
   cat("\n")
