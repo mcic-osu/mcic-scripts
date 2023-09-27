@@ -7,6 +7,8 @@
 #SBATCH --job-name=blast
 #SBATCH --output=slurm-blast-%j.out
 
+#TODO - Add taxonomic info with taxonkit
+
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
@@ -135,6 +137,7 @@ script_help() {
     echo "SEQUENCE DOWNLOAD OPTIONS (OPTIONAL):"
     echo "  --dl_aligned        <str>   Download aligned parts of subject (db) sequences        [default: $to_dl_aligned]"
     echo "  --dl_subjects       <str>   Download full subject (db) sequences that were aligned  [default: $to_dl_subjects]"
+    echo "                              For protein BLAST, this will also download nucleotide sequences for non 'WP_' (multi-species) accessions"
     echo "  --dl_genomes        <str>   Download full genomes of sequences that were aligned    [default: $to_dl_genomes]"
     echo
     echo "UTILITY OPTIONS (OPTIONAL):"
@@ -381,6 +384,21 @@ dl_aligned() {
     ls -lh "$outdir"/aligned/concat/all.fa
 }
 
+dl_nuc_from_prot() {
+    # NOTE: This won't attempt to download "WP_" accessions, since these are
+    #       multispecies proteins not directly linked to a nucleotide sequence
+
+    echo -e "\n================================================================"
+    log_time "Now downloading the nucleotide sequences for protein hits..."
+    mkdir -p "$outdir"/nuc_from_prot
+
+    while read -r accession; do
+        echo "Subject: $accession"
+        outfile="$outdir"/nuc_from_prot/"$accession".fa
+        efetch -db protein -format fasta_cds_na -id "$accession" > "$outfile"
+    done < <(cut -f 2 "$blast_out_final" | sort -u | grep -v "WP_")
+}
+
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
@@ -557,6 +575,9 @@ process_blast
 
 # Download full genomes
 [[ "$to_dl_genomes" == true ]] && dl_genomes
+
+# Download gene nucleotide sequences for protein hits
+[[ "$to_dl_subjects" == true && "$db_type" == "prot" ]] && dl_nuc_from_prot
 
 # Add header to the final BLAST output file
 if [[ "$add_header" == true ]]; then
