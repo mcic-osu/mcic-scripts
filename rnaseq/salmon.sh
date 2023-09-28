@@ -24,7 +24,7 @@ VERSION_COMMAND="salmon --version"
 # Defaults - generics
 env=conda                           # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/salmon # NOTE: Also includes RSEM
-container_path=
+container_path=/fs/ess/PAS0471/containers/depot.galaxyproject.org-singularity-salmon-1.10.1--h7e5ed60_0.img
 container_url=
 dl_container=false
 container_dir="$HOME/containers"
