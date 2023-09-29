@@ -19,7 +19,7 @@ FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main
 TOOL_BINARY=orthofinder
 TOOL_NAME=Orthofinder
 TOOL_DOCS=https://github.com/davidemms/OrthoFinder
-VERSION_COMMAND="$TOOL_BINARY --version"
+VERSION_COMMAND="$TOOL_BINARY --help | head -n2"
 
 # Defaults - generics
 env=conda                           # Use a 'conda' env or a Singularity 'container'
@@ -53,7 +53,7 @@ script_help() {
     echo "  -i/--indir          <dir>   Input dir with genomes (nucleotide) or proteomes (protein FASTA files), one per genome"
     echo "                                Accepted file extensions: .fa, .faa, .fasta, .fas, .pep"
     echo "                                (Files with different extensions will be ignored.)"
-    echo "  -o/--outdir         <dir>   Output dir (NOTE: This dir should not yet exist)"
+    echo "  -o/--outdir         <dir>   Output dir (NOTE: If this dir exists, it will be removed!)"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --tree_method       <str>   Gene tree inference method, 'dendroblast' or 'msa'              [default: $tree_method]"
@@ -145,12 +145,13 @@ load_env "$conda_path" "$container_path" "$dl_container"
 [[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
-[[ -z "$indir" ]] && die "No input file specified, do so with -i/--indir" "$all_args"
-[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_args"
+[[ -z "$indir" ]] && die "No input file specified, do so with -i/--indir" "$opts"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$opts"
 [[ ! -d "$indir" ]] && die "Input dir $indir does not exist"
 
 # Define outputs based on script parameters
 LOG_DIR="$outdir"/logs
+mkdir -p "$outdir" && rm -r "$outdir"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -163,8 +164,8 @@ echo "Input FASTA type:                         $fa_type"
 echo "Output dir:                               $outdir"
 echo "Gene tree inference method:               $tree_method"
 [[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
-log_time "Listing the files in the input dir:"
-ls -lh "$indir"
+log_time "Listing the first few files in the input dir:"
+ls -lh "$indir" | head
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
