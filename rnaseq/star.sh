@@ -25,7 +25,7 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 # Defaults - generics
 env=conda                           # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/project/PAS0471/jelmer/conda/star
-container_path=
+container_path=/fs/project/PAS0471/containers/depot.galaxyproject.org-singularity-mulled-v2-1fa26d1ce03c295fe2fdcf85831a92fbcbd7e8c2-1df389393721fc66f3fd8778ad938ac711951107-0.img
 container_url=
 dl_container=false
 container_dir="$HOME/containers"
@@ -35,11 +35,8 @@ strict_bash=true
 # SEE THE STAR COMMAND BELOW FOR SEVERAL HARDCODED PARAMETERS
 
 # Defaults - tool parameters
-# Option defaults
-quantmode_opt="--quantMode TranscriptomeSAM" # Will output 'Aligned.toTranscriptome.out.bam' for usage with Salmon 
-max_map=20                # If this nr is exceeded, read is considered unmapped
-intron_min=21             # STAR default, too
-intron_max=0              # => auto-determined; STAR default, too
+quantmode_opt="--quantMode TranscriptomeSAM"    # Will output 'Aligned.toTranscriptome.out.bam' for usage with Salmon 
+max_map=20                                      # If this nr is exceeded, read is considered unmapped
 sort_bam=samtools
 index_bam=false
 output_unmapped=false && unmapped_opt=
@@ -75,10 +72,11 @@ script_help() {
     echo "  --R2                <file>  Input R2 FASTQ file (in case of non-standard naming) [default: infer R2 file name]"
     echo "  --single_end                FASTQ files are single-end                  [default: $single_end]"
     echo "  --sort              <str>   One of 'false', 'star', or 'samtools'       [default: $sort_bam]"
+    echo "                              (= Don't sort the BAM file, or sort with STAR or Samtools)"
     echo "  --index_bam                 Index the output BAM file with samtools     [default: $index_bam]"
     echo "  --max_map           <int>   Max. nr. of locations a read can map to     [default: $max_map]"
-    echo "  --intron_min        <int>   Min. intron size                            [default: $intron_min (also the STAR default)]"
-    echo "  --intron_max        <int>   Max. intron size                            [default: $intron_max => auto-determined by STAR]"
+    echo "  --intron_min        <int>   Min. intron size                            [default: not specified => STAR default]"
+    echo "  --intron_max        <int>   Max. intron size                            [default: not specified => STAR default]"
     echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -131,6 +129,8 @@ R1_in= && R2_in= && fofn=
 declare -a infiles
 index_dir=
 annot= && annot_tags= && annot_opt=
+intron_min= && intron_min_opt=
+intron_max= && intron_max_opt=
 outdir=
 opts=
 version_only=false
@@ -232,7 +232,9 @@ if [[ -n "$annot" ]]; then
     if [[ "$annot" =~ .*\.gff3? ]]; then
         annot_tags="--sjdbGTFtagExonParentTranscript Parent"
     elif [[ "$annot" =~ .*\.gtf ]]; then
-        annot_tags="--sjdbGTFtagExonParentTranscript transcript_id --sjdbGTFtagExonParentGene gene_id"
+        annot_tags=
+        #These are the defaults, so no need to specify
+        #annot_tags="--sjdbGTFtagExonParentTranscript transcript_id --sjdbGTFtagExonParentGene gene_id"
     else
         die "Unknown annotation file format"
     fi
@@ -252,6 +254,10 @@ if [[ "$output_unmapped" == true ]]; then
     mkdir -p "$unmapped_dir"
 fi
 
+# Other options
+[[ -n "$intron_min" ]] && intron_min_opt="--alignIntronMin $intron_min"
+[[ -n "$intron_max" ]] && intron_max_opt="--alignIntronMax $intron_max"
+
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
 # ==============================================================================
@@ -266,8 +272,8 @@ echo "Input STAR genome index dir:                  $index_dir"
 [[ -n "$annot" ]] && echo "Input annotation file:                        $annot"
 echo "Output unmapped reads as FASTQ:               $output_unmapped"
 echo "Max nr of alignments for a read:              $max_map"
-echo "Minimum intron size:                          $intron_min"
-echo "Maximum intron size (0 => STAR default):      $intron_max"
+[[ -n "$intron_min" ]] && echo "Minimum intron size:                          $intron_min"
+[[ -n "$intron_max" ]] && echo "Maximum intron size (0 => STAR default):      $intron_max"
 echo "Sort the output BAM file:                     $sort_bam"
 echo "Index the output BAM file:                    $index_bam"
 echo "Sample ID (as inferred by the script):        $sampleID"
@@ -290,8 +296,6 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
     --genomeDir "$index_dir" \
     --readFilesIn "$R1_in" "$R2_in" \
     --outFilterMultimapNmax $max_map \
-    --alignIntronMin $intron_min \
-    --alignIntronMax $intron_max \
     --outFileNamePrefix "$outfile_prefix" \
     --runThreadN "$threads" \
     --outSAMattrRGline ID:"$sampleID" SM:"$sampleID" \
@@ -302,6 +306,8 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
     --runRNGseed 0 \
     --alignSJDBoverhangMin 1 \
     --quantTranscriptomeBan "Singleend" \
+    $intron_min_opt \
+    $intron_max_opt \
     $annot_opt \
     $annot_tags \
     $quantmode_opt \
@@ -317,16 +323,19 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
 #? --runRNGseed 0 => Using this following the nf-core RNAseq workflow
 
 # Sort BAM with samtools sort
-#   (STAR may fail to sort on some large BAM files, or BAM files with a lot of
-#    reads mapping to similar positions. In that case, could use samtools sort.)
+#   (STAR may fail to sort some large BAM files, or BAM files with a lot of
+#    reads mapping to similar positions. In such cases, use 'samtools sort' instead.)
 if [[ "$sort_bam" == "samtools" ]]; then
-    log_time "Sorting the BAM file with samtools sort..."
+    log_time "Sorting the main BAM file with samtools sort..."
     bam_unsorted="$outfile_prefix"Aligned.out.bam
     bam_sorted="$outfile_prefix"Aligned.sortedByCoord.out.bam
     runstats samtools sort -o "$bam_sorted" "$bam_unsorted"
     [[ -s "$bam_sorted" ]] && rm -v "$bam_unsorted"
 fi
 
+# ==============================================================================
+#                           ORGANIZE THE OUTPUT
+# ==============================================================================
 # Move the output BAM file(s)
 log_time "Moving the output BAM file(s)..."
 if [[ "$sort_bam" != "false" ]]; then
@@ -334,22 +343,18 @@ if [[ "$sort_bam" != "false" ]]; then
 else
     mv -v "$outfile_prefix"Aligned.out.bam "$final_bam"
 fi
-
 if [[ -n "$quantmode_opt" ]]; then
     mv -v "$outfile_prefix"Aligned.toTranscriptome.out.bam "$map2trans_bam"
 fi
 
 # Index the output BAM file(s)
 if [[ "$index_bam" == true ]]; then
-    log_time "Indexing the output BAM file..."
+    log_time "Indexing the output BAM file(s)..."
     runstats samtools index "$final_bam"
     [[ -n "$quantmode_opt" ]] && runstats samtools index "$map2trans_bam"
 fi
 
-# ==============================================================================
-#                           ORGANIZE AND REPORT
-# ==============================================================================
-# Organize STAR output
+# Organize unmapped FASTQ files
 if [[ "$output_unmapped" == true ]]; then
     log_time "Moving, renaming and zipping unmapped FASTQ files...."
     for oldpath in "$outfile_prefix"*Unmapped.out.mate*; do
@@ -370,6 +375,9 @@ fi
 log_time "Moving the STAR log files..."
 mv -v "$outfile_prefix"Log*out "$starlog_dir"
 
+# ==============================================================================
+#                                   REPORT
+# ==============================================================================
 # Show alignment % lines from STAR log
 log_time "Showing alignment rate lines from $starlog_dir/${sampleID}_Log.final.out..."
 grep "Uniquely mapped reads %" "$starlog_dir"/"$sampleID"_Log.final.out

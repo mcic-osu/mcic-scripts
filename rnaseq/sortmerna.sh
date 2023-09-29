@@ -34,11 +34,14 @@ strict_bash=true
 
 # Constants - tool parameters
 # Paths to rRNA reference files within the SortMeRNA repo dir
-R18S_PATH=data/rRNA_databases/silva-euk-18s-id95.fasta  
-R28S_PATH=data/rRNA_databases/silva-euk-28s-id98.fasta
-
-# Defaults - tool parameters
-deinterleave=true
+DB1=data/rRNA_databases/silva-euk-18s-id95.fasta  
+DB2=data/rRNA_databases/silva-euk-28s-id98.fasta
+DB3=data/rRNA_databases/silva-arc-16s-id95.fasta
+DB4=data/rRNA_databases/silva-arc-23s-id98.fasta
+DB5=data/rRNA_databases/silva-bac-16s-id90.fasta
+DB6=data/rRNA_databases/silva-bac-23s-id98.fasta
+DB7=data/rRNA_databases/rfam-5.8s-database-id98.fasta
+DB8=data/rRNA_databases/rfam-5s-database-id98.fasta
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -66,7 +69,7 @@ script_help() {
     echo "  -i/--R1             <file>  Input R1 FASTQ file (name of R2 will be inferred)"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo "                                When running this script for multiple samples (looping over samples),"
-    echo "                                you can specify a single output dir for all of them (see example above)." 
+    echo "                                please specify a single output dir for all of them (see example above)." 
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --repo              <dir>   Directory with SortMeRNA repo (with rRNA db) [default: download repo]"
@@ -132,7 +135,6 @@ while [ "$1" != "" ]; do
     case "$1" in
         -i | --R1 )         shift && R1=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
-        --as_is )           deinterleave=false ;;
         --repo )            repo_dir=false ;;
         --opts )            shift && opts=$1 ;;
         --env )             shift && env=$1 ;;
@@ -176,9 +178,8 @@ sample_id=$(basename "$R1" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//"
 # Define output files
 outdir_sample="$outdir"/by_sample/"$sample_id"
 LOG_DIR="$outdir_sample"/logs
-out_mapped_raw="$outdir_sample"/mapped_raw/"$sample_id"
-out_unmapped_raw="$outdir_sample"/unmapped_raw/"$sample_id"
-
+mapped_prefix="$outdir_sample"/mapped/"$sample_id"
+unmapped_prefix="$outdir_sample"/unmapped/"$sample_id"
 R1_mapped="$outdir"/mapped/"$sample_id""$R1_suffix".fastq.gz
 R2_mapped="$outdir"/mapped/"$sample_id""$R2_suffix".fastq.gz
 R1_unmapped="$outdir"/unmapped/"$sample_id""$R1_suffix".fastq.gz
@@ -186,13 +187,17 @@ R2_unmapped="$outdir"/unmapped/"$sample_id""$R2_suffix".fastq.gz
 
 # Reference FASTA files (to be downloaded)
 [[ -z $repo_dir ]] && repo_dir="$outdir_sample"/sortmerna_repo
-ref_18s="$repo_dir"/"$R18S_PATH"
-ref_28s="$repo_dir"/"$R28S_PATH"
+DB1="$repo_dir"/"$DB1"
+DB2="$repo_dir"/"$DB2"
+DB3="$repo_dir"/"$DB3"
+DB4="$repo_dir"/"$DB4"
+DB5="$repo_dir"/"$DB5"
+DB6="$repo_dir"/"$DB6"
+DB7="$repo_dir"/"$DB7"
+DB8="$repo_dir"/"$DB8"
 
 # Make output dirs
-mkdir -p "$LOG_DIR" "$repo_dir" \
-    "$outdir"/mapped "$outdir"/unmapped \
-    "$outdir_sample"/mapped_raw "$outdir_sample"/unmapped_raw 
+mkdir -p "$LOG_DIR" "$repo_dir" "$outdir"/mapped "$outdir"/unmapped \
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -204,9 +209,6 @@ echo "R1 input FASTQ:                           $R1"
 echo "R2 input FASTQ:                           $R2"
 echo "Output dir:                               $outdir"
 echo "SortMeRNA repo dir:                       $repo_dir"
-echo "Deinterleave FASTQ files:                 $deinterleave"
-echo "18S reference file:                       $ref_18s"
-echo "28S reference file:                       $ref_28s"
 [[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
 log_time "Listing the input file(s):"
 ls -lh "$R1" "$R2"
@@ -220,65 +222,52 @@ set_threads "$IS_SLURM"
 [[ -d "$outdir_sample"/kvdb ]] && rm -rf "$outdir_sample"/kvdb
 
 # Clone sortmerna repo to get db FASTA files
-if [[ ! -f "$ref_18s" || ! -f "$ref_28s" ]]; then
+if [[ ! -f "$DB1" ]]; then
     log_time "Cloning SortMeRNA repo..."
     n_seconds=$(( RANDOM % 50 + 1 ))
     sleep "$n_seconds"s # Sleep for a while so git doesn't error when running this multiple times in parallel
     git clone https://github.com/biocore/sortmerna "$repo_dir"
 fi
-# Check that db files are there
-[[ ! -f "$ref_18s" ]] && die "18s reference FASTA file $ref_18s not found"
-[[ ! -f "$ref_28s" ]] && die "28s reference FASTA file $ref_28s not found"
+# Check that db files are there - just for the 1st one
+[[ ! -f "$DB1" ]] && die "Reference FASTA file $DB1 not found"
 
 # Run SortMeRNA
 log_time "Running $TOOL_NAME..."
 runstats $CONTAINER_PREFIX $TOOL_BINARY \
-    --ref "$ref_18s" \
-    --ref "$ref_28s" \
+    --ref "$DB1" --ref "$DB2" --ref "$DB3" --ref "$DB4" \
+    --ref "$DB5" --ref "$DB6" --ref "$DB7" --ref "$DB8" \
     --reads "$R1" \
     --reads "$R2" \
-    --fastx \
-    --aligned "$out_mapped_raw" \
-    --other "$out_unmapped_raw" \
-    --workdir "$outdir_sample" \
+    --num_alignments 1 \
     --paired_in \
+    --out2 \
+    --fastx \
+    --aligned "$mapped_prefix" \
+    --other "$unmapped_prefix" \
+    --workdir "$outdir_sample" \
     --threads "$threads" \
     $opts
 
-#?--paired_in Flags the paired-end reads as Aligned, when either of them is Aligned.
+#? --paired_in        => Flags the paired-end reads as Aligned, when either of them is Aligned.
+#? --out2             => Output paired reads into separate files.                False
+#? --num_alignments 1 => Outputs best alignment only, following nfc-rnaseq workflow
 
-# De-interleave the output
-if [[ "$deinterleave" = true ]]; then
-    log_time "Deinterleaving mapped reads..."
-    reformat.sh \
-        in="$out_mapped_raw".fq.gz \
-        out1="$R1_mapped" out2="$R2_mapped" \
-        overwrite=true
-
-    log_time "Deinterleaving unmapped reads..."
-    reformat.sh \
-        in="$out_unmapped_raw".fq.gz \
-        out1="$R1_unmapped" out2="$R2_unmapped" \
-        overwrite=true
-    echo
-else
-    # Just move the files, if wanting to keep them interleaved
-    mv -v "$out_mapped_raw".fq.gz "$outdir"/mapped
-    mv -v "$out_unmapped_raw".fq.gz "$outdir"/unmapped
-fi
-
-# Move log files to main dir, remove temp files
-log_time "Removing temporary files..."
-mv "$outdir_sample"/mapped_raw/"$sample_id"*log "$LOG_DIR"
-rm -rv "$outdir_sample"/mapped_raw "$outdir_sample"/unmapped_raw
+# Move & rename files
+log_time "Moving output files..."
+mv -v "$mapped_prefix"_fwd.fq.gz "$R1_mapped"
+mv -v "$mapped_prefix"_rev.fq.gz "$R2_mapped"
+mv -v "$unmapped_prefix"_fwd.fq.gz "$R1_unmapped"
+mv -v "$unmapped_prefix"_rev.fq.gz "$R2_unmapped"
+mv "$outdir_sample"/mapped/"$sample_id"*log "$LOG_DIR"
+rmdir "$outdir_sample"/mapped "$outdir_sample"/unmapped
 
 # Quantify mapping success
-n_mapped=$(zcat "$R1_mapped" | awk '{ s++ } END{ print s/4 }')
-n_unmapped=$(zcat "$R1_unmapped" | awk '{ s++ } END{ print s/4 }')
+n_mapped=$(zcat "$R1_mapped" | awk '{s++} END{print s/4}')
+n_unmapped=$(zcat "$R1_unmapped" | awk '{s++} END{print s/4}')
 pct=$(python3 -c "print(round($n_mapped / ($n_unmapped + $n_mapped) * 100, 2))")
 log_time "Number of reads mapped/unmapped, and % mapped:\t$sample_id\t$n_mapped\t$n_unmapped\t$pct"
 
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
-[[ "$deinterleave" = true ]] && ls -lh "$R1_mapped" "$R2_mapped" "$R1_unmapped" "$R2_unmapped"
+ls -lh "$R1_mapped" "$R2_mapped" "$R1_unmapped" "$R2_unmapped"
 final_reporting "$LOG_DIR"
