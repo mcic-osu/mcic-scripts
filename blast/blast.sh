@@ -2,7 +2,6 @@
 #SBATCH --account=PAS0471
 #SBATCH --time=3:00:00
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name=blast
 #SBATCH --output=slurm-blast-%j.out
@@ -30,7 +29,7 @@ SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
 VERSION_COMMAND="blastn -version; datasets --version"
-TOOL_NAME="NCBI BLAST+ and datasets" 
+export TOOL_NAME="NCBI BLAST+ and datasets" 
 export NCBI_API_KEY=34618c91021ccd7f17429b650a087b585f08
 export LC_ALL=C                     # Locale for sorting
 
@@ -123,6 +122,7 @@ script_help() {
     echo "BLAST THRESHOLD AND FILTERING OPTIONS (OPTIONAL):"
     echo "  --tax_ids           <str>   Comma-separated list of NCBI taxon IDs (just the numbers, no 'txid' prefix)"
     echo "                                The BLAST search will be limited to these taxa        [default: use full database]"
+    echo "                                NOTE: This only works for remote and nucleotide-based searches!"
     echo "  --evalue            <num>   E-value threshold in scientific notation                [default: $evalue]"
     echo "                                This option will be applied during the BLAST run"
     echo "  --pct_id            <num>   Percentage identity threshold                           [default: none]"
@@ -285,25 +285,56 @@ dl_genomes() {
     > "$assembly_list"
     > "$assembly_lookup"
     while read -r -u 9 accession; do
-        # First attempt to get assembly ID
-        #(Note: 'head' at end because in some cases, multiple assembly versions are associated with an accession)
-        assembly=$(esearch -db "$dl_db" -query "$accession" | elink -target assembly |
-                   esummary | xtract -pattern DocumentSummary -element RefSeq | head -n 1)
-        
-        # If needed, second attempt to get assembly ID
-        if [[ -z "$assembly" ]]; then
-            assembly=$(esearch -db "$dl_db" -query "$accession" | elink -target assembly |
-                       esummary | xtract -pattern DocumentSummary -element AssemblyAccession | head -n 1)
+        # Temporary accession list file
+        assembly_list_acc="$outdir"/genomes/tmp_"$accession".txt
+
+        if [[ "$dl_db" == "nuccore" ]]; then
+            # For nucleotide searches
+
+            # First attempt to get assembly ID
+            #(Note: 'head' at end because in some cases, multiple assembly versions are associated with an accession)
+            mapfile -t assemblies < <(esearch -db "$dl_db" -query "$accession" | elink -target assembly |
+                esummary | xtract -pattern DocumentSummary -element RefSeq | head -n 1)
+            
+            # If needed, second attempt to get assembly ID
+            if [[ ${#assemblies[@]} -eq 0 ]]; then
+                mapfile -t assemblies < <(esearch -db "$dl_db" -query "$accession" | elink -target assembly |
+                    esummary | xtract -pattern DocumentSummary -element AssemblyAccession | head -n 1)
+            fi
+        else
+            # For protein searches
+            if [[ ! "$accession" =~ ^WP_ ]]; then
+                # Non-'WP_' (multispecies) entries
+                mapfile -t assemblies < <(esearch -db "$dl_db" -query "$accession" |
+                    elink -target nuccore | elink -target assembly | esummary |
+                    xtract -pattern DocumentSummary -element RefSeq | head -n 1)
+                
+                # If needed, second attempt to get assembly ID
+                if [[ ${#assemblies[@]} -eq 0 ]]; then
+                    mapfile -t assemblies < <(esearch -db "$dl_db" -query "$accession" | elink -target assembly |
+                        esummary | xtract -pattern DocumentSummary -element AssemblyAccession | head -n 1)
+                fi
+            else
+                # 'WP_' (multispecies) entries
+                mapfile -t assemblies < <(esearch -db "$dl_db" -query "$accession" |
+                    elink -target nuccore -name protein_nuccore_wp |
+                    elink -db nuccore -target assembly -name nuccore_assembly |
+                    esummary | xtract -pattern DocumentSummary -element AssemblyAccession)
+            fi
         fi
         
-        # Add the retrieved assembly ID to assembly list and lookup files 
-        if [[ -n "$assembly" ]]; then
-            echo "$assembly" >> "$assembly_list"
+        # Add the retrieved assemblies to the assembly list & lookup file
+        if [[ ${#assemblies[@]} -gt 0 ]]; then
+            log_time "Found ${#assemblies[@]} assemblies for accession $accession" 
+            echo "${assemblies[@]}" | tr " " "\n" > "$assembly_list_acc"
+            cat "$assembly_list_acc" >> "$assembly_list"
+
+            awk -v accession="$accession" '{print $0 "\t" accession}' "$assembly_list_acc" | tee -a "$assembly_lookup"
+            #echo -e "${accession}\t${assembly}" | tee -a "$assembly_lookup"
+            rm "$assembly_list_acc"
         else
             log_time "WARNING: No assembly found for subject $accession"
         fi
-        echo -e "${accession}\t${assembly}" | tee -a "$assembly_lookup"
-    
     done 9< <(cut -f 2 "$blast_out_final" | sort -u)
     
     # Report
@@ -557,7 +588,7 @@ ls -lh "$infile"
 #                              RUN
 # ==============================================================================
 # Run BLAST
-if [[ -f "$blast_out_raw" && "$force" == false ]]; then
+if [[ -s "$blast_out_raw" && "$force" == false ]]; then
     log_time "Skipping BLAST, output file exists ($blast_out_raw) and --force is false..."
 else
     run_blast
