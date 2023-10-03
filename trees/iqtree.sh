@@ -31,7 +31,7 @@ container_dir="$HOME/containers"
 
 # Defaults - tool parameters
 auto_cores=false                    # Don't use IQ-tree's 'AUTO' core mode
-ufboot= && boot_arg=                # No bootstrapping by default
+nboot= && boot_arg=                # No bootstrapping by default
 model= && model_arg=                # Use IQ-tree's default model (MFP => Pick model)
 modelset= && modelset_arg=          # Restrict ModelFinder model search to a set of models
 fast=false && fast_arg=             # Run IQ-Tree with "--fast" option
@@ -49,7 +49,7 @@ script_help() {
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage -- include a 100 uf-bootstraps:"
-    echo "      sbatch $0 -i results/COI_aligned.fa -o results/iqtree --ufboot 1000"
+    echo "      sbatch $0 -i results/COI_aligned.fa -o results/iqtree --nboot 1000"
     echo "  - Also perform dating on the tree (see http://www.iqtree.org/doc/Dating):"
     echo "      sbatch $0 -i aln.fa -o results/iqtree --opts '--date metadata/dates.tsv --date-ci 100'"
     echo "  - Date a previously inferred tree (see http://www.iqtree.org/doc/Dating):"
@@ -64,8 +64,8 @@ script_help() {
     echo "  --fast                      Run IQ-Tree in fast mode                [default: $fast]"    
     echo "  --model             <str>   Mutation model                          [default: IQ-tree's default = MFP = Pick model]"
     echo "  --modelset          <str>   Restrict ModelFinder model search to a set of models [default: off]"
-    echo "  --ufboot            <int>   Nr of ultrafast bootstraps              [default: no bootstrapping]"
-    echo "  --auto_cores                Use IQ-tree's 'AUTO' core mode           [default: use nr of cores for batch job]"
+    echo "  --nboot            <int>   Nr of ultrafast bootstraps              [default: no bootstrapping]"
+    echo "  --auto_cores                Use IQ-tree's 'AUTO' core mode          [default: use nr of cores for batch job]"
     echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -128,7 +128,7 @@ while [ "$1" != "" ]; do
         --out_prefix )      shift && out_prefix=$1 ;;
         --modelset )        shift && modelset=$1 ;;
         --model )           shift && model=$1 ;;
-        --ufboot )          shift && ufboot=$1 ;;
+        --nboot )           shift && nboot=$1 ;;
         --auto_cores )      auto_cores=true ;;
         --fast )            fast=true && fast_arg="-fast" ;;
         --opts )            shift && opts=$1 ;;
@@ -163,7 +163,7 @@ load_env "$conda_path" "$container_path" "$dl_container"
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 mem_gb=$((8*(SLURM_MEM_PER_NODE / 1000)/10))G   # 80% of available memory in GB
 [[ "$auto_cores" == true ]] && threads="AUTO"
-[[ -n "$ufboot" ]] && boot_arg="--ufboot $ufboot"
+[[ -n "$nboot" ]] && boot_arg="--ufboot $nboot"
 [[ -n "$model" ]] && model_arg="-m $model"
 [[ -n "$modelset" ]] && modelset_arg="-mset $modelset"
 [[ -z "$out_prefix" ]] && out_prefix=$(basename "${infile%.*}")
@@ -181,7 +181,7 @@ echo "Run IQ-Tree in fast mode:                     $fast"
 echo "Use IQ-Tree's 'AUTO' core mode:               $auto_cores"
 [[ -n "$modelset" ]] && echo "Model set for MFP:                            $modelset"
 [[ -n "$model" ]] && echo "Model:                                        $model"
-[[ -n "$ufboot" ]] && echo "Number of ultrafast bootstraps:               $ufboot"
+[[ -n "$nboot" ]] && echo "Number of ultrafast bootstraps:               $nboot"
 [[ -n $opts ]] && echo "Additional options for $TOOL_NAME:            $opts"
 log_time "Listing the input file(s):"
 ls -lh "$infile"

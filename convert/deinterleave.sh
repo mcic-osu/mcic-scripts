@@ -1,45 +1,40 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
 #SBATCH --mail-type=FAIL
-#SBATCH --job-name=salmon
-#SBATCH --output=slurm-salmon-%j.out
+#SBATCH --job-name=deinterleave
+#SBATCH --output=slurm-deinterleave-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Quantifying RNASeq reads with Salmon in alignment-based mode (i.e., with a BAM file)"
-SCRIPT_VERSION="2023-08-14"
+DESCRIPTION="De-interleave a FASTQ file with BBmap's reformat.sh"
+SCRIPT_VERSION="2023-09-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
-TOOL_BINARY="salmon quant"
-TOOL_NAME=Salmon
-TOOL_DOCS=https://salmon.readthedocs.io/en/latest/salmon.html
-VERSION_COMMAND="salmon --version"
+TOOL_BINARY=reformat.sh
+TOOL_NAME="BBmap reformat.sh"
+VERSION_COMMAND="$TOOL_BINARY"
 
 # Defaults - generics
 env=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/salmon # NOTE: Also includes RSEM
-container_path=/fs/ess/PAS0471/containers/depot.galaxyproject.org-singularity-salmon-1.10.1--h7e5ed60_0.img
+conda_path=/fs/ess/PAS0471/jelmer/conda/bbmap
+container_path=
 container_url=
 dl_container=false
 container_dir="$HOME/containers"
 strict_bash=true
-
-# Defaults - tool parameters
-libtype=ISR                         # Default = reverse-stranded
-gcbias_opt="--gcBias"               # Include the --gcBias option
-#?(gcBias opt recommended here: http://bioconductor.org/packages/devel/bioc/vignettes/DESeq2/inst/doc/DESeq2.html)
+version_only=false                 # When true, just print tool & script version info and exit
 
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
 script_help() {
-    echo "                          $0"
+    echo -e "\n                          $0"
     echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
     echo "        =============================================================="
     echo "DESCRIPTION:"
@@ -47,19 +42,13 @@ script_help() {
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage:"
-    echo "      sbatch $0 -i results/star/my.bam -a data/ref/annot.gtf --transcripts \\"
-    echo "          results/rsem/transcripts.fa -o results/salmon/sampleA"
+    echo "      sbatch $0 -i my.fastq.gz -o results/deinterleave"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile         <file>  Input BAM file"
-    echo "  -a/--annot          <file>  Reference annotation (GFF/GTF) file"
-    echo "  --transcripts       <file>  Transcripts FASTA file - use mcic-scripts/rnaseq/rsem_prepref.sh to generate"
-    echo "  -o/--outdir         <dir>   Sample-specific (!) output dir (will be created if needed)"
+    echo "  -i/--infile         <file>  Interleaved, gzipped input FASTQ file (.fastq.gz or .fq.gz)"
+    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --libtype           <str>   RNAseq library type                     [default: $libtype]"
-    echo "                              (see https://salmon.readthedocs.io/en/latest/salmon.html#what-s-this-libtype)"
-    echo "  --no_gcbias                 Don't use the Salmon '--gcBias' option  [default: use]"
     echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -95,7 +84,7 @@ source_function_script() {
     if [[ ! -f "$function_script" ]]; then
         echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
         function_script=$(basename "$FUNCTION_SCRIPT_URL")
-        wget "$FUNCTION_SCRIPT_URL" -O "$function_script"
+        wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script"
     fi
     source "$function_script"
 }
@@ -109,25 +98,17 @@ source_function_script
 # ==============================================================================
 # Initiate variables
 infile=
-annot=
-transcripts=
 outdir=
 opts=
-version_only=false
-threads=
 
 # Parse command-line args
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -o | --outdir )     shift && outdir=$1 ;;
         -i | --infile )     shift && infile=$1 ;;
-        -a | --annot )      shift && annot=$1 ;;
-        --transcripts )     shift && transcripts=$1 ;;
-        --libtype )         shift && libtype=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
         --opts )            shift && opts=$1 ;;
         --env )             shift && env=$1 ;;
-        --no_gcbias )       gcbias_opt= ;;
         --no_strict )       strict_bash=false ;;
         --dl_container )    dl_container=true ;;
         --container_dir )   shift && container_dir=$1 ;;
@@ -157,6 +138,9 @@ load_env "$conda_path" "$container_path" "$dl_container"
 
 # Define outputs based on script parameters
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+file_id=$(basename "$infile" | sed -E 's/.fa?s?t?q.gz//')
+R1_out="$outdir"/"$file_id"_R1.fastq.gz
+R2_out="$outdir"/"$file_id"_R2.fastq.gz
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -164,15 +148,11 @@ LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options passed to this script:        $all_opts"
-echo "Input BAM file:                           $infile"
-echo "Reference annotation file:                $annot"
-echo "Transcripts FASTA file:                   $transcripts"
+echo "Input FASTQ file:                         $infile"
 echo "Output dir:                               $outdir"
-echo "RNAseq library type:                      $libtype"
-[[ -n "$gcbias_opt" ]] && echo "Using Salmon's --gcBias option" 
 [[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
 log_time "Listing the input file(s):"
-ls -lh "$infile" "$annot"
+ls -lh "$infile"
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
@@ -181,13 +161,10 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
 runstats $CONTAINER_PREFIX $TOOL_BINARY \
-    --geneMap "$annot" \
-    --threads "$threads" \
-    --libType="$libtype" \
-    -t "$transcripts" \
-    -a "$infile" \
-    -o "$outdir" \
-    "$gcbias_opt" \
+    in="$infile" \
+    out1="$R1_out" \
+    out2="$R2_out" \
+    overwrite=true \
     $opts
 
 log_time "Listing files in the output dir:"

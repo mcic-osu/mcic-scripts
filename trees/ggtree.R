@@ -4,11 +4,6 @@
 #SBATCH --job-name=ggtree
 #SBATCH --output=slurm-ggtree-%j.out
 
-#TODO - Add node labels (bootstrap)
-#p <- p +
-#  geom_text2(aes(subset = !isTip, label = label),
-#             color = "grey50", nudge_y = 0.4, nudge_x = -0.05, size = 3)
-
 #? From an input tree file, this script will plot the tree with ggtree
 #? (All tree file formats should be supported)
 
@@ -47,6 +42,12 @@ parser$add_argument("--root",
 parser$add_argument("--annot",
                     type = "character", default = NULL,
                     help = "Input annotation/metadata file")
+parser$add_argument("--boot",
+                    action = "store_true", required = FALSE, default = TRUE,
+                    help = "Show bootstrap values")
+parser$add_argument("--boot_thres",
+                    type = "numeric", default = 95,
+                    help = "Only show bootstrap values below this threshold")
 parser$add_argument("--layout",
                     type = "character", default = "rectangular",
                     help = "Tree layout")
@@ -69,6 +70,8 @@ color_column <- args$color_column
 tiplab_column <- args$tiplab_column
 root <- args$root
 right_margin <- args$right_margin
+boot <- args$boot
+boot_thres <- args$boot_thres
 
 # Define the output file name, if needed
 if (is.null(figure_file)) {
@@ -86,6 +89,7 @@ if (!is.null(annot_file)) message("# Annotation/metadata file:                ",
 if (!is.null(tiplab_column)) message("# Metadata column for tip labels:          ",      tiplab_column)
 if (!is.null(color_column)) message("# Metadata column for colors:              ", color_column)
 if (!is.null(root)) message("# ID of sample that should be the root:    ", root)
+message("# Add bootstrap vals to tree:              ", boot)
 message()
 
 
@@ -97,10 +101,19 @@ nseqs <- length(tree$tip.label)
 # Read the annotation
 if (!is.null(annot_file)) {
   annot <- read.delim(annot_file)
+  
+  if (!is.null(tiplab_column)) {
+    if (! tiplab_column %in% colnames(annot))
+      stop("Tiplab column name ", tiplab_column, " does not exist in the dataframe")
+    if (! color_column %in% colnames(annot))
+      stop("Color column name ", color_column, " does not exist in the dataframe")
+  }
+    
   if (!is.null(tiplab_column)) {
     annot$tiplab <- annot[[tiplab_column]]
     tiplab_column <- "tiplab"
   }
+  
   message("\n# Showing the first few lines of the annotation dataframe:")
   print(head(annot))
   cat("\n")
@@ -111,6 +124,12 @@ if (!is.null(annot_file)) {
 
   message("\n# Are all tip labels in the annotation df?")
   print(all(tree$tip.label %in% annot[[1]]))
+  
+  message("\n# If any, the following tip labels are not in the annotation df:")
+  print(tree$tip.label[which(! tree$tip.label %in% annot[[1]])])
+  
+  message("\n# If any, the following annotation df samples are not in the tree:")
+  print(annot[[1]][which(! annot[[1]] %in% tree$tip.label)])
 }
 
 # Tiplab size
@@ -122,8 +141,12 @@ if (! is.null(root)) {
   tree <- ape::root(tree, outgroup = root) 
 }
 
+# Get the size of the tree along the x-axis
+tree_size <- sum(tree$edge.length)
 
 # PLOT THE TREE ----------------------------------------------------------------
+message()
+
 # Base tree
 p <- ggtree(tree, layout = layout)
 
@@ -131,17 +154,36 @@ p <- ggtree(tree, layout = layout)
 if (!is.null(annot_file)) p <- p %<+% annot
 
 # Tip labels
-if (!is.null(tiplab_column)) {
+if (!is.null(tiplab_column) & !is.null(color_column)) {
   p <- p + geom_tiplab(aes_string(color = color_column, label = tiplab_column),
                        align = TRUE, linesize = 0, size = LABEL_SIZE)
-} else {
+}
+if (!is.null(color_column) & is.null(tiplab_column)) {
   p <- p + geom_tiplab(aes_string(color = color_column),
                        align = TRUE, linesize = 0, size = LABEL_SIZE)
 }
+if (is.null(color_column) & !is.null(tiplab_column)) {
+  p <- p + geom_tiplab(aes_string(label = tiplab_column),
+                       align = TRUE, linesize = 0, size = LABEL_SIZE)
+}
+if (is.null(color_column) & is.null(tiplab_column)) {
+  p <- p + geom_tiplab(align = TRUE, linesize = 0, size = LABEL_SIZE)
+}
 
-# Make the plot
+# Bootstrap labels
+if (boot == TRUE) {
+  p <- p + geom_text2(
+    #aes(subset = !isTip, label = label),
+    aes(subset = !is.na(as.numeric(label)) & as.numeric(label) < boot_thres,
+        label = label),
+    color = "grey50", size = 3,
+    nudge_y = 0.4, nudge_x = -(tree_size / 100)
+  )
+}
+
+# Finalize the plot
 p <- p +
-  geom_rootedge(rootedge = sum(tree$edge.length) / 50) +
+  geom_rootedge(rootedge = tree_size / 50) +
   theme(plot.margin = margin(0.2, right_margin, 0.2, 0.2, "cm"),
         legend.box.spacing = unit(50, "pt"))
 if(layout == "rectangular") p <- p + coord_cartesian(clip = "off")
