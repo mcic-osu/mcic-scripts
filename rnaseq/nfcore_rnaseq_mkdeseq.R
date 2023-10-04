@@ -19,9 +19,8 @@ suppressPackageStartupMessages( {
   if (!require(argparse, quietly = TRUE)) install.packages("argparse", repos = rep, lib = lib)
   if (!require(pacman, quietly = TRUE)) install.packages("pacman", repos = rep, lib = lib)
   if (!require(BiocManager, quietly = TRUE)) install.packages("BiocManager", repos = rep, lib = lib)
-  if (!require(tidyverse, quietly = TRUE)) install.packages("tidyverse", repos = rep, lib = lib)
   if (!require(DESeq2, quietly = TRUE)) BiocManager::install("DESeq2")
-  packages <- c("argparse", "DESeq2", "tidyverse")
+  packages <- c("argparse", "DESeq2")
   pacman::p_load(char = packages, install = TRUE)
 } )
 
