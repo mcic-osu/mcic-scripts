@@ -28,7 +28,7 @@ OSC_CONFIG=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present
 # Parameter defaults
 workflow_version=2.6.1                                  # The version of the nf-core workflow
 workflow_dir_base=workflows/nfcore-ampliseq
-workflow_dir_full="$workflow_dir_base"/nfcore-ampliseq/${workflow_version//./_}
+workflow_dir_full="$workflow_dir_base"/${workflow_version//./_}
 is_ITS=false && ITS_arg=
 ITS_arg_default="--illumina_pe_its --addsh"             # When is_ITS is true, use this arg
 ITS_taxonomy='unite-fungi=8.3'
