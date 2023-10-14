@@ -114,7 +114,7 @@ script_help() {
     echo "  --local                     Run BLAST with a local (on-disk) database               [default: $local]"
     echo "  --db                <str>   - If running remotely: NCBI database name like nt/nr    [default: nt for nucleotide, nr for protein]"
     echo "                              - If running locally: default is nt or nr from '/fs/project/pub_data/blast-database/2023-06'"
-    echo "                              - To run with a custom local db, specifiy the prefix (dir + db name, no file extensions) of a local BLAST db"
+    echo "                              - To run with a custom local db, use --local AND specify the prefix (dir + db name, no file extensions) of a local BLAST db"
     echo "  --blast_type        <str>   Blast type: 'blastn', 'blastp', 'blastx', 'tblastx', or 'tblastn' [default: $blast_type]"
     echo "  --blast_task        <str>   Task for blastn or blastp, e.g. 'megablast' for blastn  [default: BLAST program default]"
     echo "                                See https://www.ncbi.nlm.nih.gov/books/NBK569839/#usrman_BLAST_feat.Tasks"
