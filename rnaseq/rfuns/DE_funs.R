@@ -106,14 +106,9 @@ extract_DE <- function(
   if (sig_only == TRUE) res <- res |> dplyr::filter(isDE == TRUE)
 
   # Add gene annotation
-  if (!is.null(annot)) {
-    res <- res |>
-      dplyr::left_join(res,
-                       dplyr::select(annot, gene, gene_name, description),
-                       by = "gene")
-  }
+  if (!is.null(annot)) res <- dplyr::left_join(res, annot, by = "gene")
 
-  # Arrange by p-value, remove pvalue column
+  # Arrange by adj p-value, remove pvalue column
   res <- res |>
     dplyr::select(-pvalue) |> 
     arrange(padj, -abs(lfc))
@@ -211,14 +206,14 @@ norm_counts <- function(
   # Normalize the counts
   if (transform == "vst") {
     count_mat <- assay(vst(dds, blind = TRUE))
-  }
-  if (transform == "rlog") {
+  } else if (transform == "rlog") {
     # Suppress messages to avoid "vst is much faster transformation - message"
     count_mat <- suppressMessages(assay(rlog(dds, blind = TRUE)))
-  }
-  if (transform == "lib_size") {
+  } else if (transform == "lib_size") {
     dds <- estimateSizeFactors(dds)
     count_mat <- sweep(assay(dds), 2, sizeFactors(dds), "/")
+  } else {
+    stop("Unknown transformation method '", transform, "'")
   }
 
   # Stop here if there's no metadata
@@ -273,11 +268,11 @@ pMA <- function(
 
   # Interactive text
   if ("gene_name" %in% colnames(deseq_results)) {
-    glue_string <- "Gene ID: {gene}
-                    Gene name: {gene_name}
-                    Description: {description}"
+      glue_string <- "Gene ID: {gene}
+                      Gene name: {gene_name}
+                      Description: {gene_description}"
   } else {
-    glue_string <- "Gene ID: {gene}"
+      glue_string <- "Gene ID: {gene}"
   }
 
   # Make all NA isDE value FALSE, so they will be plotted
@@ -358,7 +353,7 @@ pvolc <- function(DE_df,
   if ("gene_name" %in% colnames(DE_df)) {
     glue_string <- "Gene ID: {gene}
                     Gene name: {gene_name}
-                    Description: {description}"
+                    Description: {gene_description}"
   } else {
     glue_string <- "Gene ID: {gene}"
   }
@@ -386,7 +381,7 @@ pvolc <- function(DE_df,
     guides(fill = "none") +
     theme(panel.grid.minor = element_blank())
 
-  if (is.null(cols)) {
+  if (is.null(colors)) {
     p <- p + scale_fill_brewer(palette = "Dark2")
   } else {
     p <- p + scale_fill_manual(values = colors)
@@ -404,9 +399,12 @@ pvolc <- function(DE_df,
                         scales = facet_scales)
   }
   
-  if (interactive == TRUE) ggplotly(p, tooltip = "text")
-
-  return(p)
+  if (interactive == TRUE) {
+    suppressPackageStartupMessages(library(plotly))
+    ggplotly(p, tooltip = "text")
+  } else {
+    return(p)
+  }
 }
 
 # Heatmap with ComplexHeatmap
@@ -537,7 +535,7 @@ pheat <- function(genes,
                   id_labsize = 10,
                   ...) {
 
-  library(pheatmap)
+  suppressPackageStartupMessages(library(pheatmap))
 
   # Arrange metadata according to the columns with included factors
   if (!is.null(groups)) {
@@ -612,7 +610,7 @@ pbox <- function(
     
     g_descrip <- annot |>
       dplyr::filter(.data[[id_col_name]] == fgene) |>
-      pull(description) |>
+      pull(gene_description) |>
       str_trunc(width = 50)
 
     if ("gene_name" %in% colnames(annot)) {
@@ -764,8 +762,9 @@ pca_prcomp <- function(
 # Function to run the PCA using the PCAtools `pca()` function
 pca_pcatools <- function(
     dds,                 # DESeq object
-    transform = "rlog", # Type of normalization
-    remove_prop = 0.1    # Remove this proportion of variables (genes) with the lowest variance
+    remove_prop = 0.1,   # Remove this proportion of variables (genes) with the lowest variance
+    transform = "rlog",  # Type of normalization
+    mat_norm = NULL      # Optionally, input a pre-made normalized matrix     
 ) {
   
   # Install/load the PCAtools package
@@ -775,8 +774,10 @@ pca_pcatools <- function(
   }
   
   # Normalize the data
-  if (transform == "vst") mat_norm <- assay(vst(dds, blind = TRUE))
-  if (transform == "rlog") mat_norm <- assay(rlog(dds, blind = TRUE))
+  if (!is.null(mat_norm)) {
+    if (transform == "vst") mat_norm <- assay(vst(dds, blind = TRUE))
+    if (transform == "rlog") mat_norm <- assay(rlog(dds, blind = TRUE))
+  }
   
   # Run the PCA
   pca_res <- pca(mat_norm,
