@@ -19,9 +19,8 @@ suppressPackageStartupMessages( {
   if (!require(argparse, quietly = TRUE)) install.packages("argparse", repos = rep, lib = lib)
   if (!require(pacman, quietly = TRUE)) install.packages("pacman", repos = rep, lib = lib)
   if (!require(BiocManager, quietly = TRUE)) install.packages("BiocManager", repos = rep, lib = lib)
-  if (!require(tidyverse, quietly = TRUE)) install.packages("tidyverse", repos = rep, lib = lib)
   if (!require(DESeq2, quietly = TRUE)) BiocManager::install("DESeq2")
-  packages <- c("argparse", "DESeq2", "tidyverse")
+  packages <- c("argparse", "DESeq2")
   pacman::p_load(char = packages, install = TRUE)
 } )
 
@@ -73,21 +72,39 @@ if (!is.null(meta_file)) message("Input metadata file:              ", meta_file
 message("======================================================================")
 message()
 
+# Check input files
+if (!file.exists(infile)) stop("Input file ", infile, " does not exist")
+if (!file.exists(meta_file)) stop("Metadata file ", meta_file, " does not exist")
+
 
 # CREATE THE DESEQ OBJECT ------------------------------------------------------
 # Load counts
 count_obj <- readRDS(infile)
 count_mat <- round(assays(count_obj)$counts)
 
+message("\n# Dimensions of the count matrix:")
+dim(count_mat)
+
 # Metadata
 if (!is.null(meta_file)) {
   meta_df <- read.delim(meta_file, header = TRUE, sep = "\t")
+  message("# Number of rows in the metadata: ", nrow(meta_df))
   
   # Sample IDs as rownames
   rownames(meta_df) <- meta_df[[sample_id_column]]
   
   # Sort by sample ID
-  meta_df <- meta_df[order(meta_df[[1]]), ]
+  meta_df <- meta_df[order(meta_df[[sample_id_column]]), ]
+  
+  # Filter missing samples
+  smp <- meta_df[[sample_id_column]]
+  missing <- smp[! smp %in% colnames(count_mat)]
+  if (length(missing > 0)) {
+    message("The following samples in the metadata are missing from the count table:")
+    print(missing)
+    meta_df <- meta_df[-match(missing, meta_df[[sample_id_column]]), ]
+    message("# Number of rows left in the metadata: ", nrow(meta_df))
+  }
   
   # Make columns factors (except the 1st one, which should be sample IDs)
   cols <- colnames(meta_df[2:ncol(meta_df)])
@@ -99,9 +116,6 @@ if (!is.null(meta_file)) {
   # Report
   message("\n# Sample names:")
   print(rownames(meta_df))
-  message("\n# Dimensions of count matrix:")
-  dim(count_mat)
-  
 } else {
   meta_df <- count_obj@colData
 }

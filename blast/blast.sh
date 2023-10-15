@@ -2,10 +2,11 @@
 #SBATCH --account=PAS0471
 #SBATCH --time=3:00:00
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name=blast
 #SBATCH --output=slurm-blast-%j.out
+
+#TODO - Add taxonomic info with taxonkit
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
@@ -28,7 +29,7 @@ SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
 VERSION_COMMAND="blastn -version; datasets --version"
-TOOL_NAME="NCBI BLAST+ and datasets" 
+export TOOL_NAME="NCBI BLAST+ and datasets" 
 export NCBI_API_KEY=34618c91021ccd7f17429b650a087b585f08
 export LC_ALL=C                     # Locale for sorting
 
@@ -113,7 +114,7 @@ script_help() {
     echo "  --local                     Run BLAST with a local (on-disk) database               [default: $local]"
     echo "  --db                <str>   - If running remotely: NCBI database name like nt/nr    [default: nt for nucleotide, nr for protein]"
     echo "                              - If running locally: default is nt or nr from '/fs/project/pub_data/blast-database/2023-06'"
-    echo "                              - To run with a custom local db, specifiy the prefix (dir + db name, no file extensions) of a local BLAST db"
+    echo "                              - To run with a custom local db, use --local AND specify the prefix (dir + db name, no file extensions) of a local BLAST db"
     echo "  --blast_type        <str>   Blast type: 'blastn', 'blastp', 'blastx', 'tblastx', or 'tblastn' [default: $blast_type]"
     echo "  --blast_task        <str>   Task for blastn or blastp, e.g. 'megablast' for blastn  [default: BLAST program default]"
     echo "                                See https://www.ncbi.nlm.nih.gov/books/NBK569839/#usrman_BLAST_feat.Tasks"
@@ -121,6 +122,7 @@ script_help() {
     echo "BLAST THRESHOLD AND FILTERING OPTIONS (OPTIONAL):"
     echo "  --tax_ids           <str>   Comma-separated list of NCBI taxon IDs (just the numbers, no 'txid' prefix)"
     echo "                                The BLAST search will be limited to these taxa        [default: use full database]"
+    echo "                                NOTE: This only works for remote and nucleotide-based searches!"
     echo "  --evalue            <num>   E-value threshold in scientific notation                [default: $evalue]"
     echo "                                This option will be applied during the BLAST run"
     echo "  --pct_id            <num>   Percentage identity threshold                           [default: none]"
@@ -135,6 +137,7 @@ script_help() {
     echo "SEQUENCE DOWNLOAD OPTIONS (OPTIONAL):"
     echo "  --dl_aligned        <str>   Download aligned parts of subject (db) sequences        [default: $to_dl_aligned]"
     echo "  --dl_subjects       <str>   Download full subject (db) sequences that were aligned  [default: $to_dl_subjects]"
+    echo "                              For protein BLAST, this will also download nucleotide sequences for non 'WP_' (multi-species) accessions"
     echo "  --dl_genomes        <str>   Download full genomes of sequences that were aligned    [default: $to_dl_genomes]"
     echo
     echo "UTILITY OPTIONS (OPTIONAL):"
@@ -282,25 +285,56 @@ dl_genomes() {
     > "$assembly_list"
     > "$assembly_lookup"
     while read -r -u 9 accession; do
-        # First attempt to get assembly ID
-        #(Note: 'head' at end because in some cases, multiple assembly versions are associated with an accession)
-        assembly=$(esearch -db "$dl_db" -query "$accession" | elink -target assembly |
-                   esummary | xtract -pattern DocumentSummary -element RefSeq | head -n 1)
-        
-        # If needed, second attempt to get assembly ID
-        if [[ -z "$assembly" ]]; then
-            assembly=$(esearch -db "$dl_db" -query "$accession" | elink -target assembly |
-                       esummary | xtract -pattern DocumentSummary -element AssemblyAccession | head -n 1)
+        # Temporary accession list file
+        assembly_list_acc="$outdir"/genomes/tmp_"$accession".txt
+
+        if [[ "$dl_db" == "nuccore" ]]; then
+            # For nucleotide searches
+
+            # First attempt to get assembly ID
+            #(Note: 'head' at end because in some cases, multiple assembly versions are associated with an accession)
+            mapfile -t assemblies < <(esearch -db "$dl_db" -query "$accession" | elink -target assembly |
+                esummary | xtract -pattern DocumentSummary -element RefSeq | head -n 1)
+            
+            # If needed, second attempt to get assembly ID
+            if [[ ${#assemblies[@]} -eq 0 ]]; then
+                mapfile -t assemblies < <(esearch -db "$dl_db" -query "$accession" | elink -target assembly |
+                    esummary | xtract -pattern DocumentSummary -element AssemblyAccession | head -n 1)
+            fi
+        else
+            # For protein searches
+            if [[ ! "$accession" =~ ^WP_ ]]; then
+                # Non-'WP_' (multispecies) entries
+                mapfile -t assemblies < <(esearch -db "$dl_db" -query "$accession" |
+                    elink -target nuccore | elink -target assembly | esummary |
+                    xtract -pattern DocumentSummary -element RefSeq | head -n 1)
+                
+                # If needed, second attempt to get assembly ID
+                if [[ ${#assemblies[@]} -eq 0 ]]; then
+                    mapfile -t assemblies < <(esearch -db "$dl_db" -query "$accession" | elink -target assembly |
+                        esummary | xtract -pattern DocumentSummary -element AssemblyAccession | head -n 1)
+                fi
+            else
+                # 'WP_' (multispecies) entries
+                mapfile -t assemblies < <(esearch -db "$dl_db" -query "$accession" |
+                    elink -target nuccore -name protein_nuccore_wp |
+                    elink -db nuccore -target assembly -name nuccore_assembly |
+                    esummary | xtract -pattern DocumentSummary -element AssemblyAccession)
+            fi
         fi
         
-        # Add the retrieved assembly ID to assembly list and lookup files 
-        if [[ -n "$assembly" ]]; then
-            echo "$assembly" >> "$assembly_list"
+        # Add the retrieved assemblies to the assembly list & lookup file
+        if [[ ${#assemblies[@]} -gt 0 ]]; then
+            log_time "Found ${#assemblies[@]} assemblies for accession $accession" 
+            echo "${assemblies[@]}" | tr " " "\n" > "$assembly_list_acc"
+            cat "$assembly_list_acc" >> "$assembly_list"
+
+            awk -v accession="$accession" '{print $0 "\t" accession}' "$assembly_list_acc" | tee -a "$assembly_lookup"
+            #echo -e "${accession}\t${assembly}" | tee -a "$assembly_lookup"
+            rm "$assembly_list_acc"
         else
             log_time "WARNING: No assembly found for subject $accession"
         fi
-        echo -e "${accession}\t${assembly}" | tee -a "$assembly_lookup"
-    
     done 9< <(cut -f 2 "$blast_out_final" | sort -u)
     
     # Report
@@ -379,6 +413,21 @@ dl_aligned() {
     log_time "Creating a multi-FASTA file with all aligned-only sequences..."
     cat "$outdir"/aligned/*fa > "$outdir"/aligned/concat/all.fa
     ls -lh "$outdir"/aligned/concat/all.fa
+}
+
+dl_nuc_from_prot() {
+    # NOTE: This won't attempt to download "WP_" accessions, since these are
+    #       multispecies proteins not directly linked to a nucleotide sequence
+
+    echo -e "\n================================================================"
+    log_time "Now downloading the nucleotide sequences for protein hits..."
+    mkdir -p "$outdir"/nuc_from_prot
+
+    while read -r accession; do
+        echo "Subject: $accession"
+        outfile="$outdir"/nuc_from_prot/"$accession".fa
+        efetch -db protein -format fasta_cds_na -id "$accession" > "$outfile"
+    done < <(cut -f 2 "$blast_out_final" | sort -u | grep -v "WP_")
 }
 
 # ==============================================================================
@@ -539,7 +588,7 @@ ls -lh "$infile"
 #                              RUN
 # ==============================================================================
 # Run BLAST
-if [[ -f "$blast_out_raw" && "$force" == false ]]; then
+if [[ -s "$blast_out_raw" && "$force" == false ]]; then
     log_time "Skipping BLAST, output file exists ($blast_out_raw) and --force is false..."
 else
     run_blast
@@ -557,6 +606,9 @@ process_blast
 
 # Download full genomes
 [[ "$to_dl_genomes" == true ]] && dl_genomes
+
+# Download gene nucleotide sequences for protein hits
+[[ "$to_dl_subjects" == true && "$db_type" == "prot" ]] && dl_nuc_from_prot
 
 # Add header to the final BLAST output file
 if [[ "$add_header" == true ]]; then

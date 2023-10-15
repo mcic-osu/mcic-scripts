@@ -39,16 +39,16 @@ script_help() {
     echo "      sbatch $0 -i results/genomes --ref_id UPB820 --bed my.bed --ortho_dir results/orthofinder -o results/orthotree"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--indir          <dir>   Dir with FASTA (.fna), GFF (.gff), and proteome (.faa) files for each genome"
-    echo "  -r/--ref_id         <file>  Reference genome ID (filename without extension and dir)"
-    echo "  --ortho_dir         <dir>   Dir with Orthofinder output for the same set of genomes as in the --indir"
-    echo "  --bed               <file>  BED file with genomic coordinates of focal region"
+    echo "  -i/--indir          <dir>   Dir with a FASTA (.fna) and GFF (.gff) file for each genome"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
+    echo "  --ortho_dir         <dir>   Dir with Orthofinder output for the same set of genomes as in the --indir"
+    echo "  -r/--ref_id         <file>  Reference genome ID (filename without extension and dir)"
+    echo "  --bed               <file>  BED file with genomic coordinates of focal region"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --nboot             <int>   Number of Ultrafast IQ-tree bootstraps  [default: $nboot]"
     echo "  --root              <str>   ID of the genome to root the tree with  [default: no rerooting]"
-    echo "  --meta              <file>  File with metadata to plot the tree"
+    echo "  --meta              <file>  File with metadata to use when ploting the tree [default: no metadata]"
     echo "  --color_column      <str>   Name of the metadata column to color tip labels by ('NULL' to ignore) [default: $color_column]"
     echo "  --tiplab_column     <str>   Name of the metadata column with alternative tip labels ('NULL' to ignore) [default: $tiplab_column]"
     echo "                                NOTE: --color_column and --tiplab_column are only used when a metadata file is provided"
@@ -145,8 +145,10 @@ mem_gb=$((8*(SLURM_MEM_PER_NODE / 1000)/10))G   # 80% of available memory in GB
 mapfile -t genomes < <(find "$indir" -iname '*.fasta' -or -iname '*.fa' -or -iname '*.fna' | grep -v "$ref_id")
 ref_fna="$indir"/"$ref_id".fna
 ref_gff_org="$indir"/"$ref_id".gff
+orthogroups_file="$ortho_dir"/Orthogroups/Orthogroups.tsv
 [[ ! -f "$ref_fna" ]] && die "Input reference genome FASTA $ref_fna does not exist"
 [[ ! -f "$ref_gff_org" ]] && die "Input reference genome GFF $ref_gff_org does not exist"
+[[ ! -f "$orthogroups_file" ]] && die "Orthogroups file $orthogroups_file does not exist"
 
 # Outputs
 locus_id=$(basename "$bedfile" .bed)
@@ -179,13 +181,13 @@ echo "Locus ID:                                 $locus_id"
 echo "Number of input genomes:                  ${#genomes[@]}"
 log_time "Listing the reference FASTA file:"
 ls -lh "$ref_fna" "$ref_gff_org"
-log_time "Listing the input genomes:"
-ls -lh "${genomes[@]}"
+log_time "Listing the first few input genomes:"
+ls -lh "${genomes[@]}" | head -n 3
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
-#                           RUN - FILE PREP
+#                           RUN - PREP
 # ==============================================================================
 # Create the output dirs
 mkdir -p "$outdir"/fna_each "$outdir"/fna_all "$outdir"/trees "$outdir"/ref_gff_noseqs
@@ -195,13 +197,16 @@ log_time "Creating a GFF file for the reference without nucleotide sequences..."
 sed '/^##FASTA/Q' "$ref_gff_org" > "$ref_gff"
 ls -lh "$ref_gff"
 
-# Get gene ID, then orthogoup # todo - check that there's exactly one match
+# Get gene ID, orthogoup, and root # todo - check that there's exactly one match
 log_time "Getting the focal gene ID and Orthogroup..."
 gene_id=$(bedtools intersect -F 0.9 -a "$ref_gff" -b "$bedfile" | sed -E 's/.*ID=([^;]+);.*/\1/')
-OG=$(grep "$gene_id" "$ortho_dir"/Orthogroups/Orthogroups.tsv | cut -f1)
-log_time "Gene ID: $gene_id       Orthogroup: $OG"
+OG=$(grep "$gene_id" "$orthogroups_file" | cut -f1)
+ortho_tree="$ortho_dir"/Gene_Trees/"$OG"_tree.txt
+root=$(cut -d, -f1 "$ortho_tree" | cut -d: -f1 | sed -E 's/\(+//' | sed -E 's/_([0-9])_/.\1_/')
+[[ -z "$root_opt" ]] && root_opt="--root $root"
+log_time "Gene ID: $gene_id   Orthogroup: $OG    Orthofinder root: $root"
 
-# Assign the correct tree files, this will depend on whether bootstraps were done
+# Assign the correct output tree file names, this depends on whether bootstraps will be done
 if [[ "$nboot" -gt 0 ]]; then
     nuc_tree="$outdir"/trees/"$OG"_nuc.contree
     prot_tree="$outdir"/trees/"$OG"_prot.contree
@@ -219,17 +224,13 @@ log_time "Listing the input MSA from Orthofinder, to build a protein tree:"
 ls -lh "$msa_org"
 
 log_time "Modifying the MSA IDs..."
-sed -E 's/>(.*)_([A-Z]+_[0-9]+)$/>\1 \2/' "$msa_org" > "$msa"
-sed -i -E '/>GC[AF]/s/_([0-9]) /.\1 /'  "$msa"
+sed -E '/>GC[AF]/s/_([0-9])_/.\1_/' "$msa_org" > "$msa"
 ls -lh "$msa"
 
 log_time "Running IQtree to build a protein tree..."
 runstats iqtree \
-    -s "$msa" \
-    --prefix "$outdir"/trees/"$OG"_prot \
-    $boot_opt \
-    -nt "$threads" -ntmax "$threads" -mem "$mem_gb" \
-    -redo \
+    -s "$msa" --prefix "$outdir"/trees/"$OG"_prot $boot_opt \
+    -nt "$threads" -ntmax "$threads" -mem "$mem_gb" -redo \
     > "$outdir"/logs/iqtree_"$OG"_prot.log
 log_time "...Done. IQtree log:"
 ls -lh "$outdir"/logs/iqtree_"$OG"_prot.log
@@ -242,13 +243,15 @@ log_time "Looping over sequences in protein MSA file to create nucleotide FASTAs
 
 >"$asm_list"
 
-grep ">" "$msa" | while read -r asm_id gene_id; do
-    asm_id=${asm_id/>/}
+grep ">" "$msa" | while read -r seq_id; do
+    # Get IDs
+    asm_id=$(echo "$seq_id" | sed -E 's/>(.*)_([A-Z]+_[0-9]+)$/\1/' | sed -E 's/_([0-9])$/.\1/')
+    gene_id=$(echo "$seq_id" | sed -E 's/>(.*)_([A-Z]+_[0-9]+)$/\2/')
     # Inputs
     gff_focal="$indir"/"$asm_id".gff
     asm_focal="$indir"/"$asm_id".fna
     # Output    
-    gene_fna="$outdir"/fna_each/"$asm_id"__"$gene_id".fna
+    gene_fna="$outdir"/fna_each/"$asm_id"_"$gene_id".fna
     tmp_gff="$outdir"/fna_each/"$asm_id"_"$gene_id".tmp
     log_time "asm_id: $asm_id  /  gene_id: $gene_id"
 
@@ -257,11 +260,8 @@ grep ">" "$msa" | while read -r asm_id gene_id; do
     if [[ -s "$tmp_gff" ]]; then
         # Extract FASTA by coords
         bedtools getfasta -fi "$asm_focal" -bed "$tmp_gff" > "$gene_fna"
-        
         # Prepend assembly ID + gene ID to header
-        #sed -i "s/>/>${asm_id}_${gene_id} /" "$gene_fna" #! Use this if there are >1 genes per assembly
-        sed -i "s/>/>${asm_id} /" "$gene_fna"
-        
+        sed -i "s/>/>${asm_id}_${gene_id} /" "$gene_fna"
         # Check nr of entries in the FASTA
         n_entry=$(grep -c "^>" "$gene_fna")
         [[ "$n_entry" -eq 0 ]] && echo "WARNING: FASTA $gene_fna is empty "
@@ -274,7 +274,6 @@ grep ">" "$msa" | while read -r asm_id gene_id; do
     else
         log_time "WARNING: Gene not found ($asm_id / $gene_id)"
     fi
-
     # Keep track of assemblies to check for duplicates
     echo "$asm_id" >> "$asm_list"
 done
@@ -290,23 +289,14 @@ ls -lh "$fna_unaln"
 
 log_time "Running MAFFT to align the nucleotide FASTA..."
 runstats mafft \
-        --reorder \
-        --auto \
-        --adjustdirection \
-        --leavegappyregion \
-        --thread "$threads" \
-        --quiet \
-        "$fna_unaln" > "$fna_aln"
-# Fix FASTA header - Remove _R_ prefixes that MAFFT adds for rev-compl sequences
-sed -i -E 's/^>_R_/>/' "$fna_aln"
+        --reorder --auto --adjustdirection --leavegappyregion \
+        --thread "$threads" --quiet "$fna_unaln" > "$fna_aln"
+sed -i -E 's/^>_R_/>/' "$fna_aln" # Fix FASTA header - Remove '_R_' prefixes that MAFFT adds for rev-comp seqs
 
 log_time "Running IQtree to build a nucleotide tree..."
 runstats iqtree \
-    -s "$fna_aln" \
-    --prefix "$outdir"/trees/"$OG"_nuc \
-    $boot_opt \
-    -redo \
-    -nt "$threads" -ntmax "$threads" -mem "$mem_gb" \
+    -s "$fna_aln" --prefix "$outdir"/trees/"$OG"_nuc \
+    $boot_opt -redo -nt "$threads" -ntmax "$threads" -mem "$mem_gb" \
     > "$outdir"/logs/iqtree_"$OG"_nuc.log
 log_time "...Done. IQtree log:"
 ls -lh "$outdir"/logs/iqtree_"$OG"_nuc.log
@@ -317,10 +307,12 @@ ls -lh "$outdir"/logs/iqtree_"$OG"_nuc.log
 # Plot the trees
 log_time "Plotting the trees..."
 source activate /fs/ess/PAS0471/jelmer/conda/r_tree
-runstats Rscript mcic-scripts/trees/ggtree.R -i "$nuc_tree" $root_opt $meta_opt
-runstats Rscript mcic-scripts/trees/ggtree.R -i "$prot_tree" $root_opt $meta_opt
+runstats Rscript mcic-scripts/trees/ggtree.R -i "$nuc_tree" \
+    $root_opt $meta_opt --right_margin 5
+runstats Rscript mcic-scripts/trees/ggtree.R -i "$prot_tree" \
+    $root_opt $meta_opt --right_margin 5
 
 # Report
 log_time "Done with script orthotree.sh"
-log_time "Listing files in the output dir:"
-ls -lhd "$(realpath "$outdir")"/*
+log_time "Listing the output tree plots:"
+find "$outdir" -name "*png"

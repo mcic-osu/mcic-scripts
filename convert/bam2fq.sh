@@ -268,8 +268,8 @@ $TOOL_BINARY collate \
 # Gzip FASTQ files
 if [[ "$gzip_output" == true ]]; then
     echo -e "\nGzipping the FASTQ files..."
-    gzip -vf "$fq_R1"
-    gzip -vf "$fq_R2"
+    pigz -p "$threads" -vf "$fq_R1"
+    pigz -p "$threads" -vf "$fq_R2"
 fi
 
 # ==============================================================================
@@ -280,7 +280,7 @@ log_time "Versions used:"
 tool_version | tee "$version_file"
 script_version | tee -a "$version_file" 
 log_time "Listing files in the output dir:"
-ls -lhd "$(realpath "$outdir")"/*
+ls -lhd "$(realpath "$outdir")"/"$sampleID"*
 [[ "$is_slurm" = true ]] && echo && resource_usage
 log_time "Done with script $SCRIPT_NAME"
 echo
