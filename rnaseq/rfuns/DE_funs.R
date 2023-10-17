@@ -415,7 +415,7 @@ pvolc <- function(
   if (interactive == TRUE) {
     p <- p + geom_point_interactive(
       data = dplyr::filter(DE_df, isDE == TRUE),
-      mappping = aes(fill = contrast,
+      mapping = aes(fill = contrast,
                      tooltip = paste(gene, "\n", gene_name, "\n", gene_description)),
       size = 2, shape = 21, color = "grey20", alpha = 0.5
     )
