@@ -23,18 +23,20 @@ VERSION_COMMAND="nextflow -v"
 WORKFLOW_URL=https://github.com/jelmerp/ghru_assembly
 OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config
 OSC_CONFIG=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present here
+OSC_PROJ=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
 
 # Defaults - generics
 workflow_dir="workflows/ghru_assembly"
-conda_path=/fs/project/PAS0471/jelmer/conda/nextflow
+conda_path=/fs/ess/PAS0471/jelmer/conda/nextflow-22.10 # Need this older version because it's a DSL1 Workflow
 container_dir=/fs/project/PAS0471/containers
-work_dir=/fs/scratch/$SLURM_JOB_ACCOUNT/$USER/ghru_assembly
+work_dir=/fs/scratch/$OSC_PROJ/$USER/ghru_assembly
 profile="standard,singularity"
 resume=true && resume_arg="-resume"
+version_only=false
 
 # Defaults - settings
 outdir="results/ghru_assembly"
-fq_pattern='*R{1,2}*.fastq.gz'
+fastq_pattern='*R{1,2}*.fastq.gz'
 careful=false && careful_opt=
 
 # ==============================================================================
@@ -48,23 +50,25 @@ script_help() {
     echo "  $DESCRIPTION"
     echo
     echo "USAGE / EXAMPLES:"
-    echo "  sbatch $0 --indir data/fastq"
-    echo "  sbatch $0 --indir data/fastq --outdir results/assembly"
-    echo "  sbatch $0 --indir data/fastq --careful --more_opts '--depth_cutoff 50'"
-    echo "  sbatch $0 --indir data/fastq --fq_pattern '*_R{1,2}.fq.gz'"
+    echo "  - Always submit this script to the Slurm queue with sbatch"
+    echo "  - Examples:"
+    echo "    sbatch $0 --indir data/fastq"
+    echo "    sbatch $0 --indir data/fastq --outdir results/assembly"
+    echo "    sbatch $0 --indir data/fastq --careful --more_opts '--depth_cutoff 50'"
+    echo "    sbatch $0 --indir data/fastq --fastq_pattern '*_R{1,2}.fq.gz'"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i / --indir        <dir>   Input directory with FASTQ files"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  -o / --outdir       <dir>   Output directory for workflow results       [default: 'results/ghru_assembly']"
-    echo "  --fq_pattern        <str>   Single-quoted FASTQ file pattern (glob)     [default: '*R{1,2}*.fastq.gz']"
-    echo "                                    - Use this option if your file names don't adhere to the default, e.g. if they are 'fq.gz'"
-    echo "                                    - You can also use this option to select only a subset of files, e.g. 'sampleA*R{1,2}*.fastq.gz'"
+    echo "  -o / --outdir       <dir>   Output directory for workflow results   [default: 'results/ghru_assembly']"
+    echo "  --fastq_pattern     <str>   FASTQ file pattern (glob)               [default: \"*R{1,2}*.fastq.gz\"]"
+    echo "                                - Use this option if your file names don't adhere to the default, e.g. if they are 'fq.gz'"
+    echo "                                - You can also use this option to select only a subset of files, e.g. 'sampleA*R{1,2}*.fastq.gz'"
     echo "  --careful                   Turn on the SPAdes 'careful' option which improves assembly by mapping the reads back to the contigs"
     echo "  --more_opts         <str>   Additional options to pass to 'nextflow run'"
     echo "                                - You can use any additional option of Nextflow and of the Nextflow workflow itself"
-    echo "                                - Use as follows (quote the entire string!): '$0 --more_args \"--minimum_scaffold_depth 10\"'"
+    echo "                                - Use as follows (quote the entire string!): '$0 --more_opts \"--minimum_scaffold_depth 10\"'"
     echo "                                - The following additional options exist for this workflow:"
     echo "                                  --depth_cutoff                  The estimated depth to downsample each sample to. If not specified no downsampling will occur"
     echo "                                  --minimum_scaffold_length       The minimum length of a scaffold to keep. Others will be filtered out. Default 500"
@@ -74,18 +78,15 @@ script_help() {
     echo "                                  --prescreen_file_size_check     Minumum size in Mb for the input fastq files. Without this any size of file will be attempted (this and prescreen_genome_size_check are mutually exclusive)"
     echo
     echo "NEXTFLOW-RELATED OPTIONS:"
-    echo "  --restart                   Restart workflow from the beginning     [default: resume workflow if possible]"
+    echo "  --restart                   Restart workflow from the beginning     [default: Resume workflow whenever possible]"
     echo "  --workflow_dir      <dir>   Dir with/for the workflow repo          [default: $workflow_dir]"
     echo "                                - If the correct workflow is already present in this dir, it won't be downloaded again"
     echo "  --container_dir     <dir>   Directory with container images         [default: $container_dir]"
     echo "                                - Required container images will be downloaded here when not already present"
     echo "  --profile           <str>   'Profile' name from any of the config files to use   [default: 'standard,singularity']"
-    echo "  --config            <file>  Additional config file                  [default: none]"
-    echo "                                - Settings in this file will override default settings"
-    echo "                                - Note that the mcic-scripts OSC config file will always be included"
-    echo "                                  (https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config)"
     echo "  --work_dir           <dir>  Scratch (work) dir for the workflow     [default: $work_dir]"
     echo "                                - This is where the workflow results will be stored before final results are copied to the output dir."
+    echo "                                - It's a good idea to use a 'scratch' dir here"
     echo "  --version                   Print the version of Nextflow and exit"
     echo
     echo "UTILITY OPTIONS:"
@@ -152,9 +153,8 @@ nextflow_setup() {
 if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
 source_function_script $IS_SLURM
 
-# PARSE COMMAND-LINE OPTIONS ---------------------------------------------------
+# Placeholder variables
 indir=
-config_file=
 more_opts=
 
 # Parse command-line options
@@ -163,11 +163,10 @@ while [ "$1" != "" ]; do
     case "$1" in
         -i | --indir )              shift && indir=$1 ;;
         -o | --outdir )             shift && outdir=$1 ;;
-        --fq_pattern )              shift && fq_pattern=$1 ;;
+        --fastq_pattern )           shift && fastq_pattern=$1 ;;
         --careful )                 careful=true && careful_opt="--careful" ;;
         --workflow_dir )            shift && workflow_dir=$1 ;;
         --container_dir )           shift && container_dir=$1 ;;
-        --config | -config )        shift && config_file=$1 ;;
         --profile | -profile )      shift && profile=$1 ;;
         --work_dir | -work-dir )    shift && work_dir=$1 ;;
         --restart | -restart )      resume=false && resume_arg= ;;
@@ -198,7 +197,6 @@ nextflow_setup
 # Build the config argument
 [[ ! -f "$OSC_CONFIG" ]] && OSC_CONFIG="$outdir"/$(basename "$OSC_CONFIG_URL")
 config_arg="-c $OSC_CONFIG"
-[[ -n "$config_file" ]] && config_arg="$config_arg -c ${config_file/,/ -c }"
 
 # Input files that should be in the workflow repository
 QC_YAML="$workflow_dir"/assets/qc_conditions.yml
@@ -217,7 +215,7 @@ echo "All options passed to this script: $all_opts"
 echo
 echo "INPUT AND OUTPUT:"
 echo "Input dir:                        $indir"
-echo "FASTQ file pattern:               $fq_pattern"
+echo "FASTQ file pattern:               $fastq_pattern"
 echo "Output dir:                       $outdir"
 echo
 echo "OTHER WORKFLOW SETTINGS:"
@@ -230,7 +228,6 @@ echo "Resume previous run:              $resume"
 echo "Container dir:                    $container_dir"
 echo "Scratch (work) dir:               $work_dir"
 echo "Config 'profile':                 $profile"
-[[ -n "$config_file" ]] && echo "Additional config file:           $config_file"
 echo "=========================================================================="
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" = true ]] && slurm_resources
@@ -250,8 +247,10 @@ fi
 
 # Download workflow, if needed
 if [[ ! -d "$workflow_dir" ]]; then
+    log_time "Downloading the GHRU assembly workflow from $WORKFLOW_URL to $workflow_dir" 
     git clone $WORKFLOW_URL "$workflow_dir"
 fi
+
 # Check that workflow files are present
 [[ ! -f "$ADAPTER_FILE" ]] && die "Adapter file $ADAPTER_FILE does not exist"
 [[ ! -f "$QC_YAML" ]] && die "QC Yaml file $QC_YAML does not exist"
@@ -262,7 +261,7 @@ log_time "Starting the workflow.."
 runstats $TOOL_BINARY "$workflow_dir"/main.nf \
     --indir $indir \
     --outdir $outdir \
-    --fq_pattern '$fq_pattern' \
+    --fastq_pattern "$fastq_pattern" \
     --adapter_file $ADAPTER_FILE \
     --qc_conditions $QC_YAML \
     --full_output \
