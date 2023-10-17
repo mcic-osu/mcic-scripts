@@ -1,7 +1,9 @@
 # Packages
 if(!require(janitor)) install.packages("janitor")
 if(!require(tidyverse)) install.packages("tidyverse")
-library(janitor)
+if (!require(ggiraph)) install.packages("ggiraph")
+if (!require(ggrepel)) install.packages("ggrepel")
+if (!require(pheatmap)) install.packages("pheatmap")
 library(tidyverse)
 
 # Run DE analysis
@@ -41,42 +43,57 @@ run_DE <- function(
 
 
 # Get DE results
+# To specify the contrast, either use 'fct=' and 'comp=', or 'contrasts='
 extract_DE <- function(
-    comp,                   # Vector of 2 with focal levels of factor 'fac'
-    fac,                    # Focal factor (column in metadata with the levels in 'comp')
     dds,                    # DESeq2 object
+    fct = NULL,             # Focal factor (column in metadata with the levels in 'comp')
+    comp = NULL,            # Vector of 2 with focal levels of factor 'fac'
+    contrasts = NULL,       # Vector of 1 or more contrasts as listed in resultsNames(dds)
     sig_only = FALSE,       # Only return significant results
     p_tres = 0.05,          # Adj. p-value threshold for DE significance
-    lfc_tres = 0.5,         # Log2-fold change threshold for DE significance
+    lfc_tres = 0,           # Log2-fold change threshold for DE significance
     mean_tres = 0,          # Mean expr. level threshold for DE significance
     count_df = NULL,        # Optional: df with normalized counts
     annot = NULL            # Optional: df with gene annotations
   ) {
 
+  # Final contrast
+  if (is.null(contrasts)) {
+    stopifnot(!is.null(fct))
+    stopifnot(!is.null(comp))
+    fcontrast <- c(fct, comp)
+  } else {
+    fcontrast <- list(contrasts)
+  }
+  
   # Get DEseq results
   res <- results(dds,
-                 contrast = c(fac, comp),
+                 contrast = fcontrast,
                  lfcThreshold = lfc_tres,
                  alpha = p_tres,
                  tidy = TRUE) |>
     dplyr::rename(gene = row,
                   lfc = log2FoldChange,
                   mean = baseMean) |>
-    mutate(group1 = comp[1],
-           group2 = comp[2],
-           contrast = paste0(comp, collapse = "_")) |>
     dplyr::select(-lfcSE, -stat) |>
     arrange(padj) |>
     as_tibble()
+  
+  if (is.null(contrasts)) {
+    res <- res |>
+      mutate(group1 = comp[1],
+             group2 = comp[2],
+             contrast = paste0(comp, collapse = "_"))
+  }
 
   # Include mean normalized counts
-  if (!is.null(count_df)) {
-    fcount_df <- count_df |> dplyr::filter(.data[[fac]] %in% comp)
+  if (!is.null(count_df) & is.null(contrasts)) {
+    fcount_df <- count_df |> dplyr::filter(.data[[fct]] %in% comp)
     
     group_means <- fcount_df |>
-      group_by(gene, .data[[fac]]) |>
+      group_by(gene, .data[[fct]]) |>
       summarize(mean = mean(count), .groups = "drop") |>
-      pivot_wider(id_cols = gene, values_from = mean, names_from = all_of(fac))
+      pivot_wider(id_cols = gene, values_from = mean, names_from = all_of(fct))
     colnames(group_means)[2:3] <- c("mean1", "mean2")
     
     overall_means <- fcount_df |>
@@ -117,46 +134,46 @@ extract_DE <- function(
   n_sig <- sum(res$isDE, na.rm = TRUE)
   n_up <- nrow(dplyr::filter(res, lfc > 0 & isDE == TRUE))
   n_down <- nrow(dplyr::filter(res, lfc < 0 & isDE == TRUE))
-  message(comp[1], " vs ", comp[2], " - Nr DEG: ", n_sig,
-          " (", n_up, "/", n_down, " up/down in group1)")
   
+  if (is.null(contrasts)) comp_str <- paste0(comp[1], " vs ", comp[2])
+  if (!is.null(contrasts)) comp_str <- paste0(contrasts, collapse = " - ")
+  
+  message(comp_str, " - Nr DEG: ", n_sig, " (", n_up, "/", n_down, " up/down in group1)")
+  
+  # Return the final results df
   return(res)
 }
 
 # Run the extract_DE function for all pairwise comparisons of a factor
-extract_DE_all <- function(dds, fac, count_df = NULL) {
-  lvls <- levels(colData(dds)[[fac]])
+extract_DE_all <- function(dds, fct, count_df = NULL, annot = NULL) {
+  lvls <- levels(colData(dds)[[fct]])
   combs <- as.list(as.data.frame(combn(lvls, 2)))
   
   extract_DE2 <- function(lvl1, lvl2) {
-    extract_DE(
-      comp = c(lvl1, lvl2),
-      fac = fac,
-      dds = dds,
-      count_df = count_df
-    )
+    extract_DE(dds = dds, fct = fct, comp = c(lvl1, lvl2),
+               count_df = count_df, annot = annot)
   } 
   
-  map_dfr(.x = combs, .f = ~extract_DE2(.x[1], .x[2]))
+  map_dfr(.x = combs, .f = ~extract_DE2(lvl1 = .x[1], lvl2 = .x[2]))
 }
 
 # Function to provide shrunken LFC estimates
 shrink_lfc <- function(
     dds,                # DESeq object
-    fac,                # focal factor (column name)
+    fct,                # focal factor (column name)
     comp,               # vector of two with focal factor levels (column values)
     lfc_tres = 1,       # If set to 0, original p-values will be used; otherwise, LFC-based s-values
     p_tres = 0.05,      # P-value threshold
     s_tres = 0.005      # S-value threshold
   ) {
 
-  coef <- paste0(fac, "_", paste0(comp, collapse = "_vs_"))
+  coef <- paste0(fct, "_", paste0(comp, collapse = "_vs_"))
   message("\nCoefficient: ", coef)
 
   if (!coef %in% resultsNames(dds)) {
     message("This contrast is not in resultsNames, so we need to rerun DESeq()")
-    dds[[fac]] <- relevel(dds[[fac]], ref = comp[2])
-    design(dds) <- as.formula(paste("~", fac))
+    dds[[fct]] <- relevel(dds[[fct]], ref = comp[2])
+    design(dds) <- as.formula(paste("~", fct))
     dds <- DESeq(dds)
   }
 
@@ -320,18 +337,30 @@ pMA <- function(
 
 
 # Volcano plot
-pvolc <- function(DE_df,
-                  sig_only = TRUE,
-                  contrasts = "all",
-                  colors = NULL,
-                  interactive = FALSE,
-                  plot_grid = FALSE,
-                  grid_rows = NULL,
-                  grid_cols = NULL,
-                  facet_scales = "fixed") {
+pvolc <- function(
+    DE_df,                        # Output from extract_DE()
+    contrasts = "all",            # Subset contrasts using 'contrast' column in DE_df. Default: no subsetting
+    sig_only = TRUE,              # Whether to plot all (FALSE) or only significant (TRUE) genes
+    interactive = FALSE,          # Use ggiraph to make the plot interactive
+                                  # NOTE 1: Will use columns 'gene', 'gene_name', 'gene_description'
+                                  # NOTE 2: Need to call 'girafe(ggobj = p)' on output!
+    add_ids = FALSE,              # Whether to add gene IDs with ggrepel
+    id_column = "gene_name",      # Gene ID column to use when add_ids == TRUE
+    colors = NULL,                # Manual colors for each contrast
+    plot_grid = FALSE,
+    grid_rows = NULL,
+    grid_cols = NULL,
+    facet_scales = "fixed",
+    return_plot = FALSE           # Default is to print but not return the plot object
+                                  # (Except when interactive == TRUE)
+    ) {
 
+  # Rename contrasts vector
   fcontrasts <- contrasts
 
+  # Whether to return the plot object
+  if (interactive == TRUE) return_plot <- TRUE
+  
   # Remove genes with NA as the adj. pvalue
   DE_df <- DE_df |> dplyr::filter(!is.na(padj))
 
@@ -348,63 +377,95 @@ pvolc <- function(DE_df,
     message("Selecting only the focal contrasts...")
     DE_df <- DE_df |> dplyr::filter(contrast %in% fcontrasts)
   }
-
-  # Interactive text
-  if ("gene_name" %in% colnames(DE_df)) {
-    glue_string <- "Gene ID: {gene}
-                    Gene name: {gene_name}
-                    Description: {gene_description}"
-  } else {
-    glue_string <- "Gene ID: {gene}"
+  
+  # Arrange
+  DE_df <- DE_df |>
+    group_by(contrast) |>
+    dplyr::arrange(-padj, -abs(lfc)) |>
+    ungroup()
+  
+  # Make sure the gene info columns exist
+  if (interactive == TRUE) {
+    if(! "gene" %in% colnames(DE_df)) {
+      warning("Column gene does not exist")
+      DE_df$gene <- NA
+    }
+    if(! "gene_name" %in% colnames(DE_df)) {
+      warning("Column gene_name does not exist")
+      DE_df$gene_name <- NA
+    } 
+    if(! "gene_description" %in% colnames(DE_df)) {
+      warning("Column gene_description does not exist")
+      DE_df$gene_description <- NA
+    }
   }
-
-  # Labels
+  
+  # Axis titles
   xlab <- expression("Log"[2]*"-fold change")
   ylab <- expression("-Log"[10]*" of adj. P")
 
-  # Make the plot
+  # Make the base plot
   p <- ggplot(DE_df) +
-    aes(x = lfc,
-        y = padj,
-        text = glue_string) +
+    aes(x = lfc, y = padj) +
     geom_point(data = dplyr::filter(DE_df, isDE == FALSE),
-               fill = "grey80",
-               size = 2, shape = 21, color = "grey40", alpha = 0.3) +
-    geom_point(data = dplyr::filter(DE_df, isDE == TRUE),
-               aes(fill = contrast),
-               size = 2, shape = 21, color = "grey20", alpha = 0.5) +
+               fill = "grey80", color = "grey40",
+               size = 2, shape = 21, alpha = 0.3)
+  
+  # Add points
+  if (interactive == TRUE) {
+    p <- p + geom_point_interactive(
+      data = dplyr::filter(DE_df, isDE == TRUE),
+      mappping = aes(fill = contrast,
+                     tooltip = paste(gene, "\n", gene_name, "\n", gene_description)),
+      size = 2, shape = 21, color = "grey20", alpha = 0.5
+    )
+  } else {
+    p <- p + geom_point(
+      data = dplyr::filter(DE_df, isDE == TRUE),
+      mapping = aes(fill = contrast),
+      size = 2, shape = 21, color = "grey20", alpha = 0.5
+    )
+  }
+    
+  p <- p +
     geom_vline(xintercept = 0, color = "grey30") +
     scale_x_continuous(expand = expansion(mult = c(0.02, 0.02))) +
     scale_y_continuous(expand = expansion(mult = c(0, 0.02))) +
-    labs(x = xlab,
-         y = ylab) +
+    labs(x = xlab, y = ylab) +
     guides(fill = "none") +
     theme(panel.grid.minor = element_blank())
 
-  if (is.null(colors)) {
-    p <- p + scale_fill_brewer(palette = "Dark2")
-  } else {
-    p <- p + scale_fill_manual(values = colors)
-  }
+  # Add color scheme
+  if (is.null(colors)) p <- p + scale_fill_brewer(palette = "Dark2")
+  if (! is.null(colors)) p <- p + scale_fill_manual(values = colors)
 
+  # Add gene IDs
+  if (add_ids == TRUE) {
+    DE_df[[id_column]] <- str_trunc(DE_df[[id_column]], width = 35)
+    
+    p <- p + ggrepel::geom_text_repel(
+      data = slice_head(DE_df, n = 10, by = contrast),
+      mapping = aes(label = .data[[id_column]]),
+      max.overlaps = 20,
+      min.segment.length = 0.1,
+      color = "grey50",
+      fontface = "italic"
+    )
+  }
+  
   # When no focal contrast is specified, show all with a facet
   if ((length(fcontrasts) > 1 || fcontrasts[1] == "all") & plot_grid == FALSE) {
-    p <- p + facet_wrap(vars(contrast),
-                        nrow = 1,
-                        scales = facet_scales)
+    p <- p + facet_wrap(vars(contrast), nrow = 1, scales = facet_scales)
   }
+  
   if (plot_grid == TRUE) {
     p <- p + facet_grid(rows = vars(!!sym(grid_rows)),
                         cols = vars(!!sym(grid_cols)),
                         scales = facet_scales)
   }
   
-  if (interactive == TRUE) {
-    suppressPackageStartupMessages(library(plotly))
-    ggplotly(p, tooltip = "text")
-  } else {
-    return(p)
-  }
+  print(p)
+  if (return_plot == TRUE) return(p)
 }
 
 # Heatmap with ComplexHeatmap
@@ -442,10 +503,10 @@ cheatmap <- function(
       if (is.factor(meta[[group]])) levs <- levels(meta[[group]])
       if (!is.factor(meta[[group]])) levs <- unique(meta[[group]])
       
-      cols <- suppressWarnings(
+      colors <- suppressWarnings(
         RColorBrewer::brewer.pal(n = length(levs), name = palette)[1:length(levs)]
       )
-      col_list[[group]] <- cols
+      col_list[[group]] <- colors
       names(col_list[[group]]) <- levs
     }
     
@@ -522,19 +583,24 @@ cheatmap <- function(
 }
 
 # Heatmap plot showing abundances for multiple/many genes
-pheat <- function(genes,
-                  count_mat,
-                  meta_df,                    # Should have sample IDs as rownames!
-                  groups = NULL,
-                  show_rownames = TRUE,
-                  show_colnames = FALSE,
-                  cluster_rows = TRUE,
-                  logtrans = FALSE,
-                  scale = "none",
-                  annotation_colors = NULL,
-                  id_labsize = 10,
-                  ...) {
+pheat <- function(
+    genes,                      # Vector of genes to include
+    count_mat,                  # Count matrix (with gene names as rownames)
+    meta_df,                    # Metadata, should have sample IDs as rownames!
+    samples = NULL,             # Vector of samples to include
+    groups = NULL,              # Column names from metadata to show as groups at top of heatmap
+    show_rownames = TRUE,       # Whether to show row (gene) names
+    show_colnames = FALSE,      # Whether to show column (sample) names
+    cluster_rows = TRUE,        # Whether to do hierarchical clustering on the rows (genes)
+    cluster_cols = FALSE,       # Whether to do hierarchical clustering on the rows (samples)
+    logtrans = FALSE,           # Whether to log-transform the counts
+    scale = "none",
+    annotation_colors = NULL,
+    id_labsize = 10,
+    ...                         # Arguments to be passed to the pheatmap function
+    ) {
 
+  # Load the pheatmap package
   suppressPackageStartupMessages(library(pheatmap))
 
   # Arrange metadata according to the columns with included factors
@@ -547,6 +613,7 @@ pheat <- function(genes,
   # Select and arrange count matrix
   fcount_mat <- count_mat[match(genes, rownames(count_mat)),
                           match(rownames(meta_df), colnames(count_mat))]
+  if (!is.null(samples)) fcount_mat <- fcount_mat[, match(samples, colnames(fcount_mat))]
   fcount_mat <- as.matrix(fcount_mat)
   
   # Don't include metadata if no groups are provided
@@ -564,14 +631,14 @@ pheat <- function(genes,
 
   # Truncate long names
   row.names(fcount_mat) <- str_trunc(row.names(fcount_mat),
-                                     width = 20, ellipsis = "")
+                                     width = 25, ellipsis = "")
 
   # Function to create the plot
   p <- pheatmap(
     fcount_mat,
     annotation_col = meta_df,
     cluster_rows = cluster_rows,
-    cluster_cols = FALSE,
+    cluster_cols = cluster_cols,
     show_rownames = show_rownames,
     show_colnames = show_colnames,
     annotation_colors = annotation_colors,
@@ -589,39 +656,55 @@ pheat <- function(genes,
 
 # Boxplot showing abundances for a single gene
 pbox <- function(
-    gene,
-    count_df,
-    x_by,
-    col_by = NULL,
-    annot = NULL,   
-    cols = NULL,
-    log_scale = FALSE,
-    theme_base_size = 13,
-    ymin = NA,
+    gene,                      # Gene ID
+    count_df,                  # Count df with column 'count' with counts to plot
+    x,                         # What to plot along the x-axis (column from count_df)
+    color_by = NULL,           # What to color the boxes and points by (column from count_df)
+    facet_by = NULL,           # What to facet the plot by (column from count_df)
+    facet_scales = "fixed",
+    annot = NULL,              # Annotation: gene info for plot title
+    colors = NULL,             # Manually provide colors
+    log_scale = FALSE,         # Whether counts (y-axis) should be on a y-scale 
+    ymin = NA,                 # Force a min. value for the y-axis
+    xlab = NULL,
     save_plot = FALSE,
-    plotdir = "results/figures/geneplots"
+    plotdir = "results/figures/geneplots",
+    return_plot = FALSE        # Whether to return the plot object
     ) {
 
+  # Rename gene variable
   fgene <- gene
 
+  # Process annotation
   if (!is.null(annot)) {
     annot <- annot |> janitor::clean_names()  
     id_col_name <- colnames(annot)[1] 
     
-    g_descrip <- annot |>
-      dplyr::filter(.data[[id_col_name]] == fgene) |>
-      pull(gene_description) |>
-      str_trunc(width = 50)
-
+    if ("gene_description" %in% colnames(annot)) {
+      g_descrip <- annot |>
+        dplyr::filter(.data[[id_col_name]] == fgene) |>
+        pull(gene_description) |>
+        str_trunc(width = 50)
+    } else {
+      g_descrip <- NA
+    }
+    
     if ("gene_name" %in% colnames(annot)) {
       g_name <- annot |>
         dplyr::filter(.data[[id_col_name]] == fgene) |>
         pull(gene_name)
+    } else {
+      g_name <- NA
+    }
+    
+    if (!is.na(g_name)) {
       ptitle <- g_name
-      psub <- paste0(g_descrip, "\n", fgene)
+      if (!is.na(g_descrip)) psub <- paste0(g_descrip, "\n", fgene)
+      if (is.na(g_descrip)) psub <- fgene 
     } else {
       ptitle <- fgene
-      psub <- paste0(g_descrip)
+      if (!is.na(g_descrip)) psub <- paste0(g_descrip)
+      if (is.na(g_descrip)) psub <- NULL
     }
   } else {
     ptitle <- fgene
@@ -631,34 +714,40 @@ pbox <- function(
   # Filter to contain only focal ID
   count_df <- count_df |> dplyr::filter(gene %in% fgene)
 
-  # Make the plot
+  # Base plot
   p <- ggplot(count_df) +
-    aes(y = count, x = .data[[x_by]])
-  
-  if (!is.null(col_by)) p <- p + aes(color = .data[[col_by]])
+    aes(y = count, x = .data[[x]])
+  if (!is.null(color_by)) p <- p + aes(color = .data[[color_by]])
   
   # Add boxplot
   p <- p + geom_boxplot(outlier.shape = NA)
   
   # Add points
-  if (!is.null(col_by)) {
+  if (!is.null(color_by)) {
     # With color-aesthetic, use jitter-doge and smaller points:
-    p <- p +
-      geom_point(position = position_jitterdodge(jitter.width = 0.1, jitter.height = 0),
-                 size = 1.5)
+    p <- p + geom_point(
+      position = position_jitterdodge(jitter.width = 0.1, jitter.height = 0),
+      size = 2.5
+      )
   } else {
     # Withour color aesthetic
-    p <- p +
-      geom_point(position = position_jitter(width = 0.1, height = 0),
-                 size = 2.5)
+    p <- p + geom_point(
+      position = position_jitter(width = 0.1, height = 0),
+      size = 2.5, color = "grey40"
+      )
   }
   
+  # Facet
+  if (!is.null(facet_by)) {
+    p <- p + facet_wrap(vars(!!sym(facet_by)),
+                        nrow = 1, scales = facet_scales)
+  }
+    
   # Plot formatting
   p <- p +
     labs(title = ptitle,
          subtitle = psub,
-         x = NULL) +
-    theme_bw(base_size = theme_base_size) +
+         x = xlab) +
     theme(legend.position = "right",
           plot.title = element_text(hjust = 0.5, face = "bold.italic"),
           plot.subtitle = element_text(hjust = 0.5, face = "plain"),
@@ -667,26 +756,26 @@ pbox <- function(
           plot.margin = unit(c(0.5, 0.5, 1, 0.5), "cm"))
 
   # No legend needed if color-aes is same as x-aes
-  if (!is.null(col_by)) if (x_by == col_by) p <- p + guides(color = "none")
+  if (!is.null(color_by)) if (x == color_by) p <- p + guides(color = "none")
 
+  # Y scale and label
   if (log_scale == TRUE) {
     p <- p +
       scale_y_log10(labels = scales::comma) +
-      labs(y = "Normalized count (log10-scale)")
+      labs(y = "Gene count (log10-scale)")
   } else {
     p <- p +
       scale_y_continuous(labels = scales::comma,
                          limits = c(ymin, NA),
                          expand = expansion(mult = c(0.03, 0.03))) +
-      labs(y = "Normalized count")
+      labs(y = "Gene count")
   }
+  
+  # Color scheme
+  if (is.null(colors)) p <- p + scale_color_brewer(palette = "Set1")
+  if (!is.null(colors)) p <- p + scale_color_manual(values = colors)
 
-  if (is.null(cols)) {
-    p <- p + scale_color_brewer(palette = "Set1")
-  } else {
-    p <- p + scale_color_manual(values = cols)
-  }
-
+  # Save plot
   if (save_plot == TRUE) {
     dir.create(plotdir, showWarnings = FALSE, recursive = TRUE)
     plotfile <- file.path(plotdir, paste0(gene, ".png"))
@@ -694,14 +783,21 @@ pbox <- function(
            width = 6, height = 6, dpi = "retina")
   }
 
-  return(p)
+  print(p)
+  if (return_plot == TRUE) return(p)
 }
 
 
 # Wrapper function to combine 4 single-gene boxplots
-p4box <- function(genes, count_df,
-                  annot = NULL, cols = NULL,
-                  x_by = "tissue", col_by = "tissue", ...) {
+p4box <- function(
+    genes,
+    count_df,
+    annot = NULL,
+    x,
+    color_by,
+    colors = NULL,
+    ...
+    ) {
   
   library(patchwork)
 
@@ -893,15 +989,12 @@ pca_plot <- function(
   
   # Add sample IDs
   if (add_ids == TRUE) {
-    if (!require(ggrepel)) install.packages("ggrepel")
-    p <- p +
-      ggrepel::geom_text_repel(
-        aes(label = sample), max.overlaps = 20, point.padding = 3
-        )
+    p <- p + ggrepel::geom_text_repel(
+      aes(label = sample), max.overlaps = 20, point.padding = 3
+      )
   }
   
   return(p)
-  #if (interactive == FALSE) return(p) else girafe(ggobj = p)
 }
 
 
