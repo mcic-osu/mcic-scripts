@@ -82,12 +82,14 @@ script_help() {
     echo "                                - Settings in this file will override default settings"
     echo "                                - Note that the mcic-scripts OSC config file will always be included"
     echo "                                  (https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config)"
-    echo "  --profile            <str>  'Profile' from a config file to use     [default: $profile]"
+    echo "  --profile            <str>  Name of a 'profile' from a config file that should be used [default: $profile]"
     echo "  --work_dir           <dir>  Scratch (work) dir for the workflow     [default: $work_dir]"
     echo "                                - This is where the workflow results will be stored before final results are copied to the output dir."
+    echo "  --version                   Print the version of Nextflow and exit"
+    echo
+    echo "UTILITY OPTIONS"
     echo "  -h/--help                   Print this help message and exit"
     echo "  -v                          Print the version of this script and exit"
-    echo "  --version                   Print the version of Nextflow and exit"
     echo
     echo "HARDCODED WORKFLOW OPTIONS:"
     echo "  --aligner star_salmon"
@@ -246,7 +248,7 @@ echo "Reference genome FASTA file:      $ref_fasta"
 echo "Reference genome annotation file: $ref_annot"
 echo "Output dir:                       $outdir"
 echo
-echo "SETTINGS:"
+echo "OTHER WORKFLOW SETTINGS:"
 echo "Run biotype QC:                   $biotype_qc"
 echo "Use Salmon '--gcBias' option:     $salmon_gcbias"
 echo "Remove rRNA:                      $rm_rrna"
@@ -315,6 +317,7 @@ runstats $TOOL_BINARY \
     $resume_arg \
     $opts
 
+# Report
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
 final_reporting "$LOG_DIR"
