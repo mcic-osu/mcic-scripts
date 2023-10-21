@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Quantifying RNASeq reads with Salmon in alignment-based mode (i.e., with a BAM file)"
-SCRIPT_VERSION="2023-08-14"
+SCRIPT_VERSION="2023-10-21"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -34,6 +34,7 @@ strict_bash=true
 libtype=ISR                         # Default = reverse-stranded
 gcbias_opt="--gcBias"               # Include the --gcBias option
 #?(gcBias opt recommended here: http://bioconductor.org/packages/devel/bioc/vignettes/DESeq2/inst/doc/DESeq2.html)
+seqbias_opt="--seqBias"             # Include the --seqBias option (https://salmon.readthedocs.io/en/latest/salmon.html#seqbias)
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -59,7 +60,8 @@ script_help() {
     echo "OTHER KEY OPTIONS:"
     echo "  --libtype           <str>   RNAseq library type                     [default: $libtype]"
     echo "                              (see https://salmon.readthedocs.io/en/latest/salmon.html#what-s-this-libtype)"
-    echo "  --no_gcbias                 Don't use the Salmon '--gcBias' option  [default: use]"
+    echo "  --no_gcbias                 Don't use the Salmon '--gcBias' option  [default: use (note: this is not the Salmon default)]"
+    echo "  --no_seqbias                Don't use the Salmon '--seqBias' option [default: use (note: this is not the Salmon default)]"
     echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -128,6 +130,7 @@ while [ "$1" != "" ]; do
         --opts )            shift && opts=$1 ;;
         --env )             shift && env=$1 ;;
         --no_gcbias )       gcbias_opt= ;;
+        --no_seqbias )      seqbias_opt= ;;
         --no_strict )       strict_bash=false ;;
         --dl_container )    dl_container=true ;;
         --container_dir )   shift && container_dir=$1 ;;
@@ -169,7 +172,8 @@ echo "Reference annotation file:                $annot"
 echo "Transcripts FASTA file:                   $transcripts"
 echo "Output dir:                               $outdir"
 echo "RNAseq library type:                      $libtype"
-[[ -n "$gcbias_opt" ]] && echo "Using Salmon's --gcBias option" 
+[[ -n "$gcbias_opt" ]] && echo "Using Salmon's --gcBias option"
+[[ -n "$seqbias_opt" ]] && echo "Using Salmon's --seqBias option"
 [[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
 log_time "Listing the input file(s):"
 ls -lh "$infile" "$annot"
@@ -188,6 +192,7 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
     -a "$infile" \
     -o "$outdir" \
     "$gcbias_opt" \
+    "$seqbias_opt" \
     $opts
 
 log_time "Listing files in the output dir:"

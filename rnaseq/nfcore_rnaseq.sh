@@ -13,7 +13,7 @@
 # Constants - generic
 DESCRIPTION="Run the Nextflow-core RNAseq pipeline from https://nf-co.re/rnaseq
   with aligner option STAR => Salmon"
-SCRIPT_VERSION="2023-08-20"
+SCRIPT_VERSION="2023-10-21"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="nextflow run"
@@ -21,9 +21,9 @@ export TOOL_NAME="nextflow"
 VERSION_COMMAND="nextflow -v"
 
 # Constants - parameters
-WORKFLOW_NAME=rnaseq      # The name of the nf-core workflow
+WORKFLOW_NAME=rnaseq                            # The name of the nf-core workflow
 OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config
-OSC_CONFIG=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present here
+OSC_CONFIG=mcic-scripts/nextflow/osc.config     # Will be downloaded if not present here
 ALIGNER_OPT="--aligner star_salmon "
 SAVE_REF_OPT="--save_reference"
 SAVE_MERGED_FQ_OPT="--save_merged_fastq"
@@ -40,6 +40,7 @@ profile="singularity"
 resume=true && resume_arg="-resume"
 biotype_qc=false
 salmon_gcbias=true
+salmon_seqbias=true
 rm_rrna=true
 
 # ==============================================================================
@@ -68,9 +69,10 @@ script_help() {
     echo "  --workflow_version  <str>   Nf-core rnaseq workflow version         [default: $workflow_version]"
     echo "  --biotype_qc                Run FeatureCounts biotype QC            [default: $biotype_qc]"
     echo "                                Turned off by default because this will often result in errors"
-    echo "  --no_gcbias                 Don't use the Salmon --gcBias option    [default: use this option]"
+    echo "  --no_gcbias                 Don't use the Salmon '--gcBias' option  [default: use this option]"
+    echo "  --no_seqbias                Don't use the Salmon '--seqBias' option [default: use this option]"
     echo "  --no_rrna_removal           Don't run SortMeRNA to remove rRNA      [default: remove rRNA]"
-    echo "  --opts              <str>   Additional workflow parameters, see example above"
+    echo "  --more_opts         <str>   Additional workflow parameters, see example above"
     echo
     echo "NEXTFLOW-RELATED OPTIONS:"
     echo "  --restart                   Restart workflow from the beginning     [default: resume workflow if possible]"
@@ -106,10 +108,10 @@ script_help() {
     echo "NFCORE RNASEQ WORKFLOW DOCUMENTATION:"
     echo "   - https://nf-co.re/rnaseq "
     echo
-    echo "EXAMPLE CODE FOR CREATING THE SAMPLE SHEET"
+    echo "EXAMPLE CODE FOR CREATING THE SAMPLE SHEET:"
     echo "  wget -L https://raw.githubusercontent.com/nf-core/rnaseq/master/bin/fastq_dir_to_samplesheet.py"
     echo "  fqdir=data/fastq                         # Dir with your FASTQ files"
-    echo "  samplesheet=data/meta/samplesheet.csv    # Output samplehseet"
+    echo "  samplesheet=data/meta/samplesheet.csv    # Output samplesheet"
     echo "  python3 fastq_dir_to_samplesheet.py \$fqdir \$samplesheet --strandedness reverse"
 }
 
@@ -161,10 +163,10 @@ ref_annot=
 ref_fasta=
 outdir=
 config_file=
-opts=
+more_opts=
 threads=
 biotype_opt=
-salmon_gcbias_opt=
+salmon_opts=
 rrna_opt=
 
 # Parse command-line options
@@ -177,9 +179,10 @@ while [ "$1" != "" ]; do
         --ref_fasta )               shift && ref_fasta=$1 ;;
         --biotype_qc )              biotype_qc=true ;;
         --no_gcbias )               salmon_gcbias=false ;;
+        --no_seqbias )              salmon_seqbias=false ;;
         --no_rrna_removal )         rm_rrna=false ;;
         --container_dir )           shift && container_dir=$1 ;;
-        --opts )                    shift && opts=$1 ;;
+        --more_opts )               shift && more_opts=$1 ;;
         --config | -config )        shift && config_file=$1 ;;
         --profile | -profile )      shift && profile=$1 ;;
         --work_dir | -work-dir )    shift && work_dir=$1 ;;
@@ -228,8 +231,13 @@ fi
 
 # Other opts
 [[ "$biotype_qc" == false ]] && biotype_opt="--skip_biotype_qc"
-[[ "$salmon_gcbias" == true ]] && salmon_gcbias_opt="--extra_salmon_quant_args '--gcBias'"
 [[ "$rm_rrna" == true ]] && rrna_opt="--remove_ribo_rna --save_non_ribo_reads"
+if [[ "$salmon_gcbias" == true ]]; then
+   [[ "$salmon_seqbias" == true ]] && salmon_opts="--extra_salmon_quant_args '--gcBias --seqBias'"
+   [[ "$salmon_seqbias" == false ]] && salmon_opts="--extra_salmon_quant_args '--gcBias'"
+else
+    [[ "$salmon_seqbias" == true ]] && salmon_opts="--extra_salmon_quant_args '--seqBias'"
+fi
 
 # Other output dirs
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
@@ -251,8 +259,9 @@ echo
 echo "OTHER WORKFLOW SETTINGS:"
 echo "Run biotype QC:                   $biotype_qc"
 echo "Use Salmon '--gcBias' option:     $salmon_gcbias"
+echo "Use Salmon '--seqBias' option:    $salmon_seqbias"
 echo "Remove rRNA:                      $rm_rrna"
-[[ -n "$opts" ]] && echo "Additional options:               $opts"
+[[ -n "$more_opts" ]] && echo "Additional options:               $more_opts"
 echo
 echo "NEXTFLOW-RELATED SETTINGS:"
 echo "Resume previous run:              $resume"
@@ -302,7 +311,7 @@ runstats $TOOL_BINARY \
     $annot_opt \
     $rrna_opt \
     $ALIGNER_OPT \
-    $salmon_gcbias_opt \
+    $salmon_opts \
     $biotype_opt \
     $SAVE_REF_OPT \
     $SAVE_MERGED_FQ_OPT \
@@ -315,7 +324,7 @@ runstats $TOOL_BINARY \
     -profile "$profile" \
     $config_arg \
     $resume_arg \
-    $opts
+    $more_opts
 
 # Report
 log_time "Listing files in the output dir:"
