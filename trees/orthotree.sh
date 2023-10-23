@@ -13,11 +13,12 @@
 # Constants - generic
 DESCRIPTION="Create both a nucleotide and a protein phylogenetic tree for a gene
 in a focal genome based on its Orthofinder orthogroup"
-SCRIPT_VERSION="2023-09-20"
+SCRIPT_VERSION="2023-10-18"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
-conda_path=/fs/ess/PAS0471/jelmer/conda/iqtree
+conda_path=/fs/ess/PAS0471/jelmer/conda/iqtree          # Includes IQ-tree, MAFFT, csvtk
+CONDA_R_TREE=/fs/ess/PAS0471/jelmer/conda/r_tree
 
 # Defaults
 color_column=pathovar               # Name of the metadata column to color tip labels by
@@ -174,6 +175,7 @@ echo "Reference genome FASTA:                   $ref_fna"
 echo "Reference genome GFF:                     $ref_gff_org"
 echo "Input dir with genomes:                   $indir"
 echo "BED file with locus coordinates:          $bedfile"
+echo "Orthofinder orthogroups file:             $orthogroups_file"
 echo "Number of bootstraps:                     $nboot"
 [[ -n "$meta" ]] && echo "Metadata file:                            $meta"
 [[ -n "$root" ]] && echo "Tree root:                                $root"
@@ -182,7 +184,7 @@ echo "Number of input genomes:                  ${#genomes[@]}"
 log_time "Listing the reference FASTA file:"
 ls -lh "$ref_fna" "$ref_gff_org"
 log_time "Listing the first few input genomes:"
-ls -lh "${genomes[@]}" | head -n 3
+ls -lh "${genomes[@]:0:3}"
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
@@ -205,6 +207,19 @@ ortho_tree="$ortho_dir"/Gene_Trees/"$OG"_tree.txt
 root=$(cut -d, -f1 "$ortho_tree" | cut -d: -f1 | sed -E 's/\(+//' | sed -E 's/_([0-9])_/.\1_/')
 [[ -z "$root_opt" ]] && root_opt="--root $root"
 log_time "Gene ID: $gene_id   Orthogroup: $OG    Orthofinder root: $root"
+
+# Create a table showing the number of gene copies in the focal orthogroup for each included genomes
+OG_file1="$outdir"/OG.tsv               # File with all genes in the focal OG for each genome
+OG_file2="$outdir"/OG_gene_nrs.tsv      # File with just the nr of genes in the focal OG in each genome
+
+cat <(head -n1 "$orthogroups_file") <(grep "$OG" "$orthogroups_file") | \
+    csvtk -t transpose | tail -n+2 | sed 's/, /\t/g' > "$OG_file1"
+paste <(cut -f 1 "$OG_file1") <(awk '{print NF-1}' "$OG_file1") > "$OG_file2"
+
+n1=$(awk '$2 == 1' "$OG_file2" | wc -l)
+nmult=$(awk '$2 > 1' "$OG_file2" | wc -l)
+nmiss=$(awk '$2 == 0' "$OG_file2" | wc -l)
+log_time "Number of genomes with 1 / >1 / 0 copies: $n1 / $nmult / $nmiss"
 
 # Assign the correct output tree file names, this depends on whether bootstraps will be done
 if [[ "$nboot" -gt 0 ]]; then
@@ -244,13 +259,13 @@ log_time "Looping over sequences in protein MSA file to create nucleotide FASTAs
 >"$asm_list"
 
 grep ">" "$msa" | while read -r seq_id; do
-    # Get IDs
+    # Get assembly and gene IDs
     asm_id=$(echo "$seq_id" | sed -E 's/>(.*)_([A-Z]+_[0-9]+)$/\1/' | sed -E 's/_([0-9])$/.\1/')
     gene_id=$(echo "$seq_id" | sed -E 's/>(.*)_([A-Z]+_[0-9]+)$/\2/')
     # Inputs
     gff_focal="$indir"/"$asm_id".gff
     asm_focal="$indir"/"$asm_id".fna
-    # Output    
+    # Outputs
     gene_fna="$outdir"/fna_each/"$asm_id"_"$gene_id".fna
     tmp_gff="$outdir"/fna_each/"$asm_id"_"$gene_id".tmp
     log_time "asm_id: $asm_id  /  gene_id: $gene_id"
@@ -282,17 +297,19 @@ done
 log_time "Printing assemblies with multiple copies of the focal gene (none if there's no output below):"
 sort "$asm_list" | uniq -c | awk '$1 > 1' | sort -nr
 
-# Make nucleotide tree
+# Concatenate FASTA files
 log_time "Creating concatenated nucleotide FASTA $fna_unaln..." 
 cat "$outdir"/fna_each/*fna > "$fna_unaln"
 ls -lh "$fna_unaln"
 
+# Align the sequences
 log_time "Running MAFFT to align the nucleotide FASTA..."
 runstats mafft \
         --reorder --auto --adjustdirection --leavegappyregion \
         --thread "$threads" --quiet "$fna_unaln" > "$fna_aln"
 sed -i -E 's/^>_R_/>/' "$fna_aln" # Fix FASTA header - Remove '_R_' prefixes that MAFFT adds for rev-comp seqs
 
+# Create the tree
 log_time "Running IQtree to build a nucleotide tree..."
 runstats iqtree \
     -s "$fna_aln" --prefix "$outdir"/trees/"$OG"_nuc \
@@ -306,7 +323,7 @@ ls -lh "$outdir"/logs/iqtree_"$OG"_nuc.log
 # ==============================================================================
 # Plot the trees
 log_time "Plotting the trees..."
-source activate /fs/ess/PAS0471/jelmer/conda/r_tree
+load_env "$CONDA_R_TREE"
 runstats Rscript mcic-scripts/trees/ggtree.R -i "$nuc_tree" \
     $root_opt $meta_opt --right_margin 5
 runstats Rscript mcic-scripts/trees/ggtree.R -i "$prot_tree" \

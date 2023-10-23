@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=6:00:00
-#SBATCH --cpus-per-task=25
-#SBATCH --mem=100G
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=64G
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=orthofinder
 #SBATCH --output=slurm-orthofinder-%j.out
@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run OrthoFinder to find orthologs between genomes or proteomes"
-SCRIPT_VERSION="2023-09-28"
+SCRIPT_VERSION="2023-10-19"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -164,8 +164,6 @@ echo "Input FASTA type:                         $fa_type"
 echo "Output dir:                               $outdir"
 echo "Gene tree inference method:               $tree_method"
 [[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
-log_time "Listing the first few files in the input dir:"
-ls -lh "$indir" | head
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 

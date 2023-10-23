@@ -40,7 +40,7 @@ meta_only=false
 assembly_version=latest
 assembly_source=GenBank
 move_output=true
-meta_fields="accession,assminfo-name,organism-name,assminfo-refseq-category,assminfo-level,assmstats-number-of-contigs,assmstats-contig-n50"
+meta_fields="accession,assminfo-name,organism-name,assminfo-refseq-category,assminfo-level,assmstats-number-of-contigs,assmstats-contig-n50,assminfo-sequencing-tech"
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -68,7 +68,7 @@ script_help() {
     echo "REQUIRED OPTIONS:"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo "To specify genomes to download, use _one_ of the following three options:"
-    echo "  -t/--taxon          <str>   Taxon string, e.g. 'bos taurus' or 'nematoda'"
+    echo "  -t/--taxon          <str>   Taxon string (e.g. 'bos taurus' or 'nematoda') or NCBI Taxonomy ID (e.g. '10116')"
     echo "  -a/--accession_file <file>  Text file with list of NCBI accession numbers, one per line"
     echo "  -A/--accession      <str>   A single accession number to download (e.g. 'GCA_003693625.1')"
     echo
