@@ -7,6 +7,8 @@
 #SBATCH --job-name=TODO_THIS_SOFTWARE
 #SBATCH --output=slurm-TODO_THIS_SOFTWARE-%j.out
 
+#TODO - Print version when there's an error
+
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
