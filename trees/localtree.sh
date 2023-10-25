@@ -151,6 +151,9 @@ parsnp_tree_org="$outdir"/parsnp.tree
 parsnp_tree=${parsnp_tree_org/.tree/_fixnames.tree}
 iqtree_org="$outdir"/"$locus_id".contree
 iqtree=${iqtree_org/.contree/_fixnames.tree}
+aln_org="$outdir"/parsnp.aln
+aln=${aln_org/.aln/_fixnames.aln}
+
 if [[ "$nboot" -gt 0 ]]; then
     final_tree="$iqtree"
 else
@@ -212,11 +215,12 @@ ls -lh "$parsnp_tree_org"
 
 # Create a multi-FASTA alignment file (https://harvest.readthedocs.io/en/latest/content/harvest/quickstart.html)
 log_time "Running Harvesttool to convert to a FASTA alignment file..."
-runstats $PARSNP_CONTAINER_PREFIX harvesttools -i "$outdir"/parsnp.ggr -M "$outdir"/parsnp.aln
+runstats $PARSNP_CONTAINER_PREFIX harvesttools -i "$outdir"/parsnp.ggr -M "$aln_org"
 
 # Fix the sample IDs in the tree, so they match the IDs in the metadata file
-log_time "Fixing the sample IDs in the Parsnp tree..."
+log_time "Fixing the sample IDs in the tree and aligment..."
 sed -e 's/.fna//g' -e "s/$locus_id.fa.ref/$ref_id/g" -e "s/'//g" "$parsnp_tree_org" > "$parsnp_tree"
+sed -e 's/.fna//g' -e "s/$locus_id.fa.ref/$ref_id/g" -e "s/'//g" "$aln_org" > "$aln"
 
 # Run IQtree to get bootstrap
 if [[ "$nboot" -gt 0 ]]; then
