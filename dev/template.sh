@@ -58,7 +58,7 @@ script_help() {
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
+    echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
@@ -108,7 +108,7 @@ source_function_script
 # Initiate variables
 infile=
 outdir=
-opts=
+more_opts=
 threads=
 
 # Parse command-line args
@@ -117,7 +117,7 @@ while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
-        --opts )            shift && opts=$1 ;;
+        --more_opts )       shift && more_opts=$1 ;;
         --env )             shift && env=$1 ;;
         --no_strict )       strict_bash=false ;;
         --dl_container )    dl_container=true ;;
@@ -157,7 +157,7 @@ echo "==========================================================================
 echo "All options passed to this script:        $all_opts"
 echo "Input file:                               $infile"
 echo "Output dir:                               $outdir"
-[[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
+[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
 ls -lh "$infile" #TODO
 set_threads "$IS_SLURM"
@@ -169,7 +169,7 @@ set_threads "$IS_SLURM"
 log_time "Running $TOOL_NAME..."
 runstats $CONTAINER_PREFIX $TOOL_BINARY \
     --threads "$threads" \
-    $opts
+    $more_opts
 
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
