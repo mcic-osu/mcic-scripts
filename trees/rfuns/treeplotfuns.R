@@ -1,4 +1,167 @@
+# Function to plot a timetree
+timetree <- function(
+    tree,                         # Tree or treedata object
+    mrsd,                         # Most recent sampling (tip) date
+    ci_name = NULL,               # Name of the column/element with the dating CIs to plot
+    meta = NULL,                  # Dataframe with metadata
+    tiplab_column = NULL,         # Column from 'meta' with tiplabels to use (default: tree's own tiplabels)
+    color_column = NULL,          # Column from 'meta' to color tiplabels by 
+    tiplab_size = 4,              # Font size of the tiplabels
+    xlab_size = 12,               # Font size of the x-axis (time scale) labels
+    scale_breaks = NULL           # Breaks along the x-axis (time scale)
+    ) {
+  
+  # Determine breaks (time) along the x-axis
+  if (!is.null(scale_breaks)) {
+    n_breaks <- NULL
+  } else {
+    scale_breaks <- waiver()
+    n_breaks <- 8
+  }
+  
+  # Determine the total size of the tree
+  if (class(tree) == "treedata") {
+    tree_size <- sum(tree@phylo$edge.length)
+  } else {
+    tree_size <- sum(tree$edge.length)
+  }
+  
+  # Base tree
+  p <- ggtree(tree, layout = "rectangular", mrsd = mrsd)
+  
+  # Add annotation dataframe if provided
+  if (!is.null(meta)) {
+    meta$tiplab <- meta[[tiplab_column]]
+    tiplab_column <- "tiplab"
+    p <- p %<+% meta
+  }
+  
+  # Add tip labels
+  if (!is.null(tiplab_column)) {
+    message("# Using custom tip labels...")
+    p <- p + suppressWarnings(
+      geom_tiplab(aes_string(color = color_column, label = tiplab_column),
+                  align = TRUE, linesize = 0,
+                  size = tiplab_size, fontface = "bold")
+    )
+  } else {
+    message("# Using default tip labels...")
+    p <- p + suppressWarnings(
+      geom_tiplab(aes_string(color = color_column),
+                  align = TRUE, linesize = 0,
+                  size = tiplab_size, fontface = "bold")
+    )
+  }
+  
+  # Add dating confidence intervals (CIs)
+  if (!is.null(ci_name)) {
+    p <- p +
+      geom_range(range = ci_name,
+                 color = "red", size = 1, alpha = 0.3)
+  }
+  
+  # Formatting - scales etc
+  p <- p +
+    scale_color_brewer(palette = "Dark2") +
+    geom_rootedge(rootedge = tree_size / 50) +
+    coord_cartesian(clip = "off") +
+    scale_x_continuous(breaks = scale_breaks, n.breaks = n_breaks,
+                       labels = scales::comma)
+  
+  # Formatting - theme
+  p <- p +
+    theme_tree2() +
+    theme(plot.margin = margin(0.2, 3, 0.2, 0.75, "cm"),
+          axis.text.x = element_text(size = xlab_size, color = "grey50"),
+          axis.line.x.bottom = element_line(color = "grey50"),
+          axis.ticks.x.bottom = element_blank(),
+          panel.grid.major.x = element_line(linetype = "longdash"),
+          legend.position = "top")
+  
+  suppressWarnings(print(p))
+}
+
+# Function to convert a BactDating result object to a treedata object
+# for plotting with ggtree.
+bactdate2treedata <- function(bactdate_obj) {
+  
+  tree_list <- as.treedata.resBactDating(bactdate_obj)
+  
+  tree_data <- methods::new(
+    'treedata',
+    phylo = tree_list[[1]],
+    data = as_tibble(as.data.frame(tree_list[[2]]))
+    )
+  
+  return(tree_data)
+}
+
+
 # Function to plot a tree with ggtree
+ptree <- function(
+    tree,                         # Tree or treedata object
+    meta = NULL,                  # Dataframe with metadata
+    tiplab_column = NULL,         # Column from 'meta' with tiplabels to use (default: tree's own tiplabels)
+    color_column = NULL,          # Column from 'meta' to color tiplabels by 
+    tiplab_size = 4,              # Font size of the tiplabels
+    xlab_size = 12               # Font size of the x-axis labels
+  ) {
+  
+  # Determine the total size of the tree
+  if (class(tree) == "treedata") {
+    tree_size <- sum(tree@phylo$edge.length)
+  } else {
+    tree_size <- sum(tree$edge.length)
+  }
+  
+  # Base tree
+  p <- ggtree(tree, layout = "rectangular")
+  
+  # Add annotation dataframe if provided
+  if (!is.null(meta)) {
+    meta$tiplab <- meta[[tiplab_column]]
+    tiplab_column <- "tiplab"
+    p <- p %<+% meta
+  }
+  
+  # Add tip labels
+  if (!is.null(tiplab_column)) {
+    message("# Using custom tip labels...")
+    p <- p + suppressWarnings(
+      geom_tiplab(aes_string(color = color_column, label = tiplab_column),
+                  align = TRUE, linesize = 0,
+                  size = tiplab_size, fontface = "bold")
+    )
+  } else {
+    message("# Using default tip labels...")
+    p <- p + suppressWarnings(
+      geom_tiplab(aes_string(color = color_column),
+                  align = TRUE, linesize = 0,
+                  size = tiplab_size, fontface = "bold")
+    )
+  }
+  
+  # Formatting - scales etc
+  p <- p +
+    scale_color_brewer(palette = "Dark2") +
+    geom_rootedge(rootedge = tree_size / 50) +
+    coord_cartesian(clip = "off")
+  
+  # Formatting - theme
+  p <- p +
+    theme(plot.margin = margin(0.2, 3, 0.2, 0.75, "cm"),
+          axis.text.x = element_text(size = xlab_size, color = "grey50"),
+          axis.line.x.bottom = element_line(color = "grey50"),
+          axis.ticks.x.bottom = element_blank(),
+          panel.grid.major.x = element_line(linetype = "longdash"),
+          legend.position = "top")
+  
+  suppressWarnings(print(p))
+}
+
+
+# Function to plot a tree with ggtree, optionally with an MSA
+# NOTE 2023-10-25: OUTDATED
 plot_tree <- function(tree,
                       alignment = NULL,
                       annot = NULL,
@@ -86,41 +249,4 @@ plot_tree <- function(tree,
   # Save the plot to file
   ggsave(fig_file, width = plot_width, height = plot_height)
   if (print_fig == TRUE) print(p)
-}
-
-# Function to prep the annotation dataframe associated with the tree
-prep_annot_blast <- function(annot_file, tree_tips, show_strain) {
-  
-  colnames_annot <- c("subject", "query", "p_ident", "align_len", "n_mismatch",
-                      "n_gap", "q_start", "q_end", "s_start", "s_end",
-                      "evalue", "bitscore",
-                      "s_taxon", "s_len", "s_fullname")
-  
-  annot_raw <- read_tsv(annot_file,
-                        col_names = colnames_annot,
-                        col_types = cols()) %>%
-    select(subject, query, s_taxon, s_fullname)
-  
-  query_rows <- data.frame(subject = unique(annot_raw$query))
-  
-  annot <- annot_raw %>%
-    distinct(subject, .keep_all = TRUE) %>%
-    bind_rows(query_rows) %>%
-    filter(subject %in% tree_tips) %>% 
-    mutate(is_query = ifelse(subject %in% query_rows$subject, TRUE, FALSE),
-           is_genome = ifelse(grepl("complete genome", s_fullname), TRUE, FALSE),
-           strain_or_isolate = str_extract(s_fullname, "strain .*|isolate .*"),
-           strain_or_isolate = gsub("\\w gene.*|,.*|polyprotei", "", strain_or_isolate),
-           tree_label = ifelse(
-             subject %in% query_rows$subject,
-             subject,
-             if (show_strain == TRUE) {
-               paste0(s_taxon, " - ", strain_or_isolate, " (", subject,")")
-             } else {
-               paste0(s_taxon, " (", subject,")")
-             }),
-           tree_label = sub(" - NA", "", tree_label)) %>%
-    select(-query, -s_fullname)
-  
-  return(annot)
 }
