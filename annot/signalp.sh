@@ -1,276 +1,195 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=6:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=signalp
 #SBATCH --output=slurm-signalp-%j.out
 
 # ==============================================================================
-#                                   FUNCTIONS
-# ==============================================================================
-# Help function
-Print_help() {
-    echo
-    echo "======================================================================"
-    echo "                            $0"
-    echo "                  RUN SIGNALP 6.0"
-    echo "======================================================================"
-    echo
-    echo "USAGE:"
-    echo "  sbatch $0 -i <input file> -o <output dir> [...]"
-    echo "  bash $0 -h"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile     <file>  Input file: protein FASTA (proteome)"
-    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --format        <str>   'txt' produces tabular output, 'png', 'eps' and 'all' additionally produce figures. [default: 'txt']"
-    echo "  --organism      <str>   'eukarya' or 'other'                           [default: 'other']"
-    echo "  --mode          <str>   Run mode: 'fast', 'slow', or 'slow-sequential' [default: 'fast']"
-    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to SignalP"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                 Run the script in debug mode (print all code)"
-    echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for SignalP and exit"
-    echo "  -v/--version            Print the version of SignalP and exit"
-    echo
-    echo "HARDCODED OPTIONS:"
-    echo "  NOTE: SignalP runs in 'fast' mode ('--mode fast'), since the other two modes have not been installed"
-    echo
-    echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i results/braker/proteome.fa -o results/signalp"
-    echo
-    echo "SOFTWARE DOCUMENTATION:"
-    echo "  - Docs: https://github.com/fteufel/signalp-6.0/blob/main/installation_instructions.md"
-    echo "  - Paper: https://www.nature.com/articles/s41587-021-01156-3"
-    echo "  - SignalP online server: https://services.healthtech.dtu.dk/service.php?SignalP-6.0/"
-    echo
-}
-
-# Load software
-Load_software() {
-    set +u
-    module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /fs/project/PAS0471/jelmer/conda/signalp-6.0
-    set -u
-}
-
-# Print version
-Print_version() {
-    set +e
-    Load_software
-    signalp6 --version
-    set -e
-}
-
-# Print help for the focal program
-Print_help_program() {
-    Load_software
-    signalp6 --help
-}
-
-# Print SLURM job resource usage info
-Resource_usage() {
-    echo
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
-    echo
-}
-
-# Print SLURM job requested resources
-Print_resources() {
-    set +u
-    echo "# SLURM job information:"
-    echo "Account (project):    $SLURM_JOB_ACCOUNT"
-    echo "Job ID:               $SLURM_JOB_ID"
-    echo "Job name:             $SLURM_JOB_NAME"
-    echo "Memory (MB per node): $SLURM_MEM_PER_NODE"
-    echo "CPUs (per task):      $SLURM_CPUS_PER_TASK"
-    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
-    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
-    echo "======================================================================"
-    echo
-    set -u
-}
-
-# Set the number of threads/CPUs
-Set_threads() {
-    set +u
-    if [[ "$slurm" = true ]]; then
-        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-            threads="$SLURM_CPUS_PER_TASK"
-        elif [[ -n "$SLURM_NTASKS" ]]; then
-            threads="$SLURM_NTASKS"
-        else 
-            echo "WARNING: Can't detect nr of threads, setting to 1"
-            threads=1
-        fi
-    else
-        threads=1
-    fi
-    set -u
-}
-
-# Resource usage information
-Time() {
-    /usr/bin/time -f \
-        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
-        "$@"
-}   
-
-# Exit upon error with a message
-Die() {
-    error_message=${1}
-    error_args=${2-none}
-    
-    echo >&2
-    echo "=====================================================================" >&2
-    date
-    printf "$0: ERROR: %s\n" "$error_message" >&2
-    echo -e "\nFor help, run this script with the '-h' option" >&2
-    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
-    if [[ "$error_args" != "none" ]]; then
-        echo -e "\nArguments passed to the script:" >&2
-        echo "$error_args" >&2
-    fi
-    echo -e "\nEXITING..." >&2
-    echo "=====================================================================" >&2
-    echo >&2
-    exit 1
-}
-
-
-# ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-# Option defaults
+# Constants - generic
+DESCRIPTION="Run SignalP on a proteome"
+SCRIPT_VERSION="2023-10-25"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+TOOL_BINARY=signalp6
+TOOL_NAME=SignalP
+TOOL_DOCS=https://github.com/fteufel/signalp-6.0/blob/main/installation_instructions.md
+VERSION_COMMAND="$TOOL_BINARY --version"
+
+# Defaults - generics
+env=conda                           # Use a 'conda' env or a Singularity 'container'
+conda_path=/fs/project/PAS0471/jelmer/conda/signalp-6.0
+container_path=
+container_url=
+dl_container=false
+container_dir="$HOME/containers"
+strict_bash=true
+version_only=false                 # When true, just print tool & script version info and exit
+
+# Constants - tool parameters
+RUN_MODE=fast
+
+# Defaults - tool parameters
 format=txt
 organism=other
-mode=fast
 
-debug=false
-dryrun=false && e=""
-slurm=true
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
+script_help() {
+    echo -e "\n                          $0"
+    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
+    echo "        =============================================================="
+    echo "DESCRIPTION:"
+    echo "  $DESCRIPTION"
+    echo
+    echo "USAGE / EXAMPLE COMMANDS:"
+    echo "  - Basic usage:"
+    echo "      sbatch $0 -i <input file> -o <output dir> [...]"
+    echo
+    echo "REQUIRED OPTIONS:"
+    echo "  -i/--infile         <file>  Input file: protein FASTA (proteome)"
+    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
+    echo "                              When running SignalP on multiple proteomes in a loop,"
+    echo "                              use a separate outdir for each run"
+    echo
+    echo "OTHER KEY OPTIONS:"
+    echo "  --format            <str>   'txt' produces tabular output, 'png', 'eps' and 'all' additionally produce figures. [default: 'txt']"
+    echo "  --organism          <str>   'eukarya' or 'other'                           [default: 'other']"
+    echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
+    echo
+    echo "UTILITY OPTIONS:"
+    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
+    echo "                                (NOTE: If no default '--container_url' is listed below,"
+    echo "                                 you'll have to provide one in order to run the script with a container.)"
+    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
+    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
+    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
+    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
+    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
+    echo "  --no_strict                 Don't use strict Bash settings ('set -euo pipefail') -- can be useful for troubleshooting"
+    echo "  -h/--help                   Print this help message and exit"
+    echo "  -v                          Print the version of this script and exit"
+    echo "  --version                   Print the version of $TOOL_NAME and exit"
+    echo
+    echo "HARDCODED OPTIONS:"
+    echo "  - SignalP runs in 'fast' mode ('--mode fast'), since the other two modes have not been installed"
+    echo 
+    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
+}
 
+# Function to source the script with Bash functions
+source_function_script() {
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$IS_SLURM" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
+    else
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
+    fi
+    function_script=$(realpath "$script_dir"/../dev/"$(basename "$FUNCTION_SCRIPT_URL")")
+    # Download the function script if needed, then source it
+    if [[ ! -f "$function_script" ]]; then
+        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
+        function_script=$(basename "$FUNCTION_SCRIPT_URL")
+        wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script"
+    fi
+    source "$function_script"
+}
+
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-# Placeholder defaults
-infile=""
-outdir=""
-more_args=""
+# Initiate variables
+infile=
+outdir=
+more_opts=
+threads=
 
 # Parse command-line args
-all_args="$*"
+all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
         --format )          shift && format=$1 ;;
         --organism )        shift && organism=$1 ;;
-        --mode )            shift && mode=$1 ;;
-        --more_args )       shift && more_args=$1 ;;
-        -v | --version )    Print_version; exit 0 ;;
-        -h )                Print_help; exit 0 ;;
-        --help )            Print_help_program; exit 0;;
-        --dryrun )          dryrun=true && e="echo ";;
-        --debug )           debug=true ;;
-        * )                 Die "Invalid option $1" "$all_args" ;;
+        --more_opts )       shift && more_opts=$1 ;;
+        --env )             shift && env=$1 ;;
+        --no_strict )       strict_bash=false ;;
+        --dl_container )    dl_container=true ;;
+        --container_dir )   shift && container_dir=$1 ;;
+        --container_url )   shift && container_url=$1 && dl_container=true ;;
+        -h | --help )       script_help; exit 0 ;;
+        -v )                script_version; exit 0 ;;
+        --version )         version_only=true ;;
+        * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
 done
 
+# ==============================================================================
+#                          INFRASTRUCTURE SETUP
+# ==============================================================================
+# Strict Bash settings
+[[ "$strict_bash" == true ]] && set -euo pipefail
+
+# Load software
+load_env "$conda_path" "$container_path" "$dl_container"
+[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
+
+# Check options provided to the script
+[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
+[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
+
+# Define outputs based on script parameters
+LOG_DIR="$outdir"/logs
+mkdir -p "$LOG_DIR" "$outdir"/gene_plots
 
 # ==============================================================================
-#                          OTHER SETUP
+#                         REPORT PARSED OPTIONS
 # ==============================================================================
-# In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
-
-# Check if this is a SLURM job
-[[ -z "$SLURM_JOB_ID" ]] && slurm=false
-
-# Bash script settings
-set -euo pipefail
-
-# Load software and set nr of threads
-[[ "$dryrun" = false ]] && Load_software
-Set_threads
-
-# Check input
-[[ "$infile" = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
-[[ ! -f "$infile" ]] && Die "Input file $infile does not exist"
-
-# Report
-echo
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "                    STARTING SCRIPT SIGNALP.SH"
-date
-echo "=========================================================================="
-echo "All arguments to this script:     $all_args"
-echo "Input file:                       $infile"
-echo "Output dir:                       $outdir"
-echo "Output format:                    $format"
-echo "Organism group:                   $organism"
-echo "Run mode:                         $mode"
-[[ $more_args != "" ]] && echo "Other arguments for SignalP:      $more_args"
-echo "Number of threads/cores:          $threads"
-echo
-echo "Listing the input file(s):"
+echo "All options passed to this script:        $all_opts"
+echo "Input file:                               $infile"
+echo "Output dir:                               $outdir"
+echo "Output format:                            $format"
+echo "Organism group:                           $organism"
+[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
+log_time "Listing the input file(s):"
 ls -lh "$infile"
-[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
-echo "=========================================================================="
-
-# Print reserved resources
-[[ "$slurm" = true ]] && Print_resources
-
+set_threads "$IS_SLURM"
+[[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Create the output directory
-echo -e "\n# Creating the output directories..."
-${e}mkdir -pv "$outdir"/logs "$outdir"/gene_plots
-
-# Run
-echo -e "\n# Now running SignalP..."
-${e}Time \
-    signalp6 \
+log_time "Running $TOOL_NAME..."
+runstats $CONTAINER_PREFIX $TOOL_BINARY \
     --fastafile "$infile" \
     --output_dir "$outdir" \
     --organism "$organism" \
-    --mode fast \
+    --mode "$RUN_MODE" \
     --format "$format" \
     --write_procs "$threads" \
-    $more_args
+    $more_opts
 
+log_time "Moving individual gene plots to separate directory 'gene_plots'..."
+mv -v "$outdir"/*_plot* "$outdir"/gene_plots
 
-echo -e "\n# Moving individual gene plots to separate directory 'gene_plots'..."
-${e}mv -v "$outdir"/*_plot.txt "$outdir"/gene_plots
-
-
-# ==============================================================================
-#                               WRAP-UP
-# ==============================================================================
-echo
-echo "========================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
-    [[ "$slurm" = true ]] && Resource_usage
-fi
-echo "# Done with script"
-date
-echo
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/*
+final_reporting "$LOG_DIR"
