@@ -156,7 +156,7 @@ load_env "$conda_path" "$container_path" "$dl_container"
 
 # Define outputs based on script parameters
 LOG_DIR="$outdir"/logs
-mkdir -p "$LOG_DIR" "$outdir"/gene_plots
+mkdir -p "$LOG_DIR" "$outdir"/gene_results
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -188,7 +188,8 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
     $more_opts
 
 log_time "Moving individual gene plots to separate directory 'gene_plots'..."
-mv -v "$outdir"/*_plot* "$outdir"/gene_plots
+find "$outdir" -type f -maxdepth 1 -name "*_plot*" -print0 |
+    xargs -0 -I{} mv {} "$outdir"/gene_results
 
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
