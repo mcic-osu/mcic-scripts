@@ -26,7 +26,7 @@ FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main
 color_column=pathovar               # Name of the metadata column to color tip labels by
 tiplab_column=isolate               # Name of the metadata column with alternative tip labels
 keep_all=true && curated_opt=" --curated" # Keep all genomes, i.e. use the --curated flag of Parsnp? Or remove too-divergent genomes?
-nboot=1000                          # Number of IQ-tree ultrafast bootstraps
+nboot=10000                         # Number of IQ-tree ultrafast bootstraps
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -150,7 +150,7 @@ locus_id=$(basename "$bedfile" .bed)
 parsnp_tree_org="$outdir"/parsnp.tree
 parsnp_tree=${parsnp_tree_org/.tree/_fixnames.tree}
 iqtree_org="$outdir"/"$locus_id".contree
-iqtree=${iqtree_org/.contree/_fixnames.tree}
+iqtree=${iqtree_org/.contree/_fixnames.contree}
 aln_org="$outdir"/parsnp.aln
 aln=${aln_org/.aln/_fixnames.aln}
 
@@ -241,12 +241,13 @@ if [[ "$nboot" -gt 0 ]]; then
 
     log_time "Fixing the sample IDs in the IQtree tree..."
     sed -e 's/.fna//g' -e "s/$locus_id.fa.ref/$ref_id/g" -e "s/'//g" "$iqtree_org" > "$iqtree"
+    final_tree="$iqtree"
 fi
 
 # Plot the tree (Note: module purge etc is necessary or r_tree Conda env gives weird errors)
 for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
 module purge && module load "$MODULE" && conda activate "$TREE_CONDA"
-log_time "Plotting the tree..."
+log_time "Plotting the tree in $final_tree..."
 runstats Rscript mcic-scripts/trees/ggtree.R -i "$final_tree" $root_opt $meta_opt
 
 # Report
