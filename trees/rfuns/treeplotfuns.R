@@ -1,85 +1,5 @@
-# Function to plot a timetree
-timetree <- function(
-    tree,                         # Tree or treedata object
-    mrsd,                         # Most recent sampling (tip) date
-    ci_name = NULL,               # Name of the column/element with the dating CIs to plot
-    meta = NULL,                  # Dataframe with metadata
-    tiplab_column = NULL,         # Column from 'meta' with tiplabels to use (default: tree's own tiplabels)
-    color_column = NULL,          # Column from 'meta' to color tiplabels by 
-    tiplab_size = 4,              # Font size of the tiplabels
-    xlab_size = 12,               # Font size of the x-axis (time scale) labels
-    scale_breaks = NULL           # Breaks along the x-axis (time scale)
-    ) {
-  
-  # Determine breaks (time) along the x-axis
-  if (!is.null(scale_breaks)) {
-    n_breaks <- NULL
-  } else {
-    scale_breaks <- waiver()
-    n_breaks <- 8
-  }
-  
-  # Determine the total size of the tree
-  if (class(tree) == "treedata") {
-    tree_size <- sum(tree@phylo$edge.length)
-  } else {
-    tree_size <- sum(tree$edge.length)
-  }
-  
-  # Base tree
-  p <- ggtree(tree, layout = "rectangular", mrsd = mrsd)
-  
-  # Add annotation dataframe if provided
-  if (!is.null(meta)) {
-    meta$tiplab <- meta[[tiplab_column]]
-    tiplab_column <- "tiplab"
-    p <- p %<+% meta
-  }
-  
-  # Add tip labels
-  if (!is.null(tiplab_column)) {
-    message("# Using custom tip labels...")
-    p <- p + suppressWarnings(
-      geom_tiplab(aes_string(color = color_column, label = tiplab_column),
-                  align = TRUE, linesize = 0,
-                  size = tiplab_size, fontface = "bold")
-    )
-  } else {
-    message("# Using default tip labels...")
-    p <- p + suppressWarnings(
-      geom_tiplab(aes_string(color = color_column),
-                  align = TRUE, linesize = 0,
-                  size = tiplab_size, fontface = "bold")
-    )
-  }
-  
-  # Add dating confidence intervals (CIs)
-  if (!is.null(ci_name)) {
-    p <- p +
-      geom_range(range = ci_name,
-                 color = "red", size = 1, alpha = 0.3)
-  }
-  
-  # Formatting - scales etc
-  p <- p +
-    scale_color_brewer(palette = "Dark2") +
-    geom_rootedge(rootedge = tree_size / 50) +
-    coord_cartesian(clip = "off") +
-    scale_x_continuous(breaks = scale_breaks, n.breaks = n_breaks,
-                       labels = scales::comma)
-  
-  # Formatting - theme
-  p <- p +
-    theme_tree2() +
-    theme(plot.margin = margin(0.2, 3, 0.2, 0.75, "cm"),
-          axis.text.x = element_text(size = xlab_size, color = "grey50"),
-          axis.line.x.bottom = element_line(color = "grey50"),
-          axis.ticks.x.bottom = element_blank(),
-          panel.grid.major.x = element_line(linetype = "longdash"),
-          legend.position = "top")
-  
-  suppressWarnings(print(p))
-}
+# Some useful scripts with trees
+# /fs/ess/PAS0471/jelmer/assist/01_archive/2022-06_sochina/scripts/ggtree.R
 
 # Function to convert a BactDating result object to a treedata object
 # for plotting with ggtree.
@@ -97,15 +17,32 @@ bactdate2treedata <- function(bactdate_obj) {
 }
 
 
-# Function to plot a tree with ggtree
+# Function to plot a (time)tree with ggtree
 ptree <- function(
     tree,                         # Tree or treedata object
+    mrsd = NULL,                  # Most recent sampling date -- using this will turn the tree into a timetree
     meta = NULL,                  # Dataframe with metadata
     tiplab_column = NULL,         # Column from 'meta' with tiplabels to use (default: tree's own tiplabels)
     color_column = NULL,          # Column from 'meta' to color tiplabels by 
     tiplab_size = 4,              # Font size of the tiplabels
-    xlab_size = 12               # Font size of the x-axis labels
+    xlab_size = 12,               # Font size of the x-axis labels
+    scale_breaks = NULL,          # Breaks along the x-axis (for timetrees)
+    ci_name = NULL,               # Name of the column/element with the dating CIs to plot (for timetrees)
+    boot = FALSE,                 # Bootstrap values -- 'text': show labels, 'colors': color-code, FALSE: none
+    boot_tres = 70,               # If 'boot = text', only show bootstrap vals below this threshold
+    layout = "rectangular",       # Tree layout
+    alignment = NULL              # Alignment to add next to the plot
   ) {
+  
+  # Test args
+  stopifnot(boot %in% c(FALSE, "text", "colors"))
+  if (!is.null(meta)) {
+    if (!is.null(tiplab_column)) stopifnot(tiplab_column %in% colnames(meta))
+    if (!is.null(color_column)) stopifnot(color_column %in% colnames(meta))
+  }
+  
+  # Determine if the tree is a timetree
+  if (!is.null(mrsd)) timetree <- TRUE else timetree <- FALSE
   
   # Determine the total size of the tree
   if (class(tree) == "treedata") {
@@ -115,7 +52,8 @@ ptree <- function(
   }
   
   # Base tree
-  p <- ggtree(tree, layout = "rectangular")
+  if (!timetree) p <- ggtree(tree, layout = layout)
+  if (timetree) p <- ggtree(tree, layout = layout, mrsd = mrsd)
   
   # Add annotation dataframe if provided
   if (!is.null(meta)) {
@@ -126,19 +64,57 @@ ptree <- function(
   
   # Add tip labels
   if (!is.null(tiplab_column)) {
-    message("# Using custom tip labels...")
     p <- p + suppressWarnings(
       geom_tiplab(aes_string(color = color_column, label = tiplab_column),
                   align = TRUE, linesize = 0,
                   size = tiplab_size, fontface = "bold")
     )
   } else {
-    message("# Using default tip labels...")
     p <- p + suppressWarnings(
       geom_tiplab(aes_string(color = color_column),
                   align = TRUE, linesize = 0,
                   size = tiplab_size, fontface = "bold")
     )
+  }
+  
+  # Add dating confidence intervals (CIs)
+  if (!is.null(ci_name)) {
+    p <- p +
+      geom_range(range = ci_name,
+                 color = "red", size = 1, alpha = 0.3)
+  }
+  
+  # Add bootstrap support values
+  if (boot == "text") {
+    p <- p +
+      geom_text2(
+        aes(subset = !is.na(as.numeric(label)) & as.numeric(label) < boot_tres,
+            label = label),
+        color = "grey50", size = 3,
+        nudge_y = 0.4, nudge_x = -(tree_size / 150)
+        )
+    
+  }
+  if (boot == "colors") {
+    p <- p +
+      geom_nodepoint(
+        aes(subset = !is.na(as.numeric(label)), fill = as.numeric(label)),
+        shape = 21, size = 2, color = "grey30"
+        ) +
+      scale_fill_viridis_c(name = "Bootstrap\nsupport",
+                           breaks = c(0, 50, 75, 100))
+  }
+
+  # X-axis scale for timetree
+  if (timetree) {
+    if (!is.null(scale_breaks)) {
+      n_breaks <- NULL
+    } else {
+      scale_breaks <- waiver()
+      n_breaks <- 8
+    }
+    p <- p + scale_x_continuous(breaks = scale_breaks, n.breaks = n_breaks,
+                                labels = scales::comma)
   }
   
   # Formatting - scales etc
@@ -150,103 +126,22 @@ ptree <- function(
   # Formatting - theme
   p <- p +
     theme(plot.margin = margin(0.2, 3, 0.2, 0.75, "cm"),
-          axis.text.x = element_text(size = xlab_size, color = "grey50"),
-          axis.line.x.bottom = element_line(color = "grey50"),
-          axis.ticks.x.bottom = element_blank(),
-          panel.grid.major.x = element_line(linetype = "longdash"),
-          legend.position = "top")
-  
-  suppressWarnings(print(p))
-}
-
-
-# Function to plot a tree with ggtree, optionally with an MSA
-# NOTE 2023-10-25: OUTDATED
-plot_tree <- function(tree,
-                      alignment = NULL,
-                      annot = NULL,
-                      label_columns = NULL,
-                      color_column = NULL,
-                      node_labels = TRUE,
-                      label_size = 3,
-                      fig_file = "tree.png",
-                      print_fig = FALSE,
-                      plot_msa = FALSE,
-                      msa_offset = "auto") {
-
-  if (!is.null(annot)) {
-    p <- ggtree(tree) %<+% annot
-    
-    if (is.null(label_columns)) {
-        p <- p + geom_tiplab()
-    } else {
-        if (!is.na(label_columns[1])) {
-            if(!is.null(color_column)) {
-                p <- p + geom_tiplab(aes_string(label = label_columns[1],
-                                                color = color_column),
-                                     align = TRUE, size = label_size)
-                if (color_column == label_columns[1]) p <- p + guides(color = "none")
-            } else {
-                p <- p + geom_tiplab(aes_string(label = label_columns[1]),
-                                     size = label_size)
-            }
-        }
-    
-        if (!is.na(label_columns[2]))
-            p <- p + geom_tiplab(aes_string(label = label_columns[2]),
-                                align = TRUE, linetype = "blank", offset = 3.5,
-                                size = label_size)
-
-        if (!is.na(label_columns[3]))
-            p <- p + geom_tiplab(aes_string(label = label_columns[3]),
-                                align = TRUE, linetype = "blank", offset = 5,
-                                size = label_size)
-
-    }
-  } else {
-    # Tree when there is no 'annot' dataframe
-    p <- ggtree(tree) + geom_tiplab()
-  }
-  
-  # Node labels
-  if (node_labels == TRUE) {
+          legend.position = "top",
+          legend.box="vertical")
+  if (timetree) {
     p <- p +
-      geom_text2(aes(subset = !isTip, label = label),
-                 color = "grey50", nudge_y = 0.4, nudge_x = -0.05, size = 3)
-  }
-  
-  # Wide margins etc to show full labels
-  p <- p +
-    theme(plot.margin = margin(0.2, 8, 0.2, 0.2, "cm")) +
-    coord_cartesian(clip = "off")
-
-  if (plot_msa == TRUE) {
-    # Determine offset for Multiple Sequence Alignment (MSA) visualization
-    if (msa_offset == "textlen") {
-        text_len <- max(nchar(annot$tree_label))
-        tree_dp <- max(node.depth(tree))
-        msa_offset <- (text_len * 0.005) + (tree_dp * 0.02)
-        if (msa_offset > 0.5) msa_offset <- 0.5
-    }
-
-    # Add Multiple Sequence Alignment (MSA) visualization
-    if (msa_offset != "auto") {
-        msaplot(p, alignment, offset = msa_offset, width = 2)
-    } else {
-        msaplot(p, alignment, width = 2)
-    }
-    
-    # Plot dimensions with an MSA
-    plot_width <- 14
-    plot_height <- 7
-
+      theme(axis.text.x = element_text(size = xlab_size, color = "grey50"),
+            axis.line.x.bottom = element_line(color = "grey50"),
+            axis.ticks.x.bottom = element_blank(),
+            panel.grid.major.x = element_line(linetype = "longdash"))
   } else {
-    # Plot dimensions when there is no MSA
-    plot_width <- 8
-    plot_height <- 10
+    p <- p + geom_treescale(color = "grey30")
   }
   
-  # Save the plot to file
-  ggsave(fig_file, width = plot_width, height = plot_height)
-  if (print_fig == TRUE) print(p)
+  # Print the tree
+  if (!is.null(alignment)) {
+    msaplot(p, alignment, width = 2)
+  } else {
+    suppressWarnings(print(p))
+  }
 }
