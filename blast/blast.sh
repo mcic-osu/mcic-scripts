@@ -24,7 +24,7 @@ OUTPUT:
   The output will include TSV files with raw ('blast_out_raw.tsv') and filtered
   ('blast_out_filtered.tsv'), and if requested, downloaded sequences in separate
   subdirectories."
-SCRIPT_VERSION="2023-09-06"
+SCRIPT_VERSION="2023-10-28"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -104,7 +104,6 @@ script_help() {
     echo "  -i/--infile         <file>  Input FASTA file (can contain one or more sequences)"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
-    echo
     echo "GENERAL OPTIONS (OPTIONAL):"
     echo "  --no_header                 Don't add column headers to final BLAST output TSV file [default: add]"
     echo "                                The header won't be added to the raw output file, which can be used for filtering"
@@ -117,6 +116,8 @@ script_help() {
     echo "                              - To run with a custom local db, use --local AND specify the prefix (dir + db name, no file extensions) of a local BLAST db"
     echo "  --blast_type        <str>   Blast type: 'blastn', 'blastp', 'blastx', 'tblastx', or 'tblastn' [default: $blast_type]"
     echo "  --blast_task        <str>   Task for blastn or blastp, e.g. 'megablast' for blastn  [default: BLAST program default]"
+    echo "                              For blastn, the default is 'megablast', other options are: 'blastn', 'blastn-short', 'dc-megablast', 'rmblastn'"
+    echo "                              For blastp, the default is 'blastp', other options are: 'blastp-fast', 'blastp-short'"
     echo "                                See https://www.ncbi.nlm.nih.gov/books/NBK569839/#usrman_BLAST_feat.Tasks"
     echo
     echo "BLAST THRESHOLD AND FILTERING OPTIONS (OPTIONAL):"
@@ -138,7 +139,7 @@ script_help() {
     echo "SEQUENCE DOWNLOAD OPTIONS (OPTIONAL):"
     echo "  --dl_aligned        <str>   Download aligned parts of subject (db) sequences        [default: $to_dl_aligned]"
     echo "  --dl_subjects       <str>   Download full subject (db) sequences that were aligned  [default: $to_dl_subjects]"
-    echo "                              For protein BLAST, this will also download nucleotide sequences for non 'WP_' (multi-species) accessions"
+    echo "                                For protein BLAST, this will also download nucleotide sequences for non 'WP_' (multi-species) accessions"
     echo "  --dl_genomes        <str>   Download full genomes of sequences that were aligned    [default: $to_dl_genomes]"
     echo
     echo "UTILITY OPTIONS (OPTIONAL):"
