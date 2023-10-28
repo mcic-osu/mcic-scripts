@@ -26,7 +26,7 @@ FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main
 color_column=pathovar               # Name of the metadata column to color tip labels by
 tiplab_column=isolate               # Name of the metadata column with alternative tip labels
 keep_all=true && curated_opt=" --curated" # Keep all genomes, i.e. use the --curated flag of Parsnp? Or remove too-divergent genomes?
-nboot=1000                          # Number of IQ-tree ultrafast bootstraps
+nboot=10000                         # Number of IQ-tree ultrafast bootstraps
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -150,7 +150,10 @@ locus_id=$(basename "$bedfile" .bed)
 parsnp_tree_org="$outdir"/parsnp.tree
 parsnp_tree=${parsnp_tree_org/.tree/_fixnames.tree}
 iqtree_org="$outdir"/"$locus_id".contree
-iqtree=${iqtree_org/.contree/_fixnames.tree}
+iqtree=${iqtree_org/.contree/_fixnames.contree}
+aln_org="$outdir"/parsnp.aln
+aln=${aln_org/.aln/_fixnames.aln}
+
 if [[ "$nboot" -gt 0 ]]; then
     final_tree="$iqtree"
 else
@@ -212,11 +215,12 @@ ls -lh "$parsnp_tree_org"
 
 # Create a multi-FASTA alignment file (https://harvest.readthedocs.io/en/latest/content/harvest/quickstart.html)
 log_time "Running Harvesttool to convert to a FASTA alignment file..."
-runstats $PARSNP_CONTAINER_PREFIX harvesttools -i "$outdir"/parsnp.ggr -M "$outdir"/parsnp.aln
+runstats $PARSNP_CONTAINER_PREFIX harvesttools -i "$outdir"/parsnp.ggr -M "$aln_org"
 
 # Fix the sample IDs in the tree, so they match the IDs in the metadata file
-log_time "Fixing the sample IDs in the Parsnp tree..."
+log_time "Fixing the sample IDs in the tree and aligment..."
 sed -e 's/.fna//g' -e "s/$locus_id.fa.ref/$ref_id/g" -e "s/'//g" "$parsnp_tree_org" > "$parsnp_tree"
+sed -e 's/.fna//g' -e "s/$locus_id.fa.ref/$ref_id/g" -e "s/'//g" "$aln_org" > "$aln"
 
 # Run IQtree to get bootstrap
 if [[ "$nboot" -gt 0 ]]; then
@@ -237,12 +241,13 @@ if [[ "$nboot" -gt 0 ]]; then
 
     log_time "Fixing the sample IDs in the IQtree tree..."
     sed -e 's/.fna//g' -e "s/$locus_id.fa.ref/$ref_id/g" -e "s/'//g" "$iqtree_org" > "$iqtree"
+    final_tree="$iqtree"
 fi
 
 # Plot the tree (Note: module purge etc is necessary or r_tree Conda env gives weird errors)
 for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
 module purge && module load "$MODULE" && conda activate "$TREE_CONDA"
-log_time "Plotting the tree..."
+log_time "Plotting the tree in $final_tree..."
 runstats Rscript mcic-scripts/trees/ggtree.R -i "$final_tree" $root_opt $meta_opt
 
 # Report

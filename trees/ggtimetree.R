@@ -10,6 +10,9 @@
 #? Load the Conda environment as follows to run this script without it needing to install R packages:
 #? module load miniconda3 && source activate /fs/ess/PAS0471/jelmer/conda/r_tree
 
+#! TODO
+# - Including confidence intervals on the times, see /fs/ess/PAS1568/jelmer/timetree/scripts/ggtree_interactive.R
+
 # SET-UP -----------------------------------------------------------------------
 # Load packages
 packages <- c("argparse", "ggtree", "ggplot2")
@@ -38,6 +41,9 @@ parser$add_argument("--header",
 parser$add_argument("--mrsd",
                     type = "character", required = FALSE, default = NULL,
                     help = "Most recent sampling date in YYYY-MM-DD format (use either --dates or --mrsd)")
+parser$add_argument("--root",
+                    type = "character", default = NULL,
+                    help = "ID of sample that should be the root of the tree: tree will be rerooted")
 parser$add_argument("--annot",
                     type = "character", default = NULL,
                     help = "Input annotation/metadata file")
@@ -58,6 +64,7 @@ mrsd <- args$mrsd
 annot_file <- args$annot
 color_column <- args$color_column
 tiplab_column <- args$tiplab_column
+root <- args$root
 
 # Define the output file name, if needed
 if (is.null(figure_file)) {
@@ -72,10 +79,11 @@ message("\n# Starting script ggtimetree.R")
 message("# Input tree file:                 ", tree_file)
 if (!is.null(dates_file)) message("# Input dates file:                ", dates_file)
 if (!is.null(annot_file)) message("# Annotation/metadata file:        ", annot_file)
-if (!is.null(tiplab_column)) message("# Metadata column for tip labels: ", tiplab_column)
+if (!is.null(tiplab_column)) message("# Metadata column for tip labels:  ", tiplab_column)
 if (!is.null(color_column)) message("# Metadata column for colors:      ", color_column)
 if (!is.null(mrsd)) message("# Most recent sampling date:       ", mrsd)
-message("# Output figure file:       ", figure_file)
+if (!is.null(root)) message("# ID of sample to be root:         ", root)
+message("# Output figure file:              ", figure_file)
 message()
 
 
@@ -111,6 +119,13 @@ if (!is.null(annot_file)) {
   print(head(annot))
   cat("\n")
 }
+
+# Add root option
+if (! is.null(root)) {
+  message("\n# Rerooting the tree, using ", root, " as the root...")
+  tree <- ape::root(tree, outgroup = root, resolve.root = TRUE) 
+}
+
 
 # PLOT THE TREE ----------------------------------------------------------------
 # Base tree

@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Construct a phylogenetic tree from a FASTA alignment using IQ-tree"
-SCRIPT_VERSION="2023-07-31"
+SCRIPT_VERSION="2023-10-23"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -31,10 +31,11 @@ container_dir="$HOME/containers"
 
 # Defaults - tool parameters
 auto_cores=false                    # Don't use IQ-tree's 'AUTO' core mode
-nboot= && boot_arg=                # No bootstrapping by default
-model= && model_arg=                # Use IQ-tree's default model (MFP => Pick model)
-modelset= && modelset_arg=          # Restrict ModelFinder model search to a set of models
-fast=false && fast_arg=             # Run IQ-Tree with "--fast" option
+nboot= && boot_opt=                 # No bootstrapping by default
+model= && model_opt=                # Use IQ-tree's default model (MFP => Pick model)
+modelset= && modelset_opt=          # Restrict ModelFinder model search to a set of models
+fast=false && fast_opt=             # Run IQ-Tree with "--fast" option
+root= && root_opt=                  # Pre-specified root/outgroup
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -48,7 +49,7 @@ script_help() {
     echo "  $DESCRIPTION"
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage -- include a 100 uf-bootstraps:"
+    echo "  - Basic usage -- include 1000 ultrafast-bootstraps:"
     echo "      sbatch $0 -i results/COI_aligned.fa -o results/iqtree --nboot 1000"
     echo "  - Also perform dating on the tree (see http://www.iqtree.org/doc/Dating):"
     echo "      sbatch $0 -i aln.fa -o results/iqtree --opts '--date metadata/dates.tsv --date-ci 100'"
@@ -61,10 +62,11 @@ script_help() {
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --out_prefix        <str>   Output file prefix                      [default: basename of input file]"
+    echo "  --root              <str>   Specify outgroup/root sample ID         [default: none]"
     echo "  --fast                      Run IQ-Tree in fast mode                [default: $fast]"    
-    echo "  --model             <str>   Mutation model                          [default: IQ-tree's default = MFP = Pick model]"
-    echo "  --modelset          <str>   Restrict ModelFinder model search to a set of models [default: off]"
-    echo "  --nboot            <int>   Nr of ultrafast bootstraps              [default: no bootstrapping]"
+    echo "  --model             <str>   Mutation model                          [default: IQ-tree's default = MFP => Pick model]"
+    echo "  --modelset          <str>   Restrict ModelFinder search to a set of models [default: off]"
+    echo "  --nboot             <int>   Nr of ultrafast bootstraps              [default: no bootstrapping]"
     echo "  --auto_cores                Use IQ-tree's 'AUTO' core mode          [default: use nr of cores for batch job]"
     echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
     echo
@@ -129,8 +131,9 @@ while [ "$1" != "" ]; do
         --modelset )        shift && modelset=$1 ;;
         --model )           shift && model=$1 ;;
         --nboot )           shift && nboot=$1 ;;
+        --root )            shift && root=$1 ;;
         --auto_cores )      auto_cores=true ;;
-        --fast )            fast=true && fast_arg="-fast" ;;
+        --fast )            fast=true && fast_opt="-fast" ;;
         --opts )            shift && opts=$1 ;;
         --env )             shift && env=$1 ;;
         --dl_container )    dl_container=true ;;
@@ -163,10 +166,11 @@ load_env "$conda_path" "$container_path" "$dl_container"
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 mem_gb=$((8*(SLURM_MEM_PER_NODE / 1000)/10))G   # 80% of available memory in GB
 [[ "$auto_cores" == true ]] && threads="AUTO"
-[[ -n "$nboot" ]] && boot_arg="--ufboot $nboot"
-[[ -n "$model" ]] && model_arg="-m $model"
-[[ -n "$modelset" ]] && modelset_arg="-mset $modelset"
+[[ -n "$nboot" ]] && boot_opt="--ufboot $nboot"
+[[ -n "$model" ]] && model_opt="-m $model"
+[[ -n "$modelset" ]] && modelset_opt="-mset $modelset"
 [[ -z "$out_prefix" ]] && out_prefix=$(basename "${infile%.*}")
+[[ -n "$root" ]] && root_opt="-o $root"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -182,6 +186,7 @@ echo "Use IQ-Tree's 'AUTO' core mode:               $auto_cores"
 [[ -n "$modelset" ]] && echo "Model set for MFP:                            $modelset"
 [[ -n "$model" ]] && echo "Model:                                        $model"
 [[ -n "$nboot" ]] && echo "Number of ultrafast bootstraps:               $nboot"
+[[ -n "$root" ]] && echo "Root/outgroup:                                $root"
 [[ -n $opts ]] && echo "Additional options for $TOOL_NAME:            $opts"
 log_time "Listing the input file(s):"
 ls -lh "$infile"
@@ -195,10 +200,11 @@ log_time "Running $TOOL_NAME..."
 runstats $CONTAINER_PREFIX $TOOL_BINARY \
     -s "$infile" \
     --prefix "$outdir"/"$out_prefix" \
-    $model_arg \
-    $modelset_arg \
-    $fast_arg \
-    $boot_arg \
+    $model_opt \
+    $modelset_opt \
+    $fast_opt \
+    $boot_opt \
+    $root_opt \
     -nt "$threads" -ntmax "$threads" -mem "$mem_gb" \
     -redo \
     $opts

@@ -138,7 +138,7 @@ if (nseqs < 50) LABEL_SIZE <- 2.5 else LABEL_SIZE <- 2
 # Add root option
 if (! is.null(root)) {
   message("\n# Rerooting the tree, using ", root, " as the root...")
-  tree <- ape::root(tree, outgroup = root) 
+  tree <- ape::root(tree, outgroup = root, resolve.root = TRUE)
 }
 
 # Get the size of the tree along the x-axis

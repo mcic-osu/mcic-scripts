@@ -120,6 +120,7 @@ script_help() {
     echo "                                See https://www.ncbi.nlm.nih.gov/books/NBK569839/#usrman_BLAST_feat.Tasks"
     echo
     echo "BLAST THRESHOLD AND FILTERING OPTIONS (OPTIONAL):"
+    echo "  --max_target_seqs   <int>   Max. nr of target sequences to keep                     [default: BLAST default (=500)]"
     echo "  --tax_ids           <str>   Comma-separated list of NCBI taxon IDs (just the numbers, no 'txid' prefix)"
     echo "                                The BLAST search will be limited to these taxa        [default: use full database]"
     echo "                                NOTE: This only works for remote and nucleotide-based searches!"
@@ -193,7 +194,7 @@ run_blast() {
         -out "$blast_out_raw" \
         -outfmt "$BLAST_FORMAT" \
         -evalue $evalue \
-        ${task_opt}${remote_opt}${thread_opt}${tax_opt}${spacer}"${tax_optarg}"
+        ${maxtarget_opt}${task_opt}${remote_opt}${thread_opt}${tax_opt}${spacer}"${tax_optarg}"
 }
 
 process_blast() {
@@ -441,6 +442,7 @@ task_opt=
 threads= && thread_opt=
 spacer=
 db=
+max_target_seqs=
 
 # Parse command-line args
 all_opts="$*"
@@ -450,6 +452,7 @@ while [ "$1" != "" ]; do
         -o | --outdir )     shift && outdir=$1 ;;
         --force )           force=true ;;
         --no_header )       add_header=false ;;
+        --max_target_seqs ) max_target_seqs=$1 ;;
         --tax_ids )         shift && tax_ids=$1 ;;
         --db )              shift && db=$1 ;;
         --blast_type )      shift && blast_type=$1 ;;
@@ -524,6 +527,9 @@ if [[ -n "$tax_ids" ]]; then
     done
 fi
 
+# Max target sequences
+[[ -n "$max_target_seqs" ]] && maxtarget_opt=" -max_target_seqs $max_target_seqs"
+
 # Defaults based on the type of BLAST
 [[ "$blast_type" == "blastx" || "$blast_type" == "blastp" ]] && db_type=prot
 [[ "$db_type" == "prot" ]] && dl_db=protein
@@ -580,6 +586,8 @@ echo
 echo "Download full genomes?                    $to_dl_genomes"
 echo "Download full subjects?                   $to_dl_subjects"
 echo "Download aligned parts of sequences?      $to_dl_aligned"
+echo
+echo "Number of queries in the input file:      $(grep -c "^>" "$infile")"
 log_time "Listing the input file(s):"
 ls -lh "$infile"
 [[ "$IS_SLURM" == true ]] && slurm_resources
@@ -596,7 +604,7 @@ fi
 
 # Process BLAST output
 process_blast
-[[ "$n_subjects" -eq 0 ]] && echo "ERROR: No BLAST hits remained after filtering" && exit 1 
+[[ "$n_subjects" -eq 0 ]] && echo "EXITING: No BLAST hits remained after filtering" && exit 0
 
 # Download aligned parts of sequences
 [[ "$to_dl_aligned" == true ]] && dl_aligned
