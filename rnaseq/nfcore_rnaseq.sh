@@ -233,10 +233,11 @@ fi
 [[ "$biotype_qc" == false ]] && biotype_opt="--skip_biotype_qc"
 [[ "$rm_rrna" == true ]] && rrna_opt="--remove_ribo_rna --save_non_ribo_reads"
 if [[ "$salmon_gcbias" == true ]]; then
-   [[ "$salmon_seqbias" == true ]] && salmon_opts="--extra_salmon_quant_args '--gcBias --seqBias'"
-   [[ "$salmon_seqbias" == false ]] && salmon_opts="--extra_salmon_quant_args '--gcBias'"
+   #[[ "$salmon_seqbias" == true ]] && salmon_opts="--extra_salmon_quant_args '--gcBias --seqBias'"
+   [[ "$salmon_seqbias" == true ]] && salmon_opts=(--extra_salmon_quant_args '--gcBias --seqBias')
+   [[ "$salmon_seqbias" == false ]] && salmon_opts=(--extra_salmon_quant_args '--gcBias')
 else
-    [[ "$salmon_seqbias" == true ]] && salmon_opts="--extra_salmon_quant_args '--seqBias'"
+    [[ "$salmon_seqbias" == true ]] && salmon_opts=(--extra_salmon_quant_args '--seqBias')
 fi
 
 # Other output dirs
@@ -311,7 +312,7 @@ runstats $TOOL_BINARY \
     $annot_opt \
     $rrna_opt \
     $ALIGNER_OPT \
-    $salmon_opts \
+    "${salmon_opts[@]}" \
     $biotype_opt \
     $SAVE_REF_OPT \
     $SAVE_MERGED_FQ_OPT \
