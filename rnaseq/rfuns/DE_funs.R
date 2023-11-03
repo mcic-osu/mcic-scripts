@@ -223,15 +223,23 @@ norm_counts <- function(
     dds,                     # DESeq2 object
     transform = "rlog",      # Normalization/transformation method: either 'vst', 'rlog', or 'lib_size'
     annot = NULL,            # Gene ID column should be named 'gene'
-    return_matrix = FALSE    # Don't transform to tidy format & don't add metadata
+    return_matrix = FALSE,   # Don't transform to tidy format & don't add metadata
+    blind = TRUE,            # Whether to take statistical design of dds into account
+    design = NULL            # Use this statistical design (will force 'blind' to FALSE)
     ) {
   
+  # Set the design
+  if (!is.null(design)) {
+    design(dds) <- formula(design)
+    blind <- FALSE
+  }
+
   # Normalize the counts
   if (transform == "vst") {
-    count_mat <- assay(vst(dds, blind = TRUE))
+    count_mat <- assay(vst(dds, blind = blind))
   } else if (transform == "rlog") {
     # Suppress messages to avoid "vst is much faster transformation - message"
-    count_mat <- suppressMessages(assay(rlog(dds, blind = TRUE)))
+    count_mat <- suppressMessages(assay(rlog(dds, blind = blind)))
   } else if (transform == "lib_size") {
     dds <- estimateSizeFactors(dds)
     count_mat <- sweep(assay(dds), 2, sizeFactors(dds), "/")
@@ -253,10 +261,7 @@ norm_counts <- function(
     pivot_longer(-gene, names_to = "sample", values_to = "count") |>
     dplyr::left_join(meta_df, by = "sample")
 
-  if (!is.null(annot)) {
-    count_df <- count_df |>
-      dplyr::left_join(annot, by = "gene")
-  }
+  if (!is.null(annot)) count_df <- count_df |> dplyr::left_join(annot, by = "gene")
   
   return(count_df)
 }
