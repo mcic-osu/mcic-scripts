@@ -1,4 +1,8 @@
-## Function to make an exportable datatable
+# Packages
+if (!require("DT")) install.packages('DT')
+library(DT)
+
+# Function to make an exportable datatable
 make_dt <- function(df, caption = NULL,
                     filter = filter, pageLength = 10,
                     numr_cols = "auto", big_cols = NULL,
