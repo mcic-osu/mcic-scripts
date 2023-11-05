@@ -24,14 +24,16 @@ ptree <- function(
     meta = NULL,                  # Dataframe with metadata
     tiplab_column = NULL,         # Column from 'meta' with tiplabels to use (default: tree's own tiplabels)
     color_column = NULL,          # Column from 'meta' to color tiplabels by 
-    tiplab_size = 4,              # Font size of the tiplabels
-    xlab_size = 12,               # Font size of the x-axis labels
-    scale_breaks = NULL,          # Breaks along the x-axis (for timetrees)
-    ci_name = NULL,               # Name of the column/element with the dating CIs to plot (for timetrees)
     boot = FALSE,                 # Bootstrap values -- 'text': show labels, 'colors': color-code, FALSE: none
     boot_tres = 70,               # If 'boot = text', only show bootstrap vals below this threshold
-    layout = "rectangular",       # Tree layout
-    alignment = NULL              # Alignment to add next to the plot
+    ci_name = NULL,               # Name of the column/element with the dating CIs to plot (for timetrees)
+    layout = "rectangular",       # Tree layout (one of the layouts supported by ggtree)
+    tiplab_offset = 0,            # Offset for tip labels (move to the right)
+    tiplab_size = 4,              # Font size of the tiplabels
+    xlab_size = 12,               # Font size of the x-axis labels
+    right_margin = 3,             # Size of the right margin (increase if labels are running off the plot)
+    scale_breaks = NULL,          # Breaks along the x-axis (for timetrees)
+    alignment = NULL              # Sequence alignment to add next to the plot
   ) {
   
   # Test args
@@ -66,14 +68,20 @@ ptree <- function(
   if (!is.null(tiplab_column)) {
     p <- p + suppressWarnings(
       geom_tiplab(aes_string(color = color_column, label = tiplab_column),
-                  align = TRUE, linesize = 0,
-                  size = tiplab_size, fontface = "bold")
+                  align = TRUE,
+                  offset = tiplab_offset,
+                  linesize = 0,
+                  size = tiplab_size,
+                  fontface = "bold")
     )
   } else {
     p <- p + suppressWarnings(
       geom_tiplab(aes_string(color = color_column),
-                  align = TRUE, linesize = 0,
-                  size = tiplab_size, fontface = "bold")
+                  align = TRUE,
+                  offset = tiplab_offset,
+                  linesize = 0,
+                  size = tiplab_size,
+                  fontface = "bold")
     )
   }
   
@@ -125,7 +133,7 @@ ptree <- function(
   
   # Formatting - theme
   p <- p +
-    theme(plot.margin = margin(0.2, 3, 0.2, 0.75, "cm"),
+    theme(plot.margin = margin(0.2, right_margin, 0.2, 0.75, "cm"),
           legend.position = "top",
           legend.box="vertical")
   if (timetree) {
