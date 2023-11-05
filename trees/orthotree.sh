@@ -18,12 +18,9 @@ SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
 conda_path=/fs/ess/PAS0471/jelmer/conda/iqtree          # Includes IQ-tree, MAFFT, csvtk
-CONDA_R_TREE=/fs/ess/PAS0471/jelmer/conda/r_tree
 
 # Defaults
-color_column=pathovar               # Name of the metadata column to color tip labels by
-tiplab_column=isolate               # Name of the metadata column with alternative tip labels
-nboot=1000                          # Number of IQ-tree ultrafast bootstraps
+nboot=10000                          # Number of IQ-tree ultrafast bootstraps
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -48,11 +45,6 @@ script_help() {
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --nboot             <int>   Number of Ultrafast IQ-tree bootstraps  [default: $nboot]"
-    echo "  --root              <str>   ID of the genome to root the tree with  [default: no rerooting]"
-    echo "  --meta              <file>  File with metadata to use when ploting the tree [default: no metadata]"
-    echo "  --color_column      <str>   Name of the metadata column to color tip labels by ('NULL' to ignore) [default: $color_column]"
-    echo "  --tiplab_column     <str>   Name of the metadata column with alternative tip labels ('NULL' to ignore) [default: $tiplab_column]"
-    echo "                                NOTE: --color_column and --tiplab_column are only used when a metadata file is provided"
     echo
     echo "UTILITY OPTIONS:"
     echo "  -h/--help                   Print this help message and exit"
@@ -91,9 +83,7 @@ source_function_script
 indir=
 ref_id=
 outdir=
-meta= && meta_opt=
 bedfile=
-root= && root_opt=
 boot_opt=
 threads=
 
@@ -105,10 +95,6 @@ while [ "$1" != "" ]; do
         -r | --ref_id )     shift && ref_id=$1 ;;
         --bed )             shift && bedfile=$1 ;;
         --ortho_dir )       shift && ortho_dir=$1 ;;
-        --meta )            shift && meta=$1 ;;
-        --color_column )    shift && color_column=$1 ;;
-        --tiplab_column )   shift && tiplab_column=$1 ;;
-        --root )            shift && root=$1 ;;
         --nboot )           shift && nboot=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
         -h | --help )       script_help; exit 0 ;;
@@ -136,7 +122,6 @@ load_env "$conda_path"
 [[ ! -d "$indir" ]] && die "Input dir $indir does not exist"
 [[ ! -d "$ortho_dir" ]] && die "Orthofinder output dir $ortho_dir does not exist"
 [[ ! -f "$bedfile" ]] && die "BED file $bedfile does not exist"
-[[ -n "$meta" && ! -f "$meta" ]] && die "Metadata file $meta does not exist"
 
 # Define outputs based on script parameters
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
@@ -158,11 +143,10 @@ fna_unaln="$outdir"/fna_all/"$locus_id"_concat.fna
 fna_aln="$outdir"/fna_all/"$locus_id"_aln.fna
 asm_list="$outdir"/assembly_list.txt
 msa="$outdir"/msa_prot.faa
+root_file="$outdir"/orthofinder_root.txt
 
 # Options
 [[ "$nboot" -gt 0 ]] && boot_opt="--ufboot $nboot"
-[[ -n "$root" ]] && root_opt="--root $root"
-[[ -n "$meta" ]] && meta_opt="--annot $meta --color_column $color_column --tiplab_column $tiplab_column"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -177,11 +161,9 @@ echo "Input dir with genomes:                   $indir"
 echo "BED file with locus coordinates:          $bedfile"
 echo "Orthofinder orthogroups file:             $orthogroups_file"
 echo "Number of bootstraps:                     $nboot"
-[[ -n "$meta" ]] && echo "Metadata file:                            $meta"
-[[ -n "$root" ]] && echo "Tree root:                                $root"
 echo "Locus ID:                                 $locus_id"
 echo "Number of input genomes:                  ${#genomes[@]}"
-log_time "Listing the reference FASTA file:"
+log_time "Listing the reference genomes files:"
 ls -lh "$ref_fna" "$ref_gff_org"
 log_time "Listing the first few input genomes:"
 ls -lh "${genomes[@]:0:3}"
@@ -202,10 +184,12 @@ ls -lh "$ref_gff"
 # Get gene ID, orthogoup, and root # todo - check that there's exactly one match
 log_time "Getting the focal gene ID and Orthogroup..."
 gene_id=$(bedtools intersect -F 0.9 -a "$ref_gff" -b "$bedfile" | sed -E 's/.*ID=([^;]+);.*/\1/')
+
 OG=$(grep "$gene_id" "$orthogroups_file" | cut -f1)
 ortho_tree="$ortho_dir"/Gene_Trees/"$OG"_tree.txt
+
 root=$(cut -d, -f1 "$ortho_tree" | cut -d: -f1 | sed -E 's/\(+//' | sed -E 's/_([0-9])_/.\1_/')
-[[ -z "$root_opt" ]] && root_opt="--root $root"
+echo "$root" > "$root_file"
 log_time "Gene ID: $gene_id   Orthogroup: $OG    Orthofinder root: $root"
 
 # Create a table showing the number of gene copies in the focal orthogroup for each included genomes
@@ -220,6 +204,7 @@ n1=$(awk '$2 == 1' "$OG_file2" | wc -l)
 nmult=$(awk '$2 > 1' "$OG_file2" | wc -l)
 nmiss=$(awk '$2 == 0' "$OG_file2" | wc -l)
 log_time "Number of genomes with 1 / >1 / 0 copies: $n1 / $nmult / $nmiss"
+log_time "See files $OG_file1 and $OG_file2"
 
 # Assign the correct output tree file names, this depends on whether bootstraps will be done
 if [[ "$nboot" -gt 0 ]]; then
@@ -318,18 +303,7 @@ runstats iqtree \
 log_time "...Done. IQtree log:"
 ls -lh "$outdir"/logs/iqtree_"$OG"_nuc.log
 
-# ==============================================================================
-#                           RUN - PLOT TREES
-# ==============================================================================
-# Plot the trees
-log_time "Plotting the trees..."
-load_env "$CONDA_R_TREE"
-runstats Rscript mcic-scripts/trees/ggtree.R -i "$nuc_tree" \
-    $root_opt $meta_opt --right_margin 5
-runstats Rscript mcic-scripts/trees/ggtree.R -i "$prot_tree" \
-    $root_opt $meta_opt --right_margin 5
-
 # Report
 log_time "Done with script orthotree.sh"
-log_time "Listing the output tree plots:"
-find "$outdir" -name "*png"
+log_time "Listing the output trees:"
+ls -lh "$nuc_tree" "$prot_tree" "$root_file"
