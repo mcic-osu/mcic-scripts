@@ -1,12 +1,18 @@
 # Packages
-if(!require(janitor)) install.packages("janitor")
-if(!require(tidyverse)) install.packages("tidyverse")
+if (!require(janitor)) install.packages("janitor")
+if (!require(tidyverse)) install.packages("tidyverse")
 if (!require(ggiraph)) install.packages("ggiraph")
 if (!require(ggrepel)) install.packages("ggrepel")
 if (!require(pheatmap)) install.packages("pheatmap")
+if (!require(ggforce)) install.packages("ggforce")
+if (!require(ggiraph)) install.packages("ggiraph")
+if (!require(patchwork)) install.packages("patchwork")
+if (!require(RColorBrewer)) install.packages("RColorBrewer")
+if (!require(PCAtools)) BiocManager::install("PCAtools")
+if (!require(ggvenn)) BiocManager::install("ggvenn")
 library(tidyverse)
 
-# Run DE analysis
+# Function to run a DE analysis with DESeq2
 run_DE <- function(
   dds,
   design = NULL,
@@ -42,7 +48,7 @@ run_DE <- function(
 }
 
 
-# Get DE results
+# Extract DE results from a DESeq2 object
 # To specify the contrast, either use 'fct=' and 'comp=', or 'contrasts='
 extract_DE <- function(
     dds,                    # DESeq2 object
@@ -212,20 +218,28 @@ shrink_lfc <- function(
 }
 
 
-# Function to normalize counts
+# Function to normalize counts from a DESeq2 object
 norm_counts <- function(
-    dds,                     # DESeq object
+    dds,                     # DESeq2 object
     transform = "rlog",      # Normalization/transformation method: either 'vst', 'rlog', or 'lib_size'
     annot = NULL,            # Gene ID column should be named 'gene'
-    return_matrix = FALSE    # Don't transform to tidy format & don't add metadata
+    return_matrix = FALSE,   # Don't transform to tidy format & don't add metadata
+    blind = TRUE,            # Whether to take statistical design of dds into account
+    design = NULL            # Use this statistical design (will force 'blind' to FALSE)
     ) {
   
+  # Set the design
+  if (!is.null(design)) {
+    design(dds) <- formula(design)
+    blind <- FALSE
+  }
+
   # Normalize the counts
   if (transform == "vst") {
-    count_mat <- assay(vst(dds, blind = TRUE))
+    count_mat <- assay(vst(dds, blind = blind))
   } else if (transform == "rlog") {
     # Suppress messages to avoid "vst is much faster transformation - message"
-    count_mat <- suppressMessages(assay(rlog(dds, blind = TRUE)))
+    count_mat <- suppressMessages(assay(rlog(dds, blind = blind)))
   } else if (transform == "lib_size") {
     dds <- estimateSizeFactors(dds)
     count_mat <- sweep(assay(dds), 2, sizeFactors(dds), "/")
@@ -247,10 +261,7 @@ norm_counts <- function(
     pivot_longer(-gene, names_to = "sample", values_to = "count") |>
     dplyr::left_join(meta_df, by = "sample")
 
-  if (!is.null(annot)) {
-    count_df <- count_df |>
-      dplyr::left_join(annot, by = "gene")
-  }
+  if (!is.null(annot)) count_df <- count_df |> dplyr::left_join(annot, by = "gene")
   
   return(count_df)
 }
@@ -267,7 +278,6 @@ pMA <- function(
     alpha_sig = 0.3,
     x_min = NA,
     contrast = NULL,
-    interactive = FALSE,
     x_breaks = c(1, 10, 100, 1000, 10000, 100000) # Use 'waiver()' to get auto-breaks
     ) {
 
@@ -281,15 +291,6 @@ pMA <- function(
   if (rm_padj_na == TRUE) {
     message("Removing genes with NA as the adj. pvalue...")
     deseq_results <- deseq_results |> dplyr::filter(!is.na(padj))
-  }
-
-  # Interactive text
-  if ("gene_name" %in% colnames(deseq_results)) {
-      glue_string <- "Gene ID: {gene}
-                      Gene name: {gene_name}
-                      Description: {gene_description}"
-  } else {
-      glue_string <- "Gene ID: {gene}"
   }
 
   # Make all NA isDE value FALSE, so they will be plotted
@@ -310,9 +311,7 @@ pMA <- function(
                size = ptsize_nonsig,
                alpha = alpha_nonsig) +
     geom_point(data = dplyr::filter(deseq_results, isDE == TRUE),
-               aes(x = mean,
-                   y = lfc,
-                   text = glue::glue(glue_string)),
+               aes(x = mean, y = lfc),
                shape = 21,
                fill = ptcol_sig,
                color = ptcol_sig,
@@ -332,7 +331,7 @@ pMA <- function(
     if (length(fcontrast) > 1) p <- p + facet_wrap(vars(contrast))
   }
 
-  if (interactive) ggplotly(p, tooltip = "text") else return(p)
+  return(p)
 }
 
 
@@ -413,10 +412,10 @@ pvolc <- function(
   
   # Add points
   if (interactive == TRUE) {
-    p <- p + geom_point_interactive(
+    p <- p + ggiraph::geom_point_interactive(
       data = dplyr::filter(DE_df, isDE == TRUE),
       mapping = aes(fill = contrast,
-                     tooltip = paste(gene, "\n", gene_name, "\n", gene_description)),
+                    tooltip = paste(gene, "\n", gene_name, "\n", gene_description)),
       size = 2, shape = 21, color = "grey20", alpha = 0.5
     )
   } else {
@@ -600,9 +599,6 @@ pheat <- function(
     ...                         # Arguments to be passed to the pheatmap function
     ) {
 
-  # Load the pheatmap package
-  suppressPackageStartupMessages(library(pheatmap))
-
   # Arrange metadata according to the columns with included factors
   if (!is.null(groups)) {
     meta_df <- meta_df |>
@@ -633,8 +629,8 @@ pheat <- function(
   row.names(fcount_mat) <- str_trunc(row.names(fcount_mat),
                                      width = 25, ellipsis = "")
 
-  # Function to create the plot
-  p <- pheatmap(
+  # Create the plot
+  p <- pheatmap::pheatmap(
     fcount_mat,
     annotation_col = meta_df,
     cluster_rows = cluster_rows,
@@ -724,23 +720,26 @@ pbox <- function(
   
   # Add points
   if (!is.null(color_by)) {
-    # With color-aesthetic, use jitter-doge and smaller points:
+    # With color-aesthetic, use jitter-dodge and smaller points:
     p <- p + geom_point(
-      position = position_jitterdodge(jitter.width = 0.1, jitter.height = 0),
+      position = position_jitterdodge(jitter.width = 0.2, jitter.height = 0),
       size = 2.5
       )
   } else {
     # Withour color aesthetic
     p <- p + geom_point(
-      position = position_jitter(width = 0.1, height = 0),
+      position = position_jitter(width = 0.2, height = 0),
       size = 2.5, color = "grey40"
       )
   }
   
   # Facet
   if (!is.null(facet_by)) {
-    p <- p + facet_wrap(vars(!!sym(facet_by)),
-                        nrow = 1, scales = facet_scales)
+    p <- p + facet_wrap(
+      vars(!!sym(facet_by)),
+      nrow = 1,
+      scales = facet_scales,
+      labeller = "label_both")
   }
     
   # Plot formatting
@@ -756,7 +755,9 @@ pbox <- function(
           plot.margin = unit(c(0.5, 0.5, 1, 0.5), "cm"))
 
   # No legend needed if color-aes is same as x-aes
-  if (!is.null(color_by)) if (x == color_by) p <- p + guides(color = "none")
+  if (!is.null(color_by)) {
+    if (x == color_by | facet_by == color_by) p <- p + guides(color = "none")
+  }
 
   # Y scale and label
   if (log_scale == TRUE) {
@@ -799,7 +800,7 @@ p4box <- function(
     ...
     ) {
   
-  library(patchwork)
+  suppressPackageStartupMessages(library(patchwork))
 
   p1 <- pbox(genes[1], count_df, annot, cols,
              theme_base_size = 11, ...) +
@@ -829,9 +830,9 @@ p4box <- function(
 # Function to create a PCA the same way as the DESeq2 function
 # (The DEseq function uses `prcomp()` under the hood)
 pca_prcomp <- function(
-    dds,
-    transform = "rlog",
-    ntop = 500
+    dds,                      # DESeq2 object
+    transform = "rlog",       # Normalization procedure, either 'rlog' or 'vst'
+    ntop = 500                # Top n most variable genes to include
 ) {
   
   message("Using the top ", ntop, " most highly variable genes...")
@@ -857,30 +858,22 @@ pca_prcomp <- function(
 
 # Function to run the PCA using the PCAtools `pca()` function
 pca_pcatools <- function(
-    dds,                 # DESeq object
+    dds = NULL,          # Input option 1: a DESeq object
+    count_mat = NULL,    # Input option 2: A (normalized) count matrix    
     remove_prop = 0.1,   # Remove this proportion of variables (genes) with the lowest variance
     transform = "rlog",  # Type of normalization
-    mat_norm = NULL      # Optionally, input a pre-made normalized matrix     
+    meta = NULL          # If the input is count_mat, use this arg to add metadata
 ) {
   
-  # Install/load the PCAtools package
-  if (!require(PCAtools)) {
-    BiocManager::install("PCAtools")
-    library(PCAtools)
-  }
-  
-  # Normalize the data
-  if (!is.null(mat_norm)) {
-    if (transform == "vst") mat_norm <- assay(vst(dds, blind = TRUE))
-    if (transform == "rlog") mat_norm <- assay(rlog(dds, blind = TRUE))
+  # If input is a DESeq object, normalize and get metadata
+  if (!is.null(dds)) {
+    if (transform == "vst") count_mat <- assay(vst(dds, blind = TRUE))
+    if (transform == "rlog") count_mat <- assay(rlog(dds, blind = TRUE))
+    meta <- colData(dds)
   }
   
   # Run the PCA
-  pca_res <- pca(mat_norm,
-                 metadata = colData(dds),
-                 removeVar = remove_prop)
-  
-  return(pca_res)
+  PCAtools::pca(count_mat, metadata = meta, removeVar = remove_prop)
 }
 
 # Function to create a regular PCA plot from PCAtools PCA results
@@ -888,17 +881,21 @@ pca_plot <- function(
     pca_res,                      # PCA results after running `PCA_run()`
     x = "PC1",                    # Principal component to plot on the x-axis
     y = "PC2",                    # Principal component to plot on the y-axis
-    col = NULL,                   # Vary point color by this variable from the metadata
-    fill = NULL,
-    shape = NULL,                 # Vary point shape by this variable from the metadata
-    pt_size = 5,
-    pt_shape = NULL,
+    color_by = NULL,              # Vary point color by this variable from the metadata
+    fill_by = NULL,               # Vary point fill by this variable from the metadata
+    shape_by = NULL,              # Vary point shape by this variable from the metadata
+    ellipse_by = NULL,            # Draw ellipses around groups of points by this variable
     add_ids = FALSE,              # Add sample names to points TRUE/FALSE
     title = NULL,                 # Add a title as a string; "NULL" is no title
+    aspect_ratio = FALSE,         # When TRUE, aspect ratio will be according to % variation for each PC
+    pt_size = 5,                  # Point size
+    pt_shape = NULL,              # Point shape (defaults: 16 or 21, the latter when using 'fill=')
     interactive = FALSE,          # Use ggiraph to make the plot interactive
                                   # NOTE: need to call 'girafe(ggobj = p)' on output!
     pc_var = TRUE                 # Indicate % of variation in axis titles
 ) {
+  
+  # Prep the dataframe
   if (class(pca_res) == "pca") {
     # Extract the data from the PCAtools object
     meta <- as.data.frame(pca_res$metadata)
@@ -907,25 +904,31 @@ pca_plot <- function(
     df$sample <- rownames(df)
     df <- dplyr::left_join(df, meta, by = "sample")
     
+    # Percent variation explained by each PC
     percent_var <- round(pca_res$variance, 2)
     
   } else {
-    percent_var <- pca_res$percent_var
-    
+    # Expecting a list from the pca_prcomp() function
     df <- pca_res$df
     df$sample <- rownames(df)
+    
+    # Percent variation explained by each PC
+    percent_var <- pca_res$percent_var
   }
   
   # Sample names
   if (add_ids == TRUE) names <- pca_res$yvars
   if (add_ids == FALSE) names <- 0
   
+  # Percent variation explained by each PC, and aspect ratio
+  x_pct <- percent_var[as.integer(sub("PC", "", x))]
+  y_pct <- percent_var[as.integer(sub("PC", "", y))]
+  if (aspect_ratio == TRUE) asp <- y_pct / x_pct else asp <- 1
+  
   # Axis labels
   if (pc_var == TRUE) {
-    x_nr <- as.integer(sub("PC", "", x))
-    y_nr <- as.integer(sub("PC", "", y))
-    x_lab <- paste0(x, " (", percent_var[x_nr], "% of variance)")
-    y_lab <- paste0(y, " (", percent_var[y_nr], "% of variance)")
+    x_lab <- paste0(x, " (", x_pct, "% of variance)")
+    y_lab <- paste0(y, " (", y_pct, "% of variance)")
   } else {
     x_lab <- x
     y_lab <- y
@@ -936,46 +939,77 @@ pca_plot <- function(
     aes(x = .data[[x]], y = .data[[y]])
   
   # Color aesthethic
-  if (!is.null(col)) {
+  if (!is.null(color_by)) {
     p <- p +
-      aes(color = .data[[col]]) +
+      aes(color = .data[[color_by]]) +
       scale_color_brewer(palette = "Dark2")
   }
   
   # Fill aesthetic
-  if (!is.null(fill)) {
+  if (!is.null(fill_by)) {
     p <- p +
-      aes(fill = .data[[fill]]) +
+      aes(fill = .data[[fill_by]]) +
       scale_fill_brewer(palette = "Dark2")
-    if (is.null(shape)) pt_shape <- 21
+    if (is.null(shape_by)) pt_shape <- 21
+  } else {
+    if (is.null(shape_by)) pt_shape <- 16
   }
   
   # Shape aesthetic
-  if (!is.null(shape)) {
-    n_shapes <- length(unique(df[[shape]]))
-    shapes <- c(21:25)[1:n_shapes]
+  if (!is.null(shape_by)) {
+    n_shapes <- length(unique(df[[shape_by]]))
+    
+    if (!is.null(fill_by)) {
+      if (n_shapes > 5) warning("Too many unique values in ", shape_by, " (can only plot 5 hollow shapes)")
+      shapes <- c(21:25)[1:n_shapes]
+    } else {
+      shapes <- c(15:25)[1:n_shapes]
+    }
     
     p <- p +
-      aes(shape = .data[[shape]]) +
+      aes(shape = .data[[shape_by]]) +
       scale_shape_manual(values = shapes) +
       guides(fill = guide_legend(override.aes = list(shape = 21)))
   }
   
   # Add points
   if (interactive == FALSE) {
-    if (is.null(shape)) {
+    
+    # Non-interactive
+    if (is.null(shape_by)) {
       p <- p + geom_point(size = pt_size, shape = pt_shape)
     } else {
-      if (!is.null(shape)) p <- p + geom_point(size = pt_size)
+      if (!is.null(shape_by)) p <- p + geom_point(size = pt_size)
     }
   } else {
-    if (!require(ggiraph)) install.packages("ggiraph")
-    if (is.null(shape)) {
-      p <- p + geom_point_interactive(aes(tooltip = sample),
-                                      size = pt_size, shape = pt_shape)
+    
+    # Interactive
+    if (is.null(shape_by)) {
+      p <- p + ggiraph::geom_point_interactive(
+        aes(tooltip = sample), size = pt_size, shape = pt_shape
+        )
     } else {
-      p <- p + geom_point_interactive(aes(tooltip = sample), size = pt_size)
+      p <- p + ggiraph::geom_point_interactive(
+        aes(tooltip = sample), size = pt_size
+        )
     }
+  }
+  
+  # Add sample IDs
+  if (add_ids == TRUE) {
+    p <- p + ggrepel::geom_text_repel(
+      aes(label = sample), max.overlaps = 20, point.padding = 3
+    )
+  }
+  
+  # Add ellipses around groups
+  if (!is.null(ellipse_by)) {
+    p <- p +
+      ggforce::geom_mark_ellipse(
+        aes(group = .data[[ellipse_by]]),
+        expand = unit(2, "mm"),
+        color = "grey60", fill = "grey90", linetype = "dashed"
+        )
   }
   
   # Plot polishing
@@ -984,15 +1018,8 @@ pca_plot <- function(
     theme(panel.grid.minor = element_blank(),
           axis.text.x = element_text(size = 10),
           axis.text.y = element_text(size = 10),
-          plot.title = element_text(hjust = 0.5,
-                                    color = "grey20"))
-  
-  # Add sample IDs
-  if (add_ids == TRUE) {
-    p <- p + ggrepel::geom_text_repel(
-      aes(label = sample), max.overlaps = 20, point.padding = 3
-      )
-  }
+          plot.title = element_text(hjust = 0.5, color = "grey20"),
+          aspect.ratio = asp)
   
   return(p)
 }
@@ -1001,10 +1028,10 @@ pca_plot <- function(
 # Function to create a PCA biplot
 pca_biplot <- function(
     pca_res,                      # PCA results after running `PCA_run()`
+    col,                          # Vary point color by this variable from the metadata
+    shape,                        # Vary point shape by this variable from the metadata
     x = "PC1",                    # Principal component to plot on the x-axis
     y = "PC2",                    # Principal component to plot on the y-axis
-    col = "Treatment",            # Vary point color by this variable from the metadata
-    shape = "Irrigation",         # Vary point shape by this variable from the metadata
     n_genes = 5,                  # Number of genes to plot loadings for
     add_ids = TRUE,               # Add sample names to points TRUE/FALSE
     title = NULL                  # Add a title as a string; "NULL" is no title
@@ -1027,8 +1054,39 @@ pca_biplot <- function(
               shape = shape) +
     xlab(paste0(x, " (", percent_var[x_nr], "% of variance)")) +
     ylab(paste0(y, " (", percent_var[y_nr], "% of variance)")) +
-    ggtitle(title) +
-    theme_bw()
+    ggtitle(title)
   
   return(p)
+}
+
+# Function to create a Venn diagram
+pvenn <- function(
+    DE_res,               # DE results from extract_DE(): requires 'isDE', 'gene', and 'contrast' columns
+    contrasts,            # Select the following contrasts from the 'contrast' column
+    cat_names = NULL,     # Give non-default category (contrast) names
+    cat_colors = NULL,    # Give non-default (RColorBrewer Set 2) category names
+    auto_scale = TRUE     # Scale the circles by category size
+    ) {
+  
+  # Create the list
+  venn_list <- map(
+    .x = contrasts,
+    .f = function(x) DE_res |> filter(contrast == x, isDE == TRUE) |> pull(gene)
+  )
+  
+  # Give the list elements names
+  if (is.null(cat_names)) cat_names <- contrasts
+  names(venn_list) <- cat_names
+  
+  # Set the colors
+  if (is.null(cat_colors)) {
+    cat_colors <- suppressWarnings(
+      RColorBrewer::brewer.pal(length(venn_list), name = "Set2")[1:length(venn_list)]
+    )
+  }
+  
+  # Make the Venn diagram
+  ggvenn::ggvenn(venn_list,
+                 fill_color = cat_colors,
+                 auto_scale = auto_scale)
 }
