@@ -11,6 +11,8 @@
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
+# BLAST docs: https://www.ncbi.nlm.nih.gov/blast/BLAST_guide.pdf
+
 # Constants - generic
 DESCRIPTION="Run NCBI BLAST on an input (query) FASTA file, and optionally download
 aligned sequences and/or genomes. The input (query) FASTA file can contain multiple
@@ -139,8 +141,10 @@ script_help() {
     echo "                                This threshold will be applied *after* running BLAST"
     echo "  --top_n_query       <int>   Only keep the top N hits for each query                 [default: $top_n_query]"
     echo "                                This threshold will be applied *after* running BLAST"
+    echo "                                A threshold of 0 means no filtering"
     echo "  --top_n_subject     <int>   Only keep the top N hits for each subject, per query    [default: keep all]"
     echo "                                This threshold will be applied *after* running BLAST"
+    echo "                                A threshold of 0 means no filtering"
     echo
     echo "SEQUENCE LOOKUP AND DOWNLOAD OPTIONS (OPTIONAL):"
     echo "  --dl_aligned                Download aligned parts of subject (db) sequences        [default: $to_dl_aligned]"
@@ -237,13 +241,14 @@ process_blast() {
     fi
 
     # 3. Only retain top-N matches per query
-    if [[ -n "$top_n_query" ]]; then
+    if [[ -n "$top_n_query" && "$top_n_query" != 0 ]]; then
         log_time "Getting the top $top_n_query hits for each query"
         blast_out_topq="$outdir"/blast_out_topq.tsv
 
         while read -r query; do
             grep -w -m "$top_n_query" "$query" "$blast_out_cov"
-        done < <(cut -f1 "$blast_out_cov" | sort -u) > "$blast_out_topq"
+        done < <(cut -f1 "$blast_out_cov" | sort -u) |
+            sort -k1,1 -k11,11g -k12,12gr -k3,3gr > "$blast_out_topq"
         
         log_time "Retained $(wc -l < "$blast_out_topq") of $(wc -l < "$blast_out_cov") hits"
     else
@@ -251,12 +256,13 @@ process_blast() {
     fi
 
     # 4. Only retain top-N matches per subject
-    if [[ -n "$top_n_subject" ]]; then
+    if [[ -n "$top_n_subject" && "$top_n_subject" != 0 ]]; then
         log_time "Getting the top $top_n_subject hits for each subject"
         
         while read -r subject; do
             grep -w -m "$top_n_subject" "$subject" "$blast_out_topq"
-        done < <(cut -f2 "$blast_out_topq" | sort -u) > "$blast_out_final"
+        done < <(cut -f2 "$blast_out_topq" | sort -u) |
+        sort -k1,1 -k11,11g -k12,12gr -k3,3gr > "$blast_out_final"
         
         log_time "Retained $(wc -l < "$blast_out_final") of $(wc -l < "$blast_out_topq") hits"
     else
@@ -272,11 +278,13 @@ process_blast() {
     log_time "Listing the final BLAST output file:"
     ls -lh "$blast_out_final"
 
-    log_time "Showing the first few lines of the final BLAST output file:"
+    log_time "Showing the first few lines of the final BLAST output file (without header):"
     head -n 5 "$blast_out_final"
 
     n_subjects=$(cut -f 2 "$blast_out_final" | sort -u | wc -l)
-    log_time "Nr of distinct subjects in the final BLAST output file: $n_subjects"
+    n_queries=$(cut -f 1 "$blast_out_final" | sort -u | wc -l)
+    log_time "Number of distinct subjects in the final BLAST output file: $n_subjects"
+    log_time "Number of distinct queries in the final BLAST output file: $n_queries"
 }
 
 find_genomes() {
