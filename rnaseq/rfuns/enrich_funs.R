@@ -6,57 +6,81 @@ library(ggforce)
 # CLUSTERPROFILER FUNCTIONS ----------------------------------------------------
 run_enrich <- function(
   contrast,                  # Comparison as specified in 'contrast' column in DE results
-  DE_direction = "either",   # 'either', 'up' (LFC>0), or 'down' (LFC<0)
-  DE_res,                    # DE results df
-  cat_map,                   # Functional category to gene mapping with columns: 1:category, 2:gene_id, and optionally 3:description
-  p_DE = 0.05,               # Adj. p-value threshold for DE
-  lfc_DE = 0,                # LFC threshold for DE
-  min_DE_in_cat = 2,         # Min. nr. DE genes in GO term for a term to be significant
+  DE_direction = "either",   # 'either' (all DE genes), 'up' (lfc > 0), or 'down' (lfc < 0)
+  DE_res,                    # DE results df from 'extract_DE()', should have columns 'gene', 'contrast', 'lfc', 'isDE', 'padj'
+  cat_map,                   # Functional category to gene mapping with columns: 1:category, 2:gene ID, and optionally 3:description
   p_enrich = 0.05,           # Adj. p-value threshold for enrichment
   q_enrich = 0.2,            # Q value threshold for enrichment
+  min_cat_size = 5,         # Min. nr. of genes in a category (clusterProfiler 'minGSSize' argument - note: clPr default is 10)
+  max_cat_size = 500,        # Min. nr. of genes in a category (clusterProfiler 'maxGSSize' argument)
+  min_DE_in_cat = 2,         # Min. nr. DE genes in ontology category for a term to be significant
+  p_DE = NULL,               # Adj. p-value threshold for DE (default: use 'isDE' column to determine DE status)
+  lfc_DE = NULL,             # LFC threshold for DE (default: use 'isDE' column to determine DE status)
   filter_no_descrip = TRUE,  # Remove pathways with no description
   return_df = FALSE          # Convert results object to a simple dataframe (tibble)
 ) {
 
+  # Filter by contrast
   fcontrast <- contrast
+  DE_res <- DE_res |> filter(contrast == fcontrast)
 
+  # Get the background universe of genes:
+  # genes that were tested for DE *and* occur in the ontology category map
+  # (Excluding the latter is equivalent to goseq's 'use_genes_without_cat=FALSE')
+  universe <- DE_res |>
+    filter(!is.na(padj), gene %in% cat_map$gene) |>
+    pull(gene)
+  
   # Filter the DE results, if needed: only take over- or underexpressed
-  if (DE_direction == "up") DE_res <- DE_res |> filter(log2FoldChange > 0)
-  if (DE_direction == "down") DE_res <- DE_res |> filter(log2FoldChange < 0)
+  if (DE_direction == "up") DE_res <- DE_res |> filter(lfc > 0)
+  if (DE_direction == "down") DE_res <- DE_res |> filter(lfc < 0)
 
   # Create a vector with DEGs
-  DE_res <- DE_res |> filter(padj < p_DE,
-                             contrast == fcontrast)
-  if (lfc_DE != 0) DE_res <- DE_res |> filter(abs(log2FoldChange) > lfc_DE)
-  DE_genes <- DE_res$gene_id
+  if (is.null(p_DE) & is.null(lfc_DE)) DE_res <- DE_res |> filter(isDE)
+  if (!is.null(p_DE)) DE_res <- DE_res |> filter(padj < p_DE)
+  if (!is.null(lfc_DE)) DE_res <- DE_res |> filter(abs(lfc) > lfc_DE)
+  DE_genes <- DE_res$gene
   
   # Check if genes are present multiple times -- this would indicate there are multiple contrasts
   if (any(duplicated(DE_genes))) {
-    stop("ERROR: Duplicated gene IDs detected -- there are probably multiple contrasts remaining in your input df")
+    stop("ERROR: Found duplicated gene IDs: you probably have multiple 'contrasts' in your input df")
   }
   
-  # Report
-  cat(fcontrast, " // DE Direction:", DE_direction,
-      " // Nr DE genes: ", length(DE_genes))
-
   # Prep term mappings - if there's a third column, make a term2name df as well
   term2gene <- cat_map[, 1:2]
   if (ncol(cat_map) > 2) {
     term2name <- cat_map[, c(1, 3)]
-    if (filter_no_descrip == TRUE) term2name <- term2name[!is.na(term2name[[2]]), ]
+    if (filter_no_descrip == TRUE) {
+      n_before <- nrow(term2name)
+      term2name <- term2name[!is.na(term2name[[2]]), ]
+      n_removed <- n_before - nrow(term2name)
+      if (n_removed > 0) message("Removed ", n_removed, " terms with no description")
+    }
   } else {
     term2name <- NA
   }
-
-  # Run the enrichment analysis
+  
+  # Check nr of DE genes in the category map
+  genes_in_map <- DE_genes[DE_genes %in% term2gene$gene]
+  
+  cat(fcontrast, "// DE direction:", DE_direction,
+      "// Nr DE genes (in cat_map, in universe):", length(DE_genes),
+      "(", length(genes_in_map), ",", length(universe), ")") 
+  if (length(genes_in_map) == 0) stop("ERROR: None of the DE genes are in the cat_map dataframe")
+  
+  # Skip the enrichment analysis if there are too few genes
   if (length(DE_genes) <= 1) {
-    cat("\n")
+    cat("Skipping enrichment: too few DE genes\n")
     return(NULL)
   }
-    
+  
+  # Run the enrichment analysis
   res <- enricher(gene = DE_genes,
                   TERM2GENE = term2gene,
                   TERM2NAME = term2name,
+                  universe = universe,
+                  minGSSize = min_cat_size,
+                  maxGSSize = max_cat_size,
                   pAdjustMethod = "BH",
                   pvalueCutoff = 1,
                   qvalueCutoff = 1)
@@ -66,11 +90,8 @@ run_enrich <- function(
       filter(p.adjust < p_enrich,
              qvalue < q_enrich,
              Count >= min_DE_in_cat)
-    cat(" // Nr enriched pathways:", nrow(res), "\n")
-  }
-  
-  if (return_df == TRUE) {
-    
+    cat(" // Nr enriched:", nrow(res), "\n")
+  } else {
     res <- as_tibble(res) |>
       mutate(sig = ifelse(p.adjust < p_enrich &
                             qvalue < q_enrich &
@@ -89,8 +110,7 @@ run_enrich <- function(
              sig,
              description = Description,
              gene_ids = geneID)
-    
-    cat(" // Nr enriched pathways:", sum(res$sig), "\n")
+    cat(" // Nr enriched:", sum(res$sig), "\n")
   }
   
   return(res)
@@ -98,8 +118,8 @@ run_enrich <- function(
 
 # Function to run a Gene Set Enrichment Analysis (gsea)
 run_gsea <- function(
-    contrast,               # Contrast ID present in a column 'contrast'
-    DE_res,                 # Differential expression level
+    contrast,               # Contrast ID, should be one of the values in column 'contrast' in DE_res
+    DE_res,                 # Differential expression results, should have columns 'contrast', 'gene', 'lfc'
     cat_map,                # Gene set category map (e.g., GO)
     p_enrich = 0.05,        # Adj. p-value threshold for enrichment
     return_df = FALSE       # Convert results object to a simple dataframe (tibble)
@@ -110,26 +130,27 @@ run_gsea <- function(
   
   # Prep the df to later create a gene vector
   gene_df <- DE_res |>
-    filter(contrast == fcontrast,
-           !is.na(log2FoldChange)) |>
-    arrange(desc(log2FoldChange))
+    filter(contrast == fcontrast, !is.na(lfc)) |>
+    arrange(desc(lfc))
   
   # Check if genes are present multiple times -- this would indicate there are multiple contrasts
-  if (any(duplicated(gene_df$gene_id))) {
+  if (any(duplicated(gene_df$gene))) {
     stop("ERROR: Duplicated gene IDs detected -- there are probably multiple contrasts remaining in your input df")
   }
   
   # Create a vector with lfc's and gene IDs
-  gene_vec <- gene_df$log2FoldChange
-  names(gene_vec) <- gene_df$gene_id
-  
-  # Report
-  n_DE <- sum(gene_df$padj < 0.05, na.rm = TRUE)
-  message("Contrast: ", fcontrast, " // Nr DE genes: ", n_DE)
+  gene_vec <- gene_df$lfc
+  names(gene_vec) <- gene_df$gene
   
   # Prep term mappings - if there's a third column, make a term2name df as well
   term2gene <- cat_map[, 1:2]
   if (ncol(cat_map) > 2) term2name <- cat_map[, c(1, 3)]
+  
+  # Report
+  n_DE <- sum(gene_df$padj < 0.05, na.rm = TRUE)
+  genes_in_map <- gene_df$gene[gene_df$gene %in% term2gene$gene]
+  cat(fcontrast, "// Nr DE genes (nr in cat_map):", n_DE, "(", length(genes_in_map), ")")
+  if (length(genes_in_map) == 0) stop("ERROR: None of the DE genes are in the cat_map dataframe")
   
   # Run the enrichment analysis
   gsea_res <- GSEA(geneList = gene_vec,
@@ -137,16 +158,17 @@ run_gsea <- function(
                    TERM2NAME = term2name,
                    pvalueCutoff = 1,
                    pAdjustMethod = "BH",
-                   verbose = FALSE)
+                   verbose = FALSE,
+                   eps = 0,
+                   seed = TRUE)
   
   # Report
   n_sig <- sum(gsea_res$p.adjust < p_enrich)
-  message("Nr enriched pathways: ", n_sig, "\n")
+  cat(" // Nr enriched: ", n_sig, "\n")
   
   # Return a df, if requested
   if (return_df == FALSE) {
     gsea_res <- gsea_res |> filter(p.adjust < p_enrich)
-  
   } else {
     gsea_res <- as_tibble(gsea_res) |> 
       mutate(sig = ifelse(p.adjust < p_enrich, TRUE, FALSE),
@@ -197,8 +219,8 @@ run_GO_all <- function(contrasts, DE_res, GO_map, gene_lens, ...) {
 run_GO <- function(
   contrast,                          # A DE contrast as specified in the 'contrast' column in the 'DE_res' df
   DE_res,                            # Df with DE results from DESeq2
-  GO_map,                            # Df with one GOterm-to-gene relation per row, w/ columns 'gene_id' and 'go_term'
-  gene_lens,                         # Df with gene lengths w/ columns 'gene_id' and 'length'
+  GO_map,                            # Df with one GOterm-to-gene relation per row, w/ columns 'gene' and 'go_term'
+  gene_lens,                         # Df with gene lengths w/ columns 'gene' and 'length'
   DE_direction = "either",           # 'either' (= both together), 'up' (LFC>0), or 'down' (LFC>0)
   min_in_cat = 2, max_in_cat = Inf,  # Min. & max. nr of total terms in GO category
   min_DE_in_cat = 2,                 # Min. nr. DE genes in GO term for a term to be significant
@@ -268,29 +290,29 @@ run_GO_internal <- function(
 
   if (sum(DE_vec) >= 2) {
     # Remove rows from gene length df not in the DE_vec
-    fgene_lens <- gene_lens |> filter(gene_id %in% names(DE_vec))
-    if (nrow(fgene_lens) == 0) stop("Error: no rows left in gene length df, gene_id's likely don't match!")
+    fgene_lens <- gene_lens |> filter(gene %in% names(DE_vec))
+    if (nrow(fgene_lens) == 0) stop("Error: no rows left in gene length df, gene IDs likely don't match!")
     
     n_removed <- nrow(gene_lens) - nrow(fgene_lens)
     if (verbose == TRUE) message("- Nr genes removed from gene length df (not in DE vector): ", n_removed)
 
     # Remove elements from DE_vec not among the gene lengths
-    fDE_vec <- DE_vec[names(DE_vec) %in% fgene_lens$gene_id]
-    if (length(fDE_vec) == 0) stop("Error: no entries left in DE vector, gene_id's likely don't match!")
+    fDE_vec <- DE_vec[names(DE_vec) %in% fgene_lens$gene]
+    if (length(fDE_vec) == 0) stop("Error: no entries left in DE vector, gene IDs likely don't match!")
     
     n_removed <- length(DE_vec) - length(fDE_vec)
     if (verbose == TRUE) message("- Nr genes removed from DE vector (not in gene length df): ", n_removed)
     if (verbose == TRUE) message("- Final length of DE vector: ", length(fDE_vec))
 
     # Check nr of genes with GO annotations
-    ngenes_go <- length(intersect(GO_map$gene_id, names(fDE_vec)))
+    ngenes_go <- length(intersect(GO_map$gene, names(fDE_vec)))
     if (verbose == TRUE) message("- Nr genes in DE vector with GO annotations: ", ngenes_go)
 
     # Check that gene lengths and contrast vector contain the same genes in the same order
-    if (!all(fgene_lens$gene_id == names(fDE_vec))) {
+    if (!all(fgene_lens$gene == names(fDE_vec))) {
       message("Gene IDs in gene length df do not match the gene IDs in the DE vector")
       message("IDs in gene length df:")
-      print(head(fgene_lens$gene_id))
+      print(head(fgene_lens$gene))
       message("IDs in DE vector:")
       print(head(names(fDE_vec)))
       stop()
@@ -303,7 +325,10 @@ run_GO_internal <- function(
 
     # Run GO test
     GO_df <- suppressMessages(
-      goseq(pwf = pwf, gene2cat = GO_map, method = "Wallenius")
+      goseq(pwf = pwf,
+            gene2cat = GO_map,
+            method = "Wallenius",
+            use_genes_without_cat = FALSE)
     )
 
     # Process GO results
@@ -358,7 +383,6 @@ get_DE_vec <- function(
   # If we use a column with precomputed DE significance, don't use thresholds
   if (!is.null(use_sig_column)) {
     if (verbose == TRUE) message("Using column ", use_sig_column, " to find DE genes")
-    
     colnames(DE_res)[grep(use_sig_column, colnames(DE_res))] <- "isDE"
     p_DE <- NULL
     lfc_DE <- NULL
@@ -372,12 +396,10 @@ get_DE_vec <- function(
   }
 
   # Create df for focal contrast
-  fDE <- DE_res |>
-    filter(contrast == fcontrast) |>
-    arrange(gene_id)
+  fDE <- DE_res |> filter(contrast == fcontrast) |> arrange(gene)
   
   # Check if genes are present multiple times -- this would indicate there are multiple contrasts
-  if (any(duplicated(fDE$gene_id))) {
+  if (any(duplicated(fDE$gene))) {
     stop("ERROR: Duplicated gene IDs detected -- there are probably multiple contrasts remaining in your input df")
   }
 
@@ -385,7 +407,7 @@ get_DE_vec <- function(
   if (is.null(use_sig_column)) {
     if (lfc_DE != 0) {
       fDE <- fDE |>
-        mutate(isDE = ifelse(padj < p_DE & abs(log2FoldChange) > lfc_DE, TRUE, FALSE))
+        mutate(isDE = ifelse(padj < p_DE & abs(lfc) > lfc_DE, TRUE, FALSE))
     } else {
       fDE <- fDE |>
         mutate(isDE = ifelse(padj < p_DE, TRUE, FALSE))
@@ -394,18 +416,18 @@ get_DE_vec <- function(
 
   # Subset to up/down DEGs if needed
   if (DE_direction == "up")
-    fDE <- fDE |> mutate(isDE = ifelse(log2FoldChange > 0, isDE, FALSE))
+    fDE <- fDE |> mutate(isDE = ifelse(lfc > 0, isDE, FALSE))
   if (DE_direction == "down")
-    fDE <- fDE |> mutate(isDE = ifelse(log2FoldChange < 0, isDE, FALSE))
+    fDE <- fDE |> mutate(isDE = ifelse(lfc < 0, isDE, FALSE))
 
   # Report nr of genes
-  n_genes <- length(unique(fDE$gene_id))
+  n_genes <- length(unique(fDE$gene))
   if (verbose == TRUE) message("- Nr unique genes in DE results: ", n_genes)
 
   if (rm_padj_na == TRUE) {
     # Exclude genes with NA adj-p-val - those were not tested
     fDE <- fDE |> filter(!is.na(padj))
-    n_genes <- length(unique(fDE$gene_id))
+    n_genes <- length(unique(fDE$gene))
     if (verbose == TRUE) message("- Nr unique genes after removing padj=NA: ", n_genes)
   } else {
     # Otherwise, turn NAs to FALSE (not DE)
@@ -413,10 +435,9 @@ get_DE_vec <- function(
   }
 
   DE_vec <- fDE$isDE
-  names(DE_vec) <- fDE$gene_id
+  names(DE_vec) <- fDE$gene
   
   if (verbose == TRUE) print(table(DE_vec))
-    
   return(DE_vec)
 }
 
@@ -618,6 +639,31 @@ get_pw_genes <- function(pathway_id) {
                        function(x) x[1]))
 
   return(pw2)
+}
+
+# Get the genes belonging to a certain KEGG pathway
+get_pw_kos <- function(pathway_id) {
+  cat(pathway_id, "... ")
+  
+  pw <- keggGet(pathway_id)
+  cat(pw[[1]]$NAME[[1]])
+  
+  if (is.null(pw[[1]]$GENE)) {
+    cat(" - No KOs found!\n")
+    ko_df <- tibble(pathway = pathway_id,
+                    pathway_nr = sub("[[:alpha:]]+", "", pathway_id),
+                    KO = NA)
+  } else {
+    kos <- pw[[1]]$GENE[c(FALSE, TRUE)]
+    kos <- unique(sub(".*KO:(K\\d+).*", "\\1", x = kos))
+    cat(" - Nr of KOs:", length(kos), "\n")
+    
+    ko_df <- tibble(pathway = pathway_id,
+                    pathway_nr = sub("[[:alpha:]]+", "", pathway_id),
+                    KO = kos)
+  }
+  
+  return(ko_df)
 }
 
 # Function to get a KEGG pathway (ko-ID) associated with a KEGG K-term
