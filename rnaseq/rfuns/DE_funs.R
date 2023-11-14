@@ -582,6 +582,7 @@ cheatmap <- function(
 }
 
 # Heatmap plot showing abundances for multiple/many genes
+#TODO Allow to add gene annotation
 pheat <- function(
     genes,                      # Vector of genes to include
     count_mat,                  # Count matrix (with gene names as rownames)
@@ -651,6 +652,7 @@ pheat <- function(
 
 
 # Boxplot showing abundances for a single gene
+#TODO - Allow for annotation column in count_df, instead of separate annot df
 pbox <- function(
     gene,                      # Gene ID
     count_df,                  # Count df with column 'count' with counts to plot
