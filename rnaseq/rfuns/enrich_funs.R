@@ -11,9 +11,10 @@ run_enrich <- function(
   cat_map,                   # Functional category to gene mapping with columns: 1:category, 2:gene ID, and optionally 3:description
   p_enrich = 0.05,           # Adj. p-value threshold for enrichment
   q_enrich = 0.2,            # Q value threshold for enrichment
-  min_cat_size = 5,         # Min. nr. of genes in a category (clusterProfiler 'minGSSize' argument - note: clPr default is 10)
+  min_cat_size = 5,          # Min. nr. of genes in a category (clusterProfiler 'minGSSize' argument - note: clPr default is 10)
   max_cat_size = 500,        # Min. nr. of genes in a category (clusterProfiler 'maxGSSize' argument)
   min_DE_in_cat = 2,         # Min. nr. DE genes in ontology category for a term to be significant
+  exclude_nontested = TRUE,  # Exclude genes that weren't tested for DE from the 'universe' of genes
   p_DE = NULL,               # Adj. p-value threshold for DE (default: use 'isDE' column to determine DE status)
   lfc_DE = NULL,             # LFC threshold for DE (default: use 'isDE' column to determine DE status)
   filter_no_descrip = TRUE,  # Remove pathways with no description
@@ -26,10 +27,15 @@ run_enrich <- function(
 
   # Get the background universe of genes:
   # genes that were tested for DE *and* occur in the ontology category map
-  # (Excluding the latter is equivalent to goseq's 'use_genes_without_cat=FALSE')
-  universe <- DE_res |>
-    filter(!is.na(padj), gene %in% cat_map$gene) |>
-    pull(gene)
+  # (Excluding the latter is equivalent to goseq's 'use_genes_without_cat=FALSE',
+  # and this is done by default by ClusterProfiler -- but non-tested genes *are* included)
+  if (exclude_nontested == TRUE) {
+    universe <- DE_res |>
+      filter(!is.na(padj), gene %in% cat_map$gene) |>
+      pull(gene)
+  } else {
+    universe <- NULL
+  }
   
   # Filter the DE results, if needed: only take over- or underexpressed
   if (DE_direction == "up") DE_res <- DE_res |> filter(lfc > 0)
@@ -62,10 +68,8 @@ run_enrich <- function(
   
   # Check nr of DE genes in the category map
   genes_in_map <- DE_genes[DE_genes %in% term2gene$gene]
-  
   cat(fcontrast, "// DE direction:", DE_direction,
-      "// Nr DE genes (in cat_map, in universe):", length(DE_genes),
-      "(", length(genes_in_map), ",", length(universe), ")") 
+      "// Nr DE genes (in cat_map):", length(DE_genes), "(", length(genes_in_map), ")") 
   if (length(genes_in_map) == 0) stop("ERROR: None of the DE genes are in the cat_map dataframe")
   
   # Skip the enrichment analysis if there are too few genes
