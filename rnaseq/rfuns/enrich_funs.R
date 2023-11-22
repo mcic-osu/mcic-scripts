@@ -4,35 +4,41 @@ library(ggforce)
 
 
 # CLUSTERPROFILER FUNCTIONS ----------------------------------------------------
+# run_enrich: function to run a (GO or KEGG) standard overrepresentation analysis
 run_enrich <- function(
-  contrast,                  # Comparison as specified in 'contrast' column in DE results
-  DE_direction = "either",   # 'either' (all DE genes), 'up' (lfc > 0), or 'down' (lfc < 0)
+  contrast,                  # DE comparison as specified in 'contrast' column in DE results
+  DE_direction = "either",   # DE direction: 'either' (all DE genes), 'up' (lfc > 0), or 'down' (lfc < 0)
   DE_res,                    # DE results df from 'extract_DE()', should have columns 'gene', 'contrast', 'lfc', 'isDE', 'padj'
-  cat_map,                   # Functional category to gene mapping with columns: 1:category, 2:gene ID, and optionally 3:description
+  cat_map,                   # Functional category to gene mapping with columns: 1:category, 2:gene ID, and optionally 3:description, 4: ontology
   p_enrich = 0.05,           # Adj. p-value threshold for enrichment
   q_enrich = 0.2,            # Q value threshold for enrichment
-  min_cat_size = 5,          # Min. nr. of genes in a category (clusterProfiler 'minGSSize' argument - note: clPr default is 10)
-  max_cat_size = 500,        # Min. nr. of genes in a category (clusterProfiler 'maxGSSize' argument)
-  min_DE_in_cat = 2,         # Min. nr. DE genes in ontology category for a term to be significant
+  min_DE_in_cat = 2,         # Nr. DE genes threshold for enrichment: at least this number of genes in the ontology category should be DE
+                             # (Occasionally, 'small' categories with 1 DE gene can have p-values below 0.05 -- this excludes those)
+  min_cat_size = 5,          # Min. nr. of genes in a category (= clusterProfiler 'minGSSize' argument - NOTE: clPr default is 10)
+  max_cat_size = 500,        # Min. nr. of genes in a category (= clusterProfiler 'maxGSSize' argument)
+  filter_no_descrip = TRUE,  # Remove categories with no description (at least for GO terms, these tend to be old/deprecated ones)
   exclude_nontested = TRUE,  # Exclude genes that weren't tested for DE from the 'universe' of genes
   p_DE = NULL,               # Adj. p-value threshold for DE (default: use 'isDE' column to determine DE status)
   lfc_DE = NULL,             # LFC threshold for DE (default: use 'isDE' column to determine DE status)
-  filter_no_descrip = TRUE,  # Remove pathways with no description
-  return_df = FALSE          # Convert results object to a simple dataframe (tibble)
+  return_df = FALSE          # Convert results object to a simple dataframe (tibble), instead of keeping the ClusterProfiler object
+                             # Should be FALSE if you want to use the enrichPlot functions directly 
 ) {
 
-  # Filter by contrast
+  # Filter DE results to only get those for the focal contrast
   fcontrast <- contrast
   DE_res <- DE_res |> filter(contrast == fcontrast)
-
+  
+  # Rename cat_map columns
+  colnames(cat_map)[1:2] <- c("category", "gene")
+  if(ncol(cat_map) > 2) colnames(cat_map)[3] <- "description"
+  if(ncol(cat_map) > 3) colnames(cat_map)[4] <- "ontology"
+  
   # Get the background universe of genes:
   # genes that were tested for DE *and* occur in the ontology category map
   # (Excluding the latter is equivalent to goseq's 'use_genes_without_cat=FALSE',
   # and this is done by default by ClusterProfiler -- but non-tested genes *are* included)
   if (exclude_nontested == TRUE) {
-    universe <- DE_res |>
-      filter(!is.na(padj), gene %in% cat_map$gene) |>
-      pull(gene)
+    universe <- DE_res |> filter(!is.na(padj), gene %in% cat_map$gene) |> pull(gene)
   } else {
     universe <- NULL
   }
@@ -53,12 +59,12 @@ run_enrich <- function(
   }
   
   # Prep term mappings - if there's a third column, make a term2name df as well
-  term2gene <- cat_map[, 1:2]
+  term2gene <- cat_map |> select(category, gene)
   if (ncol(cat_map) > 2) {
-    term2name <- cat_map[, c(1, 3)]
+    term2name <- cat_map |> select(category, description)
     if (filter_no_descrip == TRUE) {
       n_before <- nrow(term2name)
-      term2name <- term2name[!is.na(term2name[[2]]), ]
+      term2name <- term2name[!is.na(term2name$description), ]
       n_removed <- n_before - nrow(term2name)
       if (n_removed > 0) message("Removed ", n_removed, " terms with no description")
     }
@@ -68,9 +74,14 @@ run_enrich <- function(
   
   # Check nr of DE genes in the category map
   genes_in_map <- DE_genes[DE_genes %in% term2gene$gene]
-  cat(fcontrast, "// DE direction:", DE_direction,
+  cat("Contrast: ", fcontrast, "// DE direction:", DE_direction,
       "// Nr DE genes (in cat_map):", length(DE_genes), "(", length(genes_in_map), ")") 
-  if (length(genes_in_map) == 0) stop("ERROR: None of the DE genes are in the cat_map dataframe")
+  if (length(genes_in_map) == 0) {
+    message("\nERROR: None of the DE genes are in the cat_map dataframe")
+    cat("First gene IDs from DE results: ", head(DE_genes), "\n")
+    cat("First gene IDs from cat_map: ", head(term2gene$gene), "\n")
+    stop()
+  }
   
   # Skip the enrichment analysis if there are too few genes
   if (length(DE_genes) <= 1) {
@@ -100,7 +111,8 @@ run_enrich <- function(
       mutate(sig = ifelse(p.adjust < p_enrich &
                             qvalue < q_enrich &
                             Count >= min_DE_in_cat,
-                          TRUE, FALSE),
+                          TRUE,
+                          FALSE),
              contrast = fcontrast,
              DE_direction = DE_direction) |>
       select(contrast,
@@ -109,11 +121,19 @@ run_enrich <- function(
              numDEInCat = Count,
              GeneRatio,
              BgRatio,
-             p = pvalue,
              padj = p.adjust,
              sig,
              description = Description,
              gene_ids = geneID)
+    
+    if ("ontology" %in% colnames(cat_map)) {
+      res <- cat_map |>
+        select(category, ontology) |>
+        distinct(category, .keep_all = TRUE) |> 
+        right_join(res, by = "category") |>
+        relocate(ontology, .before = "gene_ids")
+    }
+      
     cat(" // Nr enriched:", sum(res$sig), "\n")
   }
   
@@ -124,7 +144,7 @@ run_enrich <- function(
 run_gsea <- function(
     contrast,               # Contrast ID, should be one of the values in column 'contrast' in DE_res
     DE_res,                 # Differential expression results, should have columns 'contrast', 'gene', 'lfc'
-    cat_map,                # Gene set category map (e.g., GO)
+    cat_map,                # Gene-to-category map (e.g., GO or KEGG)
     p_enrich = 0.05,        # Adj. p-value threshold for enrichment
     return_df = FALSE       # Convert results object to a simple dataframe (tibble)
   ) {
@@ -143,21 +163,26 @@ run_gsea <- function(
   }
   
   # Create a vector with lfc's and gene IDs
-  gene_vec <- gene_df$lfc
-  names(gene_vec) <- gene_df$gene
+  lfc_vec <- gene_df$lfc
+  names(lfc_vec) <- gene_df$gene
   
   # Prep term mappings - if there's a third column, make a term2name df as well
   term2gene <- cat_map[, 1:2]
   if (ncol(cat_map) > 2) term2name <- cat_map[, c(1, 3)]
   
-  # Report
+  # Report & check
   n_DE <- sum(gene_df$padj < 0.05, na.rm = TRUE)
-  genes_in_map <- gene_df$gene[gene_df$gene %in% term2gene$gene]
-  cat(fcontrast, "// Nr DE genes (nr in cat_map):", n_DE, "(", length(genes_in_map), ")")
-  if (length(genes_in_map) == 0) stop("ERROR: None of the DE genes are in the cat_map dataframe")
+  genes_in_map <- names(lfc_vec)[names(lfc_vec) %in% term2gene[[2]]]
+  cat("Contrast: ", fcontrast, "// Nr DE genes (nr in cat_map):", n_DE, "(", length(genes_in_map), ")")
+  if (length(genes_in_map) == 0) {
+    message("\nERROR: None of the DE genes are in the cat_map dataframe")
+    cat("First gene IDs from DE results: ", head(names(lfc_vec)), "\n")
+    cat("First gene IDs from cat_map: ", head(term2gene[[2]]), "\n")
+    stop()
+  }
   
   # Run the enrichment analysis
-  gsea_res <- GSEA(geneList = gene_vec,
+  gsea_res <- GSEA(geneList = lfc_vec,
                    TERM2GENE = term2gene,
                    TERM2NAME = term2name,
                    pvalueCutoff = 1,
@@ -184,24 +209,262 @@ run_gsea <- function(
 }
 
 
+# PLOTTING FUNCTIONS -----------------------------------------------------------
+# Function to plot the enrichment results in a heatmap format
+enrichplot <- function(
+  enrich_df,                    # Enrichment results
+  contrasts = NULL,             # One or more contrasts (default: all)
+  DE_directions = NULL,         # One or more DE directions (default: all)
+  x_var = "contrast",           # Column in enrich_df to plot along the x-axis
+  facet_var1 = NULL,            # Column in enrich_df to facet by
+  facet_var2 = NULL,            # Second column in enrich_df to facet by
+                                # When specifiying both facet_var1 and var2: var1=>rows, var2=>columns
+  countlab = TRUE,           # Print nrDEInCat genes in the box
+  countlab_size = 2,         # Size of nrDEInCat label in the box
+  xlabs = NULL,                 # Manually provide a vector with x-axis labels
+  xlab_size = 13,               # Size of x-axis labels
+  ylab_size = 10,               # Size of y-axis labels (= categories)
+  xlab_angle = 0,               # Angle of x-axis labels
+  facet_labeller = "label_value", # Facet labelling
+  add_cat_id = TRUE             # Add ontology category ID to its name
+) {
+  
+  # Check
+  if (is.null(facet_var1) && !is.null(facet_var2)) {
+    stop("ERROR: Only use facet_var2 when also using facet_var1")
+  }
+    
+  # Select contrasts & DE directions
+  if (is.null(contrasts)) contrasts <- unique(enrich_df$contrast)
+  if (is.null(DE_directions)) DE_directions <- unique(enrich_df$DE_direction)
+  
+  # Prep the df
+  enrich_df <- enrich_df |>
+    filter(contrast %in% contrasts,
+           DE_direction %in% DE_directions) |>
+    mutate(numDEInCat = ifelse(padj >= 0.05, NA, numDEInCat),
+           contrast = sub("padj_", "", contrast),
+           padj = ifelse(sig == FALSE, NA, padj),
+           padj_log = -log10(padj)) %>%
+    # Only take GO categories with at least one significant contrast (as pre-specified in 'sig' column)
+    filter(category %in% (filter(., sig == TRUE) |> pull(category))) %>%
+    # Only take contrasts with at least one significant category
+    filter(contrast %in% (filter(., sig == TRUE) |> pull(contrast))) |>
+    arrange(padj_log)
+  
+  # Modify the category description
+  enrich_df <- enrich_df |>
+    mutate(
+      # Capitalize the first letter
+      description = paste0(toupper(substr(description, 1, 1)),
+                           substr(description, 2, nchar(description))),
+      # If there is no description, use the category ID
+      description = ifelse(is.na(description), category, description)
+    )
+  if (add_cat_id) {
+    enrich_df <- enrich_df |>
+      mutate(description = paste0(category, " - ", description))
+  }
+  enrich_df <- enrich_df |> mutate(description = str_trunc(description, width = 40))
+  
+  # Make sure all combinations of contrast, DE_dir, and GO cat. are present
+  # A) Make a lookup table with GO terms
+  go_lookup <- enrich_df |>
+    select(any_of(c("category", "ontology", "description"))) |>
+    distinct()
+  # B) Make a df with all possible combinations of contrast, DE_dir, and GO cat.
+  enrich_rows <- enrich_df |>
+    select(contrast, DE_direction, category) |>
+    complete(contrast, DE_direction, category) |>
+    left_join(go_lookup, by = c("category"))
+  # C) Merge this with the enrich_df
+  enrich_df <- left_join(enrich_rows,
+                         enrich_df |> select(-(any_of(c("ontology", "description")))),
+                         by = c("contrast", "DE_direction", "category"),
+                         multiple = "all") |>
+    mutate(sig = ifelse(is.na(sig), FALSE, sig))
+  
+  # Legend title with subscript
+  legend_title <- expression("-Log"[10]*"P")
+  
+  # X-label position
+  if (is.null(facet_var1)) xlab_pos <- "top" else xlab_pos <- "bottom" 
+  
+  # Make the plot
+  p <- ggplot(enrich_df) +
+    aes(x = .data[[x_var]],
+        y = description,
+        fill = padj_log) +
+    geom_tile(stat = "identity", linewidth = 0.25, color = "grey80") +
+    scale_fill_viridis_c(option = "D", na.value = "grey97") +
+    scale_x_discrete(position = xlab_pos) +
+    scale_y_discrete(position = "right") +
+    labs(fill = legend_title) +
+    theme_minimal() +
+    theme(legend.position = "left",
+          panel.grid = element_blank(),
+          axis.title = element_blank(),
+          axis.text.x = element_text(size = xlab_size, angle = xlab_angle),
+          axis.text.y = element_text(size = ylab_size),
+          strip.text = element_text(face = "bold"),
+          plot.title = element_text(hjust = 0.5))
+  
+  # Add x-axis label
+  if (!is.null(xlabs)) p <- p + scale_x_discrete(labels = xlabs)
+  
+  # Add a count of the nr of DE genes in each category
+  if (countlab == TRUE) {
+    p <- p + suppressWarnings(
+      geom_label(aes(label = numDEInCat),
+                 fill = "grey95",
+                 size = countlab_size)
+      )
+  }
+  
+  # Faceting
+  if (!is.null(facet_var1)) {
+    if (!is.null(facet_var2)) {
+      # Facet_grid when there are 2 facet vars
+      p <- p + facet_grid(rows = vars(.data[[facet_var1]]),
+                          cols = vars(.data[[facet_var2]]),
+                          scales = "free_y",
+                          space = "free_y",
+                          switch = "y",
+                          labeller = facet_labeller)
+    } else {
+      if (facet_var1 != "ontology") {
+        p <- p + facet_wrap(facets = vars(.data[[facet_var1]]),
+                            scales = "fixed",
+                            nrow = 1)
+      } else {
+        # ggforce::facet_col will keep tile heights constant
+        p <- p + facet_col(facets = vars(.data[[facet_var1]]),
+                           scales = "free_y",
+                           space = "free")
+      }
+    }
+  }
+  
+  return(p)
+}
+
+
+# Cleveland dotplot
+cdotplot <- function(
+    enrich_df,               # Dataframe with enrichment results
+    contrasts = NULL,        # One or more contrasts (default: all)
+    DE_directions = NULL,    # One or more DE directions (default: all)
+    facet_var1 = NULL,       # Column in enrich_df to facet by
+    facet_var2 = NULL,       # Second column in enrich_df to facet by (e.g. 'ontology' for GO)
+    # (will use facet_grid())
+    xlab_size = 11,          # Category label size
+    log_pval = TRUE,         # Whether to -log10-convert p-values
+    add_cat_id = TRUE        # Add ontology category ID to its name
+) {
+  
+  # Select contrasts & DE directions
+  if (is.null(contrasts)) contrasts <- unique(enrich_df$contrast)
+  if (is.null(DE_directions)) DE_directions <- unique(enrich_df$DE_direction)
+  
+  # Prep the df
+  enrich_df <- enrich_df |>
+    filter(sig == TRUE,
+           contrast %in% contrasts,
+           DE_direction %in% DE_directions)
+  
+  # Log-transform the p-value
+  if (log_pval) {
+    ylab <- expression("-Log"[10]*" P")
+    enrich_df <- enrich_df |> mutate(padj = -log10(padj))
+  } else {
+    ylab <- "Adjusted p-value"
+  }
+  
+  # Modify the category description
+  enrich_df <- enrich_df |>
+    mutate(
+      # Capitalize the first letter
+      description = paste0(toupper(substr(description, 1, 1)),
+                           substr(description, 2, nchar(description))),
+      # If there is no description, use the category ID
+      description = ifelse(is.na(description), category, description)
+    )
+  if (add_cat_id) {
+    enrich_df <- enrich_df |>
+      mutate(description = paste0(category, " - ", description))
+  }
+  enrich_df <- enrich_df |> mutate(description = str_trunc(description, width = 40))
+  
+  # Create the base plot
+  p <- ggpubr::ggdotchart(
+    enrich_df,
+    x = "description",
+    y = "padj",
+    color = "padj",
+    sorting = "descending",       # Sort value in descending order
+    add = "segments",             # Add segments from y = 0 to dots
+    rotate = TRUE,                # Rotate vertically
+    dot.size = 5,                 # Large dot size
+    label = "numDEInCat",         # Add nr DE genes as dot labels
+    font.label = list(color = "white", size = 9, vjust = 0.5),
+    ggtheme = theme_bw()
+  )
+  
+  # Formatting
+  p <- p +
+    labs(y = ylab,
+         x = NULL) +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+    scale_color_viridis_c(option = "D", na.value = "grey95") +
+    theme(plot.margin = margin(0.5, 0.5, 0.5, 0.5, unit = "cm"),
+          strip.text.y = element_text(angle = 270, face = "bold"),
+          strip.placement = "outside",
+          axis.title.x = element_text(
+            size = 12,
+            margin = margin(t = 0.5, b = 0.5, unit = "cm")
+          ),
+          axis.title.y = element_blank(),
+          axis.text.x = element_text(size = 11),
+          axis.text.y = element_text(size = xlab_size),
+          legend.position = "none",
+          panel.grid.major.y = element_blank(),
+          panel.grid.minor.x = element_blank())
+  
+  # Faceting
+  if (!is.null(facet_var1)) {
+    if (!is.null(facet_var2)) {
+      p <- p + facet_grid(rows = vars(.data[[facet_var1]]),
+                          cols = vars(.data[[facet_var2]]),
+                          space = "free_y", scales = "free_y")
+    } else {
+      p <- p + facet_wrap(facets = vars(.data[[facet_var1]]),
+                          scales = "fixed",
+                          nrow = 1)
+    }
+  }
+  
+  return(p)
+}
+
+
 # GOSEQ PACKAGE FUNCTIONS ------------------------------------------------------
 # This function will run the GO analysis 3 times for each contrast:
 # for either DE direction, for LFC>0 DEGs only, and LFC<0 DEGs only.
 # Then it will save the results in a TSV and print a summary.
-run_GO_all <- function(contrasts, DE_res, GO_map, gene_lens, ...) {
+rgoseq_all <- function(contrasts, DE_res, GO_map, gene_lens, ...) {
 
   # Either DE direction
-  GO_ei <- map_dfr(.x = contrasts, .f = run_GO,
+  GO_ei <- map_dfr(.x = contrasts, .f = rgoseq,
                    DE_res = DE_res, gene_lens = gene_len_df, GO_map = GO_map,
                    DE_direction = "either", ...)
 
   # DE up (LFC>0)
-  GO_up <- map_dfr(.x = contrasts, .f = run_GO,
+  GO_up <- map_dfr(.x = contrasts, .f = rgoseq,
                    DE_res = DE_res, gene_lens = gene_len_df, GO_map = GO_map,
                    DE_direction = "up", ...)
 
   # DE down (LFC<0)
-  GO_dn <- map_dfr(.x = contrasts, .f = run_GO,
+  GO_dn <- map_dfr(.x = contrasts, .f = rgoseq,
                    DE_res = DE_res, gene_lens = gene_len_df, GO_map = GO_map,
                    DE_direction = "down", ...)
 
@@ -220,7 +483,7 @@ run_GO_all <- function(contrasts, DE_res, GO_map, gene_lens, ...) {
 }
 
 # GO analysis wrapper function
-run_GO <- function(
+rgoseq <- function(
   contrast,                          # A DE contrast as specified in the 'contrast' column in the 'DE_res' df
   DE_res,                            # Df with DE results from DESeq2
   GO_map,                            # Df with one GOterm-to-gene relation per row, w/ columns 'gene' and 'go_term'
@@ -252,7 +515,7 @@ run_GO <- function(
       ...
   )
 
-  GO_df <- run_GO_internal(
+  GO_df <- rgoseq_internal(
     contrast,
     DE_vec,
     GO_map,
@@ -270,8 +533,8 @@ run_GO <- function(
 }
 
 # Function to run a GO analysis with goseq
-# (Helper function, use run_GO to run the analysis)
-run_GO_internal <- function(
+# (Helper function, use rgoseq to run the analysis)
+rgoseq_internal <- function(
   contrast, DE_vec, GO_map, gene_lens,
   DE_direction = "either",
   min_in_cat = 2,
@@ -284,7 +547,7 @@ run_GO_internal <- function(
 
   if (verbose == TRUE) {
     message()
-    message("run_GO_internal function...")
+    message("rgoseq_internal function...")
     message("GO analysis settings:")
     message("   - min_in_cat: ", min_in_cat, "  // max_in_cat: ", max_in_cat)
     message("   - min_DE_in_cat: ", min_DE_in_cat)
@@ -370,7 +633,7 @@ run_GO_internal <- function(
 }
 
 # Create named vector of DE genes (0s and 1s to indicate significance) for goseq analysis
-# (Helper function, use run_GO to run the analysis)
+# (Helper function, use rgoseq to run the analysis)
 get_DE_vec <- function(
   contrast,                # Focal comparison (contrast)
   DE_res,                  # DE results df from DESeq2
@@ -443,174 +706,6 @@ get_DE_vec <- function(
   
   if (verbose == TRUE) print(table(DE_vec))
   return(DE_vec)
-}
-
-
-# PLOTTING FUNCTIONS -----------------------------------------------------------
-# Function to plot the GO results
-enrich_plot <- function(
-  enrich_res,                   # Enrichment results
-  contrasts = NULL,             # One or more contrasts (default: all)
-  DE_directions = c("up", "down", "either"),  # One or more DE directions
-  plot_ontologies = TRUE,       # Show BP/CC/MF ontologies separately (should be FALSE for KEGG results)
-  x_var = "contrast",           # What to plot along the x-axis (refer to column in `enrich_res`)
-  x_var_levels = NULL,          # Factor levels for x_var (for ordering)
-  facet_var = NULL,             # What to facet by (default: no faceting)
-  label_count = TRUE,           # Print nrDEInCat genes in the box
-  label_count_size = 2,         # Size of nrDEInCat label in the box
-  padj_tres = 1,                # Further subset categories: only those with padj below this value
-  n_tres = 2,                   # Further subset categories: only those with nrDEInCat at or above this value
-  xlabs = NULL,
-  ylab_size = 10,
-  xlab_size = 14,
-  xlab_angle = 0,
-  plot_title = NULL,
-  facet_labeller = "label_value",
-  just_df = FALSE               # If true, don't make plot, just return modified df
-  ) {
-
-  if (is.null(contrasts)) contrasts <- unique(enrich_res$contrast)
-  
-  # Prep the df
-  enrich_res <- enrich_res |>
-    filter(contrast %in% contrasts,
-           DE_direction %in% DE_directions) |>
-    mutate(numDEInCat = ifelse(padj >= 0.05, NA, numDEInCat),
-           contrast = sub("padj_", "", contrast),
-           padj = ifelse(sig == FALSE, NA, padj),
-           padj_log = -log10(padj)) %>%
-    # Only take GO categories with at least one significant contrast
-    filter(category %in% (filter(., sig == TRUE) |> pull(category))) %>%
-    # Only take GO categories with at least one significant contrast
-    filter(category %in% (filter(., padj < padj_tres & numDEInCat >= n_tres) |> pull(category))) %>%
-    # Only take contrasts with at least one significant category
-    filter(contrast %in% (filter(., sig == TRUE) |> pull(contrast))) |>
-    mutate(description = paste0(category, " - ", description),
-           description = str_trunc(description, width = 45),
-           description = ifelse(is.na(description), category, description)) |>
-    arrange(padj_log)
-
-  # Make sure all combinations of contrast, DE_dir, and GO cat. are present
-  # A) Make a lookup table with GO terms
-  go_lookup <- enrich_res |>
-    select(any_of(c("category", "ontology", "description"))) |>
-    distinct()
-  # B) Make a df with all possible combinations of contrast, DE_dir, and GO cat.
-  enrich_rows <- enrich_res |>
-    select(contrast, DE_direction, category) |>
-    complete(contrast, DE_direction, category) |>
-    left_join(go_lookup, by = c("category"))
-  # C) Merge this with the enrich_res
-  enrich_res <- left_join(enrich_rows,
-                          enrich_res |> select(-(any_of(c("ontology", "description")))),
-                          by = c("contrast", "DE_direction", "category"),
-                          multiple = "all") |>
-    mutate(sig = ifelse(is.na(sig), FALSE, sig))
-
-  # If requested, don't make a plot and return the df
-  if (just_df == TRUE) return(enrich_res)
-
-  # Make sure the x-axis levels are ordered correctly
-  if (!is.null(x_var_levels))
-    enrich_res[[x_var]] <- factor(enrich_res[[x_var]], x_var_levels)
-
-  # Legend title with subscript
-  legend_title <- expression("-Log"[10]*" P")
-
-  # Make the plot
-  p <- ggplot(enrich_res) +
-    aes(x = .data[[x_var]],
-        y = str_trunc(description, width = 40),
-        fill = padj_log) +
-    geom_tile(stat = "identity", linewidth = 0.25, color = "grey80") +
-    scale_fill_viridis_c(option = "D", na.value = "grey95") +
-    scale_y_discrete(position = "right") +
-    labs(fill = legend_title,
-         title = plot_title) +
-    theme_minimal() +
-    theme(legend.position = "left",
-          panel.grid = element_blank(),
-          axis.title = element_blank(),
-          axis.text.x = element_text(size = xlab_size, angle = xlab_angle),
-          axis.text.y = element_text(size = ylab_size),
-          strip.text = element_text(face = "bold"),
-          plot.title = element_text(hjust = 0.5))
-
-  # Add a count of the nr of DE genes in each category
-  if (label_count == TRUE)
-    p <- p + geom_label(aes(label = numDEInCat),
-                        fill = "grey95", size = label_count_size)
-
-  # Faceting
-  if (plot_ontologies == TRUE) {
-    if (is.null(facet_var)) {
-      # ggforce::facet_col will keep tile heights constant
-      p <- p + facet_col(vars(ontology),
-                         scales = "free_y", space = "free")
-    } else {
-      p <- p + facet_grid(rows = vars(ontology),
-                          cols = vars(!!sym(facet_var)),
-                          scales = "free_y",
-                          space = "free_y",
-                          switch = "y",
-                          labeller = facet_labeller)
-    }
-  }
-
-  if (plot_ontologies == FALSE) {
-    if (!is.null(facet_var)) {
-      p <- p + facet_grid(cols = vars(!!sym(facet_var)),
-                          scales = "free_y",
-                          space = "free_y",
-                          switch = "y")
-    }
-  }
-
-  # Add x-axis label
-  if (!is.null(xlabs)) p <- p + scale_x_discrete(labels = xlabs)
-
-  return(p)
-}
-
-
-# GO dotplot
-GO_dotplot <- function(df, type = "GO") {
-
-  if (type == "GO") group_by <- "ontology" else group_by <- NULL
-
-  p <- ggdotchart(df,
-                  x = "description", y = "padj_log",
-                  color = "padj_log",
-                  sorting = "descending",                       # Sort value in descending order
-                  add = "segments",                             # Add segments from y = 0 to dots
-                  rotate = TRUE,                                # Rotate vertically
-                  #group = group_by,                             # Order by groups
-                  dot.size = 5,                                 # Large dot size
-                  label = "numDEInCat",                         # Add nr DE genes as dot labels
-                  font.label = list(color = "white", size = 9, vjust = 0.5),
-                  ggtheme = theme_bw()) +                       # ggplot2 theme
-    labs(y = "-log10(adj. p-value)", x = NULL) +
-    scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-    scale_color_viridis_c(option = "D", na.value = "grey95") +
-    theme(plot.margin = margin(0.5, 0.5, 0.5, 0.5, unit = "cm"),
-          plot.title = element_text(size = 15, face = "bold"),
-          strip.text.y = element_text(angle = 270, face = "bold"),
-          strip.placement = "outside",
-          axis.title.x = element_text(margin = margin(t = 0.5, b = 0.5, unit = "cm")),
-          axis.title.y = element_blank(),
-          axis.text.x = element_text(size = 9),
-          axis.text.y = element_text(size = 8),
-          legend.position = "none",
-          panel.grid.major.y = element_blank(),
-          panel.grid.minor.x = element_blank())
-
-  if (type == "GO") {
-    p <- p + facet_grid(ontology~contrast, space = "free", scales = "free")
-  } else if (type == "KEGG") {
-    p <- p + facet_wrap(vars(contrast), scales = "free_x", nrow = 1)
-  }
-
-  print(p)
 }
 
 
