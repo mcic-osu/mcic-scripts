@@ -86,7 +86,8 @@ message("# Showing the input files: (", length(infiles), " total)")
 print(infiles)
 
 # Import transcript counts --
-# create gene-level count estimates normalized by library size and transcript length
+# create gene-level count estimates from TPM values by scaling to library size,
+# and accounting for differences in average transcript length among samples
 # See https://bioconductor.org/packages/devel/bioc/vignettes/tximport/inst/doc/tximport.html
 message("\n# Now importing the count files...")
 txi <- tximport(infiles,
