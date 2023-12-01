@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=PAS0471
-#SBATCH --time=12:00:00
+#SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
 #SBATCH --mail-type=END,FAIL
@@ -13,7 +13,7 @@
 # Constants - generic
 DESCRIPTION="Run the Nextflow-core RNAseq pipeline from https://nf-co.re/rnaseq
   with aligner option STAR => Salmon"
-SCRIPT_VERSION="2023-10-21"
+SCRIPT_VERSION="2023-12-01"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="nextflow run"
@@ -21,27 +21,25 @@ export TOOL_NAME="nextflow"
 VERSION_COMMAND="nextflow -v"
 
 # Constants - parameters
-WORKFLOW_NAME=rnaseq                            # The name of the nf-core workflow
-OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config
-OSC_CONFIG=mcic-scripts/nextflow/osc.config     # Will be downloaded if not present here
-ALIGNER_OPT="--aligner star_salmon "
-SAVE_REF_OPT="--save_reference"
-SAVE_MERGED_FQ_OPT="--save_merged_fastq"
+WORKFLOW_NAME=rnaseq                                   # The name of the nf-core workflow
+OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config # Nextflow <=> OSC config file
+ALIGNER_OPT="--aligner star_salmon "                   # Always use STAR => Salmon
 
 # Defaults
-workflow_version=3.12.0                         # The version of the nf-core workflow
-conda_path=/fs/project/PAS0471/jelmer/conda/nextflow
-container_dir=/fs/project/PAS0471/containers
-version_only=false                              # When true, just print tool & script version info and exit 
-workflow_dir_base=workflows/nfcore-rnaseq
-workflow_dir_full="$workflow_dir_base"/${workflow_version//./_}
-work_dir=/fs/scratch/PAS0471/$USER/nfcore-rnaseq
-profile="singularity"
-resume=true && resume_arg="-resume"
-biotype_qc=false
-salmon_gcbias=true
-salmon_seqbias=true
-rm_rrna=true
+workflow_version=3.13.2                                # The version of the nf-core workflow
+conda_path=/fs/project/PAS0471/jelmer/conda/nextflow   # Conda environment with Nextflow & nf-core tools
+osc_account=PAS0471                                    # If the scripts is submitted with another project, this will be updated (line below)
+[[ -n $SLURM_JOB_ACCOUNT ]] && osc_account=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
+container_dir=/fs/scratch/"$osc_account"/containers    # The workflow will download containers to this dir
+work_dir=/fs/scratch/"$osc_account"/$USER/nfc-rnaseq   # 'work dir' for initial outputs (selected, final outputs go to the outdir)
+workflow_dir_base=workflows/nfc-rnaseq                 # Dir to download the workflow code etc. to 
+profile="singularity"                                  # 'singularity' to have the workflow use containers (alternatively, 'conda')
+resume=true && resume_arg="-resume"                    # Resume the workflow from wherever it left off
+biotype_qc=false                                       # Activate --skip_biotype_qc option of the workflow
+salmon_gcbias=true                                     # Pass the --gcBias option to Salmon
+salmon_seqbias=true                                    # Pass the --seqBias option to Salmon
+rm_rrna=true                                           # Run SortMeRNA to remove rRNA
+version_only=false                                     # When true, just print tool & script version info and exit 
 
 # ==============================================================================
 #                                FUNCTIONS
@@ -56,7 +54,7 @@ script_help() {
     echo "USAGE / EXAMPLES:"
     echo "  sbatch $0 -i samplesheet.csv --ref_fasta data/ref/my.fa --ref_annot data/ref/my.gtf -o results/nfc_rnaseq"
     echo "  sbatch $0 -i samplesheet.csv --ref_fasta data/ref/my.fa --ref_annot data/ref/my.gtf -o results/nfc_rnaseq \\"
-    echo "    --opts \"--skip_bbsplit false --bbsplit_fasta_list contaminant_refs.csv\""
+    echo "    --more_opts \"--skip_bbsplit false --bbsplit_fasta_list contaminant_refs.csv\""
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--samplesheet    <file>  Sample sheet containing paths to FASTQ files and sample info"
@@ -72,7 +70,12 @@ script_help() {
     echo "  --no_gcbias                 Don't use the Salmon '--gcBias' option  [default: use this option]"
     echo "  --no_seqbias                Don't use the Salmon '--seqBias' option [default: use this option]"
     echo "  --no_rrna_removal           Don't run SortMeRNA to remove rRNA      [default: remove rRNA]"
-    echo "  --more_opts         <str>   Additional workflow parameters, see example above"
+    echo "  --more_opts         <str>   Additional workflow parameters, for usage see example above"
+    echo "                                 Available workflow parameters are listed at https://nf-co.re/rnaseq/parameters"
+    echo "                                 Some useful ones include:"
+    echo "                                   - '--save_reference' to save the reference genome index file"
+    echo "                                   - '--save_merged_fastq' to save merged FASTQ files (in case of technical duplicates)"
+    echo "                                   - '--save_non_ribo_reads' to save the FASTQ files after rRNA filtering (= final FASTQ before mapping)"
     echo
     echo "NEXTFLOW-RELATED OPTIONS:"
     echo "  --restart                   Restart workflow from the beginning     [default: resume workflow if possible]"
@@ -93,12 +96,12 @@ script_help() {
     echo "  -h/--help                   Print this help message and exit"
     echo "  -v                          Print the version of this script and exit"
     echo
-    echo "HARDCODED WORKFLOW OPTIONS:"
-    echo "  --aligner star_salmon"
-    echo "  --remove_ribo_rna"
-    echo "  --save_reference"
-    echo "  --save_non_ribo_reads"
-    echo "  --save_merged_fastq"
+    echo "HARDCODED WORKFLOW OPTIONS & DEFAULTS THAT DIFFER FROM THE WORKFLOW DEFAULTS:"
+    echo "  - The option '--aligner star_salmon' is hardcoded"
+    echo "  - Defaults of this script that differ from the workflow's defaults:"
+    echo "      - Using the Salmon '--gcBias' and '--seqBias' options (see '--no_gcbias' and '--no_seqbias' script options above)"
+    echo "      - Using the workflow's '--skip_biotype_qc' option, since FeatureCounts biotype QC often results in errors due to GTF file differences"
+    echo "          (see the '--biotype_qc' option of this script above)"
     echo
     echo "SOME KEY OUTPUT FILES:"
     echo "  - HTML file with summary of results: <outdir>/multiqc/star_salmon/multiqc_report.html"
@@ -216,7 +219,7 @@ nextflow_setup
 [[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
 
 # Build the config argument
-[[ ! -f "$OSC_CONFIG" ]] && OSC_CONFIG="$outdir"/$(basename "$OSC_CONFIG_URL")
+OSC_CONFIG="$outdir"/$(basename "$OSC_CONFIG_URL")
 config_arg="-c $OSC_CONFIG"
 [[ -n "$config_file" ]] && config_arg="$config_arg -c ${config_file/,/ -c }"
 
@@ -240,6 +243,7 @@ else
 fi
 
 # Other output dirs
+workflow_dir_full="$workflow_dir_base"/${workflow_version//./_}
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 trace_dir="$outdir"/pipeline_info
 
@@ -288,6 +292,11 @@ if [[ ! -f "$OSC_CONFIG" ]]; then
     wget -q -O "$OSC_CONFIG" "$OSC_CONFIG_URL"
 fi
 
+# Modify the config file so it has the correct OSC project/account
+if [[ "$osc_account" != "PAS0471" ]]; then
+    sed -i "s/--account=PAS0471/--account=$osc_account/" "$OSC_CONFIG"
+fi
+
 # Download workflow, if needed
 if [[ ! -d "$workflow_dir_full" ]]; then
     mkdir -p "$(dirname "$workflow_dir_base")"
@@ -313,8 +322,6 @@ runstats $TOOL_BINARY \
     $ALIGNER_OPT \
     "${salmon_opts[@]}" \
     $biotype_opt \
-    $SAVE_REF_OPT \
-    $SAVE_MERGED_FQ_OPT \
     -work-dir "$work_dir" \
     -with-report "$trace_dir"/report.html \
     -with-trace "$trace_dir"/trace.txt \
