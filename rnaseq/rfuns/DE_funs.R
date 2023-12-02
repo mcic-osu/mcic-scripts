@@ -582,66 +582,105 @@ cheatmap <- function(
 }
 
 # Heatmap plot showing abundances for multiple/many genes
-#TODO Allow to add gene annotation
 pheat <- function(
-    genes,                      # Vector of genes to include
+    genes,                      # Vector with IDs of genes to include
     count_mat,                  # Count matrix (with gene names as rownames)
-    meta_df,                    # Metadata, should have sample IDs as rownames!
-    samples = NULL,             # Vector of samples to include
-    groups = NULL,              # Column names from metadata to show as groups at top of heatmap
+    meta_df = NULL,             # Metadata (with sample IDs as rownames) (required if e.g. using 'groups' or 'mean_by')
+    annot_df = NULL,            # Dataframe with gene annotation
+    samples = NULL,             # Vector with IDs of samples to include
+    groups = NULL,              # Variable(s) (i.e., column name(s)) from 'meta_df' to show as groups in color bar(s) at top of heatmap
+    mean_by = NULL,             # Variable (i.e., column name) from 'meta_df' to compute means by
+                                #   This will show the mean_by group names at the bottom;
+                                #   to also get a color bar up top, specify the same variable
     show_rownames = TRUE,       # Whether to show row (gene) names
     show_colnames = FALSE,      # Whether to show column (sample) names
-    cluster_rows = TRUE,        # Whether to do hierarchical clustering on the rows (genes)
-    cluster_cols = FALSE,       # Whether to do hierarchical clustering on the rows (samples)
-    logtrans = FALSE,           # Whether to log-transform the counts
-    scale = "none",
-    annotation_colors = NULL,
-    id_labsize = 10,
-    ...                         # Arguments to be passed to the pheatmap function
+    cluster_rows = TRUE,        # Whether to perform and show hierarchical clustering for the rows (genes)
+    cluster_cols = FALSE,       # Whether to perform and show hierarchical clustering for the columns (samples)
+    scale = "row",              # Use row-wise (=gene-wise) Z-score scaling, so absolute expression levels don't matter,
+                                #   which helps visualize among-sample differences for genes with v different expression levels
+                                #   Alternatively, use 'none' or 'column'
+    fontsize_row = 10,          # Font size of gene ID label
+    fontsize_col = NULL,        # Font size of the sample/group label
+    nchar_gene = 20,            # Truncate the gene name/ID at this nr of characters
+    gene_id = TRUE,             # When annotation df is provided, retain gene ID in addition to name/descrip
+    ...                         # Other arguments to be passed to the pheatmap function
     ) {
 
+  # Rename count matrix
+  fmat <- count_mat
+  
+  # Select samples
+  if (!is.null(samples)) {
+    fmat <- fmat[, match(samples, colnames(fmat))]
+    if (!is.null(meta_df)) meta_df <- meta_df[row.names(meta_df) %in% samples, ]
+  }
+  
+  # Compute per-group means
+  if (!is.null(mean_by)) {
+    fmat <- as.data.frame(fmat) |>
+      rownames_to_column("gene") |> 
+      pivot_longer(cols = -gene, names_to = "sample", values_to = "count") |>
+      left_join(meta_df |> rownames_to_column("sample"), by = "sample") |>
+      summarize(count = mean(count), .by = all_of(c("gene", mean_by))) |>
+      pivot_wider(names_from = all_of(mean_by), values_from = count) |>
+      column_to_rownames("gene") |>
+      as.matrix()
+    
+    # Only when the 'groups' arg is used, show colors for them
+    meta_df <- meta_df |> distinct(.data[[mean_by]], .keep_all = TRUE)
+    rownames(meta_df) <- meta_df[[mean_by]]
+    
+    # Always show column names when using per-group means, etc
+    show_colnames <- TRUE
+    if (is.null(fontsize_col)) fontsize_col <- 12
+    angle_col <- 0
+    
+  } else {
+    # When not using per-group mean
+    if (is.null(fontsize_col)) fontsize_col <- 10
+    angle_col <- 270
+  }
+  
   # Arrange metadata according to the columns with included factors
   if (!is.null(groups)) {
-    meta_df <- meta_df |>
-      dplyr::select(all_of(groups)) |>
-      arrange(across(all_of(groups)))
+    meta_df <- meta_df |> select(all_of(groups)) |> arrange(across(all_of(groups)))
   }
-
+  
   # Select and arrange count matrix
-  fcount_mat <- count_mat[match(genes, rownames(count_mat)),
-                          match(rownames(meta_df), colnames(count_mat))]
-  if (!is.null(samples)) fcount_mat <- fcount_mat[, match(samples, colnames(fcount_mat))]
-  fcount_mat <- as.matrix(fcount_mat)
+  fmat <- as.matrix(fmat[match(genes, rownames(fmat)), ])
+  if (!is.null(meta_df)) fmat <- fmat[, match(rownames(meta_df), colnames(fmat))]
   
-  # Don't include metadata if no groups are provided
+  # Don't include metadata if 'groups' is not used
   if (is.null(groups)) meta_df <- NA
+  if (is.null(meta_df)) meta_df <- NA
   
-  # Log-transform
-  if (logtrans == TRUE) {
-    fcount_mat <- log10(fcount_mat)
-    fcount_mat[fcount_mat == -Inf] <- 0
+  # Replace the gene IDs if an annotation dataframe is provided
+  if (!is.null(annot_df)) {
+    gene_name <- annot_df[[1]][match(rownames(fmat), rownames(annot_df))]
+    if (gene_id == TRUE) rownames(fmat) <- paste0(rownames(fmat), ": ", gene_name)
+    if (gene_id == FALSE) rownames(fmat) <- gene_name
   }
   
-  # If few features are included, reduce the cell (row) height
+  # If many features are included, reduce the cell (row) height & font size
   cellheight <- ifelse(length(genes) > 20, NA, 20)
-  id_labsize <- ifelse(length(genes) > 40, 6, id_labsize)
+  fontsize_row <- ifelse(length(genes) > 40, 6, fontsize_row)
 
-  # Truncate long names
-  row.names(fcount_mat) <- str_trunc(row.names(fcount_mat),
-                                     width = 25, ellipsis = "")
+  # Truncate long gene names
+  rownames(fmat) <- str_trunc(row.names(fmat), width = nchar_gene, ellipsis = "")
 
   # Create the plot
   p <- pheatmap::pheatmap(
-    fcount_mat,
+    fmat,
     annotation_col = meta_df,
     cluster_rows = cluster_rows,
     cluster_cols = cluster_cols,
     show_rownames = show_rownames,
     show_colnames = show_colnames,
-    annotation_colors = annotation_colors,
     cellheight = cellheight,
-    fontsize = 9,
-    fontsize_row = id_labsize,
+    fontsize = 10,
+    fontsize_row = fontsize_row,
+    fontsize_col = fontsize_col,
+    angle_col = angle_col,
     cex = 1,
     scale = scale,
     ...
