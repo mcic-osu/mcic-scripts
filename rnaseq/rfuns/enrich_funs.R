@@ -59,9 +59,9 @@ run_enrich <- function(
   }
   
   # Prep term mappings - if there's a third column, make a term2name df as well
-  term2gene <- cat_map |> select(category, gene)
+  term2gene <- cat_map |> dplyr::select(category, gene)
   if (ncol(cat_map) > 2) {
-    term2name <- cat_map |> select(category, description)
+    term2name <- cat_map |> dplyr::select(category, description)
     if (filter_no_descrip == TRUE) {
       n_before <- nrow(term2name)
       term2name <- term2name[!is.na(term2name$description), ]
@@ -115,7 +115,7 @@ run_enrich <- function(
                           FALSE),
              contrast = fcontrast,
              DE_direction = DE_direction) |>
-      select(contrast,
+      dplyr::select(contrast,
              DE_direction,
              category = ID,
              numDEInCat = Count,
@@ -128,7 +128,7 @@ run_enrich <- function(
     
     if ("ontology" %in% colnames(cat_map)) {
       res <- cat_map |>
-        select(category, ontology) |>
+        dplyr::select(category, ontology) |>
         distinct(category, .keep_all = TRUE) |> 
         right_join(res, by = "category") |>
         relocate(ontology, .before = "gene_ids")
@@ -270,16 +270,16 @@ enrichplot <- function(
   # Make sure all combinations of contrast, DE_dir, and GO cat. are present
   # A) Make a lookup table with GO terms
   go_lookup <- enrich_df |>
-    select(any_of(c("category", "ontology", "description"))) |>
+    dplyr::select(any_of(c("category", "ontology", "description"))) |>
     distinct()
   # B) Make a df with all possible combinations of contrast, DE_dir, and GO cat.
   enrich_rows <- enrich_df |>
-    select(contrast, DE_direction, category) |>
+    dplyr::select(contrast, DE_direction, category) |>
     complete(contrast, DE_direction, category) |>
     left_join(go_lookup, by = c("category"))
   # C) Merge this with the enrich_df
   enrich_df <- left_join(enrich_rows,
-                         enrich_df |> select(-(any_of(c("ontology", "description")))),
+                         enrich_df |> dplyr::select(-(any_of(c("ontology", "description")))),
                          by = c("contrast", "DE_direction", "category"),
                          multiple = "all") |>
     mutate(sig = ifelse(is.na(sig), FALSE, sig))
@@ -446,6 +446,47 @@ cdotplot <- function(
   return(p)
 }
 
+# Heatmap for DE genes in significant GO terms 
+GO_pheat <- function(GO_cat,
+                     GO_res,
+                     count_mat,
+                     meta_df,
+                     annot_df,
+                     contrast = NULL,
+                     DE_direction = "either") {
+  
+  # Rename before filtering
+  fcontrast <- contrast
+  DE_dir <- DE_direction
+  
+  # Filter the GO results
+  fgo <- GO_res |> filter(category == GO_cat)
+  if (!is.null(DE_direction)) fgo <- fgo |> filter(DE_direction == DE_dir)
+  if (!is.null(fcontrast)) fgo <- fgo |> filter(contrast == fcontrast)
+  
+  # Get a vector with gene IDs
+  fgenes <- fgo |> separate_longer_delim(cols = gene_ids, delim = "/") |> pull(gene_ids)
+  
+  # Report
+  message("GO category: ", GO_cat, " (", length(fgenes), " DE genes)")
+  
+  # Prepare the title
+  descrip <- fgo$description[1]
+  p <- formatC(fgo$padj, format = "e", digits = 1)
+  title <- paste0(GO_cat, " (", descrip, ")\n(DEGs in ", fcontrast, ", enrich-p=", p, ")")
+  
+  # Make the heatmap
+  p <- pheat(genes = fgenes,
+             count_mat = count_mat,
+             meta_df = meta,
+             groups = c("dai", "isolate"),
+             mean_by = "treatment",
+             annot_df = annot_heatmap,
+             nchar_gene = 60,
+             main = title)
+  print(p)
+}
+
 
 # GOSEQ PACKAGE FUNCTIONS ------------------------------------------------------
 # This function will run the GO analysis 3 times for each contrast:
@@ -610,7 +651,7 @@ rgoseq_internal <- function(
              sig = ifelse(padj < 0.05 & numDEInCat >= min_DE_in_cat, TRUE, FALSE),
              contrast = contrast,
              DE_direction = DE_direction) |>
-      select(contrast, DE_direction,
+      dplyr::select(contrast, DE_direction,
              sig, p = over_represented_pvalue, padj,
              numDEInCat, numInCat,
              category, ontology, description = term)
