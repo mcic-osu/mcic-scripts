@@ -189,8 +189,8 @@ if [ "$single_end" != "true" ]; then
     R2_in=${R1_in/$R1_suffix/$R2_suffix}
     input_arg="--paired $R1_in $R2_in"
     
-    [[ ! -f "$R2_in" ]] && Die "Input R2 FASTQ file $R2_in does not exist"
-    [[ "$R1_in" == "$R2_in" ]] && Die "Input R1 and R2 FASTQ files are the same file"
+    [[ ! -f "$R2_in" ]] && die "Input R2 FASTQ file $R2_in does not exist"
+    [[ "$R1_in" == "$R2_in" ]] && die "Input R1 and R2 FASTQ files are the same file, $R1_in"
 
     sample_id=$(basename "$R1_in" | sed -E "s/${R1_suffix}_?[[:digit:]]*${extension}//")
     R1_out="$outdir_trim"/"$sample_id"_R1.fastq.gz
