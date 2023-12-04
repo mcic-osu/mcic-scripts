@@ -1,126 +1,196 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
-#SBATCH --output=slurm-extract_kraken_reads-%j.out
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
+#SBATCH --mail-type=FAIL
+#SBATCH --job-name=extract_kraken
+#SBATCH --output=slurm-extract_kraken-%j.out
 
-# ARGS AND PARAMETERS ----------------------------------------------------------
-## Help function
-Help() {
+# ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
+# Constants - generic
+DESCRIPTION="Use KrakenTools to extract reads assigned to a given taxon ID by Kraken2
+  Currently only takes paired-end FASTQ files and in- and output"
+SCRIPT_VERSION="2023-12-03" 
+SCRIPT_AUTHOR="Jelmer Poelstra"
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+TOOL_BINARY=extract_kraken_reads.py
+TOOL_NAME=KrakenTools
+TOOL_DOCS=https://github.com/jenniferlu717/KrakenTools
+VERSION_COMMAND="$TOOL_BINARY --version"
+
+# Defaults - generics
+env=conda                           # Use a 'conda' env or a Singularity 'container'
+conda_path=/fs/project/PAS0471/jelmer/conda/kraken2
+container_path=
+container_url=
+dl_container=false
+container_dir="$HOME/containers"
+strict_bash=true
+version_only=false                 # When true, just print tool & script version info and exit
+
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
+script_help() {
+    echo -e "\n                          $0"
+    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
+    echo "        =============================================================="
+    echo "DESCRIPTION:"
+    echo "  $DESCRIPTION"
     echo
-    echo "$0: Extract reads assigned to a given taxon ID by Kraken2"
+    echo "USAGE / EXAMPLE COMMANDS:"
+    echo "  - Basic usage:"
+    echo "      $0 -i data/fastq/A1_R1.fastq.gz --kraken_file results/kraken/A1_main.txt --tax_ids '699189 1111709' -o results/kraken_reads"
     echo
-    echo "Syntax: $0 -i <input-R1-FASTQ> -I <kraken-output-file> -t <taxon-ID(s) -o <output dir> ..."
+    echo "REQUIRED OPTIONS:"
+    echo "  -i/--R1             <file>  Input R1 FASTQ file (name of R2 will be inferred)"
+    echo "  --kraken_file       <file>  Kraken 'main' output file with per-read taxon. assignments"
+    echo "                                The FASTQ and Kraken output file should be for the same sample"
+    echo "  --tax_ids           <str>   NCBI Taxon IDs - for multiple, separate by spaces and quote, e.g. '699189 1111709'"
+    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
-    echo "Required options:"
-    echo "  -i STRING     Input R1 (forward reads) sequence file (name of R2 will be inferred)"
-    echo "  -I STRING     Kraken 'main' output file with per-read taxon. assignments"
-    echo "                The FASTQ and Kraken output file should be for the same sample"
-    echo "  -t STRING     NCBI Taxon IDs -- if giving multiple, separate by spaces and quote, e.g. '699189 1111709'"
-    echo "  -o STRING     Output directory (will be created if needed)"
+    echo "OTHER KEY OPTIONS:"
+    echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
     echo
-    echo "Other options:"
-    echo "  -h            Print this help message and exit"
+    echo "UTILITY OPTIONS:"
+    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
+    echo "                                (NOTE: If no default '--container_url' is listed below,"
+    echo "                                 you'll have to provide one in order to run the script with a container.)"
+    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
+    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
+    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
+    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
+    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
+    echo "  --no_strict                 Don't use strict Bash settings ('set -euo pipefail') -- can be useful for troubleshooting"
+    echo "  -h/--help                   Print this help message and exit"
+    echo "  -v                          Print the version of this script and exit"
+    echo "  --version                   Print the version of $TOOL_NAME and exit"
     echo
-    echo "Example command:"
-    echo "$0 -i data/fastq/A1_R1.fastq.gz -I results/kraken/A1_main.txt -t '699189 1111709' -o results/kraken/reads"
-    echo
-    echo "To submit to the OSC queue, preface with sbatch:"
-    echo "sbatch $0 ..."
-    echo
-    echo "SLURM parameters in script: '--account=PAS0471 --time=1:00:00 --output=slurm-extract_kraken_reads-%j.out"
-    echo
-    echo "Default SLURM parameters can be overridden when submitting the script, e.g.:"
-    echo "sbatch -t 15 $0 ...      (override default time reservation of 3 hours, use 15 minutes instead)"
-    echo
-    echo "Krakentools documentation: https://github.com/jenniferlu717/KrakenTools"
-    echo
+    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
 }
 
-## Option defaults
-R1_in=""
-outdir=""
-kraken_main=""
-taxids=""
+# Function to source the script with Bash functions
+source_function_script() {
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$IS_SLURM" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
+    else
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
+    fi
+    function_script=$(realpath "$script_dir"/../dev/"$(basename "$FUNCTION_SCRIPT_URL")")
+    # Download the function script if needed, then source it
+    if [[ ! -f "$function_script" ]]; then
+        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
+        function_script=$(basename "$FUNCTION_SCRIPT_URL")
+        wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script"
+    fi
+    source "$function_script"
+}
 
-## Parse options
-while getopts ':i:o:I:t:h' flag; do
-    case "${flag}" in
-    i) R1_in="$OPTARG" ;;
-    I) kraken_main="$OPTARG" ;;
-    o) outdir="$OPTARG" ;;
-    t) taxids="$OPTARG" ;;
-    h) Help && exit 0 ;;
-    \?) echo "## ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
-    :) echo "## ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script
+
+# ==============================================================================
+#                          PARSE COMMAND-LINE ARGS
+# ==============================================================================
+# Initiate variables
+R1=
+kraken_file=
+tax_ids=
+outdir=
+more_opts=
+
+# Parse command-line args
+all_opts="$*"
+while [ "$1" != "" ]; do
+    case "$1" in
+        -i | --R1 )         shift && R1=$1 ;;
+        --kraken_file )     shift && kraken_file=$1 ;;
+        --tax_ids )         shift && tax_ids=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        --more_opts )       shift && more_opts=$1 ;;
+        --env )             shift && env=$1 ;;
+        --no_strict )       strict_bash=false ;;
+        --dl_container )    dl_container=true ;;
+        --container_dir )   shift && container_dir=$1 ;;
+        --container_url )   shift && container_url=$1 && dl_container=true ;;
+        -h | --help )       script_help; exit 0 ;;
+        -v )                script_version; exit 0 ;;
+        --version )         version_only=true ;;
+        * )                 die "Invalid option $1" "$all_opts" ;;
     esac
+    shift
 done
 
+# ==============================================================================
+#                          INFRASTRUCTURE SETUP
+# ==============================================================================
+# Strict Bash settings
+[[ "$strict_bash" == true ]] && set -euo pipefail
 
-# OTHER SETUP ------------------------------------------------------------------
-## Report
-echo "## Starting script extract_kraken_reads.sh"
-date
-echo
+# Load software
+load_env "$conda_path" "$container_path" "$dl_container"
+[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
 
-## Check input
-[[ "$R1_in"  = "" ]] && echo "## ERROR: Please provide R1 input FASTQ file with -i flag" && exit 1
-[[ "$outdir"  = "" ]] && echo "## ERROR: Please provide output dir with -o flag" && exit 1
-[[ "$taxids"  = "" ]] && echo "## ERROR: Please provide taxon ID(s) with -t flag" && exit 1
-[[ "$kraken_main"  = "" ]] && echo "## ERROR: Please provide Kraken output file with -I flag" && exit 1
-[[ ! -f $R1_in ]] && echo "## ERROR: Input file R1_in ($R1_in) does not exist" && exit 1
-[[ ! -f $kraken_main ]] && echo "## ERROR: Kraken output file ($kraken_main) does not exist" && exit 1
-[[ "$R1_in"  = "$R1_out" ]] && echo "## ERROR: R1 input and output filenames are the same: $R1_in" && exit 1
+# Check options provided to the script
+[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
+[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 
-## Software
-module load python/3.6-conda5.2
-source activate /fs/project/PAS0471/jelmer/conda/krakentools-1.2
+# Define outputs based on script parameters
+LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+file_ext=$(basename "$R1" | sed -E 's/.*(.fasta|.fastq.gz|.fq.gz)$/\1/')
+R1_suffix=$(basename "$R1" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
+R2_suffix=${R1_suffix/1/2}
+R2=${R1/$R1_suffix/$R2_suffix}
+sample_id=$(basename "$R1" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
+R1_out="$outdir"/"$sample_id"_R1.fastq
+R2_out="$outdir"/"$sample_id"_R2.fastq
 
-## Bash strict settings
-set -euo pipefail
+# ==============================================================================
+#                         REPORT PARSED OPTIONS
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
+echo "=========================================================================="
+echo "All options passed to this script:        $all_opts"
+echo "Input R1 FASTQ file:                      $R1"
+echo "Input R2 FASTQ file:                      $R2"
+echo "Kraken file:                              $kraken_file"
+echo "Taxonomic IDs to extract:                 $tax_ids"
+echo "Output R1 FASTQ file:                     $R1_out"
+echo "Output R2 FASTQ file:                     $R2_out"
+echo "Output dir:                               $outdir"
+[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
+log_time "Listing the input file(s):"
+ls -lh "$R1" "$R2" "$kraken_file"
+set_threads "$IS_SLURM"
+[[ "$IS_SLURM" == true ]] && slurm_resources
 
-## Infer name of R2 input file
-R2_in=${R1_in/_R1/_R2}
+# ==============================================================================
+#                               RUN
+# ==============================================================================
+log_time "Running $TOOL_NAME..."
+runstats $CONTAINER_PREFIX $TOOL_BINARY \
+    -t $tax_ids \
+    -k "$kraken_file" \
+    -s "$R1" \
+    -s2 "$R2" \
+    -o "$R1_out" \
+    -o2 "$R2_out" \
+    --fastq-output \
+    $more_opts
 
-## Define output files
-R1_out="$outdir"/$(basename "$R1_in" .gz)
-R2_out="$outdir"/$(basename "$R2_in" .gz)
+# Gzip the output files
+gzip -fv "$R1_out" "$R2_out"
 
-## Check input
-[[ ! -f $R2_in ]] && echo "## ERROR: Input file R2_in ($R2_in) does not exist" && exit 1
-[[ "$R2_in"  = "$R2_out" ]] && echo "## ERROR: R2 input and output filenames are the same: $R2_in" && exit 1
-
-## Report
-echo "## Taxonomic IDs to extract:          $taxids"
-echo "## Kraken 'main' output file:         $kraken_main"
-echo "## Input R1:                          $R1_in"
-echo "## Input R2:                          $R2_in"
-echo "## Output dir:                        $outdir"
-echo "## Output R1:                         $R1_out"
-echo "## Output R2:                         $R2_out"
-echo -e "-----------------------------\n"
-
-## Create output dir
-mkdir -p "$outdir"
-
-
-# EXTRACT READS ----------------------------------------------------------------
-extract_kraken_reads.py \
-    -t $taxids \
-    -k "$kraken_main" \
-    -s "$R1_in" -s2 "$R2_in" \
-    -o "$R1_out" -o2 "$R2_out" \
-    --fastq-output
-
-## Gzip output files
-gzip -f "$R1_out" "$R2_out"
-
-
-# WRAP UP ----------------------------------------------------------------------
-echo -e "\n## Listing output files:"
-ls -lh "$R1_out".gz "$R2_out".gz
-echo -e "\n## Done with script extract_kraken_reads.sh"
-date
-echo
-sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
-echo
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/*
+final_reporting "$LOG_DIR"

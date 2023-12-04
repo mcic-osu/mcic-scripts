@@ -1,371 +1,303 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=60
+#SBATCH --time=1:00:00
 #SBATCH --cpus-per-task=30
 #SBATCH --mem=100G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
+#SBATCH --mail-type=FAIL
 #SBATCH --job-name=kraken
 #SBATCH --output=slurm-kraken-%j.out
 
 # ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
+# Constants - generic
+DESCRIPTION="Run Kraken2 to assign taxonomy to sequences in a FASTA/FASTQ/pair of FASTQ file(s)"
+SCRIPT_VERSION="2023-12-03"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+TOOL_BINARY=kraken2
+TOOL_NAME=Kraken2
+TOOL_DOCS=https://github.com/DerrickWood/kraken2
+VERSION_COMMAND="$TOOL_BINARY --version"
+
+# Defaults - generics
+env=conda                           # Use a 'conda' env or a Singularity 'container'
+conda_path=/fs/ess/PAS0471/jelmer/conda/kraken2
+container_path=
+container_url=
+dl_container=false
+container_dir="$HOME/containers"
+strict_bash=true
+version_only=false                  # When true, just print tool & script version info and exit
+
+# Defaults - tool(-related) parameters
+min_conf=0.15                       # Following https://www.microbiologyresearch.org/content/journal/mgen/10.1099/mgen.0.000949
+min_hitgroups=3                     # Following https://www.nature.com/articles/s41596-022-00738-y
+write_classif=false                 # Don't write output file(s) with classified reads
+write_unclassif=false               # Don't write output file(s) with unclassified reads
+use_ram=true                        # Load Kraken db into memory
+single_end=false                    # Assume paired-end reads, if the input is FASTQ
+
+# ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-# Help function
-Print_help() {
+script_help() {
+    echo -e "\n                          $0"
+    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
+    echo "        =============================================================="
+    echo "DESCRIPTION:"
+    echo "  $DESCRIPTION"
     echo
-    echo "===================================================================================="
-    echo "                  $0"
-    echo "Run Kraken2 to assign taxonomy to sequences in a FASTA/FASTQ/pair of FASTQ file(s)"
-    echo "===================================================================================="
-    echo
-    echo "USAGE:"
-    echo "  sbatch $0 -i <input-file> -o <output-dir> -d <kraken-db-dir> ..."
-    echo "  bash $0 -h"
+    echo "USAGE / EXAMPLE COMMANDS:"
+    echo "  sbatch $0 -i data/S1_R1.fastq.gz -o results/kraken --db /fs/project/PAS0471/jelmer/refdata/kraken/std"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--infile             <file>  Input sequence file (FASTA, single-end FASTQ, or R1 from paired-end FASTQ)"
     echo "                                    - If an R1 paired-end FASTQ file is provided, the name of the R2 file will be inferred"
     echo "                                    - FASTA files should be unzipped; FASTQ files should be gzipped"
-    echo "  -o/--outdir             <dir>   Output directory"
-    echo "  -d/--db-dir             <dir>   Directory with an existing Kraken database"
+    echo "  -o/--outdir             <dir>   Output dir (will be created if needed)"
+    echo "  -d/--db                 <dir>   Directory with an existing Kraken database"
     echo "                                    - A few databases are available at: /fs/ess/PAS0471/jelmer/refdata/kraken"
     echo "                                    - Kraken databases can be downloaded from: https://benlangmead.github.io/aws-indexes/k2"
-    echo "                                    - Finally, you can use 'kraken-build-custom-db.sh' or 'kraken-build-std-db.sh' to create a database"
+    echo "                                    - Finally, you can use 'mcic-scripts/meta/kraken-build.sh' to create a database"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --confidence            <num>   Confidence required for assignment: number between 0 and 1            [default: 0.5]"
-    echo "  --minimum-base-quality  <int>   Base quality Phred score required for use of a base in assignment     [default: 0]"
-    echo "                                    - NOTE: When not 0, output sequences contain 'x's for masked bases"
+    echo "  --confidence            <num>   Confidence required for assignment: number between 0 and 1            [default: $min_conf]"
+    echo "  --minimum-hit-groups    <int>   Minimum nr of hit groups required an assignment                       [default: $min_hitgroups]"
     echo "  --memory-mapping                Don't load the full database into RAM memory                          [default: load into memory]"
     echo "                                    - Considerably lower, but useful/needed with very large databases"
-    echo "  --use-names                     Add taxonomic names to the Kraken 'main' output file                  [default: don't add]"
-    echo "                                    - NOTE: This option is not compatible with Krona plotting"
-    echo "  --single-end                    FASTQ files are single-end                                            [default: paired-end]"
     echo "  --classified-out                Write 'classified' sequences to file in '<outdir>/classified' dir     [default: don't write]"
+    echo "                                    NOTE: only implemented for PE FASTQ files"
     echo "  --unclassified-out              Write 'unclassified' sequences to file in '<outdir>/unclassified' dir [default: don't write]"
+    echo "                                    NOTE: only implemented for PE FASTQ files"
+    echo "  --single-end                    FASTQ files are single-end                                            [default: paired-end]"
+    echo "  --more_opts             <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for Kraken and exit"
-    echo "  -v/--version            Print the version of Kraken and exit"
+    echo "  --env                   <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
+    echo "                                    (NOTE: If no default '--container_url' is listed below,"
+    echo "                                    you'll have to provide one in order to run the script with a container.)"
+    echo "  --conda_env             <dir>   Full path to a Conda environment to use [default: $conda_path]"
+    echo "  --container_url         <str>   URL to download the container from      [default: $container_url]"
+    echo "                                  A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
+    echo "  --container_dir         <str>   Dir to download the container to        [default: $container_dir]"
+    echo "  --dl_container                  Force a redownload of the container     [default: $dl_container]"
+    echo "  --no_strict                     Don't use strict Bash settings ('set -euo pipefail') -- can be useful for troubleshooting"
+    echo "  -h/--help                       Print this help message and exit"
+    echo "  -v                              Print the version of this script and exit"
+    echo "  --version                       Print the version of $TOOL_NAME and exit"
     echo
-    echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i data/A1_R1.fastq.gz -o results/kraken -d /fs/project/PAS0471/jelmer/refdata/kraken/std"
-    echo
+    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
 }
 
-# Load software
-Load_software() {
-    set +u
-    module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /fs/ess/PAS0471/jelmer/conda/kraken2-2.1.2
-    set -u
-}
-
-# Print version
-Print_version() {
-    set +e
-    Load_software
-    kraken2 --version
-    set -e
-}
-
-# Print SLURM job resource usage info
-Resource_usage() {
-    echo
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
-    echo
-}
-
-# Print SLURM job requested resources
-Print_resources() {
-    set +u
-    echo "# SLURM job information:"
-    echo "Account (project):    $SLURM_JOB_ACCOUNT"
-    echo "Job ID:               $SLURM_JOB_ID"
-    echo "Job name:             $SLURM_JOB_NAME"
-    echo "Memory (per node):    $SLURM_MEM_PER_NODE"
-    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
-    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
-    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
-    echo "======================================================================"
-    echo
-    set -u
-}
-
-# Set the number of threads/CPUs
-Set_threads() {
-    set +u
-    if [[ "$slurm" = true ]]; then
-        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-            threads="$SLURM_CPUS_PER_TASK"
-        elif [[ -n "$SLURM_NTASKS" ]]; then
-            threads="$SLURM_NTASKS"
-        else 
-            echo "WARNING: Can't detect nr of threads, setting to 1"
-            threads=1
-        fi
+# Function to source the script with Bash functions
+source_function_script() {
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$IS_SLURM" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
     else
-        threads=1
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
     fi
-    set -u
+    function_script=$(realpath "$script_dir"/../dev/"$(basename "$FUNCTION_SCRIPT_URL")")
+    # Download the function script if needed, then source it
+    if [[ ! -f "$function_script" ]]; then
+        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
+        function_script=$(basename "$FUNCTION_SCRIPT_URL")
+        wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script"
+    fi
+    source "$function_script"
 }
 
-# Resource usage information
-Time() {
-    /usr/bin/time -f \
-        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
-        "$@"
-}   
-
-# Exit upon error with a message
-Die() {
-    error_message=${1}
-    error_args=${2-none}
-    
-    echo
-    echo "====================================================================="
-    printf "$0: ERROR: %s\n" "$error_message" >&2
-    echo -e "\nFor help, run this script with the '-h' option"
-    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'"
-    if [[ "$error_args" != "none" ]]; then
-        echo -e "\nArguments passed to the script:"
-        echo "$error_args"
-    fi
-    echo -e "\nEXITING..." >&2
-    echo "====================================================================="
-    echo
-    exit 1
-}
-
-# ==============================================================================
-#                          CONSTANTS AND DEFAULTS
-# ==============================================================================
-# Option defaults
-min_conf=0.5
-min_q=0
-add_names=false && names_arg=""
-use_ram=true && mem_map_arg=""
-single_end=false
-
-slurm=true
-
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-# Placeholder variables
-infile=""
-outdir=""
-db_dir=""
-write_classif="" && class_out_arg=""
-write_unclassif="" && unclass_out_arg=""
-more_args=""
+# Initiate variables
+infile=
+outdir=
+db=
+conf_opt=
+hitgroup_opt=
+classif_opt=
+unclassif_opt=
+mem_opt=
+more_opts=
+threads=
 
 # Parse command-line args
-all_args="$*"
+all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infile )             shift && infile=$1 ;;
-        -o | --outdir )             shift && outdir=$1 ;;
-        -d | --db-dir )             shift && db_dir=$1 ;;
-        -c | --confidence )         shift && min_conf=$1 ;;
-        -q | --minimum-base-quality )   shift && min_q=$1 ;;
-        --use-names )               add_names=true ;;
-        -s | --single-end )         single_end=true ;;
-        -w | --classified-out )     write_classif=true ;;
-        -W | --unclassified-out )   write_unclassif=true ;;   
-        --memory-mapping )          use_ram=false ;;
-        --more-args )               shift && more_args=$1 ;;
-        -v | --version )            Print_version; exit 0 ;;
-        -h )                        Print_help; exit 0 ;;
-        --help )                    Print_help_program; exit 0;;
-        * )                         Die "Invalid option $1" "$all_args" ;;
+        -i | --infile )         shift && infile=$1 ;;
+        -o | --outdir )         shift && outdir=$1 ;;
+        -d | --db | --db-dir )  shift && db=$1 ;;
+        --confidence )          shift && min_conf=$1 ;;
+        --minimum-hit-groups )  shift && min_hitgroups=$1 ;;
+        --single-end )          single_end=true ;;
+        --classified-out )      write_classif=true ;;
+        --unclassified-out )    write_unclassif=true ;;   
+        --memory-mapping )      use_ram=false ;;
+        --more_opts )           shift && more_opts=$1 ;;
+        --env )                 shift && env=$1 ;;
+        --no_strict )           strict_bash=false ;;
+        --dl_container )        dl_container=true ;;
+        --container_dir )       shift && container_dir=$1 ;;
+        --container_url )       shift && container_url=$1 && dl_container=true ;;
+        -h | --help )           script_help; exit 0 ;;
+        -v )                    script_version; exit 0 ;;
+        --version )             version_only=true ;;
+        * )                     die "Invalid option $1" "$all_opts" ;;
     esac
     shift
 done
 
 # ==============================================================================
-#                          OTHER SETUP
+#                          INFRASTRUCTURE SETUP
 # ==============================================================================
-# Check if this is a SLURM job
-[[ -z "$SLURM_JOB_ID" ]] && slurm=false
+# Strict Bash settings
+[[ "$strict_bash" == true ]] && set -euo pipefail
 
-# Bash script settings
-set -euo pipefail
+# Load software
+load_env "$conda_path" "$container_path" "$dl_container"
+[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
 
-# Load software and set nr of threads
-Load_software
-Set_threads
+# Check options provided to the script
+[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
+[[ -z "$db" ]] && die "No Kraken database dir specified, do so with -d/--db" "$all_opts"
+[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
+[[ ! -d "$db" ]] && die "Kraken database dir $db does not exist"
 
-# Check input
-[[ "$infile" = "" ]] && Die "Must specify input file with -i" "$all_args" 
-[[ "$db_dir" = "" ]] && Die "Must specify a Kraken DB dir with -d" "$all_args"
-[[ "$outdir" = "" ]] && Die "Must specify an output dir with -o" "$all_args"
-[[ "$min_conf" = "" ]] && Die "Min confidence is not set" "$all_args"
-[[ "$min_q" = "" ]] && Die "Min quality is not set" "$all_args"
-[[ ! -f "$infile" ]] && Die "Input file $infile does note exist"
-[[ ! -d "$db_dir" ]] && Die "Kraken DB dir $db_dir does note exist"
-
-# Report - part 1
-echo
-echo "=========================================================================="
-echo "                     STARTING SCRIPT KRAKEN.SH"
-date
-echo "=========================================================================="
-echo "Input file:                     $infile"
-echo "Output dir:                     $outdir"
-echo "Kraken db dir:                  $db_dir"
-echo
-echo "Add tax. names:                 $add_names"
-echo "Min. base qual:                 $min_q"
-echo "Min. confidence:                $min_conf"
-echo "Use RAM to load database:       $use_ram"
-echo
-
-# Build Kraken args (leave space after!)
-# RAM
-[[ "$use_ram" = false ]] && mem_map_arg="--memory-mapping "
-# Add tax. names or not -- when adding names, can't use the output for Krona plotting  
-[[ "$add_names" = true ]] && names_arg="--use-names "
+# Other prep based on script parameters
+LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+[[ "$use_ram" = false ]] && mem_opt="--memory-mapping "
+[[ -n "$min_conf" ]] && conf_opt="--confidence $min_conf "
+[[ -n "$min_hitgroups" ]] && hitgroup_opt="--minimum-hit-groups $min_hitgroups "
 
 # Make sure input file argument is correct based on file type 
 if [[ "$infile" =~ \.fa?s?t?q.gz$ ]]; then
-
     R1_in="$infile"
     R1_basename=$(basename "$R1_in" | sed -E 's/\.fa?s?t?q\.gz//')
     R1_suffix=$(echo "$R1_basename" | sed -E 's/.*(_R?[12]).*/\1/')
     
     if [[ "$single_end" = false ]]; then
-        echo "Input type is:                paired-end FASTQ"
         file_type=pe
         R2_suffix=${R1_suffix/1/2}
         R2_in=${R1_in/$R1_suffix/$R2_suffix}
-        sample_ID=${R1_basename/"$R1_suffix"/}
-        infile_arg="--gzip-compressed --paired $R1_in $R2_in"
+        sample_id=${R1_basename/"$R1_suffix"/}
+        infile_opt="--gzip-compressed --paired $R1_in $R2_in"
 
-        echo "Input FASTQ file - R1:        $R1_in"
-        echo "Input FASTQ file - R2:        $R2_in"
-
-        [[ ! -f "$R2_in" ]] && Die "R2 file $R2_in does not exist"
-        [[ "$R1_in" = "$R2_in" ]] && Die "R1 file $R1_in is the same as R2 file $R2_in"
+        [[ ! -f "$R2_in" ]] && die "R2 file $R2_in does not exist"
+        [[ "$R1_in" == "$R2_in" ]] && die "R1 file $R1_in is the same as R2 file $R2_in"
 
         if [[ "$write_classif" = true ]]; then
-            class_out_arg="--classified-out $outdir/classified/$sample_ID#.fastq "
+            classif_opt="--classified-out $outdir/classified/$sample_id#.fastq "
         fi
         if [[ "$write_unclassif" = true ]]; then
-            unclass_out_arg="--unclassified-out $outdir/unclassified/$sample_ID#.fastq "
+            unclassif_opt="--unclassified-out $outdir/unclassified/$sample_id#.fastq "
         fi
-
     else
-        echo "Input type is:                single-end FASTQ"
         file_type=se
-        sample_ID=$(basename "$R1_in" .fastq.gz)
-        infile_arg="--gzip-compressed $R1_in"
+        sample_id=${R1_basename/"$R1_suffix"/}
+        infile_opt="--gzip-compressed $R1_in"
 
-        if [[ "$write_classif" = true ]]; then
-            class_out_arg="--classified-out $outdir/classified/$sample_ID.fastq "
+        if [[ "$write_classif" == true ]]; then
+            classif_opt="--classified-out $outdir/classified/$sample_id.fastq "
         fi
-        if [[ "$write_unclassif" = true ]]; then
-            unclass_out_arg="--unclassified-out $outdir/unclassified/$sample_ID.fastq "
+        if [[ "$write_unclassif" == true ]]; then
+            unclassif_opt="--unclassified-out $outdir/unclassified/$sample_id.fastq "
         fi
     
     fi
-
 elif [[ "$infile" =~ \.fn?a?s?t?a$ ]]; then
-    echo -e "Input type is:              FASTA"
     file_type=fasta
     infile_basename=$(basename "$infile")
-    sample_ID=${infile_basename%%.*}
-    infile_arg="$infile"
+    sample_id=${infile_basename%%.*}
+    infile_opt="$infile"
 
-    if [[ "$write_classif" = true ]]; then
-        class_out_arg="--classified-out $outdir/classified/$sample_ID.fa "
+    if [[ "$write_classif" == true ]]; then
+        classif_opt="--classified-out $outdir/classified/$sample_id.fa "
     fi
-    if [[ "$write_unclassif" = true ]]; then
-        unclass_out_arg="--unclassified-out $outdir/unclassified/$sample_ID.fa "
+    if [[ "$write_unclassif" == true ]]; then
+        unclassif_opt="--unclassified-out $outdir/unclassified/$sample_id.fa "
     fi
-
 else
-    Die "Unknown input file type"
+    die "Unknown input file type"
 fi
 
 # Define output text files
-outfile_main="$outdir"/"$sample_ID".main.txt
-outfile_report="$outdir"/"$sample_ID".report.txt
+outfile_main="$outdir"/"$sample_id".main.txt
+outfile_report="$outdir"/"$sample_id".report.txt
 
-# Report
-echo "Number of threads/cores:        $threads"
-echo "Sample ID (inferred):           $sample_ID"
-echo "Output file - main:             $outfile_main"
-echo "Output file - report:           $outfile_report"
-[[ "$write_classif" = true ]] && echo "Writing classified sequences:   $class_out_arg"
-[[ "$write_unclassif" = true ]] && echo "Writing unclassified sequences: $unclass_out_arg"
-echo
-echo "Listing the input file(s):"
-ls -lh "$infile"
+# ==============================================================================
+#                         REPORT PARSED OPTIONS
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo
-
-# Print reserved resources
-[[ "$slurm" = true ]] && Print_resources
+echo "All options passed to this script:        $all_opts"
+echo "Output dir:                               $outdir"
+echo "Input file type:                          $file_type"
+echo "Kraken database dir:                      $db"
+echo "Write classified reads?                   $write_classif"
+echo "Write unclassified reads?                 $write_unclassif"
+[[ -n $min_conf ]] && echo "Minimum confidence:                       $min_conf"
+[[ -n $min_hitgroups ]] && echo "Minimum nr of hit groups:                 $min_hitgroups"
+[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
+log_time "Listing the input file(s):"
+[[ -n $R1_in ]] && ls -lh "$R1_in"
+[[ -n $R2_in ]] && ls -lh "$R2_in"
+[[ -n $infile ]] && ls -lh "$infile"
+ls -lh "$db"
+set_threads "$IS_SLURM"
+[[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
 # Create output dirs
-echo -e "\n# Creating the output directories..."
-[[ "$write_classif" = true ]] && mkdir -pv "$outdir"/classified
-[[ "$write_unclassif" = true ]] && mkdir -pv "$outdir"/unclassified
-mkdir -pv "$outdir"/logs
+[[ "$write_classif" = true ]] && mkdir -p "$outdir"/classified
+[[ "$write_unclassif" = true ]] && mkdir -p "$outdir"/unclassified
+mkdir -p "$outdir"/logs
 
 # Run Kraken
-echo -e "\n# Starting Kraken2 run..."
-Time kraken2 ${more_args}${names_arg}--threads "$threads" \
-    ${mem_map_arg}--minimum-base-quality "$min_q" \
-    --confidence "$min_conf" \
-    --report-minimizer-data \
-    ${unclass_out_arg}--db "$db_dir" \
-    ${class_out_arg}--report "$outfile_report" \
-    ${infile_arg}> "$outfile_main"
-
-#? report-minimizer-data: see https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#distinct-minimizer-count-information
+log_time "Running $TOOL_NAME..."
+runstats $CONTAINER_PREFIX $TOOL_BINARY \
+    ${more_opts}--threads "$threads" \
+    ${mem_opt}${hitgroup_opt}${conf_opt}--report-minimizer-data \
+    ${classif_opt}--db "$db" \
+    ${unclassif_opt}--report "$outfile_report" \
+    ${infile_opt}> "$outfile_main"
 
 # Rename and zip FASTQ files - only implemented for PE FASTQ
 if  [[ "$file_type" = "pe" ]]; then
     if [[ "$write_classif" = true ]]; then
         echo -e "\n# Zipping FASTQ files with classified reads..."
-        mv "$outdir"/classified/"$sample_ID"_1.fastq "$outdir"/classified/"$sample_ID"_R1.fastq
-        gzip -f "$outdir"/classified/"$sample_ID"_R1.fastq
+        mv "$outdir"/classified/"$sample_id"_1.fastq "$outdir"/classified/"$sample_id"_R1.fastq
+        gzip -f "$outdir"/classified/"$sample_id"_R1.fastq
 
-        mv "$outdir"/classified/"$sample_ID"_2.fastq "$outdir"/classified/"$sample_ID"_R2.fastq
-        gzip -f "$outdir"/classified/"$sample_ID"_R2.fastq
+        mv "$outdir"/classified/"$sample_id"_2.fastq "$outdir"/classified/"$sample_id"_R2.fastq
+        gzip -f "$outdir"/classified/"$sample_id"_R2.fastq
     fi
-
     if [[ "$write_unclassif" = true ]]; then
         echo -e "\n# Zipping FASTQ files with unclassified reads..."
-        mv "$outdir"/unclassified/"$sample_ID"_1.fastq "$outdir"/unclassified/"$sample_ID"_R1.fastq
-        gzip -f "$outdir"/unclassified/"$sample_ID"_R1.fastq
+        mv "$outdir"/unclassified/"$sample_id"_1.fastq "$outdir"/unclassified/"$sample_id"_R1.fastq
+        gzip -f "$outdir"/unclassified/"$sample_id"_R1.fastq
 
-        mv "$outdir"/unclassified/"$sample_ID"_2.fastq "$outdir"/unclassified/"$sample_ID"_R2.fastq
-        gzip -f "$outdir"/unclassified/"$sample_ID"_R2.fastq
+        mv "$outdir"/unclassified/"$sample_id"_2.fastq "$outdir"/unclassified/"$sample_id"_R2.fastq
+        gzip -f "$outdir"/unclassified/"$sample_id"_R2.fastq
     fi
 fi
 
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
-echo
-echo "========================================================================="
-echo -e "\n# Version used:"
-Print_version | tee "$outdir"/logs/version.txt
-echo -e "\n# Listing output files:"
-ls -lh "$outfile_main" "$outfile_report"
-[[ "$write_classif" = true ]] && ls -lh "$outdir"/classified/"$sample_ID"*
-[[ "$write_unclassif" = true ]] && ls -lh "$outdir"/unclassified/"$sample_ID"*
-[[ "$slurm" = true ]] && Resource_usage
-echo "# Done with script"
-date
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/*
+final_reporting "$LOG_DIR"
