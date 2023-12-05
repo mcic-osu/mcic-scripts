@@ -1,14 +1,11 @@
 #!/bin/bash
-
 #SBATCH --account=PAS0471
 #SBATCH --time=24:00:00
 #SBATCH --mem=48G
 #SBATCH --cpus-per-task=12
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --job-name=detonate
-#SBATCH --output=slurm-detonate-%j.out
-
+#SBATCH --mail-type=FAIL
+#SBATCH --job-name=bowtie2
+#SBATCH --output=slurm-bowtie2-%j.out
 
 # ==============================================================================
 #                                   FUNCTIONS
