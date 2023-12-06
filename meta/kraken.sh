@@ -121,6 +121,7 @@ source_function_script
 # ==============================================================================
 # Initiate variables
 infile=
+R1_in= && R2_in=
 outdir=
 db=
 conf_opt=
@@ -254,7 +255,8 @@ log_time "Listing the input file(s):"
 [[ -n $R1_in ]] && ls -lh "$R1_in"
 [[ -n $R2_in ]] && ls -lh "$R2_in"
 [[ -n $infile ]] && ls -lh "$infile"
-ls -lh "$db"
+log_time "Listing the k2d database file(s):"
+ls -lh "$db"/*k2d
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
@@ -298,6 +300,6 @@ fi
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
-log_time "Listing files in the output dir:"
-ls -lhd "$(realpath "$outdir")"/*
+log_time "Listing the Kraken output reports:"
+ls -lh "$outfile_main" "$outfile_report"
 final_reporting "$LOG_DIR"
