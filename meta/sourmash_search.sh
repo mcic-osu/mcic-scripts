@@ -47,18 +47,19 @@ script_help() {
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage:"
-    echo "      sbatch $0 -i results/spades/sampleA.fna --db results/sourmash_search/db/db.sbt.zip -o results/sourmash_search"
+    echo "      sbatch $0 -i results/spades/sampleA.fna --db results/sourmash_search/db -o results/sourmash_search"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--infile         <file>  Input FASTA file (the query) with .fasta / .fa / .fna extension"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
-    echo "  --db                <file>  Path to a Sourmash database"
+    echo "  --db_dir            <file>  Path to a Sourmash database"
     echo
     echo "OTHER KEY OPTIONS:"
+    echo "  --db_file           <file>  Path to a Sourmash database file ('sbt.zip') (alternative to specifying the dir)"
     echo "  --n_results         <int>   Number of results (matches) to return   [default: $n_results]"
     echo "  --kmer_size         <int>   Kmer size (should be an odd integer)    [default: $kmer_size]"
-    echo "                                Will be used for creating a sketch of the query file"
-    echo "                                Should match the kmer-size used for the database"
+    echo "                                - Will be used for creating a sketch of the query file"
+    echo "                                - Should match the kmer-size used for the database"
     echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -109,6 +110,7 @@ source_function_script
 # Initiate variables
 infile=
 db=
+db_dir=
 outdir=
 opts=
 
@@ -118,6 +120,7 @@ while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
         --db )              shift && db=$1 ;;
+        --db_dir )          shift && db_dir=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
         --kmer_size )       shift && kmer_size=$1 ;;
         --n_results )       shift && n_results=$1 ;;
@@ -147,17 +150,30 @@ load_env "$conda_path" "$container_path" "$dl_container"
 
 # Check options provided to the script
 [[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
-[[ -z "$db" ]] && die "No database file specified, do so with --db" "$all_opts"
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
-[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
-[[ ! -f "$db" ]] && die "Database file $db does not exist"
+[[ -z "$db" && -z "$db_dir" ]] && die "No database file or dir specified, do so with --db or --db_dir" "$all_opts"
+[[ -n "$db" && -n "$db_dir" ]] && die "Both database file ($db) and dir ($db_dir) specified, please only specify one of the two" "$all_opts"
+[[ ! -f "$infile" ]] && die "Input FASTA file $infile does not exist"
+[[ -n "$db" && ! -f "$db" ]] && die "Database file $db does not exist"
+[[ -n "$db_dir" && ! -d "$db_dir" ]] && die "Database dir $db_dir does not exist"
 
-# Define outputs based on script parameters
-LOG_DIR="$PWD"/"$outdir"/logs && mkdir -p "$LOG_DIR"
-infile=$(realpath "$infile") # Make paths absolute because we have to move into the outdir
-db=$(realpath "$db")
+# Make paths absolute because we have to move into the outdir
+[[ ! $outdir =~ ^/ ]] && outdir="$PWD"/"$outdir"
+infile=$(realpath "$infile")
 infile_signature=$(basename "$infile").sig
 sample_id=$(basename "${infile%.*}")
+
+if [[ -n "$db_dir" ]]; then
+    mapfile -t dbs < <(find "$db_dir" -name "*sbt.zip")
+    [[ ${#dbs[@]} -eq 0 ]] && die "No DB found in DB dir $db_dir"
+    [[ ${#dbs[@]} -gt 1 ]] && die "More than one DB found in DB dir $db_dir"
+    db="${dbs[*]:0:1}"
+    [[ ! -f "$db" ]] && die "Database file $db does not exist"
+fi
+[[ -n "$db" ]] && db=$(realpath "$db")
+
+# Define outputs based on script parameters
+LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
