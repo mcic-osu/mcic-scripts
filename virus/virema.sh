@@ -19,7 +19,7 @@ VIREMA_BIN=/fs/ess/PAS0471/jelmer/conda/virema/bin/ViReMa.py
 TOOL_BINARY="python3 $VIREMA_BIN"
 TOOL_NAME=ViReMa
 TOOL_DOCS=https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10025937/
-VERSION_COMMAND="$TOOL_BINARY --version"
+VERSION_COMMAND="$TOOL_BINARY -h | sed -n 3p"
 
 # Defaults - generics
 env=conda                           # Use a 'conda' env or a Singularity 'container'

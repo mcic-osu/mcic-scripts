@@ -446,14 +446,18 @@ cdotplot <- function(
   return(p)
 }
 
-# Heatmap for DE genes in significant GO terms 
-GO_pheat <- function(GO_cat,
-                     GO_res,
-                     count_mat,
-                     meta_df,
-                     annot_df,
-                     contrast = NULL,
-                     DE_direction = "either") {
+# Heatmap for DE genes in significant GO terms
+# NOTE: This function requires (calls) the pheat() function from mcic-scripts/rnaseq/DE_funs.R
+GO_pheat <- function(
+    GO_cat,                    # GO category to plot
+    GO_res,                    # GO results from run_enrich() or run_gsea() with return_df=TRUE
+    count_mat,                 # Normalized GO matrix
+    meta_df,                   # Metadata df
+    annot_df = NULL,           # Annotation df: gene IDs as rownames, gene names/descriptions as the single column
+    contrast = NULL,           # DE contrast as specified in 'contrast' column in GO_res 
+    DE_direction = "either",   # Direction of DE ('either', 'up', or 'down')
+    ...                        # Other args to pass to pheat()
+    ) {
   
   # Rename before filtering
   fcontrast <- contrast
@@ -478,12 +482,11 @@ GO_pheat <- function(GO_cat,
   # Make the heatmap
   p <- pheat(genes = fgenes,
              count_mat = count_mat,
-             meta_df = meta,
-             groups = c("dai", "isolate"),
-             mean_by = "treatment",
-             annot_df = annot_heatmap,
+             meta_df = meta_df,
+             annot_df = annot_df,
              nchar_gene = 60,
-             main = title)
+             main = title,
+             ...)
   print(p)
 }
 
