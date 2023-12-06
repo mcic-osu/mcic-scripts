@@ -601,7 +601,7 @@ pheat <- function(
                                 #   Alternatively, use 'none' or 'column'
     fontsize_row = 10,          # Font size of gene ID label
     fontsize_col = NULL,        # Font size of the sample/group label
-    nchar_gene = 20,            # Truncate the gene name/ID at this nr of characters
+    nchar_gene = NULL,          # Truncate the gene name/ID at this nr of characters (default: 20 w/o annot, 40 w/ annot)
     gene_id = TRUE,             # When annotation df is provided, retain gene ID in addition to name/descrip
     ...                         # Other arguments to be passed to the pheatmap function
     ) {
@@ -659,6 +659,9 @@ pheat <- function(
     gene_name <- annot_df[[1]][match(rownames(fmat), rownames(annot_df))]
     if (gene_id == TRUE) rownames(fmat) <- paste0(rownames(fmat), ": ", gene_name)
     if (gene_id == FALSE) rownames(fmat) <- gene_name
+    if (is.null(nchar_gene)) nchar_gene <- 40
+  } else {
+    if (is.null(nchar_gene)) nchar_gene <- 20
   }
   
   # If many features are included, reduce the cell (row) height & font size
