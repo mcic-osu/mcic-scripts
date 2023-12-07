@@ -1,93 +1,171 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=4
-#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
+#SBATCH --mail-type=FAIL
 #SBATCH --job-name=gff2bed
-#SBATCH --output=slurm-gff2bed-%j.out
+#SBATCH --output=slurm-gf2bed-%j.out
 
+# ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
+# Constants - generic
+DESCRIPTION="Convert a GFF or GTF file to a BED file using 'bedops'"
+SCRIPT_VERSION="2023-12-06"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+TOOL_BINARY=bedops
+TOOL_NAME=bedops
+TOOL_DOCS=https://bedops.readthedocs.io/en/latest/
+VERSION_COMMAND="$TOOL_BINARY --version"
 
-# PARSE ARGS -------------------------------------------------------------------
-## Help function
-Help() {
-  echo
-  echo "## $0: Convert a GFF or GTF file to a BED file using 'bedops'."
-  echo
-  echo "## Syntax: $0 -i <input GFF/GTF> -o <output BED>..."
-  echo
-  echo "## Required options:"
-  echo "## -i STRING        Input GFF/GTF file"
-  echo "## -o STRING        Output BED file"
-  echo
-  echo "## Other options:"
-  echo "## -h               Print this help message and exit"
-  echo
-  echo "## Example: $0 -i my.gff -o my.bed"
-  echo "## To submit to the OSC queue, preface with 'sbatch': sbatch $0 ..."
-  echo
+# Defaults - generics
+env=conda                           # Use a 'conda' env or a Singularity 'container'
+conda_path=/fs/ess/PAS0471/jelmer/conda/bedops
+container_path=
+container_url=
+dl_container=false
+container_dir="$HOME/containers"
+strict_bash=true
+version_only=false                 # When true, just print tool & script version info and exit
+
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
+script_help() {
+    echo -e "\n                          $0"
+    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
+    echo "        =============================================================="
+    echo "DESCRIPTION:"
+    echo "  $DESCRIPTION"
+    echo
+    echo "USAGE / EXAMPLE COMMANDS:"
+    echo "  - Basic usage:"
+    echo "      sbatch $0 -i data/ref/my.gtf"
+    echo "      sbatch $0 -i data/ref/my.gff"
+    echo "      sbatch $0 -i data/ref/my.gff -o results/bed"
+    echo
+    echo "REQUIRED OPTIONS:"
+    echo "  -i/--infile         <file>  Input GFF or GTF file (extension, 'gff', '.gff3', or '.gtf')"
+    echo
+    echo "OTHER KEY OPTIONS:"
+    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)  [default: same as indir]"
+    echo
+    echo "UTILITY OPTIONS:"
+    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
+    echo "                                (NOTE: If no default '--container_url' is listed below,"
+    echo "                                 you'll have to provide one in order to run the script with a container.)"
+    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
+    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
+    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
+    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
+    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
+    echo "  --no_strict                 Don't use strict Bash settings ('set -euo pipefail') -- can be useful for troubleshooting"
+    echo "  -h/--help                   Print this help message and exit"
+    echo "  -v                          Print the version of this script and exit"
+    echo "  --version                   Print the version of $TOOL_NAME and exit"
+    echo
+    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
 }
 
-## Default parameter values
-infile=""
-bed=""
+# Function to source the script with Bash functions
+source_function_script() {
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$IS_SLURM" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
+    else
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
+    fi
+    function_script=$(realpath "$script_dir"/../dev/"$(basename "$FUNCTION_SCRIPT_URL")")
+    # Download the function script if needed, then source it
+    if [[ ! -f "$function_script" ]]; then
+        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
+        function_script=$(basename "$FUNCTION_SCRIPT_URL")
+        wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script"
+    fi
+    source "$function_script"
+}
 
-## Get command-line parameter values
-while getopts ':i:o:h' flag; do
-    case "${flag}" in
-    i) infile="$OPTARG" ;;
-    o) bed="$OPTARG" ;;
-    h) Help && exit 0 ;;
-    \?) echo "## $0: ERROR: Invalid option -$OPTARG" >&2 && exit 1 ;;
-    :) echo "## $0: ERROR: Option -$OPTARG requires an argument." >&2 && exit 1 ;;
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script
+
+# ==============================================================================
+#                          PARSE COMMAND-LINE ARGS
+# ==============================================================================
+# Initiate variables
+infile=
+outdir=
+
+# Parse command-line args
+all_opts="$*"
+while [ "$1" != "" ]; do
+    case "$1" in
+        -i | --infile )     shift && infile=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        --env )             shift && env=$1 ;;
+        --no_strict )       strict_bash=false ;;
+        --dl_container )    dl_container=true ;;
+        --container_dir )   shift && container_dir=$1 ;;
+        --container_url )   shift && container_url=$1 && dl_container=true ;;
+        -h | --help )       script_help; exit 0 ;;
+        -v )                script_version; exit 0 ;;
+        --version )         version_only=true ;;
+        * )                 die "Invalid option $1" "$all_opts" ;;
     esac
+    shift
 done
 
+# ==============================================================================
+#                          INFRASTRUCTURE SETUP
+# ==============================================================================
+# Strict Bash settings
+[[ "$strict_bash" == true ]] && set -euo pipefail
 
-# OTHER SETUP ------------------------------------------------------------------
-## Report
-echo -e "\n## Starting script gff2bed.sh"
-date
-echo
+# Load software
+load_env "$conda_path" "$container_path" "$dl_container"
+[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
 
-## Test parameter values
-[[ ! -f "$infile" ]] && echo "## ERROR: Input GFF/GTF file (-i) $infile does not exist" >&2 && exit 1
-[[ $bed = "" ]] && echo "## ERROR: Please provide an output bed file with -o" >&2 && exit 1
+# Check options provided to the script
+[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
+[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 
-## Load software
-module load python/3.6-conda5.2
-source activate /fs/project/PAS0471/jelmer/conda/bedops-2.4.39
+# Define outputs based on script parameters
+[[ -z "$outdir" ]] && outdir=$(dirname "$infile")
+LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+bed="$outdir"/$(basename "${infile%.*}").bed
 
-## Bash strict mode
-set -euo pipefail
+# ==============================================================================
+#                         REPORT PARSED OPTIONS
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
+echo "=========================================================================="
+echo "All options passed to this script:        $all_opts"
+echo "Input GFF/GTF file:                       $infile"
+echo "Output BED file:                          $outfile"
+log_time "Listing the input file(s):"
+ls -lh "$infile"
+set_threads "$IS_SLURM"
+[[ "$IS_SLURM" == true ]] && slurm_resources
 
-## Report
-echo "## Input GFF file:                     $infile"
-echo "## Output bed file:                    $bed"
-echo
-
-## Create output dir if needed
-outdir=$(dirname "$bed")
-mkdir -p "$outdir"
-
-
-# CONVERT GFF TO bed -----------------------------------------------------------
+# ==============================================================================
+#                               RUN
+# ==============================================================================
 if [[ $infile = *.gtf ]]; then
-    echo "## Converting from GTF to BED..."
-    gtf2bed < "$infile" > "$bed"
+    log_time "Converting from GTF to BED..."
+    runstats $CONTAINER_PREFIX gtf2bed < "$infile" > "$outfile"
 elif [[ $infile = *.gff || $infile = *.gff3 ]]; then
-    echo "## Converting from GFF to BED"
-    gff2bed < "$infile" > "$bed"
+    log_time "Converting from GFF to BED"
+    runstats $CONTAINER_PREFIX gff2bed < "$infile" > "$outfile"
 else
-    echo "## ERROR: Not converting input file $infile, make sure it has extension '.gtf', '.gff', or '.gff3'"
+    die "Not converting input file $infile, make sure it has extension '.gtf', '.gff', or '.gff3'"
 fi
 
-
-# WRAP UP ----------------------------------------------------------------------
-echo -e "\n## Listing the input and output file:"
-ls -lh "$infile" "$bed"
-echo -e "\n## Done with script gff2bed.sh"
-date
-echo
-sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
-echo
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/*
+final_reporting "$LOG_DIR"
