@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=12:00:00
-#SBATCH --cpus-per-task=25
-#SBATCH --mem=100G
+#SBATCH --time=3:00:00
+#SBATCH --cpus-per-task=20
+#SBATCH --mem=125G
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name=bracken_build
 #SBATCH --output=slurm-bracken_build-%j.out
@@ -11,8 +11,8 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Run Bracken on Kraken output to re-estimate abundances to a specified taxonomic level"
-SCRIPT_VERSION="2023-12-03"
+DESCRIPTION="Build a Bracken database based on a Kraken database"
+SCRIPT_VERSION="2023-12-07"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -49,7 +49,10 @@ script_help() {
     echo "      sbatch $0 --db data/kraken_db -o results/bracken"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  --db                <file>  Kraken db"
+    echo "  --db                <file>  Kraken database dir"
+    echo "                                NOTE: This needs to contain a 'library' dir, which Kraken db's"
+    echo "                                downloaded from https://benlangmead.github.io/aws-indexes do not!"
+    echo "                                The solution is to use kraken_build.sh to (re)build the db"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --read_len          <int>   FASTQ file read length"
