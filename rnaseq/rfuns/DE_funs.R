@@ -14,31 +14,37 @@ library(tidyverse)
 
 # Function to run a DE analysis with DESeq2
 run_DE <- function(
-  dds,
-  design = NULL,
-  subset_factor = NULL,
-  subset_levels = NULL,
-  extract_factor = NULL,
-  count_df = NULL,
-  minReplicatesForReplace = 7,
-  ...
+  dds,                           # DESeq2 object
+  design = NULL,                 # Statistical design formula for DE analysis, e.g. "~ isolate"
+  subset_factor = NULL,          # Subset the DESeq2 object using this factor (column) in the metadata
+  subset_levels = NULL,          # Subset the DESeq2 object to these levels of 'subset_factor'
+  extract_factor = NULL,         # Extract the DE results for this factor (column in the metadata)
+                                 # This will cause the function to return a df with DE results rather than a DESeq2 object
+  count_df = NULL,               # Dataframe with counts to be added to the DE results (only if extract_factor is used)
+  minReplicatesForReplace = 7,   # DESeq2 argument: only replace outliers if there are at least this many replicates
+  ...                            # Other arguments for the DESeq2() function
 ) {
+  # Get the number of samples in the original DESeq2 object
   nsample_org <- ncol(dds)
   
+  # Set the DE design
   if (!is.null(design)) design(dds) <- design
   
+  # Only keep samples for specific levels of a specified factor
   if (!is.null(subset_factor)) {
     dds <- dds[, dds[[subset_factor]] %in% subset_levels]
     message("\nAfter subsetting ", subset_factor, " to keep ", subset_levels, " only, ",
             ncol(dds), " out of ", nsample_org, " samples are left")
   }
   
+  # Run the DE analysis
   dds <- suppressMessages(
     DESeq(dds,
           minReplicatesForReplace = minReplicatesForReplace,
           ...)
   )
   
+  # Return output
   if (! is.null(extract_factor)) {
     DE_res <- extract_DE_all(dds, fac = extract_factor, count_df = count_df)
     return(DE_res)
@@ -47,23 +53,25 @@ run_DE <- function(
   }
 }
 
-
 # Extract DE results from a DESeq2 object
-# To specify the contrast, either use 'fct=' and 'comp=', or 'contrasts='
+# To specify the contrast, either use:
+# (1) 'fct=' and 'comp='  (preferred)
+# (2) 'contrasts='        (useful for interaction effects)
 extract_DE <- function(
     dds,                    # DESeq2 object
-    fct = NULL,             # Focal factor (column in metadata with the levels in 'comp')
-    comp = NULL,            # Vector of 2 with focal levels of factor 'fac'
-    contrasts = NULL,       # Vector of 1 or more contrasts as listed in resultsNames(dds)
-    sig_only = FALSE,       # Only return significant results
+    fct = NULL,             # Focal factor (column in metadata that contains the levels specified in 'comp=')
+    comp = NULL,            # Vector of 2 with focal levels of factor 'fac' (use together with 'fct=')
+    contrasts = NULL,       # Vector of 1 or more contrasts as e.g. listed in resultsNames(dds)
+                            # When using this argument, per-group mean expr. levels won't be computed
+    sig_only = FALSE,       # In output df, only include significantly DE genes
     p_tres = 0.05,          # Adj. p-value threshold for DE significance
     lfc_tres = 0,           # Log2-fold change threshold for DE significance
-    mean_tres = 0,          # Mean expr. level threshold for DE significance
-    count_df = NULL,        # Optional: df with normalized counts
-    annot = NULL            # Optional: df with gene annotations
+    mean_tres = 0,          # Mean expression level threshold for DE significance
+    count_df = NULL,        # Optional: df with normalized counts to add to the results table
+    annot = NULL            # Optional: df with gene annotations to add to the results table
   ) {
 
-  # Final contrast
+  # Get final contrast
   if (is.null(contrasts)) {
     stopifnot(!is.null(fct))
     stopifnot(!is.null(comp))
@@ -107,22 +115,22 @@ extract_DE <- function(
       summarize(mean = mean(count), .groups = "drop")
     
     fcount_df <- dplyr::left_join(group_means, overall_means, by = "gene")
-    
     res <- dplyr::left_join(dplyr::select(res, -mean), fcount_df, by = "gene")
+  }
 
-    # Determine whether a gene is DE
+  # Determine whether a gene is DE & add 'isDE' column to indicate this
+  if (!is.null(count_df)) {
     res <- res |>
-      mutate(
-        isDE = ifelse(padj < p_tres & abs(lfc) > lfc_tres & (mean1 > mean_tres | mean2 > mean_tres),
-                      TRUE, FALSE)
-        )
+      mutate(isDE = ifelse(padj < p_tres &
+                             abs(lfc) > lfc_tres &
+                             (mean1 > mean_tres | mean2 > mean_tres),
+                           TRUE, FALSE))
   } else {
-    # Determine whether a gene is DE
     res <- res |>
-      mutate(
-        isDE = ifelse(padj < p_tres & abs(lfc) > lfc_tres & mean > mean_tres,
-                      TRUE, FALSE)
-        )
+      mutate(isDE = ifelse(padj < p_tres &
+                             abs(lfc) > lfc_tres &
+                             mean > mean_tres,
+                           TRUE, FALSE))
   }
 
   # Only keep significant genes
@@ -140,10 +148,8 @@ extract_DE <- function(
   n_sig <- sum(res$isDE, na.rm = TRUE)
   n_up <- nrow(dplyr::filter(res, lfc > 0 & isDE == TRUE))
   n_down <- nrow(dplyr::filter(res, lfc < 0 & isDE == TRUE))
-  
   if (is.null(contrasts)) comp_str <- paste0(comp[1], " vs ", comp[2])
   if (!is.null(contrasts)) comp_str <- paste0(contrasts, collapse = " - ")
-  
   message(comp_str, " - Nr DEG: ", n_sig, " (", n_up, "/", n_down, " up/down in group1)")
   
   # Return the final results df
