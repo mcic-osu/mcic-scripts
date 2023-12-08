@@ -1,246 +1,187 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=3:00:00
-#SBATCH --mem=100G
 #SBATCH --cpus-per-task=25
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
+#SBATCH --mem=100G
+#SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=merge_bam
 #SBATCH --output=slurm-merge_bam-%j.out
 
 # ==============================================================================
-#                                   FUNCTIONS
-# ==============================================================================
-# Help function
-Print_help() {
-    echo
-    echo "======================================================================"
-    echo "                            $0"
-    echo "               MERGE BAM FILES (AND SORT THE OUTPUT BAM)"
-    echo "======================================================================"
-    echo
-    echo "USAGE:"
-    echo "  sbatch $0 -o <output file> [ -i <input dir> / --fofn <FOFN> [BAM-file-1 BAM-file-2 ...]]"
-    echo "  bash $0 -h"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -o/--outfile    <dir>   Output BAM file"
-    echo "Specify the input using one of the following methods:"
-    echo "  A) -i/--indir   <dir>   Input dir with BAM files (all BAM files in the dir will be used)"
-    echo "  B) --fofn       <file>  File Of File Names (FOFN) with the input BAM files"
-    echo "  C) Specify BAM files as positional arguments at the end of the command"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                 Run the script in debug mode (print all code)"
-    echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for Samtools and exit"
-    echo "  -v/--version            Print the version of Samtools and exit"
-    echo
-    echo "EXAMPLE COMMANDS:"
-    echo "  Using an input dir:"
-    echo "    sbatch $0 -o results/merged.bam -i results/mapped"
-    echo "  Using an FOFN:"
-    echo "    sbatch $0 -o results/merged.bam --fofn bam_list.txt"
-    echo "  Using BAM files as positional arguments:"
-    echo "    sbatch $0 -o results/merged.bam results/mapped/A.bam results/mapped/B.bam results/mapped/C.bam"
-    echo
-    echo "SOFTWARE DOCUMENTATION:"
-    echo "  - Samtools merge: http://www.htslib.org/doc/samtools-merge.html"
-    echo "  - Samtools sort: http://www.htslib.org/doc/samtools-merge.html"
-    echo
-}
-
-# Load software
-Load_software() {
-    set +u
-    module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /fs/ess/PAS0471/jelmer/conda/samtools
-    set -u
-}
-
-# Print version
-Print_version() {
-    Load_software
-    samtools --version | head -n 2
-}
-
-# Print help for the focal program
-Print_help_program() {
-    Load_software
-    samtools --help
-}
-
-# Print SLURM job resource usage info
-Resource_usage() {
-    echo
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
-    echo
-}
-
-# Print SLURM job requested resources
-Print_resources() {
-    set +u
-    echo "# SLURM job information:"
-    echo "Account (project):    $SLURM_JOB_ACCOUNT"
-    echo "Job ID:               $SLURM_JOB_ID"
-    echo "Job name:             $SLURM_JOB_NAME"
-    echo "Memory (per node):    $SLURM_MEM_PER_NODE"
-    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
-    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
-    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
-    echo "======================================================================"
-    echo
-    set -u
-}
-
-# Set the number of threads/CPUs
-Set_threads() {
-    set +u
-    if [[ "$slurm" = true ]]; then
-        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-            threads="$SLURM_CPUS_PER_TASK"
-        elif [[ -n "$SLURM_NTASKS" ]]; then
-            threads="$SLURM_NTASKS"
-        else 
-            echo "WARNING: Can't detect nr of threads, setting to 1"
-            threads=1
-        fi
-    else
-        threads=1
-    fi
-    set -u
-}
-
-# Resource usage information
-Time() {
-    /usr/bin/time -f \
-        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
-        "$@"
-}   
-
-# Exit upon error with a message
-Die() {
-    error_message=${1}
-    error_args=${2-none}
-    
-    echo >&2
-    echo "=====================================================================" >&2
-    printf "$0: ERROR: %s\n" "$error_message" >&2
-    echo -e "\nFor help, run this script with the '-h' option" >&2
-    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
-    if [[ "$error_args" != "none" ]]; then
-        echo -e "\nArguments passed to the script:" >&2
-        echo "$error_args" >&2
-    fi
-    echo -e "\nEXITING..." >&2
-    echo "=====================================================================" >&2
-    echo >&2
-    exit 1
-}
-
-
-# ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-# Option defaults
-debug=false
-dryrun=false && e=""
-slurm=true
+# Constants - generic
+DESCRIPTION="Merge BAM files and sort the output BAM file"
+SCRIPT_VERSION="2023-12-06"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+TOOL_BINARY=samtools
+TOOL_NAME=samtools
+TOOL_DOCS=http://www.htslib.org/doc/samtools-merge.html
+VERSION_COMMAND="$TOOL_BINARY --version"
 
+# Defaults - generics
+env=conda                           # Use a 'conda' env or a Singularity 'container'
+conda_path=/fs/ess/PAS0471/jelmer/conda/samtools
+container_path=
+container_url=
+dl_container=false
+container_dir="$HOME/containers"
+strict_bash=true
+version_only=false                 # When true, just print tool & script version info and exit
+
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
+script_help() {
+    echo -e "\n                          $0"
+    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
+    echo "        =============================================================="
+    echo "DESCRIPTION:"
+    echo "  $DESCRIPTION"
+    echo
+    echo "USAGE / EXAMPLE COMMANDS:"
+    echo "  - Basic usage:"
+    echo "      sbatch $0 -i results/bwa -o results/merged.bam"
+    echo "      sbatch $0 --fofn bamfiles.txt -o results/merged.bam"    
+    echo "      sbatch $0 -o results/merged.bam results/bwa/A.bam results/bwa/B.bam results/bwa/C.bam"
+    echo
+    echo "REQUIRED OPTIONS:"
+    echo "  -o/--outfile        <dir>   Output BAM file"
+    echo "Specify the input using one of the following methods:"
+    echo "  A) -i/--indir       <dir>   Input dir with BAM files (all BAM files in the dir will be used)"
+    echo "  B) --fofn           <file>  File Of File Names (FOFN) with the input BAM files"
+    echo "  C) Specify BAM files as positional arguments at the end of the command"
+    echo
+    echo "OTHER KEY OPTIONS:"
+    echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
+    echo
+    echo "UTILITY OPTIONS:"
+    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
+    echo "                                (NOTE: If no default '--container_url' is listed below,"
+    echo "                                 you'll have to provide one in order to run the script with a container.)"
+    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
+    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
+    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
+    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
+    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
+    echo "  --no_strict                 Don't use strict Bash settings ('set -euo pipefail') -- can be useful for troubleshooting"
+    echo "  -h/--help                   Print this help message and exit"
+    echo "  -v                          Print the version of this script and exit"
+    echo "  --version                   Print the version of $TOOL_NAME and exit"
+    echo
+    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
+}
+
+# Function to source the script with Bash functions
+source_function_script() {
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$IS_SLURM" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
+    else
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
+    fi
+    function_script=$(realpath "$script_dir"/../dev/"$(basename "$FUNCTION_SCRIPT_URL")")
+    # Download the function script if needed, then source it
+    if [[ ! -f "$function_script" ]]; then
+        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
+        function_script=$(basename "$FUNCTION_SCRIPT_URL")
+        wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script"
+    fi
+    source "$function_script"
+}
+
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-# Placeholder defaults
+# Initiate variables
 declare -a infiles
-indir=""
-fofn=""
-outdir=""
-tmpdir_arg=""
+indir=
+fofn=
+outdir=
+tmpdir_arg=
+more_opts=
+threads=
 
 # Parse command-line args
-all_args="$*"
+all_opts="$*"
 count=0
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --indir )      shift && indir=$1 ;;
         --fofn )            shift && fofn=$1 ;;
         -o | --outfile )    shift && outfile=$1 ;;
-        -v | --version )    Print_version; exit 0 ;;
-        -h )                Print_help; exit 0 ;;
-        --help )            Print_help_program; exit 0;;
-        --dryrun )          dryrun=true && e="echo ";;
-        --debug )           debug=true ;;
+        --more_opts )       shift && more_opts=$1 ;;
+        --env )             shift && env=$1 ;;
+        --no_strict )       strict_bash=false ;;
+        --dl_container )    dl_container=true ;;
+        --container_dir )   shift && container_dir=$1 ;;
+        --container_url )   shift && container_url=$1 && dl_container=true ;;
+        -h | --help )       script_help; exit 0 ;;
+        -v )                script_version; exit 0 ;;
+        --version )         version_only=true ;;
         * )                 infiles[count]=$1 && count=$(( count + 1 )) ;;
     esac
     shift
 done
 
-
 # ==============================================================================
-#                          OTHER SETUP
+#                          INFRASTRUCTURE SETUP
 # ==============================================================================
-# In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
+# Strict Bash settings
+[[ "$strict_bash" == true ]] && set -euo pipefail
 
-# Check if this is a SLURM job
-[[ -z "$SLURM_JOB_ID" ]] && slurm=false
+# Load software
+load_env "$conda_path" "$container_path" "$dl_container"
+[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
 
-# Bash script settings
-set -euo pipefail
+# Check options provided to the script
+[[ -z "$outfile" ]] && die "No output file specified, do so with -o/--outfile" "$all_opts"
+[[ -z "$indir" && ${#infiles[@]} -eq 0 ]] && die "Please specify input either using an input dir
+    (-i/--indir), a FOFN (--fofn), or BAM files as positional args" "$all_opts"
+[[ -n "$indir" && ! -d "$indir" ]] && die "Input dir $indir does not exist"
 
-# Load software and set nr of threads
-[[ "$dryrun" = false ]] && Load_software
-Set_threads
+# Define outputs based on script parameters
+LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 
 # Determine file name for unsorted BAM file
 outdir=$(dirname "$outfile")
 
 # Read BAM files into an array if an input dir is provided
-[[ "$indir" != "" ]] && mapfile -t infiles < <(find "$indir" -type f -name "*bam")
-[[ "$fofn" != "" ]] && mapfile -t infiles <"$fofn"
-
-# Check input
-[[ "$outfile" = "" ]] && Die "Please specify an output file with -o/--outfile" "$all_args"
-[[ "$indir" = "" && ${#infiles[@]} = 0 ]] && Die "Please specify input either using an input dir
-    (-i/--indir), a FOFN (--fofn), or BAM files as positional args" "$all_args"
-[[ "$indir" != "" && ! -d "$indir" ]] && Die "Input dir $indir does not exist"
+[[ -n "$indir" ]] && mapfile -t infiles < <(find "$indir" -type f -name "*bam")
+[[ -n "$fofn" ]] && mapfile -t infiles <"$fofn"
 
 # Set temporary directory if this is a SLURM job
-[[ "$slurm" = true ]] && tmpdir_arg="-T $TMPDIR"
+[[ "$IS_SLURM" == true ]] && tmpdir_arg="-T $TMPDIR"
 
-# Report
-echo
+# ==============================================================================
+#                         REPORT PARSED OPTIONS
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "                    STARTING SCRIPT MERGE_BAM.SH"
-date
-echo "=========================================================================="
-echo "All arguments to this script:     $all_args"
-echo "Output BAM file:                  $outfile"
-echo "Number of threads/cores:          $threads"
-echo "Number of input BAM files:        ${#infiles[@]}"
-echo
-echo "Listing the input BAM files:"
+echo "Output BAM file:                      $outfile"
+echo "Number of threads/cores:              $threads"
+echo "Number of input BAM files:            ${#infiles[@]}"
+[[ -n $more_opts ]] && echo "Additional options for samtools sort: $more_opts"
+log_time "Listing the input BAM files:"
 for bam in "${infiles[@]}"; do ls -lh "$bam"; done
-[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
-echo "=========================================================================="
-
-# Print reserved resources
-[[ "$slurm" = true ]] && Print_resources
-
+set_threads "$IS_SLURM"
+[[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Create the output directory
-echo -e "\n# Creating the output directories..."
-${e}mkdir -pv "$outdir"/logs
-
-echo -e "\n# Now running samtools..."
-${e}Time samtools merge \
+log_time "Running $TOOL_NAME..."
+runstats $CONTAINER_PREFIX $TOOL_BINARY merge \
+    $more_opts \
     -o - \
     "${infiles[@]}" |
     samtools sort \
@@ -249,18 +190,6 @@ ${e}Time samtools merge \
         $tmpdir_arg \
         > "$outfile"
 
-
-# ==============================================================================
-#                               WRAP-UP
-# ==============================================================================
-echo
-echo "========================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo "# Version used:"
-    Print_version | tee "$outdir"/logs/merge_bam_version.txt
-    echo -e "\n# Listing the output file:"
-    ls -lhd "$PWD"/"$outfile"
-    [[ "$slurm" = true ]] && Resource_usage
-fi
-echo "# Done with script"
-date
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/*
+final_reporting "$LOG_DIR"

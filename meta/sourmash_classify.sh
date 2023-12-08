@@ -1,35 +1,44 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
+#SBATCH --mem=20G
 #SBATCH --mail-type=FAIL
-#SBATCH --job-name=gff2bed
-#SBATCH --output=slurm-gf2bed-%j.out
+#SBATCH --job-name=sourmash_classify
+#SBATCH --output=slurm-sourmash_classify-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Convert a GFF or GTF file to a BED file using 'bedops'"
-SCRIPT_VERSION="2023-12-06"
+DESCRIPTION="Taxonomically classify the sequence contained in a FASTA file using LCA classification with 'sourmash lca classify'"
+SCRIPT_VERSION="2023-12-04"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
-TOOL_BINARY=bedops
-TOOL_NAME=bedops
-TOOL_DOCS=https://bedops.readthedocs.io/en/latest/
-VERSION_COMMAND="$TOOL_BINARY --version"
+TOOL_BINARY="sourmash"
+TOOL_NAME=Sourmash
+TOOL_DOCS=https://sourmash.readthedocs.io
+VERSION_COMMAND="sourmash --version"
 
 # Defaults - generics
 env=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/bedops
+conda_path=/fs/project/PAS0471/jelmer/conda/sourmash
 container_path=
 container_url=
 dl_container=false
 container_dir="$HOME/containers"
 strict_bash=true
 version_only=false                 # When true, just print tool & script version info and exit
+
+# Constants - tool parameters etc
+K21_DB_URL=https://farm.cse.ucdavis.edu/~ctbrown/sourmash-db/gtdb-rs214/gtdb-rs214-k21.lca.json.gz
+K31_DB_URL=https://farm.cse.ucdavis.edu/~ctbrown/sourmash-db/gtdb-rs214/gtdb-rs214-k31.lca.json.gz
+K51_DB_URL=https://farm.cse.ucdavis.edu/~ctbrown/sourmash-db/gtdb-rs214/gtdb-rs214-k51.lca.json.gz
+DB_FILENAME_PREFIX=gtdb-rs214-k
+
+# Defaults - tool parameters etc
+db_dir=/fs/ess/PAS0471/jelmer/refdata/sourmash
+kmer=31
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -43,15 +52,18 @@ script_help() {
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage:"
-    echo "      sbatch $0 -i data/ref/my.gtf"
-    echo "      sbatch $0 -i data/ref/my.gff"
-    echo "      sbatch $0 -i data/ref/my.gff -o results/bed"
+    echo "      sbatch $0 -i results/spades/my_asm.fna -o results/sourmash/db"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile         <file>  Input GFF or GTF file (extension, 'gff', '.gff3', or '.gtf')"
+    echo "  -i/--infile         <file>  Input file: nucleotide FASTA with .fa, .fasta, or .fna extension"
+    echo "                              This would typically be a genome assembly and can contain multiple contigs/entries"
+    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)  [default: same as indir]"
+    echo "  --db                <file>  Path to a .lca.json.gz sourmash database [default: download GTDB database]"
+    echo "  --db_dir            <dir>   Directory to download GTDB database to  [default: $db_dir]"
+    echo "  --kmer              <int>   Kmer size: 21, 31, or 51                [default: $kmer]"
+    echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
@@ -101,6 +113,8 @@ source_function_script
 # Initiate variables
 infile=
 outdir=
+db=
+more_opts=
 
 # Parse command-line args
 all_opts="$*"
@@ -108,6 +122,10 @@ while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
+        --db )              shift && db=$1 ;;
+        --db_dir )          shift && db_dir=$1 ;;
+        --kmer )            shift && kmer=$1 ;;
+        --more_opts )       shift && more_opts=$1 ;;
         --env )             shift && env=$1 ;;
         --no_strict )       strict_bash=false ;;
         --dl_container )    dl_container=true ;;
@@ -133,12 +151,20 @@ load_env "$conda_path" "$container_path" "$dl_container"
 
 # Check options provided to the script
 [[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
 [[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 
+# If needed, make dirs absolute because we have to move into the outdir
+[[ ! $infile =~ ^/ ]] && infile="$PWD"/"$infile"
+[[ ! $outdir =~ ^/ ]] && outdir="$PWD"/"$outdir"
+[[ -n $db && ! $db =~ ^/ ]] && db="$PWD"/"$db"
+[[ -n $db_dir && ! $db_dir =~ ^/ ]] && db_dir="$PWD"/"$db_dir"
+sigfile=$(basename "$infile").sig # Sourmash signature file
+file_id=$(basename "$infile" | sed -E 's/\.fn?as?t?a?//')
+[[ -z "$db" ]] && db="$db_dir"/"$DB_FILENAME_PREFIX""$kmer".lca.json.gz
+
 # Define outputs based on script parameters
-[[ -z "$outdir" ]] && outdir=$(dirname "$infile")
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
-bed="$outdir"/$(basename "${infile%.*}").bed
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -146,26 +172,51 @@ bed="$outdir"/$(basename "${infile%.*}").bed
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options passed to this script:        $all_opts"
-echo "Input GFF/GTF file:                       $infile"
-echo "Output BED file:                          $outfile"
+echo "Input FASTA file:                         $infile"
+echo "Output dir:                               $outdir"
+echo "Kmer size:                                $kmer"
+echo "Taxonomic database file:                  $db"
+[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
-ls -lh "$infile"
-set_threads "$IS_SLURM"
+ls -lh "$infile" 
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-if [[ $infile = *.gtf ]]; then
-    log_time "Converting from GTF to BED..."
-    runstats $CONTAINER_PREFIX gtf2bed < "$infile" > "$outfile"
-elif [[ $infile = *.gff || $infile = *.gff3 ]]; then
-    log_time "Converting from GFF to BED"
-    runstats $CONTAINER_PREFIX gff2bed < "$infile" > "$outfile"
+# Move to output dir
+cd "$outdir" || exit
+
+# Create a signature for the FASTA file
+if [[ ! -f "$sigfile" ]]; then
+    log_time "Create sourmash signature for query file... ($sigfile)"
+    $CONTAINER_PREFIX $TOOL_BINARY sketch dna -p k="$kmer" "$infile"
 else
-    die "Not converting input file $infile, make sure it has extension '.gtf', '.gff', or '.gff3'"
+    log_time "Sourmash signature file for query already exists ($sigfile)"
 fi
 
-log_time "Listing files in the output dir:"
-ls -lhd "$(realpath "$outdir")"/*
+# Download the taxonomic database - https://sourmash.readthedocs.io/en/latest/databases.html
+if [[ -n "$db_dir" ]]; then
+    if [[ ! -f "$db" ]]; then
+        log_time "Downloading database for k=$kmer (See https://sourmash.readthedocs.io/en/latest/databases.html)"
+        [[ "$kmer" = 21 ]] && curl --insecure -JL -o "$db" "$K21_DB_URL"
+        [[ "$kmer" = 31 ]] && curl --insecure -JL -o "$db" "$K31_DB_URL"
+        [[ "$kmer" = 51 ]] && curl --insecure -JL -o "$db" "$K51_DB_URL"
+        [[ ! -f "$db" ]] && die "Downloaded DB file does not exist/have expected name $db"
+    else
+        log_time "Database file $db already exists"
+    fi
+fi
+
+# Run Sourmash
+log_time "Running sourmash classify..."
+runstats $CONTAINER_PREFIX $TOOL_BINARY lca classify \
+    --db "$db" \
+    --query "$sigfile" \
+    $more_opts |
+    tee > "$file_id".txt
+
+# Wrap up
+log_time "Showing the contents of the main output file $file_id.txt:"
+cat "$file_id".txt
 final_reporting "$LOG_DIR"

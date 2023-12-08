@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run Bracken on Kraken output to re-estimate abundances to a specified taxonomic level"
-SCRIPT_VERSION="2023-12-03"
+SCRIPT_VERSION="2023-12-07"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -33,7 +33,7 @@ version_only=false                 # When true, just print tool & script version
 
 # Defaults - tool parameters
 read_len=150
-min_reads=x
+min_reads=10
 tax_level=S
 
 # ==============================================================================
@@ -52,12 +52,12 @@ script_help() {
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--kraken_report  <file>  Kraken report"
-    echo "  --db                <file>  Kraken db"
+    echo "  --db                <file>  Kraken + Bracken db"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --min_reads         <int>   Min. nr. of assigned reads required to be included"
-    echo "  --read_len          <int>   FASTQ file read length"
+    echo "  --min_reads         <int>   Min. nr. of assigned reads              [default: $min_reads]"
+    echo "  --read_len          <int>   FASTQ file read length                  [default: $read_len]"
     echo "  --tax_level         <str>   Taxonomic level to estimate abundance at [default: $tax_level]"
     echo "                                Options: D,P,C,O,F,G,S,S1,etc"
     echo
@@ -167,7 +167,7 @@ echo "Read length:                              $read_len"
 echo "Min. nr. of assigned reads for inclusion: $min_reads"
 echo "Taxonomic level to summarize to:          $tax_level"
 log_time "Listing the input file(s):"
-ls -lh "$kraken_report" "$db"
+ls -lh "$kraken_report" "$db"/*k2d
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
