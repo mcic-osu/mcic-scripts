@@ -9,14 +9,14 @@ run_enrich <- function(
   contrast,                  # DE comparison as specified in 'contrast' column in DE results
   DE_direction = "either",   # DE direction: 'either' (all DE genes), 'up' (lfc > 0), or 'down' (lfc < 0)
   DE_res,                    # DE results df from 'extract_DE()', should have columns 'gene', 'contrast', 'lfc', 'isDE', 'padj'
-  cat_map,                   # Functional category to gene mapping with columns: 1:category, 2:gene ID, and optionally 3:description, 4: ontology
+  cat_map,                   # Functional category/term to gene mapping with columns: 1:category, 2:gene ID, and optionally 3:description, 4: ontology
   p_enrich = 0.05,           # Adj. p-value threshold for enrichment
   q_enrich = 0.2,            # Q value threshold for enrichment
   min_DE_in_cat = 2,         # Nr. DE genes threshold for enrichment: at least this number of genes in the ontology category should be DE
                              # (Occasionally, 'small' categories with 1 DE gene can have p-values below 0.05 -- this excludes those)
   min_cat_size = 5,          # Min. nr. of genes in a category (= clusterProfiler 'minGSSize' argument - NOTE: clPr default is 10)
   max_cat_size = 500,        # Min. nr. of genes in a category (= clusterProfiler 'maxGSSize' argument)
-  filter_no_descrip = TRUE,  # Remove categories with no description (at least for GO terms, these tend to be old/deprecated ones)
+  filter_no_descrip = TRUE,  # Remove categories/terms with no description (at least for GO terms, these tend to be old/deprecated ones)
   exclude_nontested = TRUE,  # Exclude genes that weren't tested for DE from the 'universe' of genes
   p_DE = NULL,               # Adj. p-value threshold for DE (default: use 'isDE' column to determine DE status)
   lfc_DE = NULL,             # LFC threshold for DE (default: use 'isDE' column to determine DE status)
@@ -116,15 +116,15 @@ run_enrich <- function(
              contrast = fcontrast,
              DE_direction = DE_direction) |>
       dplyr::select(contrast,
-             DE_direction,
-             category = ID,
-             numDEInCat = Count,
-             GeneRatio,
-             BgRatio,
-             padj = p.adjust,
-             sig,
-             description = Description,
-             gene_ids = geneID)
+                    DE_direction,
+                    category = ID,
+                    n_DE_in_cat = Count,
+                    GeneRatio,
+                    BgRatio,
+                    padj = p.adjust,
+                    sig,
+                    description = Description,
+                    gene_ids = geneID)
     
     if ("ontology" %in% colnames(cat_map)) {
       res <- cat_map |>
@@ -133,7 +133,29 @@ run_enrich <- function(
         right_join(res, by = "category") |>
         relocate(ontology, .before = "gene_ids")
     }
-      
+    
+    # Add mean & median LFC value
+    w_lfc <- res |>
+      separate_longer_delim(cols = gene_ids, delim = "/") |>
+      left_join(dplyr::select(DE_res, gene, lfc),
+                by = join_by("gene_ids" == "gene"),
+                relationship = "many-to-many") |>
+      summarize(mean_lfc = mean(lfc),
+                median_lfc = median(lfc),
+                .by = c("category", "contrast", "DE_direction"))
+    res <- left_join(res, w_lfc, by = c("category", "contrast", "DE_direction"))
+    
+    # Add gene numbers and enrichment ratio
+    res <- res |>
+    separate_wider_delim(cols = c("GeneRatio", "BgRatio"), delim = "/",
+                         names_sep = "_") |>
+      mutate(n_DE = as.integer(GeneRatio_2),
+             n_cat = as.integer(BgRatio_1),
+             n_total = as.integer(BgRatio_2)) |>
+      select(-GeneRatio_1, -GeneRatio_2, -BgRatio_1, -BgRatio_2) |>
+      mutate(fold_enrich = (n_DE_in_cat / n_DE) / (n_cat / n_total))
+    
+    # Report
     cat(" // Nr enriched:", sum(res$sig), "\n")
   }
   
@@ -216,11 +238,13 @@ enrichplot <- function(
   contrasts = NULL,             # One or more contrasts (default: all)
   DE_directions = NULL,         # One or more DE directions (default: all)
   x_var = "contrast",           # Column in enrich_df to plot along the x-axis
+  fill_var = "padj_log",        # Column in enrich_df to vary fill color by
+                                # (the default, padj_log, will be computed from padj)
   facet_var1 = NULL,            # Column in enrich_df to facet by
   facet_var2 = NULL,            # Second column in enrich_df to facet by
                                 # When specifiying both facet_var1 and var2: var1=>rows, var2=>columns
-  countlab = TRUE,           # Print nrDEInCat genes in the box
-  countlab_size = 2,         # Size of nrDEInCat label in the box
+  countlab = TRUE,              # Print nrDEInCat genes in the box
+  countlab_size = 2,            # Size of nrDEInCat label in the box
   xlabs = NULL,                 # Manually provide a vector with x-axis labels
   xlab_size = 13,               # Size of x-axis labels
   ylab_size = 10,               # Size of y-axis labels (= categories)
@@ -242,8 +266,12 @@ enrichplot <- function(
   enrich_df <- enrich_df |>
     filter(contrast %in% contrasts,
            DE_direction %in% DE_directions) |>
-    mutate(numDEInCat = ifelse(padj >= 0.05, NA, numDEInCat),
+    mutate(n_DE_in_cat = ifelse(padj >= 0.05, NA, n_DE_in_cat),
            contrast = sub("padj_", "", contrast),
+           fold_enrich = ifelse(sig == FALSE, NA, fold_enrich),
+           mean_lfc = ifelse(sig == FALSE, NA, mean_lfc),
+           median_lfc = ifelse(sig == FALSE, NA, median_lfc),
+           n_DE = ifelse(sig == FALSE, NA, n_DE),
            padj = ifelse(sig == FALSE, NA, padj),
            padj_log = -log10(padj)) %>%
     # Only take GO categories with at least one significant contrast (as pre-specified in 'sig' column)
@@ -285,7 +313,15 @@ enrichplot <- function(
     mutate(sig = ifelse(is.na(sig), FALSE, sig))
   
   # Legend title with subscript
-  legend_title <- expression("-Log"[10]*"P")
+  if (fill_var == "pval") {
+    fill_name <- expression("-Log"[10]*"P")
+  } else if (fill_var == "median_lfc") {
+    fill_name <- "Median\nLFC"
+  } else if (fill_var == "mean_lfc") {
+    fill_name <- "Mean\nLFC"
+  } else {
+    fill_name <- fill_var
+  }
   
   # X-label position
   if (is.null(facet_var1)) xlab_pos <- "top" else xlab_pos <- "bottom" 
@@ -294,12 +330,12 @@ enrichplot <- function(
   p <- ggplot(enrich_df) +
     aes(x = .data[[x_var]],
         y = description,
-        fill = padj_log) +
+        fill = .data[[fill_var]]) +
     geom_tile(stat = "identity", linewidth = 0.25, color = "grey80") +
     scale_fill_viridis_c(option = "D", na.value = "grey97") +
     scale_x_discrete(position = xlab_pos) +
     scale_y_discrete(position = "right") +
-    labs(fill = legend_title) +
+    labs(fill = fill_name) +
     theme_minimal() +
     theme(legend.position = "left",
           panel.grid = element_blank(),
@@ -315,7 +351,7 @@ enrichplot <- function(
   # Add a count of the nr of DE genes in each category
   if (countlab == TRUE) {
     p <- p + suppressWarnings(
-      geom_label(aes(label = numDEInCat),
+      geom_label(aes(label = n_DE_in_cat),
                  fill = "grey95",
                  size = countlab_size)
       )
@@ -349,16 +385,19 @@ enrichplot <- function(
 }
 
 
-# Cleveland dotplot
+# Cleveland dotplot of enrichment results
 cdotplot <- function(
     enrich_df,               # Dataframe with enrichment results
     contrasts = NULL,        # One or more contrasts (default: all)
     DE_directions = NULL,    # One or more DE directions (default: all)
+    x_var = "padj_log",      # Column in enrich_df to plot along the x axis ('padj_log' will be computed from 'padj')
+    fill_var = "median_lfc", # Column in enrich_df to vary fill color by ('padj_log' will be computed from 'padj')
+    label_var = "n_DE_in_cat", # Column in enrich_df with a number to add as a label in the circles
     facet_var1 = NULL,       # Column in enrich_df to facet by
     facet_var2 = NULL,       # Second column in enrich_df to facet by (e.g. 'ontology' for GO)
-    # (will use facet_grid())
-    xlab_size = 11,          # Category label size
-    log_pval = TRUE,         # Whether to -log10-convert p-values
+                             # (will use facet_grid())
+    ylab_size = 11,          # Category label size
+    x_title = NULL,          # X-axis title
     add_cat_id = TRUE        # Add ontology category ID to its name
 ) {
   
@@ -370,15 +409,8 @@ cdotplot <- function(
   enrich_df <- enrich_df |>
     filter(sig == TRUE,
            contrast %in% contrasts,
-           DE_direction %in% DE_directions)
-  
-  # Log-transform the p-value
-  if (log_pval) {
-    ylab <- expression("-Log"[10]*" P")
-    enrich_df <- enrich_df |> mutate(padj = -log10(padj))
-  } else {
-    ylab <- "Adjusted p-value"
-  }
+           DE_direction %in% DE_directions) |>
+    mutate(padj_log = -log10(padj))
   
   # Modify the category description
   enrich_df <- enrich_df |>
@@ -395,28 +427,48 @@ cdotplot <- function(
   }
   enrich_df <- enrich_df |> mutate(description = str_trunc(description, width = 40))
   
+  # Legend position and title
+  if (x_var == fill_var) legend_pos <- "none" else legend_pos <- "top"
+  if (fill_var == "median_lfc") {
+    color_name <- "Median\nLFC"
+  } else if (fill_var == "mean_lfc") {
+    color_name <- "Mean\nLFC"
+  } else {
+    color_name <- fill_var
+  }
+  
+  # X-axis title
+  # Log-transform the p-value
+  if (x_var == "padj_log") {
+    x_title <- expression("-Log"[10]*" P")
+  } else if (x_var == "padj") {
+    x_title <- "Adjusted p-value"
+  } else if (x_var == "fold_enrich") {
+    x_title <- "Fold enrichment"
+  }
+  
   # Create the base plot
   p <- ggpubr::ggdotchart(
     enrich_df,
     x = "description",
-    y = "padj",
-    color = "padj",
+    y = x_var,
+    label = label_var,
+    color = fill_var,
     sorting = "descending",       # Sort value in descending order
     add = "segments",             # Add segments from y = 0 to dots
     rotate = TRUE,                # Rotate vertically
     dot.size = 5,                 # Large dot size
-    label = "numDEInCat",         # Add nr DE genes as dot labels
     font.label = list(color = "white", size = 9, vjust = 0.5),
     ggtheme = theme_bw()
   )
   
   # Formatting
   p <- p +
-    labs(y = ylab,
-         x = NULL) +
+    labs(x = NULL) +
     scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-    scale_color_viridis_c(option = "D", na.value = "grey95") +
-    theme(plot.margin = margin(0.5, 0.5, 0.5, 0.5, unit = "cm"),
+    scale_color_viridis_c(option = "D", na.value = "grey95", name = color_name) +
+    theme(legend.position = legend_pos,
+          plot.margin = margin(0.5, 0.5, 0.5, 0.5, unit = "cm"),
           strip.text.y = element_text(angle = 270, face = "bold"),
           strip.placement = "outside",
           axis.title.x = element_text(
@@ -425,10 +477,11 @@ cdotplot <- function(
           ),
           axis.title.y = element_blank(),
           axis.text.x = element_text(size = 11),
-          axis.text.y = element_text(size = xlab_size),
-          legend.position = "none",
+          axis.text.y = element_text(size = ylab_size),
           panel.grid.major.y = element_blank(),
           panel.grid.minor.x = element_blank())
+  
+  if (! is.null(x_title)) p <- p + labs(y = x_title)
   
   # Faceting
   if (!is.null(facet_var1)) {
@@ -643,7 +696,7 @@ rgoseq_internal <- function(
     )
 
     # Process GO results
-    GO_df <- GO_df |> filter(numDEInCat >= min_DE_in_cat)
+    GO_df <- GO_df |> filter(n_DE_in_cat >= min_DE_in_cat)
     GO_df <- GO_df |> filter(numInCat >= min_in_cat)
     GO_df <- GO_df |> filter(numInCat <= max_in_cat)
     GO_df <- GO_df |> filter(ontology %in% ontologies)
@@ -651,12 +704,12 @@ rgoseq_internal <- function(
 
     GO_df <- GO_df |>
       mutate(padj = p.adjust(over_represented_pvalue, method = "BH"),
-             sig = ifelse(padj < 0.05 & numDEInCat >= min_DE_in_cat, TRUE, FALSE),
+             sig = ifelse(padj < 0.05 & n_DE_in_cat >= min_DE_in_cat, TRUE, FALSE),
              contrast = contrast,
              DE_direction = DE_direction) |>
       dplyr::select(contrast, DE_direction,
              sig, p = over_represented_pvalue, padj,
-             numDEInCat, numInCat,
+             n_DE_in_cat, numInCat,
              category, ontology, description = term)
 
     cat(contrast,
