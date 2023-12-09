@@ -235,7 +235,7 @@ if [[ "$add_header" == false ]]; then
     n_subjects=$(cut -f 2 "$outfile" | sort -u | wc -l)
 else
     n_hits=$(tail -n+4 "$outfile" | wc -l)
-    n_queries=$(tail -n+4 "$outfqile" | sort -u | wc -l)
+    n_queries=$(tail -n+4 "$outfile" | sort -u | wc -l)
     n_subjects=$(tail -n+4 "$outfile" | cut -f 2 | sort -u | wc -l)
 fi
 log_time "Number of hits in the final output file: $n_hits"
