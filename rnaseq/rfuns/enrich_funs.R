@@ -1,7 +1,9 @@
 # Packages
-if (!require("ggforce", quietly = TRUE)) install.packages("ggforce")
-library(ggforce)
-
+if (! "tidyverse" %in% installed.packages()) install.packages("tidyverse")
+if (! "ggforce" %in% installed.packages()) install.packages("ggforce")
+if (! "colorspace" %in% installed.packages()) install.packages("colorspace")
+if (! "BiocManager" %in% installed.packages()) install.packages("BiocManager")
+if (! "clusterProfiler" %in% installed.packages()) BiocManager::install("clusterProfiler")
 
 # CLUSTERPROFILER FUNCTIONS ----------------------------------------------------
 # run_enrich: function to run a (GO or KEGG) standard overrepresentation analysis
@@ -33,14 +35,34 @@ run_enrich <- function(
   if(ncol(cat_map) > 2) colnames(cat_map)[3] <- "description"
   if(ncol(cat_map) > 3) colnames(cat_map)[4] <- "ontology"
   
-  # Get the background universe of genes:
+  # Get the background 'universe' of genes:
   # genes that were tested for DE *and* occur in the ontology category map
   # (Excluding the latter is equivalent to goseq's 'use_genes_without_cat=FALSE',
   # and this is done by default by ClusterProfiler -- but non-tested genes *are* included)
   if (exclude_nontested == TRUE) {
-    universe <- DE_res |> filter(!is.na(padj), gene %in% cat_map$gene) |> pull(gene)
+    universe <- DE_res |>
+      filter(!is.na(padj),
+             gene %in% cat_map$gene) |>
+      pull(gene)
   } else {
     universe <- NULL
+  }
+  
+  # Prep term mappings - term-to-gene
+  term2gene <- cat_map |> dplyr::select(category, gene)
+  
+  # Prep term mappings - term-to-name (description)
+  if (ncol(cat_map) > 2) {
+    term2name <- cat_map |> dplyr::select(category, description)
+    
+    if (filter_no_descrip == TRUE) {
+      n_before <- length(unique(term2name$category))
+      term2name <- term2name[!is.na(term2name$description), ]
+      n_removed <- n_before - length(unique(term2name$category))
+      if (n_removed > 0) message("Note: removed ", n_removed, " terms with no description")
+    }
+  } else {
+    term2name <- NA
   }
   
   # Filter the DE results, if needed: only take over- or underexpressed
@@ -58,26 +80,14 @@ run_enrich <- function(
     stop("ERROR: Found duplicated gene IDs: you probably have multiple 'contrasts' in your input df")
   }
   
-  # Prep term mappings - if there's a third column, make a term2name df as well
-  term2gene <- cat_map |> dplyr::select(category, gene)
-  if (ncol(cat_map) > 2) {
-    term2name <- cat_map |> dplyr::select(category, description)
-    if (filter_no_descrip == TRUE) {
-      n_before <- nrow(term2name)
-      term2name <- term2name[!is.na(term2name$description), ]
-      n_removed <- n_before - nrow(term2name)
-      if (n_removed > 0) message("Removed ", n_removed, " terms with no description")
-    }
-  } else {
-    term2name <- NA
-  }
-  
   # Check nr of DE genes in the category map
   genes_in_map <- DE_genes[DE_genes %in% term2gene$gene]
-  cat("Contrast: ", fcontrast, "// DE direction:", DE_direction,
-      "// Nr DE genes (in cat_map):", length(DE_genes), "(", length(genes_in_map), ")") 
+  cat("Contrast: ", fcontrast, " // DE direction: ", DE_direction,
+      " // Nr DE genes (with category assigned): ", length(DE_genes),
+      " (", length(genes_in_map), ")",
+      sep = "")
   if (length(genes_in_map) == 0) {
-    message("\nERROR: None of the DE genes are in the cat_map dataframe")
+    message("\nERROR: None of the DE genes are in the GO/KEGG category dataframe ('cat_map')")
     cat("First gene IDs from DE results: ", head(DE_genes), "\n")
     cat("First gene IDs from cat_map: ", head(term2gene$gene), "\n")
     stop()
@@ -174,6 +184,11 @@ run_gsea <- function(
   term2name <- NA
   fcontrast <- contrast
   
+  # Rename cat_map columns
+  colnames(cat_map)[1:2] <- c("category", "gene")
+  if(ncol(cat_map) > 2) colnames(cat_map)[3] <- "description"
+  if(ncol(cat_map) > 3) colnames(cat_map)[4] <- "ontology"
+  
   # Prep the df to later create a gene vector
   gene_df <- DE_res |>
     filter(contrast == fcontrast, !is.na(lfc)) |>
@@ -224,7 +239,32 @@ run_gsea <- function(
     gsea_res <- as_tibble(gsea_res) |> 
       mutate(sig = ifelse(p.adjust < p_enrich, TRUE, FALSE),
              contrast = fcontrast) |>
-      rename(category = ID)
+      dplyr::select(contrast,
+                    category = ID,
+                    padj = p.adjust,
+                    sig,
+                    description = Description,
+                    gene_ids = core_enrichment)
+    
+    if ("ontology" %in% colnames(cat_map)) {
+      gsea_res <- cat_map |>
+        dplyr::select(category, ontology) |>
+        distinct(category, .keep_all = TRUE) |> 
+        right_join(gsea_res, by = "category") |>
+        relocate(ontology, .before = "gene_ids")
+    }
+    
+    # Add mean & median LFC value
+    w_lfc <- gsea_res |>
+      separate_longer_delim(cols = gene_ids, delim = "/") |>
+      left_join(dplyr::select(DE_res, gene, lfc),
+                by = join_by("gene_ids" == "gene"),
+                relationship = "many-to-many") |>
+      summarize(mean_lfc = mean(lfc),
+                median_lfc = median(lfc),
+                .by = c("category", "contrast"))
+    
+    gsea_res <- left_join(gsea_res, w_lfc, by = c("category", "contrast"))
   }
 
   return(gsea_res)
@@ -250,7 +290,8 @@ enrichplot <- function(
   ylab_size = 10,               # Size of y-axis labels (= categories)
   xlab_angle = 0,               # Angle of x-axis labels
   facet_labeller = "label_value", # Facet labelling
-  add_cat_id = TRUE             # Add ontology category ID to its name
+  add_cat_id = TRUE,             # Add ontology category ID to its name
+  merge_directions = FALSE
 ) {
   
   # Check
@@ -280,7 +321,8 @@ enrichplot <- function(
     filter(contrast %in% (filter(., sig == TRUE) |> pull(contrast))) |>
     arrange(padj_log)
   
-  # Modify the category description
+  # Modify the ontology category description
+  trunc_width <- 40
   enrich_df <- enrich_df |>
     mutate(
       # Capitalize the first letter
@@ -292,8 +334,10 @@ enrichplot <- function(
   if (add_cat_id) {
     enrich_df <- enrich_df |>
       mutate(description = paste0(category, " - ", description))
+    trunc_width <- 50
   }
-  enrich_df <- enrich_df |> mutate(description = str_trunc(description, width = 40))
+  enrich_df <- enrich_df |>
+    mutate(description = str_trunc(description, width = trunc_width))
   
   # Make sure all combinations of contrast, DE_dir, and GO cat. are present
   # A) Make a lookup table with GO terms
@@ -312,9 +356,22 @@ enrichplot <- function(
                          multiple = "all") |>
     mutate(sig = ifelse(is.na(sig), FALSE, sig))
   
+  # Merge across DE directions
+  if (! "DE_direction" %in% c(x_var, facet_var1, facet_var2)) {
+    message("Merging DE directions (showing only most significant)
+             because DE direction is not included in any plotting variable")
+    merge_directions <- TRUE
+  }
+  if (merge_directions) {
+    enrich_df <- enrich_df |>
+      group_by(category, contrast) |>
+      arrange(padj, .by_group = TRUE) |>
+      slice_head(n = 1)
+  }
+  
   # Legend title with subscript
-  if (fill_var == "pval") {
-    fill_name <- expression("-Log"[10]*"P")
+  if (fill_var == "padj_log") {
+    fill_name <- expression("-Log"[10]*" P")
   } else if (fill_var == "median_lfc") {
     fill_name <- "Median\nLFC"
   } else if (fill_var == "mean_lfc") {
@@ -326,13 +383,23 @@ enrichplot <- function(
   # X-label position
   if (is.null(facet_var1)) xlab_pos <- "top" else xlab_pos <- "bottom" 
   
+  # Color scale
+  if (fill_var %in% c("mean_lfc", "median_lfc")) {
+    col_scale <- colorspace::scale_fill_continuous_divergingx(
+      palette = "Tropic", mid = 0.0, na.value = "grey98", rev = TRUE
+      #https://stackoverflow.com/questions/58718527/setting-midpoint-for-continuous-diverging-color-scale-on-a-heatmap
+      )
+  } else {
+    col_scale <- scale_fill_viridis_c(option = "D", na.value = "grey97")
+  }
+  
   # Make the plot
   p <- ggplot(enrich_df) +
     aes(x = .data[[x_var]],
         y = description,
         fill = .data[[fill_var]]) +
     geom_tile(stat = "identity", linewidth = 0.25, color = "grey80") +
-    scale_fill_viridis_c(option = "D", na.value = "grey97") +
+    col_scale +
     scale_x_discrete(position = xlab_pos) +
     scale_y_discrete(position = "right") +
     labs(fill = fill_name) +
@@ -351,9 +418,7 @@ enrichplot <- function(
   # Add a count of the nr of DE genes in each category
   if (countlab == TRUE) {
     p <- p + suppressWarnings(
-      geom_label(aes(label = n_DE_in_cat),
-                 fill = "grey95",
-                 size = countlab_size)
+      geom_label(aes(label = n_DE_in_cat), fill = "grey95", size = countlab_size)
       )
   }
   
@@ -369,14 +434,13 @@ enrichplot <- function(
                           labeller = facet_labeller)
     } else {
       if (facet_var1 != "ontology") {
-        p <- p + facet_wrap(facets = vars(.data[[facet_var1]]),
-                            scales = "fixed",
-                            nrow = 1)
+        p <- p +
+          ggforce::facet_wrap(facets = vars(.data[[facet_var1]]),
+                              scales = "fixed", nrow = 1)
       } else {
-        # ggforce::facet_col will keep tile heights constant
-        p <- p + facet_col(facets = vars(.data[[facet_var1]]),
-                           scales = "free_y",
-                           space = "free")
+        p <- p +
+          ggforce::facet_col(facets = vars(.data[[facet_var1]]),
+                             scales = "free_y", space = "free")
       }
     }
   }
@@ -396,21 +460,24 @@ cdotplot <- function(
     facet_var1 = NULL,       # Column in enrich_df to facet by
     facet_var2 = NULL,       # Second column in enrich_df to facet by (e.g. 'ontology' for GO)
                              # (will use facet_grid())
-    ylab_size = 11,          # Category label size
+    facet_to_columns = TRUE, # When only using one facet_var1, facets are columns (or rows)
     x_title = NULL,          # X-axis title
-    add_cat_id = TRUE        # Add ontology category ID to its name
+    ylab_size = 11,          # Size of y-axis labels (= category labels)
+    add_cat_id = TRUE,       # Add category ID (e.g., 'GO:009539') to its description
+    point_size = 6
 ) {
   
   # Select contrasts & DE directions
   if (is.null(contrasts)) contrasts <- unique(enrich_df$contrast)
-  if (is.null(DE_directions)) DE_directions <- unique(enrich_df$DE_direction)
   
   # Prep the df
   enrich_df <- enrich_df |>
     filter(sig == TRUE,
-           contrast %in% contrasts,
-           DE_direction %in% DE_directions) |>
+           contrast %in% contrasts) |>
     mutate(padj_log = -log10(padj))
+  
+  if (! is.null(DE_directions))
+    enrich_df <- enrich_df |> filter(DE_direction %in% DE_directions)
   
   # Modify the category description
   enrich_df <- enrich_df |>
@@ -421,11 +488,14 @@ cdotplot <- function(
       # If there is no description, use the category ID
       description = ifelse(is.na(description), category, description)
     )
+  trunc_width <- 40
   if (add_cat_id) {
     enrich_df <- enrich_df |>
       mutate(description = paste0(category, " - ", description))
+    trunc_width <- 50
   }
-  enrich_df <- enrich_df |> mutate(description = str_trunc(description, width = 40))
+  enrich_df <- enrich_df |>
+    mutate(description = str_trunc(description, width = trunc_width))
   
   # Legend position and title
   if (x_var == fill_var) legend_pos <- "none" else legend_pos <- "top"
@@ -433,6 +503,8 @@ cdotplot <- function(
     color_name <- "Median\nLFC"
   } else if (fill_var == "mean_lfc") {
     color_name <- "Mean\nLFC"
+  } else if (fill_var == "padj_log") {
+    color_name <- expression("-Log"[10]*" P")
   } else {
     color_name <- fill_var
   }
@@ -445,6 +517,23 @@ cdotplot <- function(
     x_title <- "Adjusted p-value"
   } else if (x_var == "fold_enrich") {
     x_title <- "Fold enrichment"
+  } else if (x_var == "median_lfc") {
+    x_title <- "Median LFC"
+  } else if (fill_var == "mean_lfc") {
+    x_title <- "Mean LFC"
+  } 
+  
+  # Color scale
+  if (fill_var %in% c("mean_lfc", "median_lfc")) {
+    #https://carto.com/carto-colors/
+    col_scale <- colorspace::scale_color_continuous_divergingx(
+      palette = "Tropic", mid = 0.0, na.value = "grey97",
+      name = color_name, rev = TRUE
+    )
+  } else {
+    col_scale <- scale_color_viridis_c(
+      option = "D", na.value = "grey95", name = color_name,
+      )
   }
   
   # Create the base plot
@@ -457,7 +546,7 @@ cdotplot <- function(
     sorting = "descending",       # Sort value in descending order
     add = "segments",             # Add segments from y = 0 to dots
     rotate = TRUE,                # Rotate vertically
-    dot.size = 5,                 # Large dot size
+    dot.size = point_size,
     font.label = list(color = "white", size = 9, vjust = 0.5),
     ggtheme = theme_bw()
   )
@@ -465,8 +554,8 @@ cdotplot <- function(
   # Formatting
   p <- p +
     labs(x = NULL) +
-    scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-    scale_color_viridis_c(option = "D", na.value = "grey95", name = color_name) +
+    scale_y_continuous(expand = expansion(mult = c(0.075, 0.075))) +
+    col_scale +
     theme(legend.position = legend_pos,
           plot.margin = margin(0.5, 0.5, 0.5, 0.5, unit = "cm"),
           strip.text.y = element_text(angle = 270, face = "bold"),
@@ -476,23 +565,35 @@ cdotplot <- function(
             margin = margin(t = 0.5, b = 0.5, unit = "cm")
           ),
           axis.title.y = element_blank(),
-          axis.text.x = element_text(size = 11),
+          axis.text.x = element_text(size = 10),
           axis.text.y = element_text(size = ylab_size),
           panel.grid.major.y = element_blank(),
           panel.grid.minor.x = element_blank())
   
+  # Other formatting
   if (! is.null(x_title)) p <- p + labs(y = x_title)
+  if (x_var %in% c("mean_lfc", "median_lfc")) {
+    p <- p + geom_hline(yintercept = 0, color = "grey70", linewidth = 1)
+  }
   
   # Faceting
   if (!is.null(facet_var1)) {
     if (!is.null(facet_var2)) {
-      p <- p + facet_grid(rows = vars(.data[[facet_var1]]),
-                          cols = vars(.data[[facet_var2]]),
-                          space = "free_y", scales = "free_y")
+      p <- p +
+        facet_grid(rows = vars(.data[[facet_var1]]),
+                   cols = vars(.data[[facet_var2]]),
+                   space = "free_y", scales = "free_y")
+    } else if (facet_to_columns == FALSE ) {
+      p <- p +
+        ggforce::facet_col(facets = vars(.data[[facet_var1]]),
+                           scales = "free_y",
+                           space = "free")
     } else {
-      p <- p + facet_wrap(facets = vars(.data[[facet_var1]]),
-                          scales = "fixed",
-                          nrow = 1)
+      # Default: facet into columns with facet_row()
+      p <- p +
+        ggforce::facet_row(facets = vars(.data[[facet_var1]]),
+                           scales = "free_x",
+                           space = "free")
     }
   }
   
@@ -809,9 +910,9 @@ get_DE_vec <- function(
 # KEGG DATABASE FUNCTIONS ------------------------------------------------------
 # Function to get the description (technically: 'Name') of a KEGG pathway,
 # given its pathway ID ('ko' or 'map' IDs).
-# Needs tryCatch because come IDs fail (example of a failing pathway ID: "ko01130"),
+# Needs tryCatch because some IDs fail (example of a failing pathway ID: "ko01130"),
 # and the function needs to keep running.
-# Use like: `pw_descrip <- map_dfr(.x = kegg_ids, .f = kegg_descrip)`
+# Use like so: `pw_descrip <- map_dfr(.x = kegg_ids, .f = kegg_descrip)`
 get_kegg_descrip <- function(kegg_pathway) {
   message(kegg_pathway)
   tryCatch( {
@@ -863,8 +964,8 @@ get_pw_kos <- function(pathway_id) {
 }
 
 # Function to get a KEGG pathway (ko-ID) associated with a KEGG K-term
+# (Example K_term: "K13449")
 get_pathway <- function(K_term, outdir) {
-  # K_term <- "K13449"
   cat("K_term:", K_term, " ")
 
   tryCatch(
