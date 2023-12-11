@@ -1,16 +1,15 @@
 # Packages
-if (!require(janitor)) install.packages("janitor")
-if (!require(tidyverse)) install.packages("tidyverse")
-if (!require(ggiraph)) install.packages("ggiraph")
-if (!require(ggrepel)) install.packages("ggrepel")
-if (!require(pheatmap)) install.packages("pheatmap")
-if (!require(ggforce)) install.packages("ggforce")
-if (!require(ggiraph)) install.packages("ggiraph")
-if (!require(patchwork)) install.packages("patchwork")
-if (!require(RColorBrewer)) install.packages("RColorBrewer")
-if (!require(PCAtools)) BiocManager::install("PCAtools")
-if (!require(ggvenn)) BiocManager::install("ggvenn")
-library(tidyverse)
+if (! "janitor" %in% installed.packages()) install.packages("janitor")
+if (! "tidyverse" %in% installed.packages()) install.packages("tidyverse")
+if (! "ggiraph" %in% installed.packages()) install.packages("ggiraph")
+if (! "ggrepel" %in% installed.packages()) install.packages("ggrepel")
+if (! "pheatmap" %in% installed.packages()) install.packages("pheatmap")
+if (! "ggforce" %in% installed.packages()) install.packages("ggforce")
+if (! "patchwork" %in% installed.packages()) install.packages("patchwork")
+if (! "RColorBrewer" %in% installed.packages()) install.packages("RColorBrewer")
+if (! "ggvenn" %in% installed.packages()) install.packages("ggvenn")
+if (! "scico" %in% installed.packages()) install.packages("scico")
+if (! "PCAtools" %in% installed.packages()) BiocManager::install("PCAtools")
 
 # Function to run a DE analysis with DESeq2
 run_DE <- function(
@@ -608,8 +607,9 @@ pheat <- function(
     fontsize_row = 10,          # Font size of gene ID label
     fontsize_col = NULL,        # Font size of the sample/group label
     nchar_gene = NULL,          # Truncate the gene name/ID at this nr of characters (default: 20 w/o annot, 40 w/ annot)
-    gene_id = TRUE,             # When annotation df is provided, retain gene ID in addition to name/descrip
-    ...                         # Other arguments to be passed to the pheatmap function
+    gene_id = FALSE,            # When annotation df is provided, retain gene ID in addition to name/descrip
+    colors = NULL,              # Vector with colors for the color scale
+    ...                         # Other arguments to be passed to the pheatmap::pheatmap function
     ) {
 
   # Rename count matrix
@@ -623,6 +623,7 @@ pheat <- function(
   
   # Compute per-group means
   if (!is.null(mean_by)) {
+    if ("sample" %in% colnames(meta_df)) meta_df$sample <- NULL
     fmat <- as.data.frame(fmat) |>
       rownames_to_column("gene") |> 
       pivot_longer(cols = -gene, names_to = "sample", values_to = "count") |>
@@ -662,9 +663,12 @@ pheat <- function(
   
   # Replace the gene IDs if an annotation dataframe is provided
   if (!is.null(annot_df)) {
-    gene_name <- annot_df[[1]][match(rownames(fmat), rownames(annot_df))]
-    if (gene_id == TRUE) rownames(fmat) <- paste0(rownames(fmat), ": ", gene_name)
-    if (gene_id == FALSE) rownames(fmat) <- gene_name
+    # Get gene names/descriptions - if missing, then use gene ID
+    gene_names <- annot_df[[1]][match(rownames(fmat), rownames(annot_df))]
+    gene_names[which(is.na(gene_names))] <- rownames(fmat)[which(is.na(gene_names))]
+    
+    if (gene_id == TRUE) rownames(fmat) <- paste0(rownames(fmat), ": ", gene_names)
+    if (gene_id == FALSE) rownames(fmat) <- gene_names
     if (is.null(nchar_gene)) nchar_gene <- 40
   } else {
     if (is.null(nchar_gene)) nchar_gene <- 20
@@ -677,9 +681,16 @@ pheat <- function(
   # Truncate long gene names
   rownames(fmat) <- str_trunc(row.names(fmat), width = nchar_gene, ellipsis = "")
 
+  # Colors
+  if (is.null(colors)) {
+    #colors <- colorRampPalette(rev(brewer.pal(n = 7, name = "RdYlBu")))(100)
+    colors <- scico::scico(100, palette = "bam")
+  }
+  
   # Create the plot
   p <- pheatmap::pheatmap(
-    fmat,
+    mat = fmat,
+    color = colors,
     annotation_col = meta_df,
     cluster_rows = cluster_rows,
     cluster_cols = cluster_cols,
