@@ -28,7 +28,7 @@ run_enrich <- function(
 
   # Filter DE results to only get those for the focal contrast
   fcontrast <- contrast
-  DE_res <- DE_res |> filter(contrast == fcontrast)
+  DE_res <- DE_res |> dplyr::filter(contrast == fcontrast)
   
   # Rename cat_map columns
   colnames(cat_map)[1:2] <- c("category", "gene")
@@ -41,7 +41,7 @@ run_enrich <- function(
   # and this is done by default by ClusterProfiler -- but non-tested genes *are* included)
   if (exclude_nontested == TRUE) {
     universe <- DE_res |>
-      filter(!is.na(padj),
+      dplyr::filter(!is.na(padj),
              gene %in% cat_map$gene) |>
       pull(gene)
   } else {
@@ -66,13 +66,13 @@ run_enrich <- function(
   }
   
   # Filter the DE results, if needed: only take over- or underexpressed
-  if (DE_direction == "up") DE_res <- DE_res |> filter(lfc > 0)
-  if (DE_direction == "down") DE_res <- DE_res |> filter(lfc < 0)
+  if (DE_direction == "up") DE_res <- DE_res |> dplyr::filter(lfc > 0)
+  if (DE_direction == "down") DE_res <- DE_res |> dplyr::filter(lfc < 0)
 
   # Create a vector with DEGs
-  if (is.null(p_DE) & is.null(lfc_DE)) DE_res <- DE_res |> filter(isDE)
-  if (!is.null(p_DE)) DE_res <- DE_res |> filter(padj < p_DE)
-  if (!is.null(lfc_DE)) DE_res <- DE_res |> filter(abs(lfc) > lfc_DE)
+  if (is.null(p_DE) & is.null(lfc_DE)) DE_res <- DE_res |> dplyr::filter(isDE)
+  if (!is.null(p_DE)) DE_res <- DE_res |> dplyr::filter(padj < p_DE)
+  if (!is.null(lfc_DE)) DE_res <- DE_res |> dplyr::filter(abs(lfc) > lfc_DE)
   DE_genes <- DE_res$gene
   
   # Check if genes are present multiple times -- this would indicate there are multiple contrasts
@@ -112,7 +112,7 @@ run_enrich <- function(
   
   if (return_df == FALSE) {
     res <- res |>
-      filter(p.adjust < p_enrich,
+      dplyr::filter(p.adjust < p_enrich,
              qvalue < q_enrich,
              Count >= min_DE_in_cat)
     cat(" // Nr enriched:", nrow(res), "\n")
@@ -162,7 +162,7 @@ run_enrich <- function(
       mutate(n_DE = as.integer(GeneRatio_2),
              n_cat = as.integer(BgRatio_1),
              n_total = as.integer(BgRatio_2)) |>
-      select(-GeneRatio_1, -GeneRatio_2, -BgRatio_1, -BgRatio_2) |>
+      dplyr::select(-GeneRatio_1, -GeneRatio_2, -BgRatio_1, -BgRatio_2) |>
       mutate(fold_enrich = (n_DE_in_cat / n_DE) / (n_cat / n_total))
     
     # Report
@@ -191,7 +191,7 @@ run_gsea <- function(
   
   # Prep the df to later create a gene vector
   gene_df <- DE_res |>
-    filter(contrast == fcontrast, !is.na(lfc)) |>
+    dplyr::filter(contrast == fcontrast, !is.na(lfc)) |>
     arrange(desc(lfc))
   
   # Check if genes are present multiple times -- this would indicate there are multiple contrasts
@@ -234,7 +234,7 @@ run_gsea <- function(
   
   # Return a df, if requested
   if (return_df == FALSE) {
-    gsea_res <- gsea_res |> filter(p.adjust < p_enrich)
+    gsea_res <- gsea_res |> dplyr::filter(p.adjust < p_enrich)
   } else {
     gsea_res <- as_tibble(gsea_res) |> 
       mutate(sig = ifelse(p.adjust < p_enrich, TRUE, FALSE),
@@ -290,8 +290,9 @@ enrichplot <- function(
   ylab_size = 10,               # Size of y-axis labels (= categories)
   xlab_angle = 0,               # Angle of x-axis labels
   facet_labeller = "label_value", # Facet labelling
-  add_cat_id = TRUE,             # Add ontology category ID to its name
-  merge_directions = FALSE
+  add_cat_id = TRUE,            # Add ontology category ID to its name
+  merge_directions = FALSE      # Whether to 'merge' up+down DE directions into a single cell
+                                #   If both directions are significant, will show the most significant one
 ) {
   
   # Check
@@ -305,8 +306,8 @@ enrichplot <- function(
   
   # Prep the df
   enrich_df <- enrich_df |>
-    filter(contrast %in% contrasts,
-           DE_direction %in% DE_directions) |>
+    dplyr::filter(contrast %in% contrasts,
+                  DE_direction %in% DE_directions) |>
     mutate(n_DE_in_cat = ifelse(padj >= 0.05, NA, n_DE_in_cat),
            contrast = sub("padj_", "", contrast),
            fold_enrich = ifelse(sig == FALSE, NA, fold_enrich),
@@ -316,9 +317,9 @@ enrichplot <- function(
            padj = ifelse(sig == FALSE, NA, padj),
            padj_log = -log10(padj)) %>%
     # Only take GO categories with at least one significant contrast (as pre-specified in 'sig' column)
-    filter(category %in% (filter(., sig == TRUE) |> pull(category))) %>%
+    dplyr::filter(category %in% (dplyr::filter(., sig == TRUE) |> pull(category))) %>%
     # Only take contrasts with at least one significant category
-    filter(contrast %in% (filter(., sig == TRUE) |> pull(contrast))) |>
+    dplyr::filter(contrast %in% (dplyr::filter(., sig == TRUE) |> pull(contrast))) |>
     arrange(padj_log)
   
   # Modify the ontology category description
@@ -435,12 +436,14 @@ enrichplot <- function(
     } else {
       if (facet_var1 != "ontology") {
         p <- p +
-          ggforce::facet_wrap(facets = vars(.data[[facet_var1]]),
-                              scales = "fixed", nrow = 1)
+          ggforce::facet_row(facets = vars(.data[[facet_var1]]),
+                             scales = "free_x",
+                             space = "free")
       } else {
         p <- p +
           ggforce::facet_col(facets = vars(.data[[facet_var1]]),
-                             scales = "free_y", space = "free")
+                             scales = "free_y",
+                             space = "free")
       }
     }
   }
@@ -451,19 +454,19 @@ enrichplot <- function(
 
 # Cleveland dotplot of enrichment results
 cdotplot <- function(
-    enrich_df,               # Dataframe with enrichment results
-    contrasts = NULL,        # One or more contrasts (default: all)
-    DE_directions = NULL,    # One or more DE directions (default: all)
-    x_var = "padj_log",      # Column in enrich_df to plot along the x axis ('padj_log' will be computed from 'padj')
-    fill_var = "median_lfc", # Column in enrich_df to vary fill color by ('padj_log' will be computed from 'padj')
-    label_var = "n_DE_in_cat", # Column in enrich_df with a number to add as a label in the circles
-    facet_var1 = NULL,       # Column in enrich_df to facet by
-    facet_var2 = NULL,       # Second column in enrich_df to facet by (e.g. 'ontology' for GO)
-                             # (will use facet_grid())
-    facet_to_columns = TRUE, # When only using one facet_var1, facets are columns (or rows)
-    x_title = NULL,          # X-axis title
-    ylab_size = 11,          # Size of y-axis labels (= category labels)
-    add_cat_id = TRUE,       # Add category ID (e.g., 'GO:009539') to its description
+    enrich_df,                  # Dataframe with enrichment results from run_enrich()
+    contrasts = NULL,           # One or more contrasts (default: all)
+    DE_directions = NULL,       # One or more DE directions (default: all)
+    x_var = "padj_log",         # Column in enrich_df to plot along the x axis ('padj_log' will be computed from 'padj')
+    fill_var = "median_lfc",    # Column in enrich_df to vary fill color by ('padj_log' will be computed from 'padj')
+    label_var = "n_DE_in_cat",  # Column in enrich_df with a number to add as a label in the circles
+    facet_var1 = NULL,          # Column in enrich_df to facet by
+    facet_var2 = NULL,          # Second column in enrich_df to facet by (e.g. 'ontology' for GO)
+    facet_to_columns = TRUE,    # When only using one facet_var1, facets are columns (or rows)
+    facet_scales = NULL,        # Facet scales: 'fixed', 'free', 'free_x', or 'free_y'
+    x_title = NULL,             # X-axis title
+    ylab_size = 11,             # Size of y-axis labels (= category labels)
+    add_cat_id = TRUE,          # Add category ID (e.g., 'GO:009539') to its description
     point_size = 6
 ) {
   
@@ -472,12 +475,11 @@ cdotplot <- function(
   
   # Prep the df
   enrich_df <- enrich_df |>
-    filter(sig == TRUE,
-           contrast %in% contrasts) |>
+    dplyr::filter(sig == TRUE, contrast %in% contrasts) |>
     mutate(padj_log = -log10(padj))
   
   if (! is.null(DE_directions))
-    enrich_df <- enrich_df |> filter(DE_direction %in% DE_directions)
+    enrich_df <- enrich_df |> dplyr::filter(DE_direction %in% DE_directions)
   
   # Modify the category description
   enrich_df <- enrich_df |>
@@ -579,20 +581,25 @@ cdotplot <- function(
   # Faceting
   if (!is.null(facet_var1)) {
     if (!is.null(facet_var2)) {
+      # With 2 facetting variables, use facet_grid()
+      if (is.null(facet_scales)) facet_scales <- "free_y"
       p <- p +
         facet_grid(rows = vars(.data[[facet_var1]]),
                    cols = vars(.data[[facet_var2]]),
-                   space = "free_y", scales = "free_y")
-    } else if (facet_to_columns == FALSE ) {
-      p <- p +
-        ggforce::facet_col(facets = vars(.data[[facet_var1]]),
-                           scales = "free_y",
-                           space = "free")
-    } else {
+                   scales = facet_scales,
+                   space = "free_y")
+    } else if (facet_to_columns) {
       # Default: facet into columns with facet_row()
+      if (is.null(facet_scales)) facet_scales <- "free_x"
       p <- p +
         ggforce::facet_row(facets = vars(.data[[facet_var1]]),
-                           scales = "free_x",
+                           scales = facet_scales,
+                           space = "free")
+    } else {
+      if (is.null(facet_scales)) facet_scales <- "free_y"
+      p <- p +
+        ggforce::facet_col(facets = vars(.data[[facet_var1]]),
+                           scales = facet_scales,
                            space = "free")
     }
   }
@@ -618,9 +625,9 @@ GO_pheat <- function(
   DE_dir <- DE_direction
   
   # Filter the GO results
-  fgo <- GO_res |> filter(category == GO_cat)
-  if (!is.null(DE_direction)) fgo <- fgo |> filter(DE_direction == DE_dir)
-  if (!is.null(fcontrast)) fgo <- fgo |> filter(contrast == fcontrast)
+  fgo <- GO_res |> dplyr::filter(category == GO_cat)
+  if (!is.null(DE_direction)) fgo <- fgo |> dplyr::filter(DE_direction == DE_dir)
+  if (!is.null(fcontrast)) fgo <- fgo |> dplyr::filter(contrast == fcontrast)
   
   # Get a vector with gene IDs
   fgenes <- fgo |> separate_longer_delim(cols = gene_ids, delim = "/") |> pull(gene_ids)
@@ -755,7 +762,7 @@ rgoseq_internal <- function(
 
   if (sum(DE_vec) >= 2) {
     # Remove rows from gene length df not in the DE_vec
-    fgene_lens <- gene_lens |> filter(gene %in% names(DE_vec))
+    fgene_lens <- gene_lens |> dplyr::filter(gene %in% names(DE_vec))
     if (nrow(fgene_lens) == 0) stop("Error: no rows left in gene length df, gene IDs likely don't match!")
     
     n_removed <- nrow(gene_lens) - nrow(fgene_lens)
@@ -797,21 +804,25 @@ rgoseq_internal <- function(
     )
 
     # Process GO results
-    GO_df <- GO_df |> filter(n_DE_in_cat >= min_DE_in_cat)
-    GO_df <- GO_df |> filter(numInCat >= min_in_cat)
-    GO_df <- GO_df |> filter(numInCat <= max_in_cat)
-    GO_df <- GO_df |> filter(ontology %in% ontologies)
-    if (filter_no_descrip == TRUE) GO_df <- GO_df |> filter(!is.na(term))
+    GO_df <- GO_df |> dplyr::filter(n_DE_in_cat >= min_DE_in_cat)
+    GO_df <- GO_df |> dplyr::filter(numInCat >= min_in_cat)
+    GO_df <- GO_df |> dplyr::filter(numInCat <= max_in_cat)
+    GO_df <- GO_df |> dplyr::filter(ontology %in% ontologies)
+    if (filter_no_descrip == TRUE) GO_df <- GO_df |> dplyr::filter(!is.na(term))
 
     GO_df <- GO_df |>
-      mutate(padj = p.adjust(over_represented_pvalue, method = "BH"),
-             sig = ifelse(padj < 0.05 & n_DE_in_cat >= min_DE_in_cat, TRUE, FALSE),
-             contrast = contrast,
-             DE_direction = DE_direction) |>
-      dplyr::select(contrast, DE_direction,
-             sig, p = over_represented_pvalue, padj,
-             n_DE_in_cat, numInCat,
-             category, ontology, description = term)
+      mutate(
+        padj = p.adjust(over_represented_pvalue, method = "BH"),
+        sig = ifelse(padj < 0.05 & n_DE_in_cat >= min_DE_in_cat, TRUE, FALSE),
+        contrast = contrast,
+        DE_direction = DE_direction
+        ) |>
+      dplyr::select(
+        contrast, DE_direction,
+        sig, p = over_represented_pvalue, padj,
+        n_DE_in_cat, numInCat,
+        category, ontology, description = term
+        )
 
     cat(contrast,
         "  DE dir.:", DE_direction,
@@ -861,7 +872,7 @@ get_DE_vec <- function(
   }
 
   # Create df for focal contrast
-  fDE <- DE_res |> filter(contrast == fcontrast) |> arrange(gene)
+  fDE <- DE_res |> dplyr::filter(contrast == fcontrast) |> arrange(gene)
   
   # Check if genes are present multiple times -- this would indicate there are multiple contrasts
   if (any(duplicated(fDE$gene))) {
@@ -891,7 +902,7 @@ get_DE_vec <- function(
 
   if (rm_padj_na == TRUE) {
     # Exclude genes with NA adj-p-val - those were not tested
-    fDE <- fDE |> filter(!is.na(padj))
+    fDE <- fDE |> dplyr::filter(!is.na(padj))
     n_genes <- length(unique(fDE$gene))
     if (verbose == TRUE) message("- Nr unique genes after removing padj=NA: ", n_genes)
   } else {
@@ -904,110 +915,4 @@ get_DE_vec <- function(
   
   if (verbose == TRUE) print(table(DE_vec))
   return(DE_vec)
-}
-
-
-# KEGG DATABASE FUNCTIONS ------------------------------------------------------
-# Function to get the description (technically: 'Name') of a KEGG pathway,
-# given its pathway ID ('ko' or 'map' IDs).
-# Needs tryCatch because some IDs fail (example of a failing pathway ID: "ko01130"),
-# and the function needs to keep running.
-# Use like so: `pw_descrip <- map_dfr(.x = kegg_ids, .f = kegg_descrip)`
-get_kegg_descrip <- function(kegg_pathway) {
-  message(kegg_pathway)
-  tryCatch( {
-    description <- keggGet(kegg_pathway)[[1]]$NAME
-    return(data.frame(kegg_pathway, description))
-  }, error = function(cond) {
-    message("keggGet failure")
-    return(NULL)
-  }
-  )
-}
-
-# Get the genes belonging to a certain KEGG pathway
-get_pw_genes <- function(pathway_id) {
-  print(pathway_id)
-
-  pw <- keggGet(pathway_id)
-  if (is.null(pw[[1]]$GENE)) return(NA)
-  pw2 <- pw[[1]]$GENE[c(TRUE, FALSE)]
-  pw2 <- unlist(lapply(strsplit(pw2, split = ";", fixed = TRUE),
-                       function(x) x[1]))
-
-  return(pw2)
-}
-
-# Get the genes belonging to a certain KEGG pathway
-get_pw_kos <- function(pathway_id) {
-  cat(pathway_id, "... ")
-  
-  pw <- keggGet(pathway_id)
-  cat(pw[[1]]$NAME[[1]])
-  
-  if (is.null(pw[[1]]$GENE)) {
-    cat(" - No KOs found!\n")
-    ko_df <- tibble(pathway = pathway_id,
-                    pathway_nr = sub("[[:alpha:]]+", "", pathway_id),
-                    KO = NA)
-  } else {
-    kos <- pw[[1]]$GENE[c(FALSE, TRUE)]
-    kos <- unique(sub(".*KO:(K\\d+).*", "\\1", x = kos))
-    cat(" - Nr of KOs:", length(kos), "\n")
-    
-    ko_df <- tibble(pathway = pathway_id,
-                    pathway_nr = sub("[[:alpha:]]+", "", pathway_id),
-                    KO = kos)
-  }
-  
-  return(ko_df)
-}
-
-# Function to get a KEGG pathway (ko-ID) associated with a KEGG K-term
-# (Example K_term: "K13449")
-get_pathway <- function(K_term, outdir) {
-  cat("K_term:", K_term, " ")
-
-  tryCatch(
-    {
-      kegg_info <- keggGet(K_term)
-      pathway_df <- data.frame(pathway_description = kegg_info[[1]]$PATHWAY) |>
-        rownames_to_column("pathway_id") |>
-        mutate("K_term" = K_term)
-
-      cat(" Nr of pathways:", nrow(pathway_df), "\n")
-
-      if(nrow(pathway_df) > 0) {
-        pathway_df_file <- file.path(outdir, paste0(K_term, ".txt"))
-        write_tsv(pathway_df, pathway_df_file)
-        return(pathway_df)
-      } else {
-        return(NULL)
-      }
-    },
-    error = function(cond) {
-      message("keggGet failure")
-      message(cond)
-      return(NULL)
-    }
-  )
-}
-
-# Get the KO numbers associated with a module,
-# straight from the KEGG database
-get_kos_in_mod <- function(idx, modules) {
-  module <- names(modules)[idx]
-  mod_vec <- keggGet(module)[[1]]$ORTHOLOGY
-  mod_df <- data.frame(KO_id = names(mod_vec), KO_descrip = mod_vec,
-                       module = module, module_descrip = modules[idx],
-                       row.names = NULL)
-  return(mod_df)
-}
-
-# Get NCBI ID for a gene ID
-get_NCBI_id <- function(geneID) {
-  geneID_NCBI <- entrez_search(db = "gene", term = geneID)$ids
-  message(geneID, " - ", geneID_NCBI)
-  if (is_empty(geneID_NCBI)) geneID_NCBI <- NA
-  return(data.frame(geneID, geneID_NCBI))
 }
