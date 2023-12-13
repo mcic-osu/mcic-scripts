@@ -299,7 +299,13 @@ enrichplot <- function(
   if (is.null(facet_var1) && !is.null(facet_var2)) {
     stop("ERROR: Only use facet_var2 when also using facet_var1")
   }
-    
+  
+  # For GSEA, the following columns will be missing
+  if (! "DE_direction" %in% colnames(enrich_df)) enrich_df$DE_direction <- NA
+  if (! "n_DE_in_cat" %in% colnames(enrich_df)) enrich_df$n_DE_in_cat <- NA
+  if (! "fold_enrich" %in% colnames(enrich_df)) enrich_df$fold_enrich <- NA
+  if (! "n_DE" %in% colnames(enrich_df)) enrich_df$n_DE <- NA
+  
   # Select contrasts & DE directions
   if (is.null(contrasts)) contrasts <- unique(enrich_df$contrast)
   if (is.null(DE_directions)) DE_directions <- unique(enrich_df$DE_direction)
