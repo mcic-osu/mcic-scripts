@@ -56,6 +56,7 @@ script_help() {
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
+    echo "  --ref3              <file>  Third reference genome FASTA file"
     echo "  --ambiguous2        <str>   Set behavior only for reads that map ambiguously to multiple different references"
     echo "                              'best', 'toss', 'all', or 'split'       [default: $ambiguous2]"
     echo "  --single_end                Sequences are single-end; don't look for R2 file"
