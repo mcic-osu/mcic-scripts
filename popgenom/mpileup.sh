@@ -43,14 +43,14 @@ script_help() {
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage (always submit your scripts to SLURM with 'sbatch'):"
-    echo "      sbatch $0 --fasta data/assembly.fa --bam_dir results/bwa -o results/mpileup"
+    echo "      sbatch $0 --fasta data/assembly.fa --bam_dir results/bwa -o results/mpileup.vcf"
     echo "  - To just print the help message for this script:"
     echo "      bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--fasta      <file>  Input reference FASTA file"
     echo "  --bam_dir       <dir>   Dir with output BAM files"
-    echo "  -o/--vcf_out    <file>  Output VCF file (will be created if needed)"
+    echo "  -o/--vcf_out    <file>  Output gzipped VCF file (extension 'vcf.gz')"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --allsites              Output ALL sites in the VCF, not just variants"
