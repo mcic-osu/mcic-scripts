@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=2:00:00
+#SBATCH --time=6:00:00
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64G
 #SBATCH --mail-type=FAIL
@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run BBSplit to 'competitively' map reads to two or three separate genomes"
-SCRIPT_VERSION="2023-09-11"
+SCRIPT_VERSION="2023-12-15"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -108,13 +108,11 @@ source_function_script
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
-R1=
-R2=
-ref1=
-ref2=
-ref3=
+R1= && R2=
+ref1= && ref2= && ref3=
 outdir=
 opts=
+threads=
 
 # Parse command-line args
 all_opts="$*"
@@ -187,7 +185,7 @@ else
     mem=4000M
 fi
 
-# Ref opt
+# Reference genome option
 if [[ -n "$ref3" ]]; then
     ref_opt="$ref1","$ref2","$ref3"
 else
@@ -239,6 +237,9 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
 
 #? maxindel=150000 from nf-core RNAseq workflow
 #? nf-core rnaseq workflow has ambigous2=all
+
+log_time "Showing the contents of the 'refstats' file:"
+column -t "$outdir"/"$sample_id"_refstats.txt
 
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
