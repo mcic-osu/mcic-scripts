@@ -30,12 +30,12 @@ parser$add_argument("-i", "--indir",
                     type = "character",
                     required = FALSE,
                     default = "results/nfc_rnaseq",
-                    help = "Input dir with nf-core RNAseq workflow results")
+                    help = "Top-level dir with nf-core RNAseq workflow results")
 parser$add_argument("-o", "--outfile",
                     type = "character",
                     required = FALSE,
-                    default = "dds.rds",
-                    help = "Output filename (can be in another dir)")
+                    default = NULL,
+                    help = "Output file path (default: dds.rds in input dir))")
 parser$add_argument("--meta",
                     type = "character",
                     required = FALSE,
@@ -58,6 +58,7 @@ infile_part <- "star_salmon/salmon.merged.gene_counts_length_scaled.rds"
 infile <- file.path(indir, infile_part)
 
 # Output files
+if (is.null(outfile)) outfile <- file.path(indir, "dds.rds")
 outdir <- dirname(outfile)
 dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 
@@ -74,7 +75,7 @@ message()
 
 # Check input files
 if (!file.exists(infile)) stop("Input file ", infile, " does not exist")
-if (!file.exists(meta_file)) stop("Metadata file ", meta_file, " does not exist")
+if (!is.null(meta_file)) if (!file.exists(meta_file)) stop("Metadata file ", meta_file, " does not exist")
 
 
 # CREATE THE DESEQ OBJECT ------------------------------------------------------
