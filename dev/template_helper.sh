@@ -5,9 +5,9 @@ infile=
 
 # FASTQ filename parsing
 file_ext=$(basename "$R1" | sed -E 's/.*(.fasta|.fastq.gz|.fq.gz)$/\1/')
-R1_suffix=$(basename "$R1" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
+R1_suffix=$(basename "$R1" "$file_ext" | sed -E 's/.*(_R?[12])[._].*/\1/')
 R2_suffix=${R1_suffix/1/2}
-R2=${R1/$R1_suffix/$R2_suffix}
+R2=$(echo "$R1" | sed -E "s/${R1_suffix}([._])/${R2_suffix}\1/")
 sample_id=$(basename "$R1" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
 
 # Other input filename parsing
