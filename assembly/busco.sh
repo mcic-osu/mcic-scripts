@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=4:00:00
+#SBATCH --time=3:00:00
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
+#SBATCH --mem=40G
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=busco
 #SBATCH --output=slurm-busco-%j.out
@@ -150,10 +150,10 @@ load_env "$conda_path" "$container_path" "$dl_container"
 [[ -z "$busco_db" ]] && die "Please specify a Busco database name with --db"
 [[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 
-# Define outputs based on script parameters
-LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 # If needed, make input path absolute because we have to move into the outdir
 infile=$(realpath "$infile")
+[[ ! "$outdir" =~ ^/ ]] && outdir="$PWD"/"$outdir"
+LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 # Get a sample/assembly ID from the filename
 file_id=$(basename "${infile%.*}")
 
@@ -192,5 +192,5 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
 
 # Final reporting
 log_time "Listing files in the output dir:"
-ls -lhd "$(realpath "$outdir")"/*
+ls -lh
 final_reporting "$LOG_DIR"
