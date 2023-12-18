@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Make Krona plots of Kraken output"
-SCRIPT_VERSION="2023-12-03"
+SCRIPT_VERSION="2023-12-17"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -167,6 +167,10 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
 #? [-q <integer>]   Column of input files to use as query ID. Required if magnitude files are specified. [Default: '1']
 #? [-t <integer>]   Column of input files to use as taxonomy ID. [Default: '2']
 
-log_time "Listing files in the output dir:"
-ls -lhd "$(realpath "$outdir")"/*
+# Remove the dir with unneccessary files
+find "$outdir" -type d -wholename "${outfile}.files" -print0 | xargs --null rm -r
+
+# Final logging
+log_time "Listing the HTML output file:"
+ls -lh "$outfile"
 final_reporting "$LOG_DIR"
