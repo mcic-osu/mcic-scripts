@@ -650,7 +650,7 @@ pheat <- function(
   
   # Arrange metadata according to the columns with included factors
   if (!is.null(groups)) {
-    meta_df <- meta_df |> select(all_of(groups)) |> arrange(across(all_of(groups)))
+    meta_df <- meta_df |> dplyr::select(all_of(groups)) |> arrange(across(all_of(groups)))
   }
   
   # Select and arrange count matrix
