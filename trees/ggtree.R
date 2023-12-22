@@ -60,6 +60,9 @@ parser$add_argument("--tiplab_column",
 parser$add_argument("--right_margin",
                     type = "numeric", default = 3,
                     help = "Size of the plot's right margin: extend to avoid truncated tip labels, etc.")
+parser$add_argument("--align_lwd",
+                    type = "numeric", default = 0,
+                    help = "Width of the line from the tip to the label")
 
 args <- parser$parse_args()
 tree_file <- args$tree
@@ -72,6 +75,7 @@ root <- args$root
 right_margin <- args$right_margin
 boot <- args$boot
 boot_thres <- args$boot_thres
+align_lwd <- args$align_lwd
 
 # Define the output file name, if needed
 if (is.null(figure_file)) {
@@ -155,19 +159,27 @@ if (!is.null(annot_file)) p <- p %<+% annot
 
 # Tip labels
 if (!is.null(tiplab_column) & !is.null(color_column)) {
-  p <- p + geom_tiplab(aes_string(color = color_column, label = tiplab_column),
-                       align = TRUE, linesize = 0, size = LABEL_SIZE)
+  p <- p +
+    geom_tiplab(aes_string(color = color_column, label = tiplab_column),
+                align = TRUE, linesize = align_lwd,
+                size = LABEL_SIZE)
 }
 if (!is.null(color_column) & is.null(tiplab_column)) {
-  p <- p + geom_tiplab(aes_string(color = color_column),
-                       align = TRUE, linesize = 0, size = LABEL_SIZE)
+  p <- p +
+    geom_tiplab(aes_string(color = color_column),
+                align = TRUE, linesize = align_lwd,
+                size = LABEL_SIZE)
 }
 if (is.null(color_column) & !is.null(tiplab_column)) {
-  p <- p + geom_tiplab(aes_string(label = tiplab_column),
-                       align = TRUE, linesize = 0, size = LABEL_SIZE)
+  p <- p +
+    geom_tiplab(aes_string(label = tiplab_column),
+                align = TRUE, linesize = align_lwd,
+                size = LABEL_SIZE, color = "grey30")
 }
 if (is.null(color_column) & is.null(tiplab_column)) {
-  p <- p + geom_tiplab(align = TRUE, linesize = 0, size = LABEL_SIZE)
+  p <- p +
+    geom_tiplab(align = TRUE, linesize = align_lwd,
+                size = LABEL_SIZE, color = "grey30")
 }
 
 # Bootstrap labels

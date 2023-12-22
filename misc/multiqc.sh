@@ -11,60 +11,73 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-readonly DESCRIPTION="Run MultiQC to summarize log output by e.g. FastQC, Cutadapt, STAR"
-readonly MODULE=miniconda3/4.12.0-py39
-readonly CONDA=/fs/project/PAS0471/jelmer/conda/multiqc
-readonly SCRIPT_VERSION="1.0"
-readonly SCRIPT_AUTHOR="Jelmer Poelstra"
-readonly SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
-readonly TOOL_BINARY=multiqc
-readonly TOOL_NAME=MultiQC
-readonly TOOL_DOCS=https://multiqc.info/
-readonly VERSION_COMMAND="$TOOL_BINARY --version"
+DESCRIPTION="Run MultiQC to summarize log output by e.g. FastQC, Cutadapt, STAR"
+SCRIPT_VERSION="2023-12-17"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+TOOL_BINARY=multiqc
+TOOL_NAME=MultiQC
+TOOL_DOCS=https://multiqc.info
+VERSION_COMMAND="$TOOL_BINARY --version"
 
-# Parameter defaults
-outfile= && filename_arg=                                  # By default, let MultiQC name the output files
-always_interactive=true && interactive_arg="--interactive" # By default, force interactive plots
+# Defaults - generics
+env=conda                           # Use a 'conda' env or a Singularity 'container'
+conda_path=/fs/project/PAS0471/jelmer/conda/multiqc
+container_path=
+container_url=
+dl_container=false
+container_dir="$HOME/containers"
+strict_bash=true
+version_only=false                  # When true, just print tool & script version info and exit
+
+# Defaults - tool parameters
+auto_plot=false                     # By default, force interactive plots
 
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-# Help function
 script_help() {
-    echo
-    echo "        $0 (v. $SCRIPT_VERSION): Run $TOOL_NAME"
-    echo "        =============================================="
+    echo -e "\n                          $0"
+    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
+    echo "        =============================================================="
     echo "DESCRIPTION:"
     echo "  $DESCRIPTION"
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage (always submit your scripts to SLURM with 'sbatch'):"
+    echo "  - Basic usage:"
     echo "      sbatch $0 -i results/fastqc -o results/multiqc"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile     <file>  Input file"
-    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
+    echo "  -i/--indir          <file>  Input dir - should contain e.g. FastQC output"
+    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --filename      <str>   Name of the output report (without its dir) [default: 'multiqc_report.html']"
-    echo "  --optional_interactive  Don't force interactive plots               [default: always use interactive plots]"
-    echo "  --more_args     <str>   Quoted string with additional argument(s) for $TOOL_NAME"
+    echo "  --auto_plot                 Don't force plots to be interactive     [default: always use interactive plots]"
+    echo "  --outfile           <str>   Name of the output report               [default: 'multiqc_report.html']"
+    echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  -h/--help               Print this help message and exit"
-    echo "  -v                      Print the version of this script and exit"
-    echo "  --version               Print the version of $TOOL_NAME and exit"
+    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
+    echo "                                (NOTE: If no default '--container_url' is listed below,"
+    echo "                                 you'll have to provide one in order to run the script with a container.)"
+    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
+    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
+    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
+    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
+    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
+    echo "  --no_strict                 Don't use strict Bash settings ('set -euo pipefail') -- can be useful for troubleshooting"
+    echo "  -h/--help                   Print this help message and exit"
+    echo "  -v                          Print the version of this script and exit"
+    echo "  --version                   Print the version of $TOOL_NAME and exit"
     echo
     echo "TOOL DOCUMENTATION: $TOOL_DOCS"
-    echo
 }
 
 # Function to source the script with Bash functions
 source_function_script() {
-    local is_slurm=$1
-
     # Determine the location of this script, and based on that, the function script
-    if [[ "$is_slurm" == true ]]; then
+    if [[ "$IS_SLURM" == true ]]; then
         script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
         script_dir=$(dirname "$script_path")
         SCRIPT_NAME=$(basename "$script_path")
@@ -72,22 +85,19 @@ source_function_script() {
         script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
         SCRIPT_NAME=$(basename "$0")
     fi
-    function_script=$(realpath "$script_dir"/../dev/bash_functions.sh)
-    
+    function_script=$(realpath "$script_dir"/../dev/"$(basename "$FUNCTION_SCRIPT_URL")")
+    # Download the function script if needed, then source it
     if [[ ! -f "$function_script" ]]; then
         echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
-        git clone https://github.com/mcic-osu/mcic-scripts.git
-        function_script=mcic-scripts/dev/bash_functions.sh
+        function_script=$(basename "$FUNCTION_SCRIPT_URL")
+        wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script"
     fi
     source "$function_script"
 }
 
-# ==============================================================================
-#                          INFRASTRUCTURE SETUP I
-# ==============================================================================
 # Check if this is a SLURM job, then load the Bash functions
 if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
-source_function_script $IS_SLURM
+source_function_script
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
@@ -95,80 +105,80 @@ source_function_script $IS_SLURM
 # Initiate variables
 indir=
 outdir=
-more_args=
+outfile= && outfile_opt=
+interactive_opt=
+more_opts=
 
 # Parse command-line args
-all_args="$*"
+all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --indir )      shift && readonly indir=$1 ;;
-        -o | --outdir )     shift && readonly outdir=$1 ;;
-        --filename )        shift && readonly outfile=$1 ;;
-        --more_args )       shift && readonly more_args=$1 ;;
-        -v )                script_version; exit 0 ;;
+        -i | --indir )      shift && indir=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        --auto_plot )       auto_plot=true ;;
+        --outfile )         shift && outfile=$1 ;;
+        --more_opts )       shift && more_opts=$1 ;;
+        --env )             shift && env=$1 ;;
+        --no_strict )       strict_bash=false ;;
+        --dl_container )    dl_container=true ;;
+        --container_dir )   shift && container_dir=$1 ;;
+        --container_url )   shift && container_url=$1 && dl_container=true ;;
         -h | --help )       script_help; exit 0 ;;
-        --version )         load_env "$MODULE" "$CONDA"
-                            tool_version "$VERSION_COMMAND" && exit 0 ;;
-        * )                 die "Invalid option $1" "$all_args" ;;
+        -v )                script_version; exit 0 ;;
+        --version )         version_only=true ;;
+        * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
 done
 
-# Check arguments
-[[ -z "$indir" ]] && die "No input dir specified, do so with -i/--indir" "$all_args"
-[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_args"
-[[ ! -d "$indir" ]] && die "Input file $indir does not exist"
-
 # ==============================================================================
-#                          INFRASTRUCTURE SETUP II
+#                          INFRASTRUCTURE SETUP
 # ==============================================================================
 # Strict Bash settings
-set -euo pipefail
-
-# Define outputs based on script parameters
-[[ -n "$outfile" ]] && filename_arg="--filename $outfile"
-[[ "$always_interactive" == false ]] && interactive_arg=
-
-# Logging files and dirs
-readonly LOG_DIR="$outdir"/logs
-readonly VERSION_FILE="$LOG_DIR"/version.txt
-readonly CONDA_YML="$LOG_DIR"/conda_env.yml
-readonly ENV_FILE="$LOG_DIR"/env.txt
-mkdir -p "$LOG_DIR"
+[[ "$strict_bash" == true ]] && set -euo pipefail
 
 # Load software
-load_env "$MODULE" "$CONDA" "$CONDA_YML"
+load_env "$conda_path" "$container_path" "$dl_container"
+[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
+
+# Check options provided to the script
+[[ -z "$indir" ]] && die "No input dir specified, do so with -i/--indir" "$all_opts"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
+[[ ! -d "$indir" ]] && die "Input file $indir does not exist"
+
+# Define outputs based on script parameters
+LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+[[ "$auto_plot" == false ]] && interactive_opt="--interactive"
+[[ -n "$outfile" ]] && outfile_opt="--filename $outfile"
 
 # ==============================================================================
-#                               REPORT
+#                         REPORT PARSED OPTIONS
 # ==============================================================================
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "All arguments to this script:             $all_args"
-echo "Input dir:                                $indir"
+echo "All options passed to this script:        $all_opts"
+echo "Input file:                               $indir"
 echo "Output dir:                               $outdir"
-echo "Always use interactive plots:             $always_interactive"
+echo "Auto-determine plot interactivity:        $auto_plot"
 [[ -n $outfile ]] && echo "Output report name:                       $outfile"
-[[ -n $more_args ]] && echo "Other arguments for $TOOL_NAME:   $more_args"
-[[ "$IS_SLURM" = true ]] && slurm_resources
+[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
+set_threads "$IS_SLURM"
+[[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Run the tool
 log_time "Running $TOOL_NAME..."
-runstats $TOOL_BINARY \
+runstats $CONTAINER_PREFIX $TOOL_BINARY \
     --force \
     --outdir "$outdir" \
-    $more_args \
-    $filename_arg \
-    $interactive_arg \
+    $outfile_opt \
+    $interactive_opt \
+    $more_opts \
     "$indir"
 
 #? --force will overwrite any old report
 
-# List the output, report version, etc
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
-final_reporting "$VERSION_COMMAND" "$VERSION_FILE" "$ENV_FILE" "$IS_SLURM" \
-    "$SCRIPT_NAME" "$SCRIPT_AUTHOR" "$SCRIPT_VERSION" "$SCRIPT_URL"
+final_reporting "$LOG_DIR"

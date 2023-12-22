@@ -11,8 +11,8 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Run a pangenome analysis with Panaroo"
-SCRIPT_VERSION="2023-07-25"
+DESCRIPTION="Run a pangenome analysis with Panaroo and align core genes"
+SCRIPT_VERSION="2023-12-16"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -28,9 +28,11 @@ container_path=/fs/ess/PAS0471/containers/depot.galaxyproject.org-singularity-pa
 container_url=https://depot.galaxyproject.org/singularity/panaroo:1.3.3--pyhdfd78af_0
 dl_container=false
 container_dir="$HOME/containers"
+version_only=false
 
 # Constants - tool parameters
 ALIGN_THESE=core            # Align 'core' or 'pan' (all genes); Panaroo's '--alignment' argument
+REMOVE_INVALID_OPT="--remove-invalid-genes"
 
 # Defaults - tool parameters
 mode=strict                 # Use Panaroo's 'strict' mode by default (Panaroo has no default for this)
@@ -58,7 +60,7 @@ script_help() {
     echo "OTHER KEY OPTIONS:"
     echo "  --clean_mode        <str>   Panaroo's running mode: 'strict', 'moderate', or 'sensitive' [default: 'strict']"
     echo "  --core_threshold    <num>   Core-genome sample threshold            [default=0.95]"
-    echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
+    echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
@@ -71,8 +73,10 @@ script_help() {
     echo "  -v                          Print the version of this script and exit"
     echo "  --version                   Print the version of $TOOL_NAME and exit"
     echo
-    echo "HARDCODED OPTIONS:"
+    echo "HARDCODED PANAROO OPTIONS:"
     echo "  - The script always uses '--alignment core' to only align core genes"
+    echo "  - The script always uses '--remove-invalid-genes' to remove invalid genes"
+    echo "      (Otherwise it fails on some GFF files, especially from Bakta)"
     echo
     echo "TOOL DOCUMENTATION: $TOOL_DOCS"
     echo
@@ -109,8 +113,7 @@ source_function_script
 # Initiate variables
 indir=
 outdir=
-opts=
-version_only=false
+more_opts=
 threads=
 
 # Parse command-line args
@@ -121,7 +124,7 @@ while [ "$1" != "" ]; do
         -o | --outdir )     shift && outdir=$1 ;;
         --clean_mode )      shift && mode=$1 ;;
         --core_threshold )  shift && core_threshold=$1 ;;
-        --opts )            shift && opts=$1 ;;
+        --more_opts )       shift && more_opts=$1 ;;
         --env )             shift && env=$1 ;;
         --dl_container )    dl_container=true ;;
         --container_dir )   shift && container_dir=$1 ;;
@@ -166,7 +169,7 @@ echo "Output dir:                                   $outdir"
 echo "Panaroo mode:                                 $mode"
 echo "Align 'pan' or 'core' genes:                  $ALIGN_THESE" 
 echo "Core gene threshold:                          $core_threshold"
-[[ -n $opts ]] && echo "Additional options for $TOOL_NAME:            $opts"
+[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:            $more_opts"
 log_time "Listing the input file(s):"
 ls -lh "${gffs[@]}"
 set_threads "$IS_SLURM"
@@ -181,9 +184,10 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
     --clean-mode "$mode" \
     --core_threshold "$core_threshold" \
     --alignment "$ALIGN_THESE" \
+    $REMOVE_INVALID_OPT \
     --threads "$threads" \
     -i "${gffs[@]}" \
-    $opts
+    $more_opts
 
 #? Other Panaroo options
 #> --aligner Options:'prank', 'clustal', and default: 'mafft'

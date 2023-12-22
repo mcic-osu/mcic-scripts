@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run Kraken2 to assign taxonomy to sequences in a FASTA/FASTQ/pair of FASTQ file(s)"
-SCRIPT_VERSION="2023-12-03"
+SCRIPT_VERSION="2023-12-17"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -186,17 +186,18 @@ LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 if [[ "$infile" =~ \.fa?s?t?q.gz$ ]]; then
     R1_in="$infile"
     R1_basename=$(basename "$R1_in" | sed -E 's/\.fa?s?t?q\.gz//')
-    R1_suffix=$(echo "$R1_basename" | sed -E 's/.*(_R?[12]).*/\1/')
+    R1_suffix=$(echo "$R1_basename" | sed -E 's/.*(_R?[12])[._].*/\1/')
     
     if [[ "$single_end" = false ]]; then
         file_type=pe
         R2_suffix=${R1_suffix/1/2}
-        R2_in=${R1_in/$R1_suffix/$R2_suffix}
+        R2_in=$(echo "$R1_in" | sed -E "s/${R1_suffix}([._])/${R2_suffix}\1/")
+        
         sample_id=${R1_basename/"$R1_suffix"/}
         infile_opt="--gzip-compressed --paired $R1_in $R2_in"
 
-        [[ ! -f "$R2_in" ]] && die "R2 file $R2_in does not exist"
-        [[ "$R1_in" == "$R2_in" ]] && die "R1 file $R1_in is the same as R2 file $R2_in"
+        [[ ! -f "$R2_in" ]] && die "R2 file ($R2_in) does not exist"
+        [[ "$R1_in" == "$R2_in" ]] && die "R1 file ($R1_in) is the same as R2 file ($R2_in)"
 
         if [[ "$write_classif" = true ]]; then
             classif_opt="--classified-out $outdir/classified/$sample_id#.fastq "

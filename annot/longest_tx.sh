@@ -1,38 +1,35 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=3:00:00
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=40G
-#SBATCH --mail-type=END,FAIL
-#SBATCH --job-name=busco
-#SBATCH --output=slurm-busco-%j.out
+#SBATCH --time=1:00:00
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
+#SBATCH --job-name=longest_tx
+#SBATCH --output=slurm-longest_tx-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Run BUSCO to check the completeness of a genome/transcriptome assembly, or a proteome"
-SCRIPT_VERSION="2023-12-16"
+DESCRIPTION="Create a longest-transcript/isoform proteome FASTA
+Works with matching NCBI proteome FASTA and GTF files
+Also works with proteome FASTA files only, as long as transcripts/isoforms are
+IDed by .t1/.p1-style suffices"
+SCRIPT_VERSION="2023-12-18"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
-TOOL_BINARY=busco
-TOOL_NAME=Busco
-TOOL_DOCS=https://busco.ezlab.org/busco_userguide.html
-VERSION_COMMAND="$TOOL_BINARY --version"
+TOOL_NAME=seqkit
+VERSION_COMMAND="seqkit | sed -n '3p'"
 
 # Defaults - generics
-env=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/busco
-container_path=
-container_url=
-dl_container=false
-container_dir="$HOME/containers"
+conda_path=/fs/ess/PAS0471/jelmer/conda/seqkit
 strict_bash=true
-version_only=false                 # When true, just print tool & script version info and exit
+version_only=false                  # When true, just print tool & script version info and exit
 
 # Defaults - tool parameters
-assembly_type=genome
+keep_intermed=false                 # Remove intermediate files
+t1_style=true                       # Isoforms have .t1/.p1 suffices in proteome file
+                                    # Currently the only supported format
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -46,29 +43,18 @@ script_help() {
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage:"
-    echo "      Input assembly/proteome FASTA file"
+    echo "      sbatch $0 -i my.faa --gtf my.gtf -o results/longest_iso"
+    echo "      sbatch $0 -i my.faa -o results/longest_iso"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile         <file>  Input assembly/proteome FASTA file"
+    echo "  -i/--faa            <file>  Input proteome FASTA file with multiple isoforms per gene"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
-    echo "  --db                <str>   Busco database name (see https://busco.ezlab.org/list_of_lineages.html)"
-    echo "                                If you don't specify the odb version, Busco will use the latest one"
-    echo "                                E.g. instead of '-d nematoda_odb10.2019-11-20' as per the website, use '-d nematoda'"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --mode              <str>   Run mode, i.e. assembly type            [default: 'genome']"
-    echo "                                Valid options: 'genome', 'transcriptome', or 'proteins'"
-    echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
+    echo "  --gtf               <file>  Input annotation file in GTF format"
+    echo "  --keep_intermed             Keep intermediate files [default: remove]"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
-    echo "                                (NOTE: If no default '--container_url' is listed below,"
-    echo "                                 you'll have to provide one in order to run the script with a container.)"
-    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
-    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
-    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
     echo "  --no_strict                 Don't use strict Bash settings ('set -euo pipefail') -- can be useful for troubleshooting"
     echo "  -h/--help                   Print this help message and exit"
     echo "  -v                          Print the version of this script and exit"
@@ -107,25 +93,18 @@ source_function_script
 # ==============================================================================
 # Initiate variables
 infile=
+gtf=
 outdir=
-busco_db=
-more_opts=
-threads=
 
 # Parse command-line args
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infile )     shift && infile=$1 ;;
+        -i | --faa )        shift && infile=$1 ;;
+        --gtf )             shift && gtf=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
-        --db )              shift && busco_db=$1 ;;
-        --mode )            shift && assembly_type=$1 ;;
-        --more_opts )       shift && more_opts=$1 ;;
-        --env )             shift && env=$1 ;;
+        --keep_intermed )   keep_intermed=true ;;
         --no_strict )       strict_bash=false ;;
-        --dl_container )    dl_container=true ;;
-        --container_dir )   shift && container_dir=$1 ;;
-        --container_url )   shift && container_url=$1 && dl_container=true ;;
         -h | --help )       script_help; exit 0 ;;
         -v )                script_version; exit 0 ;;
         --version )         version_only=true ;;
@@ -141,21 +120,26 @@ done
 [[ "$strict_bash" == true ]] && set -euo pipefail
 
 # Load software
-load_env "$conda_path" "$container_path" "$dl_container"
+load_env "$conda_path"
 [[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
-[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
+[[ -z "$infile" ]] && die "No input FASTA file specified, do so with -i/--faa" "$all_opts"
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
-[[ -z "$busco_db" ]] && die "Please specify a Busco database name with --db"
-[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
+[[ ! -f "$infile" ]] && die "Input FASTA file $infile does not exist"
+[[ -n "$gtf" && ! -f "$gtf" ]] && die "Input GTF file $gtf does not exist"
 
-# If needed, make input path absolute because we have to move into the outdir
-infile=$(realpath "$infile")
-[[ ! "$outdir" =~ ^/ ]] && outdir="$PWD"/"$outdir"
+# Further processing
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
-# Get a sample/assembly ID from the filename
+indir=$(dirname "$infile")
+[[ "$indir" == "$outdir" ]] && die "Input dir can't be the same as the output dir ($indir)"
+
+# Define outputs
 file_id=$(basename "${infile%.*}")
+gene2iso="$outdir"/"$file_id"_gene2iso.tsv
+iso_lens="$outdir"/"$file_id"_iso_lens.tsv
+longest_iso_ids="$outdir"/"$file_id"_longest_iso_ids.txt
+outfile="$outdir"/"$file_id".faa
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -163,34 +147,75 @@ file_id=$(basename "${infile%.*}")
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options passed to this script:        $all_opts"
-echo "Input file:                               $infile"
 echo "Output dir:                               $outdir"
-echo "BUSCO db:                                 $busco_db"
-echo "Mode (assembly type):                     $assembly_type"
-[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
+echo "Input FASTA file:                         $infile"
+[[ -n "$gtf" ]] && echo "Input GTF file:                           $gtf"
 log_time "Listing the input file(s):"
-ls -lh "$infile"
-set_threads "$IS_SLURM"
+ls -lh "$infile" 
+[[ -n "$gtf" ]] && ls -lh "$gtf" 
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Move into output dir
-cd "$outdir" || exit 1
+# Clean the FASTA headers
+#if [[ "$clean_header" == true ]]; then
+#    log_time "Keeping only the first 'word' in the FASTA header..."
+#    awk '{print $1}' "$infile" > "$infile_prepped"
+#else
+#    infile_prepped="$infile"
+#fi
+#else
+#    log_time "Replacing tabs with spaces in the FASTA header..."
+#    tr "\t" " " < "$infile" > "$infile_prepped"
+#fi
 
-# Run Busco
-log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
-    -i "$infile" \
-    -o "$file_id" \
-    -l "$busco_db" \
-    -m "$assembly_type" \
-    -c "$threads" \
-    --force \
-    $more_opts
+log_time "Getting the isoform lengths..."
+awk '{print $1}' "$infile" | seqkit fx2tab --length --name | sort -k1,1 > "$iso_lens"
 
-# Final reporting
-log_time "Listing files in the output dir:"
-ls -lh
+log_time "Creating a gene2isoform lookup file..."
+if [[ -n "$gtf" ]]; then
+    # Use a GTF file to ID genes and proteins #TODO also allow for transcript_id
+    grep -v "^#" "$gtf" | awk '$3 == "CDS"' |
+        sed -E 's/.*gene_id "([^;]+)";.*protein_id "([^;]+)";.*/\1\t\2/' |
+        sort -u | sort -k2,2 > "$gene2iso"
+    n_genes_gtf=$(grep -v "^#" "$gtf" | awk '$3 == "gene"' | wc -l)
+    log_time "Number of genes in the GTF file (can include noncoding): $n_genes_gtf"
+elif [[ "$t1_style" == true ]]; then
+    # Extract from the FASTA file directly
+    awk -v OFS="\t" '{print $1,$1}' "$iso_lens" | sed -E 's/\.[pt][0-9]+//' |
+        sort -k2,2 > "$gene2iso"
+fi
+
+n_genes=$(cut -f1 "$gene2iso" | sort -u | wc -l)
+log_time "Number of genes in the original proteome file: $n_genes"
+
+log_time "Getting the IDs of the longest isoforms..."
+join -t$'\t' -1 2 -2 1 "$gene2iso" "$iso_lens" |
+    sort -k2,2 -u | cut -f1 > "$longest_iso_ids"
+
+log_time "Extracting the longest isoforms..."
+seqkit grep -f "$longest_iso_ids" "$infile" > "$outfile"
+
+# Report
+n_in=$(grep -c "^>" "$infile")
+n_ids=$(wc -l < "$longest_iso_ids")
+n_out=$(grep -c "^>" "$outfile")
+
+log_time "Number of proteins in the input file:         $n_in"
+log_time "Number of proteins in the output file:        $n_out"
+
+# Check that all proteins were found in the input file
+if [[ ! "$n_ids" -eq "$n_out" ]]; then
+    log_time "WARNING: Nr of longest-isoform IDs ($n_ids) is not the same as the
+    nr of proteins in the output file ($n_out)"
+fi
+
+# Remove intermediate files
+if [[ "$keep_intermed" == false ]]; then
+    rm "$gene2iso" "$iso_lens" "$longest_iso_ids"
+fi
+
+log_time "Listing the output file:"
+ls -lh "$outfile"
 final_reporting "$LOG_DIR"

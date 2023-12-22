@@ -7,13 +7,15 @@
 #SBATCH --job-name=nfc_rnaseq
 #SBATCH --output=slurm-nfc_rnaseq-%j.out
 
+#TODO - Specify MultiQC config so it doesn't include samtools stats
+
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run the Nextflow-core RNAseq pipeline from https://nf-co.re/rnaseq
   with aligner option STAR => Salmon"
-SCRIPT_VERSION="2023-12-01"
+SCRIPT_VERSION="2023-12-17"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="nextflow run"
@@ -145,6 +147,7 @@ nextflow_setup() {
     # Singularity container dir - any downloaded containers will be stored here;
     # if the required container is already there, it won't be re-downloaded
     export NXF_SINGULARITY_CACHEDIR="$container_dir"
+    export NXF_SINGULARITY_LIBRARYDIR="$container_dir"
     mkdir -p "$NXF_SINGULARITY_CACHEDIR"
 
     # Limit memory for Nextflow main process - see https://www.nextflow.io/blog/2021/5_tips_for_hpc_users.html
@@ -305,8 +308,10 @@ if [[ ! -d "$workflow_dir_full" ]]; then
         --revision "$workflow_version" \
         --compress none \
         --container-system singularity \
+        --container-cache-utilisation amend \
         --parallel-downloads "$threads" \
-        --outdir "$workflow_dir_base"
+        --outdir "$workflow_dir_base" \
+        --forceq
     echo
 fi
 
