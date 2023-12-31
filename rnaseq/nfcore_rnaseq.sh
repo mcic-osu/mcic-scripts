@@ -311,7 +311,7 @@ if [[ ! -d "$workflow_dir_full" ]]; then
         --container-cache-utilisation amend \
         --parallel-downloads "$threads" \
         --outdir "$workflow_dir_base" \
-        --forceq
+        --force
     echo
 fi
 
