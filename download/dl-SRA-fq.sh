@@ -33,6 +33,7 @@ version_only=false                 # When true, just print tool & script version
 
 # Defaults - tool parameters
 unzip=false
+meta=false
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -51,11 +52,14 @@ script_help() {
     echo "      sbatch $0 -a data/sra/accessions.txt -o data/sra"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -a/--accessions     <str>   Comma-separated list of one or more SRA accession numbers,"
-    echo "                              or a file with accession numbers, one per line."
+    echo "  -a/--accessions     <str>   One of the following two:"
+    echo "                                - Comma-separated list of one or more SRA accession numbers"
+    echo "                                - File with accession numbers, one per line"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
+    echo "  --meta                      Only download run metadata, no FASTQs   [default: false]"
+    echo "                                The output file will be called 'fastq-run-info.tsv'"
     echo "  --unzip                     Unzip the downloaded FASTQ files        [default: keep gzipped]"
     echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
     echo
@@ -107,6 +111,7 @@ source_function_script
 # Initiate variables
 accessions=
 outdir=
+meta_opt=
 more_opts=
 threads=
 
@@ -116,6 +121,7 @@ while [ "$1" != "" ]; do
     case "$1" in
         -a | --accessions ) shift && accessions=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
+        --meta )            meta=true ;;
         --unzip )           shift && unzip=true ;;
         --more_opts )       shift && more_opts=$1 ;;
         --env )             shift && env=$1 ;;
@@ -155,6 +161,9 @@ else
     mapfile -t accession_array <"$accessions"
 fi
 
+# Metadata option
+[[ "$meta" == true ]] && meta_opt="--only-download-metadata"
+
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
 # ==============================================================================
@@ -162,6 +171,7 @@ log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options passed to this script:        $all_opts"
 echo "Output dir:                               $outdir"
+echo "Only download metadata?                   $meta"
 [[ -f "$accessions" ]] && echo "Accessions file:                          $accessions"
 echo "Number of accessions:                     ${#accession_array[@]}"
 echo "List of accessions:                       ${accession_array[*]}"
@@ -181,10 +191,11 @@ for accession in "${accession_array[@]}"; do
         --accession "$accession" \
         --outdir "$outdir" \
         --cpus "$threads" \
+        $meta_opt \
         $more_opts
 done
 
-if [[ "$unzip" == true ]]; then
+if [[ "$unzip" == true && "$meta" == false ]]; then
     log_time "Unzipping FASTQ files..."
     gunzip -v "$outdir"/*gz
 fi
@@ -193,6 +204,8 @@ log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
 final_reporting "$LOG_DIR"
 
+
+# ==============================================================================
 # Alternative: Use sra-tools
 #/fs/ess/PAS0471/jelmer/conda/sra-tools
 #prefetch "$SRA_ID" -O "$outdir"
