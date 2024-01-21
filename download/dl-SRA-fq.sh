@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=16G
+#SBATCH --time=24:00:00
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=40G
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=dl-SRA-fq
 #SBATCH --output=slurm-dl-SRA-fq-%j.out
@@ -11,8 +11,8 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Download FASTQ files from SRA with fastq-dl"
-SCRIPT_VERSION="2023-12-06" 
+DESCRIPTION="Download FASTQ files from SRA/ENA with fastq-dl"
+SCRIPT_VERSION="2024-01-20" 
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -34,6 +34,7 @@ version_only=false                 # When true, just print tool & script version
 # Defaults - tool parameters
 unzip=false
 meta=false
+provider=ena
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -60,6 +61,7 @@ script_help() {
     echo "OTHER KEY OPTIONS:"
     echo "  --meta                      Only download run metadata, no FASTQs   [default: false]"
     echo "                                The output file will be called 'fastq-run-info.tsv'"
+    echo "  --provider          <str>   Download from either 'ena' or 'sra'     [default: $provider]"
     echo "  --unzip                     Unzip the downloaded FASTQ files        [default: keep gzipped]"
     echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
     echo
@@ -122,6 +124,7 @@ while [ "$1" != "" ]; do
         -a | --accessions ) shift && accessions=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
         --meta )            meta=true ;;
+        --provider )        shift && provider=$1 ;;
         --unzip )           shift && unzip=true ;;
         --more_opts )       shift && more_opts=$1 ;;
         --env )             shift && env=$1 ;;
@@ -172,6 +175,7 @@ echo "==========================================================================
 echo "All options passed to this script:        $all_opts"
 echo "Output dir:                               $outdir"
 echo "Only download metadata?                   $meta"
+echo "Download from:                            $provider"
 [[ -f "$accessions" ]] && echo "Accessions file:                          $accessions"
 echo "Number of accessions:                     ${#accession_array[@]}"
 echo "List of accessions:                       ${accession_array[*]}"
@@ -191,6 +195,7 @@ for accession in "${accession_array[@]}"; do
         --accession "$accession" \
         --outdir "$outdir" \
         --cpus "$threads" \
+        --provider "$provider" \
         $meta_opt \
         $more_opts
 done
