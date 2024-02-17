@@ -11,14 +11,13 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-readonly DESCRIPTION="Run the Nextflow-core metabarcoding pipeline from https://nf-co.re/ampliseq"
-readonly MODULE=miniconda3
-readonly CONDA=/fs/project/PAS0471/jelmer/conda/nextflow
-readonly SCRIPT_VERSION="2023-07-18"
-readonly SCRIPT_AUTHOR="Jelmer Poelstra"
-readonly SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
-readonly TOOL_BINARY="nextflow run"
-readonly VERSION_COMMAND="nextflow -v"
+DESCRIPTION="Run the Nextflow-core metabarcoding pipeline from https://nf-co.re/ampliseq"
+SCRIPT_VERSION="2024-02-16"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
+TOOL_BINARY="nextflow run"
+export TOOL_NAME="nextflow"
+VERSION_COMMAND="nextflow -v"
 
 # Constants - parameters
 WORKFLOW_NAME=ampliseq      # The name of the nf-core workflow
@@ -26,33 +25,38 @@ OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/next
 OSC_CONFIG=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present here
 
 # Parameter defaults
-workflow_version=2.6.1                                  # The version of the nf-core workflow
+workflow_version=2.8.0                                  # The version of the nf-core workflow
 workflow_dir_base=workflows/nfcore-ampliseq
 workflow_dir_full="$workflow_dir_base"/${workflow_version//./_}
-is_ITS=false && ITS_arg=
-ITS_arg_default="--illumina_pe_its --addsh"             # When is_ITS is true, use this arg
 ITS_taxonomy='unite-fungi=8.3'
-container_dir=/fs/project/PAS0471/containers
-work_dir=/fs/scratch/PAS0471/$USER/nfcore-ampliseq
+is_ITS=false && ITS_opt=
+ITS_opt_default="--illumina_pe_its --addsh"             # When is_ITS is true, use this arg
+osc_account=PAS0471                                    # If the scripts is submitted with another project, this will be updated (line below)
+[[ -n $SLURM_JOB_ACCOUNT ]] && osc_account=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
+container_dir=/fs/scratch/"$osc_account"/containers    # The workflow will download containers to this dir
+work_dir=/fs/scratch/"$osc_account"/$USER/nfc-ampliseq   # 'work dir' for initial outputs (selected, final outputs go to the outdir)
+
+conda_path=/fs/project/PAS0471/jelmer/conda/nextflow
 profile="singularity"
-resume=true && resume_arg="-resume"
+resume=true && resume_opt="-resume"
 
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
 # Help function
 script_help() {
-    echo
-    echo "                $0 (v. $SCRIPT_VERSION):"
-    echo "                      $DESCRIPTION"
+    echo -e "\n                          $0"
+    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
     echo "        =============================================="
+    echo "DESCRIPTION:"
+    echo "  $DESCRIPTION"
     echo "ABOUT:"
     echo "  - The workflow definition files will be downloaded by the script if not already present for the correct version"
     echo "  - All workflow parameter defaults in this script are the same as in the https://nf-co.re/ampliseq pipeline,"
     echo "    except that '--ignore_failed_trimming' is always used so the pipeline will keep running when some samples have too small filesizes after trimming."
     echo "  - Different from the Nextflow default, this script will try to 'resume' (rather than restart) a previous incomplete run by default"
     echo "  - This workflow can be used for both 16S and ITS data (use the '--its' flag for the latter)"
-    echo "  - Not all nf-core/ampliseq parameters are present as options to this script, use '--more_args' for parameters that aren't listed"
+    echo "  - Not all nf-core/ampliseq parameters are present as options to this script, use '--more_opts' for parameters that aren't listed"
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  sbatch $0 -i data/fastq -o results/ampliseq --FW_primer GTGTGYCAGCMGCCGCGGTAA --RV_primer GGACTACNVGGGTWTCTAAT"
@@ -61,7 +65,7 @@ script_help() {
     echo
     echo "NF-CORE/AMPLISEQ WORKFLOW PARAMETERS:"
     echo "  - Note: These are all the same as the parameters specified at https://nf-co.re/ampliseq/parameters: see there for details"
-    echo "  - Note: To pass nf-core/ampliseq parameters that are not listed below, use the '--more_args' option."
+    echo "  - Note: To pass nf-core/ampliseq parameters that are not listed below, use the '--more_opts' option."
     echo "  --input             <dir>   Input FASTQ dir                                             [REQUIRED]"
     echo "  --outdir            <dir>   Output directory (will be created)                          [REQUIRED]"
     echo "  --FW_primer         <str>   Forward primer sequence                                     [REQUIRED]"
@@ -94,7 +98,7 @@ script_help() {
     echo "  --workflow_version  <str>   nf-core ampliseq workflow version                           [default: $workflow_version]"
     echo "  --workflow_dir      <dir>   Top-level dir (without version number) with or for the ampliseq workflow    [default: 'workflows/nfcore-ampliseq']"
     echo "                                - If the correct version of the workflow is already present in this dir, it won't be downloaded again"
-    echo "  --more_args         <str>   Additional arguments, all in a single quoted string, to pass to the workflow"
+    echo "  --more_opts         <str>   Additional arguments, all in a single quoted string, to pass to the workflow"
     echo 
     echo "NEXTFLOW AND UTILITY OPTIONS:"
     echo "  --restart                   Don't attempt to resume workflow run, but start over        [default: resume workflow]"
@@ -104,8 +108,8 @@ script_help() {
     echo "                                - Settings in this file will override default settings"
     echo "                                - Note that the mcic-scripts OSC config file will always be included, too"
     echo "                                  (https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config)"
-    echo "  --profile            <str>  'Profile' to use from one of the config files               [default: 'singularity']"
-    echo "  --work_dir           <dir>  Scratch (work) dir for the workflow                         [default: '/fs/scratch/PAS0471/\$USER/nfcore-ampliseq']"
+    echo "  --profile            <str>  'Profile' to use from one of the config files               [default: $profile]"
+    echo "  --work_dir           <dir>  Scratch (work) dir for the workflow                         [default: $work_dir]"
     echo "                                - This is where the workflow results will be stored before final results are copied to the output dir."
     echo "  -h/--help                   Print this help message and exit"
     echo "  -v                          Print the version of this script and exit"
@@ -126,12 +130,12 @@ source_function_script() {
         script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
         SCRIPT_NAME=$(basename "$0")
     fi
-    function_script=$(realpath "$script_dir"/../dev/bash_functions.sh)
+    function_script=$(realpath "$script_dir"/../dev/bash_functions2.sh)
     
     if [[ ! -f "$function_script" ]]; then
         echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
         git clone https://github.com/mcic-osu/mcic-scripts.git
-        function_script=mcic-scripts/dev/bash_functions.sh
+        function_script=mcic-scripts/dev/bash_functions2.sh
     fi
     source "$function_script"
 }
@@ -161,24 +165,25 @@ fastq_dir=
 outdir=
 FW_primer=
 RV_primer=
-exclude_taxa= && exclude_taxa_arg=
-extension= && extension_arg=
-trunclenf= && trunclenf_arg=
-trunclenr= && trunclenr_arg=
-sample_inference= && sample_inference_arg=
-dada_ref_taxonomy= && dada_ref_taxonomy_arg=
-min_len_asv= && min_len_asv_arg=
-max_len_asv= && max_len_asv_arg=
-filter_ssu= && filter_ssu_arg=
+exclude_taxa= && exclude_taxa_opt=
+extension= && extension_opt=
+trunclenf= && trunclenf_opt=
+trunclenr= && trunclenr_opt=
+sample_inference= && sample_inference_opt=
+dada_ref_taxonomy= && dada_ref_taxonomy_opt=
+min_len_asv= && min_len_asv_opt=
+max_len_asv= && max_len_asv_opt=
+filter_ssu= && filter_ssu_opt=
 config_file=
-metadata= && metadata_arg=
+metadata= && metadata_opt=
 metadata_category=
 metadata_category_barplot=
 min_frequency=1
-more_args=
+threads=
+more_opts=
 
 # Parse command-line args
-all_args="$*"
+all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
         --input )                       shift && fastq_dir=$1 ;;
@@ -201,25 +206,24 @@ while [ "$1" != "" ]; do
         --metadata_category_barplot )   shift && metadata_category_barplot=$1 ;;
         --workflow_dir )                shift && workflow_dir_full=$1 ;;
         --container_dir )               shift && container_dir=$1 ;;
-        --more_args )                   shift && more_args=$1 ;;
+        --more_opts )                   shift && more_opts=$1 ;;
         --config | -config )            shift && config_file=$1 ;;
         --profile | -profile )          shift && profile=$1 ;;
         --work_dir | -work-dir )        shift && work_dir=$1 ;;
-        --restart | -restart )          resume=false && resume_arg= ;;
+        --restart | -restart )          resume=false && resume_opt= ;;
         -h | --help )                   script_help; exit 0 ;;
         -v )                            script_version; exit 0 ;;
-        --version )                     load_env "$MODULE" "$CONDA"
-                                        tool_version "$VERSION_COMMAND" && exit 0 ;;
-        * )                             die "Invalid option $1" "$all_args" ;;
+        --version )                     version_only=true ;;
+        * )                             die "Invalid option $1" "$all_opts" ;;
     esac
     shift
 done
 
 # Check arguments
-[[ -z "$fastq_dir" ]] && die "No FASTQ dir specified, do so with -i/--input" "$all_args"
-[[ -z "$FW_primer" ]] && die "No forward primer specified, do so with --FW_primer" "$all_args"
-[[ -z "$RV_primer" ]] && die "No reverse primer specified, do so with --RV_primer" "$all_args"
-[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_args"
+[[ -z "$fastq_dir" ]] && die "No FASTQ dir specified, do so with -i/--input" "$all_opts"
+[[ -z "$FW_primer" ]] && die "No forward primer specified, do so with --FW_primer" "$all_opts"
+[[ -z "$RV_primer" ]] && die "No reverse primer specified, do so with --RV_primer" "$all_opts"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
 [[ ! -d "$fastq_dir" ]] && die "Input dir $fastq_dir does not exist"
 
 # ==============================================================================
@@ -228,21 +232,14 @@ done
 # Strict Bash settings
 set -euo pipefail
 
-# Logging files and dirs
-readonly LOG_DIR="$outdir"/logs
-readonly VERSION_FILE="$LOG_DIR"/version.txt
-readonly CONDA_YML="$LOG_DIR"/conda_env.yml
-readonly ENV_FILE="$LOG_DIR"/env.txt
-mkdir -p "$LOG_DIR"
-
 # Load software and set nr of threads
-load_env "$MODULE" "$CONDA" "$CONDA_YML"
+load_env "$conda_path"
 nextflow_setup
-set_threads "$IS_SLURM"
+[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
 
 # ITS options
 if [[ "$is_ITS" = true ]]; then
-    ITS_arg="$ITS_arg_default"
+    ITS_opt="$ITS_opt_default"
     [[ -z "$dada_ref_taxonomy" ]] && dada_ref_taxonomy="$ITS_taxonomy"
 fi
 
@@ -250,30 +247,31 @@ fi
 if [[ -n "$metadata" ]]; then
     if [[ -n "$metadata_category" ]]; then
         [[ -z "$metadata_category_barplot" ]] && metadata_category_barplot="$metadata_category"
-        metadata_arg="--metadata $metadata --metadata_category $metadata_category --metadata_category_barplot $metadata_category_barplot"
+        metadata_opt="--metadata $metadata --metadata_category $metadata_category --metadata_category_barplot $metadata_category_barplot"
     else
-        metadata_arg="--metadata $metadata"
+        metadata_opt="--metadata $metadata"
     fi
 fi
 
 # Other options - only pass these args if non-default parameters were passed
-[[ -n "$sample_inference" ]] && sample_inference_arg="--sample_inference $sample_inference"
-[[ -n "$dada_ref_taxonomy" ]] && dada_ref_taxonomy_arg="--dada_ref_taxonomy $dada_ref_taxonomy"
-[[ -n "$min_len_asv" ]] && min_len_asv_arg="--min_len_asv $min_len_asv"
-[[ -n "$max_len_asv" ]] && max_len_asv_arg="--max_len_asv $max_len_asv"
-[[ -n "$trunclenf" ]] && trunclenf_arg="--trunclenf $trunclenf"
-[[ -n "$trunclenr" ]] && trunclenr_arg="--trunclenr $trunclenr"
-[[ -n "$min_frequency" ]] && min_frequency_arg="--min_frequency $min_frequency"
-[[ -n "$filter_ssu" ]] && filter_ssu_arg="--filter_ssu $filter_ssu"
-[[ -n "$extension" ]] && extension_arg="--extension $extension"
-[[ -n "$exclude_taxa" ]] && exclude_taxa_arg="--exclude_taxa $exclude_taxa"
+[[ -n "$sample_inference" ]] && sample_inference_opt="--sample_inference $sample_inference"
+[[ -n "$dada_ref_taxonomy" ]] && dada_ref_taxonomy_opt="--dada_ref_taxonomy $dada_ref_taxonomy"
+[[ -n "$min_len_asv" ]] && min_len_asv_opt="--min_len_asv $min_len_asv"
+[[ -n "$max_len_asv" ]] && max_len_asv_opt="--max_len_asv $max_len_asv"
+[[ -n "$trunclenf" ]] && trunclenf_opt="--trunclenf $trunclenf"
+[[ -n "$trunclenr" ]] && trunclenr_opt="--trunclenr $trunclenr"
+[[ -n "$min_frequency" ]] && min_frequency_opt="--min_frequency $min_frequency"
+[[ -n "$filter_ssu" ]] && filter_ssu_opt="--filter_ssu $filter_ssu"
+[[ -n "$extension" ]] && extension_opt="--extension $extension"
+[[ -n "$exclude_taxa" ]] && exclude_taxa_opt="--exclude_taxa $exclude_taxa"
 
 # Build the config argument
-[[ ! -f "$OSC_CONFIG" ]] && OSC_CONFIG="$outdir"/$(basename "$OSC_CONFIG_URL")
-config_arg="-c $OSC_CONFIG"
-[[ -n "$config_file" ]] && config_arg="$config_arg -c ${config_file/,/ -c }"
+OSC_CONFIG="$outdir"/$(basename "$OSC_CONFIG_URL")
+config_opt="-c $OSC_CONFIG"
+[[ -n "$config_file" ]] && config_opt="$config_opt -c ${config_file/,/ -c }"
 
 # Other output dirs
+LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 trace_dir="$outdir"/pipeline_info
 
 # ==============================================================================
@@ -281,7 +279,7 @@ trace_dir="$outdir"/pipeline_info
 # ==============================================================================
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "All arguments to this script:                 $all_args"
+echo "All arguments to this script:                 $all_opts"
 echo
 echo "INPUT AND OUTPUT:"
 echo "Input FASTQ dir:                              $fastq_dir"
@@ -303,8 +301,8 @@ echo "Reverse primer:                               $RV_primer"
 [[ -n "$min_frequency" ]] && echo "Min. ASV frequency:                           $min_frequency"
 [[ -n "$metadata_category" ]] && echo "Metadata categories:                          $metadata_category"
 [[ -n "$metadata_category_barplot" ]] && echo "Metadata categories for barplots:             $metadata_category_barplot"
-[[ -n "$metadata_arg" ]] && echo "Metadata argument:                            $metadata_arg"
-[[ -n "$more_args" ]] && echo "Additional arguments:                         $more_args"
+[[ -n "$metadata_opt" ]] && echo "Metadata argument:                            $metadata_opt"
+[[ -n "$more_opts" ]] && echo "Additional arguments:                         $more_opts"
 echo
 echo "NEXTFLOW-RELATED SETTINGS:"
 echo "Resume previous run (if any):                 $resume"
@@ -312,9 +310,10 @@ echo "Container dir:                                $container_dir"
 echo "Scratch (work) dir:                           $work_dir"
 echo "Nextflow workflow dir:                        $workflow_dir_full"
 echo "Config 'profile':                             $profile"
-echo "Config file argument:                         $config_arg"
+echo "Config file argument:                         $config_opt"
 [[ -n "$config_file" ]] && echo "Additional config file:                       $config_file"
 echo "=========================================================================="
+set_threads "$IS_SLURM"
 [[ "$IS_SLURM" = true ]] && slurm_resources
 
 # ==============================================================================
@@ -328,6 +327,11 @@ mkdir -pv "$work_dir" "$container_dir" "$outdir"/logs "$trace_dir"
 if [[ ! -f "$OSC_CONFIG" ]]; then
     log_time "Downloading the mcic-scripts Nextflow OSC config file to $OSC_CONFIG..."
     wget -q -O "$OSC_CONFIG" "$OSC_CONFIG_URL"
+fi
+
+# Modify the config file so it has the correct OSC project/account
+if [[ "$osc_account" != "PAS0471" ]]; then
+    sed -i "s/--account=PAS0471/--account=$osc_account/" "$OSC_CONFIG"
 fi
 
 # Download workflow, if needed
@@ -348,22 +352,22 @@ log_time "Starting the workflow.."
 runstats $TOOL_BINARY \
     "$workflow_dir_full" \
     --input "$fastq_dir" \
-    $extension_arg \
+    $extension_opt \
     --outdir "$outdir" \
     --FW_primer "$FW_primer" \
     --RV_primer "$RV_primer" \
     --ignore_failed_trimming \
-    $ITS_arg \
-    $dada_ref_taxonomy_arg \
-    $trunclenf_arg \
-    $trunclenr_arg \
-    $sample_inference_arg \
-    $min_len_asv_arg \
-    $max_len_asv_arg \
-    $min_frequency_arg \
-    $filter_ssu_arg \
-    $exclude_taxa_arg \
-    $metadata_arg \
+    $ITS_opt \
+    $dada_ref_taxonomy_opt \
+    $trunclenf_opt \
+    $trunclenr_opt \
+    $sample_inference_opt \
+    $min_len_asv_opt \
+    $max_len_asv_opt \
+    $min_frequency_opt \
+    $filter_ssu_opt \
+    $exclude_taxa_opt \
+    $metadata_opt \
     -work-dir "$work_dir" \
     -with-report "$trace_dir"/report.html \
     -with-trace "$trace_dir"/trace.txt \
@@ -371,12 +375,11 @@ runstats $TOOL_BINARY \
     -with-dag "$trace_dir"/dag.png \
     -ansi-log false \
     -profile "$profile" \
-    $config_arg \
-    $resume_arg \
-    $more_args
+    $config_opt \
+    $resume_opt \
+    $more_opts
 
 # List the output, report version, etc
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
-final_reporting "$VERSION_COMMAND" "$VERSION_FILE" "$ENV_FILE" "$IS_SLURM" \
-    "$SCRIPT_NAME" "$SCRIPT_AUTHOR" "$SCRIPT_VERSION" "$SCRIPT_URL"
+final_reporting "$LOG_DIR"
