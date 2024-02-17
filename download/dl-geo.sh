@@ -1,29 +1,29 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=24:00:00
-#SBATCH --cpus-per-task=10
-#SBATCH --mem=40G
-#SBATCH --mail-type=END,FAIL
-#SBATCH --job-name=dl-SRA-fq
-#SBATCH --output=slurm-dl-SRA-fq-%j.out
+#SBATCH --time=12:00:00
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
+#SBATCH --mail-type=FAIL
+#SBATCH --job-name=geofetch
+#SBATCH --output=slurm-geofetch-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Download FASTQ files from SRA/ENA with fastq-dl"
-SCRIPT_VERSION="2024-01-20" 
+DESCRIPTION="Download GEO (Gene Expression Omnibus) data using geofetch"
+SCRIPT_VERSION="2024-01-20"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
-TOOL_BINARY=fastq-dl
-TOOL_NAME=fastq-dl
-TOOL_DOCS=https://github.com/rpetit3/fastq-dl
+TOOL_BINARY=geofetch
+TOOL_NAME=geofetch
+TOOL_DOCS=https://geofetch.databio.org/en/latest
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
 env=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/fastq-dl
+conda_path=/fs/ess/PAS0471/jelmer/conda/geofetch
 container_path=
 container_url=
 dl_container=false
@@ -32,9 +32,9 @@ strict_bash=true
 version_only=false                 # When true, just print tool & script version info and exit
 
 # Defaults - tool parameters
-unzip=false
-meta=false
-provider=ena
+skip_fastq=false
+skip_counts=false
+skip_meta=false
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -48,21 +48,17 @@ script_help() {
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage:"
-    echo "      sbatch $0 -a SRR5506722 -o data/sra"
-    echo "      sbatch $0 -a SRR5506722,SRR6942483 -o data/sra"
-    echo "      sbatch $0 -a data/sra/accessions.txt -o data/sra"
+    echo "      sbatch $0 -i GSE205498 -o data/geo"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -a/--accessions     <str>   One of the following two:"
-    echo "                                - Comma-separated list of one or more SRA accession numbers"
-    echo "                                - File with accession numbers, one per line"
+    echo "  -i/-a               <file>  GEO accession number (e.g. GSE205498)"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --meta                      Only download run metadata, no FASTQs   [default: false]"
-    echo "                                The output file will be called 'fastq-run-info.tsv'"
-    echo "  --provider          <str>   Download from either 'ena' or 'sra'     [default: $provider]"
-    echo "  --unzip                     Unzip the downloaded FASTQ files        [default: keep gzipped]"
+    echo "  --skip_fastq                Don't download raw data (FASTQ files)   [default: $skip_fastq]"
+    echo "  --skip_counts               Don't download processed data (counts)  [default: $skip_counts]"
+    echo "  --skip_meta                 Don't download meta data                [default: $skip_meta]"
+    echo "                                Note: only applies when not downloading counts; metadata is always downloaded with counts"
     echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -111,21 +107,19 @@ source_function_script
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
-accessions=
+accession=
 outdir=
-meta_opt=
 more_opts=
-threads=
 
 # Parse command-line args
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -a | --accessions ) shift && accessions=$1 ;;
+        -i | -a )           shift && accession=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
-        --meta )            meta=true ;;
-        --provider )        shift && provider=$1 ;;
-        --unzip )           shift && unzip=true ;;
+        --skip_fastq )      skip_fastq=true ;;
+        --skip_counts )     skip_counts=true ;;
+        --skip_meta )     skip_meta=true ;;
         --more_opts )       shift && more_opts=$1 ;;
         --env )             shift && env=$1 ;;
         --no_strict )       strict_bash=false ;;
@@ -151,21 +145,14 @@ load_env "$conda_path" "$container_path" "$dl_container"
 [[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
-[[ -z "$accessions" ]] && die "No input file specified, do so with -a/--accessions" "$all_opts"
+[[ -z "$accession" ]] && die "No accession number specified, do so with -i/-a" "$all_opts"
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
 
 # Define outputs based on script parameters
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
-
-# Getting the accessions
-if [[ ! -f "$accessions" ]]; then
-    IFS=',' read -ra accession_array <<< "$accessions"
-else
-    mapfile -t accession_array <"$accessions"
-fi
-
-# Metadata option
-[[ "$meta" == true ]] && meta_opt="--only-download-metadata"
+[[ "$skip_fastq" == false ]] && mkdir -p "$outdir"/fastq
+[[ "$skip_counts" == false ]] && mkdir -p "$outdir"/counts
+[[ "$skip_meta" == false ]] && mkdir -p "$outdir"/meta
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -173,45 +160,50 @@ fi
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options passed to this script:        $all_opts"
+echo "GEO accession:                            $accession"
 echo "Output dir:                               $outdir"
-echo "Only download metadata?                   $meta"
-echo "Download from:                            $provider"
-[[ -f "$accessions" ]] && echo "Accessions file:                          $accessions"
-echo "Number of accessions:                     ${#accession_array[@]}"
-echo "List of accessions:                       ${accession_array[*]}"
+echo "Skip downloading FASTQ data?              $skip_fastq"
+echo "Skip downloading count data?              $skip_counts"
+echo "Skip downloading meta data?               $skip_meta"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
-[[ -f "$accessions" ]] && log_time "Listing the input file(s):"
-[[ -f "$accessions" ]] && ls -lh "$accessions"
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-log_time "Starting downloads..."
-for accession in "${accession_array[@]}"; do
-    log_time "Now downloading accession $accession"
-    runstats $CONTAINER_PREFIX $TOOL_BINARY \
-        --accession "$accession" \
-        --outdir "$outdir" \
-        --cpus "$threads" \
-        --provider "$provider" \
-        $meta_opt \
-        $more_opts
-done
+log_time "Running $TOOL_NAME..."
 
-if [[ "$unzip" == true && "$meta" == false ]]; then
-    log_time "Unzipping FASTQ files..."
-    gunzip -v "$outdir"/*gz
+if [[ "$skip_meta" == false && "$skip_counts" == true ]]; then
+    log_time "Downloading meta data..."
+    runstats $CONTAINER_PREFIX $TOOL_BINARY \
+        -i "$accession" \
+         --just-metadata \
+        --metadata-folder "$outdir"/meta \
+        $more_opts
+fi
+
+if [[ "$skip_counts" == false ]]; then
+    log_time "Downloading count & meta data..."
+    runstats $CONTAINER_PREFIX $TOOL_BINARY \
+        -i "$accession" \
+        --processed \
+        --geo-folder "$outdir"/counts \
+        --metadata-folder "$outdir"/meta \
+        $more_opts
+fi
+
+if [[ "$skip_fastq" == false ]]; then
+    #https://geofetch.databio.org/en/latest/install/
+    #echo "/repository/user/main/public/root = \"$DATA\"" > ${HOME}/.ncbi/user-settings.mkfg
+
+    log_time "Downloading FASTQ files..."
+    runstats $CONTAINER_PREFIX $TOOL_BINARY \
+        -i "$accession" \
+        --fq-folder "$outdir"/fastq \
+        $more_opts
 fi
 
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
 final_reporting "$LOG_DIR"
-
-
-# ==============================================================================
-# Alternative: Use sra-tools
-#/fs/ess/PAS0471/jelmer/conda/sra-tools
-#prefetch "$SRA_ID" -O "$outdir"
-#fasterq-dump "$SRA_ID" -O "$outdir"
