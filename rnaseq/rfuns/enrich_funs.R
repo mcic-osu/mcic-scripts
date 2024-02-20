@@ -461,9 +461,9 @@ enrichplot <- function(
   if (fill_var == "padj_log") {
     fill_name <- expression("-Log"[10]*" P")
   } else if (fill_var == "median_lfc") {
-    fill_name <- "Median\nLFC"
+    fill_name <- expression(paste("Median log"[2]*"-fold change"))
   } else if (fill_var == "mean_lfc") {
-    fill_name <- "Mean\nLFC"
+    fill_name <- expression(paste("Mean log"[2]*"-fold change"))
   } else {
     fill_name <- fill_var
   }
@@ -551,6 +551,7 @@ cdotplot <- function(
     facet_var2 = NULL,          # Second column in enrich_df to facet by (e.g. 'ontology' for GO)
     facet_to_columns = TRUE,    # When only using one facet_var1, facets are columns (or rows)
     facet_scales = NULL,        # Facet scales: 'fixed', 'free', 'free_x', or 'free_y'
+    facet_label_fun = "label_value", # Function to label facets with
     x_title = NULL,             # X-axis title
     ylab_size = 11,             # Size of y-axis labels (= category labels)
     add_cat_id = FALSE,          # Add category ID (e.g., 'GO:009539') to its description
@@ -589,9 +590,9 @@ cdotplot <- function(
   # Legend position and title
   if (x_var == fill_var) legend_pos <- "none" else legend_pos <- "top"
   if (fill_var == "median_lfc") {
-    color_name <- "Median\nLFC"
+    color_name <- expression(paste("Median log"[2]*"-fold change"))
   } else if (fill_var == "mean_lfc") {
-    color_name <- "Mean\nLFC"
+    color_name <- expression(paste("Mean log"[2]*"-fold change"))
   } else if (fill_var == "padj_log") {
     color_name <- expression("-Log"[10]*" P")
   } else {
@@ -607,9 +608,9 @@ cdotplot <- function(
   } else if (x_var == "fold_enrich") {
     x_title <- "Fold enrichment"
   } else if (x_var == "median_lfc") {
-    x_title <- "Median LFC"
+    x_title <- expression(paste("Median log"[2]*"-fold change"))
   } else if (fill_var == "mean_lfc") {
-    x_title <- "Mean LFC"
+    x_title <- expression(paste("Mean log"[2]*"-fold change"))
   } 
   
   # Color scale
@@ -636,14 +637,14 @@ cdotplot <- function(
     add = "segments",             # Add segments from y = 0 to dots
     rotate = TRUE,                # Rotate vertically
     dot.size = point_size,
-    font.label = list(color = "white", size = 9, vjust = 0.5),
+    font.label = list(color = "white", size = point_size + 2, vjust = 0.5),
     ggtheme = theme_bw()
   )
   
   # Formatting
   p <- p +
     labs(x = NULL) +
-    scale_y_continuous(expand = expansion(mult = c(0.075, 0.075))) +
+    scale_y_continuous(expand = expansion(mult = c(0.09, 0.09))) +
     col_scale +
     theme(legend.position = legend_pos,
           plot.margin = margin(0.5, 0.5, 0.5, 0.5, unit = "cm"),
@@ -656,7 +657,7 @@ cdotplot <- function(
           axis.title.y = element_blank(),
           axis.text.x = element_text(size = 10),
           axis.text.y = element_text(size = ylab_size),
-          panel.grid.major.y = element_blank(),
+          panel.grid.major = element_blank(),
           panel.grid.minor.x = element_blank())
   
   # Other formatting
@@ -674,20 +675,23 @@ cdotplot <- function(
         facet_grid(rows = vars(.data[[facet_var1]]),
                    cols = vars(.data[[facet_var2]]),
                    scales = facet_scales,
-                   space = "free_y")
+                   space = "free_y",
+                   labeller = facet_label_fun)
     } else if (facet_to_columns) {
       # Default: facet into columns with facet_row()
       if (is.null(facet_scales)) facet_scales <- "free_x"
       p <- p +
         ggforce::facet_row(facets = vars(.data[[facet_var1]]),
                            scales = facet_scales,
-                           space = "free")
+                           space = "free",
+                           labeller = facet_label_fun)
     } else {
       if (is.null(facet_scales)) facet_scales <- "free_y"
       p <- p +
         ggforce::facet_col(facets = vars(.data[[facet_var1]]),
                            scales = facet_scales,
-                           space = "free")
+                           space = "free",
+                           labeller = facet_label_fun)
     }
   }
   
