@@ -620,10 +620,12 @@ cdotplot <- function(
       palette = "Tropic", mid = 0.0, na.value = "grey97",
       name = color_name, rev = TRUE
     )
-  } else {
+  } else if (class(enrich_df[[fill_var]]) == "numeric") {
     col_scale <- scale_color_viridis_c(
       option = "D", na.value = "grey95", name = color_name,
       )
+  } else {
+    col_scale <- scale_color_brewer(palette = "Dark2")
   }
   
   # Create the base plot
