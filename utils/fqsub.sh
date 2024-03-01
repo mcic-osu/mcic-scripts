@@ -143,17 +143,26 @@ done
 load_env "$conda_path" "$container_path" "$dl_container"
 [[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
 
-# Infer the input dir
+# Infer the input dir and extension
 indir=$(dirname "$R1_in")
-R1_out="$outdir"/$(basename "$R1_in")
+extension=$(echo "$R1_in" | sed -E 's/.*(\.fa?s?t?q\.gz$)/\1/')
 
 # FASTQ filename parsing
 if [[ "$single_end" == false ]]; then
-    file_ext=$(basename "$R1_in" | sed -E 's/.*(.fasta|.fastq.gz|.fq.gz)/\1/')
-    R1_suffix=$(basename "$R1_in" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
+    # Paired-end sequences
+    R1_suffix=$(echo "$R1_in" | sed -E "s/.*(_R?1)_?[[:digit:]]*$extension/\1/")
     R2_suffix=${R1_suffix/1/2}
     R2_in=${R1_in/$R1_suffix/$R2_suffix}
-    R2_out="$outdir"/$(basename "$R2_in")
+    
+    [[ ! -f "$R2_in" ]] && die "Input R2 FASTQ file $R2_in does not exist"
+    [[ "$R1_in" == "$R2_in" ]] && die "Input R1 and R2 FASTQ files are the same file, $R1_in"
+
+    sample_id=$(basename "$R1_in" | sed -E "s/${R1_suffix}_?[[:digit:]]*${extension}//")
+    R1_out="$outdir"/"$sample_id"_R1.fastq.gz
+    R2_out="$outdir"/"$sample_id"_R2.fastq.gz
+else
+    sample_id=$(basename "$R1_in" | sed -E "s/${extension}//")
+    R1_out="$outdir"/"$sample_id".fastq.gz
 fi
 
 # Check options provided to the script
@@ -210,5 +219,5 @@ echo "R1: $n_R1_out"
 [[ "$single_end" == false ]] && echo "R2: $n_R2_out"
 
 log_time "Listing files in the output dir:"
-ls -lhd "$(realpath "$outdir")"/*
+ls -lhd "$(realpath "$outdir")"/"$sample_id"*
 final_reporting "$LOG_DIR"
