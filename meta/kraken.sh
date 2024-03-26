@@ -178,7 +178,7 @@ load_env "$conda_path" "$container_path" "$dl_container"
 
 # Other prep based on script parameters
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
-[[ "$use_ram" = false ]] && mem_opt="--memory-mapping "
+[[ "$use_ram" == false ]] && mem_opt="--memory-mapping "
 [[ -n "$min_conf" ]] && conf_opt="--confidence $min_conf "
 [[ -n "$min_hitgroups" ]] && hitgroup_opt="--minimum-hit-groups $min_hitgroups "
 
@@ -186,9 +186,9 @@ LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 if [[ "$infile" =~ \.fa?s?t?q.gz$ ]]; then
     R1_in="$infile"
     R1_basename=$(basename "$R1_in" | sed -E 's/\.fa?s?t?q\.gz//')
-    R1_suffix=$(echo "$R1_basename" | sed -E 's/.*(_R?[12])[._].*/\1/')
+    R1_suffix=$(echo "$R1_basename" | sed -E 's/.*(_R?[12]).*/\1/')
     
-    if [[ "$single_end" = false ]]; then
+    if [[ "$single_end" == false ]]; then
         file_type=pe
         R2_suffix=${R1_suffix/1/2}
         R2_in=$(echo "$R1_in" | sed -E "s/${R1_suffix}([._])/${R2_suffix}\1/")
@@ -199,10 +199,10 @@ if [[ "$infile" =~ \.fa?s?t?q.gz$ ]]; then
         [[ ! -f "$R2_in" ]] && die "R2 file ($R2_in) does not exist"
         [[ "$R1_in" == "$R2_in" ]] && die "R1 file ($R1_in) is the same as R2 file ($R2_in)"
 
-        if [[ "$write_classif" = true ]]; then
+        if [[ "$write_classif" == true ]]; then
             classif_opt="--classified-out $outdir/classified/$sample_id#.fastq "
         fi
-        if [[ "$write_unclassif" = true ]]; then
+        if [[ "$write_unclassif" == true ]]; then
             unclassif_opt="--unclassified-out $outdir/unclassified/$sample_id#.fastq "
         fi
     else
@@ -255,7 +255,7 @@ echo "Write unclassified reads?                 $write_unclassif"
 log_time "Listing the input file(s):"
 [[ -n $R1_in ]] && ls -lh "$R1_in"
 [[ -n $R2_in ]] && ls -lh "$R2_in"
-[[ -n $infile ]] && ls -lh "$infile"
+[[ -z $R1_in && -n $infile ]] && ls -lh "$infile"
 log_time "Listing the k2d database file(s):"
 ls -lh "$db"/*k2d
 set_threads "$IS_SLURM"
