@@ -15,7 +15,7 @@
 # Constants - generic
 DESCRIPTION="Run the Nextflow-core RNAseq pipeline from https://nf-co.re/rnaseq
   with aligner option STAR => Salmon"
-SCRIPT_VERSION="2023-12-17"
+SCRIPT_VERSION="2024-03-30"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="nextflow run"
@@ -28,13 +28,13 @@ OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/next
 ALIGNER_OPT="--aligner star_salmon "                   # Always use STAR => Salmon
 
 # Defaults
-workflow_version=3.13.2                                # The version of the nf-core workflow
+workflow_version=3.14.0                                # The version of the nf-core workflow
 conda_path=/fs/project/PAS0471/jelmer/conda/nextflow   # Conda environment with Nextflow & nf-core tools
 osc_account=PAS0471                                    # If the scripts is submitted with another project, this will be updated (line below)
 [[ -n $SLURM_JOB_ACCOUNT ]] && osc_account=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
 container_dir=/fs/scratch/"$osc_account"/containers    # The workflow will download containers to this dir
 work_dir=/fs/scratch/"$osc_account"/$USER/nfc-rnaseq   # 'work dir' for initial outputs (selected, final outputs go to the outdir)
-workflow_dir_base=workflows/nfc-rnaseq                 # Dir to download the workflow code etc. to 
+workflow_dir_base=software/nfc-rnaseq                  # Dir to download the workflow code etc. to 
 profile="singularity"                                  # 'singularity' to have the workflow use containers (alternatively, 'conda')
 resume=true && resume_arg="-resume"                    # Resume the workflow from wherever it left off
 biotype_qc=false                                       # Activate --skip_biotype_qc option of the workflow
