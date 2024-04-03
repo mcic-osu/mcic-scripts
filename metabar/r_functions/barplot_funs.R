@@ -10,8 +10,9 @@ pbar <- function(
     ps = NULL,              # Either provide a phyloseq object (ps) or an abundance df from abund_stats()
     abund_df = NULL,        # Either provide a phyloseq object (ps) or an abundance df from abund_stats()
     taxrank = "Phylum",     # Or 'Family', 'Genus', etc
-    xvar = "Sample",        # What to plot along the x-axis ('Sample' for indiv. samples, or provide a column name from sample_data(ps)) (quoted string)
-    facetvar = NULL,        # What to facet by (quoted string)
+    x_var = "Sample",       # What to plot along the x-axis ('Sample' for indiv. samples, or provide a column name from sample_data(ps)) (quoted string)
+    facet_var = NULL,       # What to facet by (quoted string)
+    facet_var2 = NULL,      # Second variable to facet by (quoted string)
     xlab = NULL,            # X-axis label
     abund_tres = 0.01,      # Lump taxa with abundances below this threshold into a category 'other (rare)' (use 'NA' for no threshold)
     focal_taxa = NULL,      # Instead of filtering taxa by abundance, use the taxa listed in this vector
@@ -29,7 +30,7 @@ pbar <- function(
       focal_taxa = focal_taxa,
       na_to_unknown = na_to_unknown,
       sort_by_abund = sort_by_abund,
-      groupby = c(xvar, facetvar)
+      groupby = c(x_var, facet_var, facet_var2)
       )
   }
   
@@ -55,7 +56,7 @@ pbar <- function(
   
   # Create the plot
   p <- ggplot(abund_df) +
-    aes(x = .data[[xvar]],
+    aes(x = .data[[x_var]],
         y = Abundance,
         fill = .data[[taxrank]]) +
     geom_col(color = "grey20",
@@ -68,13 +69,20 @@ pbar <- function(
     theme(panel.grid.major.x = element_blank(),
           panel.grid.minor = element_blank())
   
-  if (!is.null(facetvar)) {
-    p <- p +
-      facet_grid(cols = vars(.data[[facetvar]]),
-                 scales = "free_x",
-                 space = "free")
+  if (!is.null(facet_var)) {
+    if (is.null(facet_var2)) {
+      p <- p +
+        facet_grid(cols = vars(.data[[facet_var]]),
+                   scales = "free_x", space = "free")
+    } else {
+      p <- p +
+        facet_grid(cols = vars(.data[[facet_var]]),
+                   rows = vars(.data[[facet_var2]]),
+                   scales = "free_x", space = "free")
+    }
   }
-  if (xvar == "Sample") p <- p + theme(axis.text.x = element_text(angle = 270))
+    
+  if (x_var == "Sample") p <- p + theme(axis.text.x = element_text(angle = 270))
   
   print(p)
 }
@@ -89,6 +97,8 @@ abund_stats <- function(
     na_to_unknown = TRUE,
     sort_by_abund = TRUE
     ) {
+  # ps <- ps_prop_filt; groupby = c("Sample", "INFECTION"); abund_tres = 0.01; focal_taxa = NULL
+  # na_to_unknown = TRUE; sort_by_abund = TRUE; taxrank = "Family"
   
   # If using a list of focal taxa, don't use an abundance threshold
   if (!is.null(focal_taxa)) {
@@ -105,15 +115,15 @@ abund_stats <- function(
   
   # Merge different NA taxa
   if (any(is.na(df[[taxrank]]))) {
-    NAs <- df |>
+    NA_df <- df |>
       filter(is.na(.data[[taxrank]])) |>
       group_by(Sample) |>
       summarize(Abundance = sum(Abundance)) |>
       left_join(meta, by = "Sample")
-    NAs[[taxrank]] <- NA
+    NA_df[[taxrank]] <- NA
     df <- df |>
       filter(!is.na(.data[[taxrank]])) |>
-      bind_rows(NAs)
+      bind_rows(NA_df)
   }
   
   # Change NA taxa to "unknown"
@@ -128,8 +138,13 @@ abund_stats <- function(
       group_by_at(c(groupby, taxrank)) |> 
       summarize(Abundance = mean(Abundance), .groups = "drop")
     
-    if (groupby[1] == "Sample")
-      df <- df |> left_join(meta, by = "Sample")
+    if (groupby[1] == "Sample") {
+      df <- df |>
+        left_join(meta, by = "Sample") |>
+        # Remove duplicated columns!
+        select(!contains(".y"))
+      colnames(df) <- sub("\\.x$", "", colnames(df))
+    }
   }
   
   # Change low-abundance or non-focal taxa to "other"
@@ -151,20 +166,23 @@ abund_stats <- function(
   
   if (!is.na(abund_tres) || !is.null(focal_taxa)) {
     # Create a df for the lumped taxa, with summed abundance
-    other <- df |>
+    other_df <- df |>
       filter(.data[[taxrank]] %in% to_lump) |>
       group_by_at(groupby) |> 
       summarize(Abundance = sum(Abundance))
     
-    if (groupby[1] == "Sample")
-      other <- other |> left_join(meta, by = "Sample")
-    
-    other[[taxrank]] <- "other (rare)"
+    if (groupby[1] == "Sample") {
+      other_df <- other_df |>
+        left_join(meta, by = "Sample") |>
+        select(!contains(".y"))
+      colnames(other_df) <- sub("\\.x$", "", colnames(other_df))
+    }
+    other_df[[taxrank]] <- "other (rare)"
     
     # Filter out original low-abund taxa and add lumped one
     df <- df |>
       filter(! .data[[taxrank]] %in% to_lump) |>
-      bind_rows(other)
+      bind_rows(other_df)
     
     # Sort ASVs by mean overall abundance
     if (sort_by_abund == TRUE) {
