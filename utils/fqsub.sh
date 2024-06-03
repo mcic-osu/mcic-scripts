@@ -11,7 +11,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Script to subsample FASTQ files using seqtk"
-SCRIPT_VERSION="2023-08-19"
+SCRIPT_VERSION="2024-06-02"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -148,16 +148,17 @@ indir=$(dirname "$R1_in")
 extension=$(echo "$R1_in" | sed -E 's/.*(\.fa?s?t?q\.gz$)/\1/')
 
 # FASTQ filename parsing
+R1_basename=$(basename "$R1_in" | sed -E 's/.fa?s?t?q.gz//')
 if [[ "$single_end" == false ]]; then
     # Paired-end sequences
-    R1_suffix=$(echo "$R1_in" | sed -E "s/.*(_R?1)_?[[:digit:]]*$extension/\1/")
+    R1_suffix=$(echo "$R1_in" | sed -E 's/.*(_R?1).*fa?s?t?q.gz/\1/')
     R2_suffix=${R1_suffix/1/2}
     R2_in=${R1_in/$R1_suffix/$R2_suffix}
     
     [[ ! -f "$R2_in" ]] && die "Input R2 FASTQ file $R2_in does not exist"
     [[ "$R1_in" == "$R2_in" ]] && die "Input R1 and R2 FASTQ files are the same file, $R1_in"
 
-    sample_id=$(basename "$R1_in" | sed -E "s/${R1_suffix}_?[[:digit:]]*${extension}//")
+    sample_id=${R1_basename/"$R1_suffix"/}
     R1_out="$outdir"/"$sample_id"_R1.fastq.gz
     R2_out="$outdir"/"$sample_id"_R2.fastq.gz
 else
@@ -180,7 +181,7 @@ LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 n_total=$(zcat "$R1_in" | awk '{s++}END{print s/4}')
 
 # If prop_reads is given, calculate n_reads
-[[ $prop_reads != "" ]] && n_reads=$(python -c "print(int($n_total * $prop_reads))")
+[[ -n $prop_reads ]] && n_reads=$(python -c "print(int($n_total * $prop_reads))")
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
