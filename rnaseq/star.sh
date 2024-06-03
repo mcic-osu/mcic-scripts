@@ -13,7 +13,7 @@
 # Constants - generic
 DESCRIPTION="Align RNAseq reads to a STAR genome/transcriptome index with STAR
 NOTE: STAR is run with several non-default settings, check this script's code for details."
-SCRIPT_VERSION="2023-08-13"
+SCRIPT_VERSION="2024-06-02"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -61,7 +61,7 @@ script_help() {
     echo "  -o/--outdir         <dir>   BAM output dir"
     echo "  --annot             <file>  Ref. annotation file (GFF/GTF - GTF preferred)"
     echo "                                NOTE: If you don't have or want to use an annotation file,"
-    echi "                                omit this this option *and* use the option '--no_transcriptome'."
+    echo "                                omit this this option *and* use the option '--no_transcriptome'."
     echo "  To specify the input reads, use one of the following to options:"
     echo "    -i/--R1           <file>  Input gzipped (R1) FASTQ file path (If R1, name of R2 will be inferred unless using '--single_end')"
     echo "    --fofn            <file>  A File of File Names (FOFN), with one line per input file (not meant for more than 1 sample!)"
@@ -305,7 +305,7 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
     --outSAMattributes NH HI AS NM MD \
     --runRNGseed 0 \
     --alignSJDBoverhangMin 1 \
-    --quantTranscriptomeBan "Singleend" \
+    --quantTranscriptomeSAMoutput "BanSingleEnd" \
     $intron_min_opt \
     $intron_max_opt \
     $annot_opt \
@@ -318,7 +318,7 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
 #? --twopassMode Basic => Using this following the nf-core RNAseq workflow
 #? --outSAMstrandField intronMotif => Using this following the nf-core RNAseq workflow
 #? --outSAMattributes NH HI AS NM MD => Using this following the nf-core RNAseq workflow
-#? --quantTranscriptomeBan "Singleend" => Using this following the nf-core RNAseq workflow
+#? --quantTranscriptomeSAMoutput "BanSingleEnd" => Using this following the nf-core RNAseq workflow
 #? --alignSJDBoverhangMin 1 => Using this following the nf-core RNAseq workflow
 #? --runRNGseed 0 => Using this following the nf-core RNAseq workflow
 
