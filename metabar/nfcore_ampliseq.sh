@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run the Nextflow-core metabarcoding pipeline from https://nf-co.re/ampliseq"
-SCRIPT_VERSION="2024-02-16"
+SCRIPT_VERSION="2024-06-03"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="nextflow run"
@@ -24,7 +24,7 @@ WORKFLOW_NAME=ampliseq                                  # The name of the nf-cor
 OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config
 
 # Parameter defaults - workflow
-workflow_version=2.8.0                                  # The version of the nf-core workflow
+workflow_version=2.9.0                                  # The version of the nf-core workflow
 ITS_taxonomy='unite-fungi=8.3'
 is_ITS=false && ITS_opt=
 ITS_opt_default="--illumina_pe_its --addsh"             # When is_ITS is true, use this arg
@@ -33,7 +33,7 @@ ITS_opt_default="--illumina_pe_its --addsh"             # When is_ITS is true, u
 osc_account=PAS0471                                     # If the scripts is submitted with another project, this will be updated (line below)
 [[ -n $SLURM_JOB_ACCOUNT ]] && osc_account=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
 conda_path=/fs/project/PAS0471/jelmer/conda/nextflow
-workflow_dir_base=workflows/nfcore-ampliseq             # Dir to download the workflow files to
+workflow_dir_base=software/nfcore-ampliseq              # Dir to download the workflow files to
 container_dir=/fs/scratch/"$osc_account"/containers     # The workflow will download containers to this dir
 work_dir=/fs/scratch/"$osc_account"/$USER/nfc-ampliseq  # 'work dir' for initial outputs (selected, final outputs go to the outdir)
 profile="singularity"
