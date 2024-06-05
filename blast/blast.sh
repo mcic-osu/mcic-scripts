@@ -7,6 +7,7 @@
 #SBATCH --output=slurm-blast-%j.out
 
 #TODO - Add taxonomic info with taxonkit
+#TODO - Consider adding 'qcovus' to the output, which adjusts for overlapping alignments, see https://www.ncbi.nlm.nih.gov/books/NBK279684/table/appendices.T.options_common_to_all_blast/
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
