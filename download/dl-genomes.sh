@@ -14,8 +14,8 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Download genomes (and associated proteomes, annotations, etc) with the NCBI datasets tool"
-SCRIPT_VERSION="2023-08-24"
+DESCRIPTION="Download genomes (and associated proteomes, annotations, etc) and associated metadata with the NCBI datasets tool"
+SCRIPT_VERSION="2024-06-05"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -56,17 +56,22 @@ script_help() {
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Download all C. elegans genomes:"
     echo "      sbatch $0 --taxon 'Caenorhabditis elegans' -o results/refgenome"
+    echo
     echo "  - Download all reference nematode genomes:"
     echo "      sbatch $0 --taxon 'nematoda' --ref_only -o results/refgenomes"
-    echo "  - Download a list of accessions:"
+    echo
+    echo "  - Download geneomes using a file with a list of accessions:"
     echo "      sbatch $0 --accession_file metadata/accession.txt -o results/refgenomes"
-    echo "  - Also download annotation and proteome:"
+    echo
+    echo "  - Only download genome, annotation and proteome (default is to download all available files):"
     echo "      sbatch $0 --taxon 'human' --include 'genome,protein,gff3' -o results"
-    echo "  - Download a single accession:"
-    echo "      sbatch $0 --accession GCA_000001405.29 -o data/ref --assembly_source all"
+    echo
+    echo "  - Download a single genome using its accession number:"
+    echo "      sbatch $0 --accession GCA_000001405.29 -o data/ref"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
+    echo
     echo "To specify genomes to download, use _one_ of the following three options:"
     echo "  -t/--taxon          <str>   Taxon string (e.g. 'bos taurus' or 'nematoda') or NCBI Taxonomy ID (e.g. '10116')"
     echo "  -a/--accession_file <file>  Text file with list of NCBI accession numbers, one per line"
