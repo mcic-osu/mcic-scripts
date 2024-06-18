@@ -6,31 +6,32 @@ if (! "BiocManager" %in% installed.packages()) install.packages("BiocManager")
 if (! "clusterProfiler" %in% installed.packages()) BiocManager::install("clusterProfiler")
 
 # CLUSTERPROFILER FUNCTIONS ----------------------------------------------------
-# run_enrich: function to run a (GO or KEGG) standard overrepresentation analysis
-run_enrich <- function(
+# Function to run a (GO or KEGG) standard over-representation (ORA) analysis
+run_ora <- function(
   contrast,                  # DE comparison as specified in 'contrast' column in DE results
   DE_direction = "either",   # DE direction: 'either' (all DE genes), 'up' (lfc > 0), or 'down' (lfc < 0)
-  DE_res,                    # DE results df from 'extract_DE()', should have columns 'gene', 'contrast', 'lfc', 'isDE', 'padj'
+  DE_res,                    # DE results df from 'extract_DE()', should have columns 'gene', 'contrast', 'lfc', 'isDE', 'padj'.
+                             # This df should contain *all* genes, not just significantly DE ones.
   cat_map = NULL,            # Manually provide a functional category/term to gene mapping with columns: 1:category, 2:gene ID, and optionally 3:description, 4: ontology
   OrgDb = NULL,              # BioConductor OrgDB (alternative to 'cat_map' for available organisms)
   ontology_type = NULL,      # 'GO' (enrichGO function) or 'KEGG' (enrichKEGG).
                              # Only applies when using an 'OrgDb' instead of a 'cat_map'
   keyType = "ENTREZID",      # OrgDB gene ID type
+                             # Only applies when using an 'OrgDb' instead of a 'cat_map'
   GO_ontology = NULL,        # Only for GO analysis with an OrgDB *and* when return_df == TRUE (then, default is 'BP')
                              # In all other cases, will run GO analyses across all 3 ontologies (BP, CC, MF) 
   p_enrich = 0.05,           # Adj. p-value threshold for enrichment
   q_enrich = 0.2,            # Q value threshold for enrichment
   min_DE_in_cat = 2,         # Nr. DE genes threshold for enrichment: at least this number of genes in the ontology category should be DE
                              # (Occasionally, 'small' categories with 1 DE gene can have p-values below 0.05 -- this excludes those)
-  min_cat_size = 5,          # Min. nr. of genes in a category (= clusterProfiler 'minGSSize' argument - NOTE: clPr default is 10)
+  min_cat_size = 5,          # Min. nr. of genes in a category (= clusterProfiler 'minGSSize' argument - NOTE: clusterProfiler default is 10)
   max_cat_size = 500,        # Min. nr. of genes in a category (= clusterProfiler 'maxGSSize' argument)
   filter_no_descrip = TRUE,  # Remove categories/terms with no description (at least for GO terms, these tend to be old/deprecated ones)
   exclude_nontested = TRUE,  # Exclude genes that weren't tested for DE from the 'universe' of genes
   allow_dups = FALSE,        # Allow a gene ID to be present multiple times in a (single-contrast, single DE-direction) list of DEGs
                              # This should typically *not* be the case, but could be so when working with gene IDs (orthologs)
                              # from another species than the focal species to run the GO analysis
-  p_DE = NULL,               # Adj. p-value threshold for DE (default: use 'isDE' column to determine DE status)
-  lfc_DE = NULL,             # LFC threshold for DE (default: use 'isDE' column to determine DE status)
+  sig_only = NULL,           # Return only significant results. Default: FALSE when return_df is FALSE, TRUE when return_df is TRUE. 
   return_df = FALSE          # Convert results object to a simple dataframe (tibble), instead of keeping the ClusterProfiler object
                              # Should be FALSE if you want to use the enrichPlot functions directly 
 ) {
@@ -38,28 +39,14 @@ run_enrich <- function(
   # Filter DE results to only get those for the focal contrast
   fcontrast <- contrast
   DE_res <- DE_res |> dplyr::filter(contrast == fcontrast)
-  
-  # Get the background 'universe' of genes:
-  # genes that were tested for DE *and* occur in the ontology category map
-  # (Excluding the latter is equivalent to goseq's 'use_genes_without_cat=FALSE',
-  # and this is done by default by ClusterProfiler -- but non-tested genes *are* included)
-  if (exclude_nontested == TRUE) {
-    univ_df <- DE_res |> dplyr::filter(!is.na(padj))
-    if (!is.null(cat_map)) univ_df <- univ_df |> dplyr::filter(gene %in% cat_map$gene)
-    univ_vec <- unique(univ_df$gene)
-  } else {
-    univ_vec <- NULL
-  }
+  stopifnot("Error: no rows in DE_res dataframe after contrast filtering" = nrow(DE_res) > 0)
   
   # Filter the DE results, if needed: only take over- or underexpressed
   if (DE_direction == "up") DE_res <- DE_res |> dplyr::filter(lfc > 0)
   if (DE_direction == "down") DE_res <- DE_res |> dplyr::filter(lfc < 0)
   
   # Create a vector with DEGs
-  if (is.null(p_DE) & is.null(lfc_DE)) DE_res <- DE_res |> dplyr::filter(isDE)
-  if (!is.null(p_DE)) DE_res <- DE_res |> dplyr::filter(padj < p_DE)
-  if (!is.null(lfc_DE)) DE_res <- DE_res |> dplyr::filter(abs(lfc) > lfc_DE)
-  DEGs <- DE_res$gene
+  DEGs <- DE_res |> dplyr::filter(isDE) |> pull(gene)
   
   # Check if genes are present multiple times -- this would indicate there are multiple contrasts
   if (any(duplicated(DEGs))) {
@@ -72,6 +59,7 @@ run_enrich <- function(
     return(NULL)
   }
   
+  # Prepare the category map
   if (!is.null(cat_map)) {
     # Rename cat_map columns
     colnames(cat_map)[1:2] <- c("category", "gene")
@@ -110,6 +98,18 @@ run_enrich <- function(
         " // Nr DE genes: ", length(DEGs), sep = "")
   }
 
+  # Get the background 'universe' of genes:
+  # genes that were tested for DE *and* occur in the ontology category map
+  # (Excluding the latter is equivalent to goseq's 'use_genes_without_cat=FALSE',
+  # and this is done by default by ClusterProfiler -- but non-tested genes *are* included)
+  if (exclude_nontested == TRUE) {
+    univ_df <- DE_res |> dplyr::filter(!is.na(padj))
+    if (!is.null(cat_map)) univ_df <- univ_df |> dplyr::filter(gene %in% cat_map$gene)
+    univ_vec <- unique(univ_df$gene)
+  } else {
+    univ_vec <- NULL
+  }
+  
   # Run the enrichment analysis
   if (!is.null(cat_map)) {
     # With manual category map
@@ -142,6 +142,7 @@ run_enrich <- function(
         qvalueCutoff = 1
       )
     }
+    
     if (return_df == FALSE) {
       # If keeping the ClusterProfiler format, can't combine multiple results
       res <- enrichfun(GO_ontology = GO_ontology)
@@ -154,23 +155,27 @@ run_enrich <- function(
     }
   }
   
+  # Process the output
   if (return_df == FALSE) {
-    res <- res |>
+    res_sig <- res |>
       dplyr::filter(p.adjust < p_enrich, qvalue < q_enrich, Count >= min_DE_in_cat)
-    cat(" // Nr enriched:", nrow(res), "\n")
+    if (is.null(sig_only)) sig_only <- TRUE
+    if (sig_only == TRUE) res <- res_sig
+    cat(" // Nr enriched:", nrow(res_sig), "\n")
   } else {
+    if (is.null(sig_only)) sig_only <- FALSE
     # Create a regular df
     res <- as_tibble(res) |>
-      mutate(sig = ifelse(p.adjust < p_enrich &
-                            qvalue < q_enrich &
-                            Count >= min_DE_in_cat,
-                          TRUE,
-                          FALSE),
-             contrast = fcontrast, DE_direction = DE_direction) |>
-      dplyr::select(contrast, DE_direction, category = ID, n_DE_in_cat = Count,
-                    GeneRatio, BgRatio, padj = p.adjust, sig,
-                    description = Description, any_of("ontology"),
-                    gene_ids = geneID)
+      mutate(
+        sig = ifelse(p.adjust < p_enrich & qvalue < q_enrich & Count >= min_DE_in_cat,
+                     TRUE, FALSE),
+        contrast = fcontrast, DE_direction = DE_direction
+        ) |>
+      dplyr::select(
+        contrast, DE_direction, category = ID, n_DE_in_cat = Count,
+        GeneRatio, BgRatio, padj = p.adjust, sig,
+        description = Description, any_of("ontology"), gene_ids = geneID
+        )
     
     # Add ontology info for GO
     if ("ontology" %in% colnames(cat_map)) {
@@ -194,11 +199,17 @@ run_enrich <- function(
     
     # Add gene numbers and enrichment ratio
     res <- res |>
-    separate_wider_delim(cols = c("GeneRatio", "BgRatio"), delim = "/",
-                         names_sep = "_") |>
-      mutate(n_DE = as.integer(GeneRatio_2),
-             n_cat = as.integer(BgRatio_1),
-             n_total = as.integer(BgRatio_2)) |>
+    separate_wider_delim(
+      cols = c("GeneRatio", "BgRatio"), delim = "/", names_sep = "_"
+      ) |>
+      mutate(
+        # Total nr of DE genes (in+not in the focal category)
+        n_DE = as.integer(GeneRatio_2),
+        # Total nr of genes in the functional category
+        n_cat = as.integer(BgRatio_1),
+        # Total nr of genes tested
+        n_total = as.integer(BgRatio_2)
+        ) |>
       dplyr::select(-GeneRatio_1, -GeneRatio_2, -BgRatio_1, -BgRatio_2) |>
       mutate(fold_enrich = (n_DE_in_cat / n_DE) / (n_cat / n_total))
     
@@ -236,6 +247,7 @@ run_gsea <- function(
   gene_df <- DE_res |>
     dplyr::filter(contrast == fcontrast, !is.na(lfc)) |>
     arrange(desc(lfc))
+  stopifnot("Error: no rows in DE_res dataframe after contrast filtering" = nrow(gene_df) > 0)
   n_DE <- sum(gene_df$padj < 0.05, na.rm = TRUE)
   
   # Check if genes are present multiple times -- this would indicate there are multiple contrasts
@@ -254,8 +266,9 @@ run_gsea <- function(
   lfc_vec <- gene_df$lfc
   names(lfc_vec) <- gene_df$gene
   
-  # Rename cat_map columns
+  # Prepare the functional category map and report
   if (!is.null(cat_map)) {
+    # Rename cat_map columns
     colnames(cat_map)[1:2] <- c("category", "gene")
     if(ncol(cat_map) > 2) colnames(cat_map)[3] <- "description"
     if(ncol(cat_map) > 3) colnames(cat_map)[4] <- "ontology"
@@ -267,18 +280,23 @@ run_gsea <- function(
     
     # Check & report
     genes_in_map <- names(lfc_vec)[names(lfc_vec) %in% term2gene[[2]]]
-    cat("Contrast: ", fcontrast, "// Nr DE genes (nr in cat_map):", n_DE,
-        "(", length(genes_in_map), ")")
+    cat("Contrast: ", fcontrast, " // Nr genes with category assigned: ",
+        length(genes_in_map), sep = "")
 
     if (length(genes_in_map) == 0) {
-      message("\nERROR: None of the DE genes are in the cat_map dataframe")
+      message("\nERROR: None of the genes are in the cat_map dataframe")
       cat("First gene IDs from DE results: ", head(names(lfc_vec)), "\n")
       cat("First gene IDs from cat_map: ", head(term2gene[[2]]), "\n")
       stop()
     }
   } else {
-    # Report
-    cat("Contrast: ", fcontrast, "// Nr DE genes:", n_DE)
+    cat("Contrast:", fcontrast)
+  }
+  
+  # Set random seed if it doesn't exist
+  if (!exists(".Random.seed")) {
+    message("Note: no random seed set, setting seed to 1 with `set.seed(1)`")
+    set.seed(1)
   }
   
   # Run the enrichment analysis
@@ -309,7 +327,7 @@ run_gsea <- function(
   
   # Report
   n_sig <- sum(gsea_res$p.adjust < p_enrich)
-  cat(" // Nr enriched: ", n_sig, "\n")
+  cat(" // Nr enriched:", n_sig, "\n")
   
   # Return a df, if requested
   if (return_df == FALSE) {
@@ -338,8 +356,9 @@ run_gsea <- function(
     # Add mean & median LFC value
     w_lfc <- gsea_res |>
       separate_longer_delim(cols = gene_ids, delim = "/") |>
-      left_join(dplyr::select(DE_res, gene, lfc),
-                by = join_by("gene_ids" == "gene"),
+      rename(gene = gene_ids) |> 
+      left_join(DE_res |> dplyr::select(gene, contrast, lfc),
+                by = c("gene", "contrast"),
                 relationship = "many-to-many") |>
       summarize(mean_lfc = mean(lfc),
                 median_lfc = median(lfc),
@@ -354,7 +373,7 @@ run_gsea <- function(
 
 # PLOTTING FUNCTIONS -----------------------------------------------------------
 # Function to plot the enrichment results in a heatmap format
-enrichplot <- function(
+tileplot <- function(
   enrich_df,                    # Enrichment results
   contrasts = NULL,             # One or more contrasts (default: all)
   DE_directions = NULL,         # One or more DE directions (default: all)
@@ -370,10 +389,10 @@ enrichplot <- function(
   xlab_size = 13,               # Size of x-axis labels
   ylab_size = 10,               # Size of y-axis labels (= categories)
   xlab_angle = 0,               # Angle of x-axis labels
-  facet_labeller = "label_value", # Facet labelling
-  add_cat_id = FALSE,           # Add ontology category ID to its name
+  facet_labeller = "label_value", # Facet labeling
+  add_cat_id = FALSE,           # Add ontology category ID to its name/description
   merge_directions = FALSE      # Whether to 'merge' up+down DE directions into a single cell
-                                #   If both directions are significant, will show the most significant one
+                                # If both directions are significant, will show the most significant one
 ) {
   
   # Check
@@ -516,7 +535,7 @@ enrichplot <- function(
       # Facet_grid when there are 2 facet vars
       p <- p + facet_grid(rows = vars(.data[[facet_var1]]),
                           cols = vars(.data[[facet_var2]]),
-                          scales = "free_y",
+                          scales = "free",
                           space = "free_y",
                           switch = "y",
                           labeller = facet_labeller)
@@ -628,6 +647,13 @@ cdotplot <- function(
     col_scale <- scale_color_brewer(palette = "Dark2")
   }
   
+  # X-axis left-hand expansion,
+  if (x_var == "padj_log") {
+    expand_min <- 0
+  } else {
+    expand_min <- 0.09
+  }
+  
   # Create the base plot
   p <- ggpubr::ggdotchart(
     enrich_df,
@@ -646,7 +672,7 @@ cdotplot <- function(
   # Formatting
   p <- p +
     labs(x = NULL) +
-    scale_y_continuous(expand = expansion(mult = c(0.09, 0.09))) +
+    scale_y_continuous(expand = expansion(mult = c(expand_min, 0.09))) +
     col_scale +
     theme(legend.position = legend_pos,
           plot.margin = margin(0.5, 0.5, 0.5, 0.5, unit = "cm"),
