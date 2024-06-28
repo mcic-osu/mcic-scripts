@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
+#SBATCH --time=2:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --mail-type=FAIL
@@ -179,12 +179,12 @@ else
 fi
 
 # Get file extension (.fastq.gz or .fq.gz)
-extension=$(echo "$R1_in" | sed -E 's/.*(\.fa?s?t?q\.gz$)/\1/')
+file_ext=$(basename "$R1_in" | sed -E 's/.*(.fasta|.fastq.gz|.fq.gz)$/\1/')
 
 # Get R2 file, create input argument, define output files
 if [ "$single_end" != "true" ]; then
     # Paired-end sequences
-    R1_suffix=$(echo "$R1_in" | sed -E "s/.*(_R?1)_?[[:digit:]]*$extension/\1/")
+    R1_suffix=$(basename "$R1_in" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
     R2_suffix=${R1_suffix/1/2}
     R2_in=${R1_in/$R1_suffix/$R2_suffix}
     input_arg="--paired $R1_in $R2_in"
@@ -192,13 +192,13 @@ if [ "$single_end" != "true" ]; then
     [[ ! -f "$R2_in" ]] && die "Input R2 FASTQ file $R2_in does not exist"
     [[ "$R1_in" == "$R2_in" ]] && die "Input R1 and R2 FASTQ files are the same file, $R1_in"
 
-    sample_id=$(basename "$R1_in" | sed -E "s/${R1_suffix}_?[[:digit:]]*${extension}//")
+    sample_id=$(basename "$R1_in" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
     R1_out="$outdir_trim"/"$sample_id"_R1.fastq.gz
     R2_out="$outdir_trim"/"$sample_id"_R2.fastq.gz
 else
     # Single-end sequences
     input_arg="$R1_in"
-    sample_id=$(basename "$R1_in" | sed "s/${extension}//")
+    sample_id=$(basename "$R1_in" "$file_ext")
     R1_out="$outdir_trim"/"$sample_id".fastq.gz
 fi
 
@@ -246,7 +246,7 @@ if [ "$single_end" != "true" ]; then
     mv -v "$outdir_trim"/"$sample_id"*_val_1.fq.gz "$R1_out"
     mv -v "$outdir_trim"/"$sample_id"*_val_2.fq.gz "$R2_out"
 else
-    R1_basename="$(basename "$R1_in" "$extension")"
+    R1_basename="$(basename "$R1_in" "$file_ext")"
     mv -v "$outdir_trim"/"$R1_basename"_trimmed.fq.gz "$R1_out"
 fi
 
