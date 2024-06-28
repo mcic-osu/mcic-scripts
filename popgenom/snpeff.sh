@@ -101,7 +101,6 @@ source_function_script
 infile=
 outdir=
 more_opts=
-threads=
 
 # Parse command-line args
 all_opts="$*"
@@ -154,7 +153,6 @@ echo "Output dir:                               $outdir"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
 ls -lh "$infile" 
-set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
