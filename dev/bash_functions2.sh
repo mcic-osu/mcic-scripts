@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Constants
-OSC_MODULE=miniconda3
+OSC_MODULE=miniconda3/24.1.2-py310
 
 # Defaults
 [[ -z "$env" ]] && env=conda
@@ -41,12 +41,12 @@ load_conda() {
 
     # Deactivate any active Conda environment
     if [[ -n "$CONDA_SHLVL" ]]; then
-        for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
+        for i in $(seq "${CONDA_SHLVL}"); do conda deactivate 2>/dev/null; done
     fi
 
     # Activate the focal environment
     log_time "Loading Conda environment $conda_path"
-    source activate "$conda_path"
+    conda activate "$conda_path"
 
     # No container prefix when using a Conda env
     CONTAINER_PREFIX=
@@ -202,9 +202,14 @@ final_reporting() {
 
     printf "\n======================================================================"
     log_time "Versions used:"
-    tool_version "$VERSION_COMMAND" | tee "$VERSION_FILE"
-    script_version | tee -a "$VERSION_FILE" 
+    tool_version "$VERSION_COMMAND"
+    script_version
+    
+    script_version > "$VERSION_FILE"
+    tool_version "$VERSION_COMMAND" &>> "$VERSION_FILE"
     env | sort > "$ENV_FILE"
-    [[ "$IS_SLURM" = true ]] && resource_usage
+    
+    [[ "$IS_SLURM" == true ]] && resource_usage
+    
     log_time "Done with script $SCRIPT_NAME\n"
 }
