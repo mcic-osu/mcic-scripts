@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run PycoQC to QC an ONT sequencing summary file"
-SCRIPT_VERSION="2024-06-20"
+SCRIPT_VERSION="2024-06-29"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -43,14 +43,16 @@ script_help() {
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage:"
+    echo "      sbatch $0 -i data/sequencing_summary.txt -o results/pycoqc"
+    echo "  - Only reads with a Phred quality score of 10 or more will be marked as PASS:"
     echo "      sbatch $0 -i data/sequencing_summary.txt -o results/pycoqc --min_qual 10"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile         <file>  Input file"
+    echo "  -i/--infile         <file>  Input file: a 'sequencing summary' text file output by the sequencing machine"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --min_qual          <int>   Min. read quality to PASS (should be same as used for Guppy) [default: not used]"
+    echo "  --min_qual          <int>   Min. Phred read quality score to PASS   [default: not used]"
     echo "  --min_len           <int>   Min. read length to PASS                [default: not used]"
     echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
     echo
