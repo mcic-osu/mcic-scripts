@@ -157,7 +157,7 @@ LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 
 [[ "$out_format" == "bam" ]] && out_format_opt=
 [[ -f "$input" ]] && outfile="$outdir"/$(basename "${input%.*}").$out_format
-[[ -d "$input" ]] && outfile="$outdir"/$(basename "$(dirname "$input")").$out_format
+[[ -d "$input" ]] && outfile="$outdir"/$(basename "$input").$out_format
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -165,11 +165,10 @@ LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options passed to this script:        $all_opts"
-echo "Input file:                               $input"
-echo "Output dir:                               $outdir"
-echo "Output file name:                         $outfile"
-echo "Base-calling model:                       $model"
+echo "Input file or dir:                        $input"
+echo "Output file:                              $outfile"
 echo "Output format:                            $out_format"
+echo "Base-calling model:                       $model"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
 ls -lh "$input"
@@ -186,12 +185,12 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
     $input \
     > "$outfile"
 
-#--device "cuda:0" 
-#-x, --device // device string in format "cuda:0,...,N", "cuda:all", "metal", "cpu" etc.. [default: "cuda:all"]
+# Dorado options
+#? -x, --device // device string in format "cuda:0,...,N", "cuda:all", "metal", "cpu" etc.. [default: "cuda:all"]
 
 if [[ "$out_format" == "fastq" ]]; then
     log_time "Zipping up the output FASTQ file..."
-    runstats gzip "$outfile"
+    runstats gzip -f "$outfile"
 fi
 
 log_time "Listing files in the output dir:"
