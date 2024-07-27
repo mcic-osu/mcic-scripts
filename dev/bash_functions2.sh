@@ -193,8 +193,8 @@ log_time() {
 
 # Final reporting
 final_reporting() {
-    VERSION_FILE="$LOG_DIR"/version.txt
-    ENV_FILE="$LOG_DIR"/env.txt
+    VERSION_FILE="$LOG_DIR"/versions.txt
+    ENV_FILE="$LOG_DIR"/shell_env.txt
     CONDA_YML="$LOG_DIR"/conda_env.yml
 
     # Store the Conda env in a YAML file
