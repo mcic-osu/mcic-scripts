@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run FiltLong to filter long reads, keeping the longest and highest-qaulity reads"
-SCRIPT_VERSION="2024-06-20"
+SCRIPT_VERSION="2024-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -31,9 +31,6 @@ container_dir="$HOME/containers"
 strict_bash=true
 version_only=false                 # When true, just print tool & script version info and exit
 
-# Defaults - tool parameters
-#TODO
-
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
@@ -45,8 +42,12 @@ script_help() {
     echo "  $DESCRIPTION"
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage:"
-    echo "      sbatch $0 -i TODO -o results/TODO" #TODO
+    echo "  - Filter using target nr of bases: best and longest reads will be kept:"
+    echo "      sbatch $0 -i reads.fastq.gz -o results/filtlong --more_opts '--target_bases 1000000'"
+    echo "  - Filter by length:"
+    echo "      sbatch $0 -i reads.fastq.gz -o results/filtlong --more_opts '--min_length 1000 --max_length 100000'"
+    echo "  - Filter by quality:"
+    echo "      sbatch $0 -i reads.fastq.gz -o results/filtlong --more_opts '--min_mean_q 20'"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--infile         <file>  Input file"
@@ -104,7 +105,6 @@ source_function_script
 infile=
 outdir=
 more_opts=
-threads=
 
 # Parse command-line args
 all_opts="$*"
@@ -140,9 +140,12 @@ load_env "$conda_path" "$container_path" "$dl_container"
 [[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
 [[ ! -f "$infile" ]] && die "Input file $infile does not exist"
+indir=$(dirname "$infile")
+[[ "$outdir" == "$indir" ]] && die "Output dir cannot be the same as the input dir: both are $outdir"
 
 # Define outputs based on script parameters
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+outfile="$outdir"/$(basename "$infile")
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -154,8 +157,7 @@ echo "Input file:                               $infile"
 echo "Output dir:                               $outdir"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
-ls -lh "$infile" #TODO
-set_threads "$IS_SLURM"
+ls -lh "$infile"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
@@ -163,14 +165,15 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
 runstats $CONTAINER_PREFIX $TOOL_BINARY \
-    --threads "$threads" \
-    $more_opts
-
-filtlong \
-    --target_bases "$target_bases" \
+    $more_opts \
     "$infile" |
     gzip > "$outfile"
-    
+
+# Count reads in input and output
+n_in=$(zcat "$infile" | awk '{s++} END {print s/4}')
+n_out=$(zcat "$outfile" | awk '{s++} END {print s/4}')
+log_time "Number of reads in input / output file(s): $n_in  // out: $n_out"
+
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
 final_reporting "$LOG_DIR"
