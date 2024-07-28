@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
+#SBATCH --cpus-per-task=12
+#SBATCH --mem=160G
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name=emu
 #SBATCH --output=slurm-emu-%j.out
@@ -12,20 +12,20 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run Emu to estimate taxon abundances directly from 16S ONT reads"
-SCRIPT_VERSION="2024-07-27"
+SCRIPT_VERSION="2024-07-28"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
 TOOL_BINARY="emu abundance"
 TOOL_NAME=Emu
 TOOL_DOCS=https://github.com/treangenlab/emu
-VERSION_COMMAND="$TOOL_BINARY --version"
+VERSION_COMMAND="emu --version"
 
 # Defaults - generics
-env=conda                               # Use a 'conda' env or a Singularity 'container'
+env=container                           # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/emu
 container_path=
-container_url=
+container_url=oras://community.wave.seqera.io/library/emu:3.4.5--6f9b25acd7cc7207
 dl_container=false
 container_dir="$HOME/containers"
 version_only=false                      # When true, just print tool & script version info and exit
