@@ -50,8 +50,10 @@ script_help() {
     echo "      sbatch $0 -i reads.fastq.gz -o results/filtlong --more_opts '--min_mean_q 20'"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile         <file>  Input file"
+    echo "  -i/--infile         <file>  Input FASTQ file"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
+    echo "  NOTE: You should also add one of Filtlong's options for filtering with --more_opts"
+    echo "        to actually filter the FASTQ file, see the example commands above."
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
@@ -146,6 +148,8 @@ indir=$(dirname "$infile")
 # Define outputs based on script parameters
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 outfile="$outdir"/$(basename "$infile")
+file_id=$(basename "$infile" .fastq.gz)
+REPORT_FILE="$LOG_DIR"/"$file_id"_stats.tsv  # For nr of in/output reads
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -172,8 +176,12 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
 # Count reads in input and output
 n_in=$(zcat "$infile" | awk '{s++} END {print s/4}')
 n_out=$(zcat "$outfile" | awk '{s++} END {print s/4}')
-log_time "Number of reads in input / output file(s): $n_in  // out: $n_out"
+pct=$(python3 -c "print(round(($n_out / $n_in) * 100, 2))")
+log_time "Number of reads in in/output file(s): $n_in // $n_out ($pct% retained)"
+echo -e "file_id\treads_in\treads_out\tpct_retained" > "$REPORT_FILE"
+echo -e "${file_id}\t${n_in}\t${n_out}\t${pct}" >> "$REPORT_FILE"
 
+# Final reporting
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
 final_reporting "$LOG_DIR"
