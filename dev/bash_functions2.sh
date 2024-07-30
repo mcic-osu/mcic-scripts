@@ -27,7 +27,7 @@ load_env() {
         load_conda
     elif [[ "$env" == "container" ]]; then
         load_container
-    elif [[ "$env" == "container" ]]; then
+    elif [[ "$env" == "none" ]]; then
         log_time "NOTE: not using a Conda environment OR a container, software expected to be in PATH"
     else
         die "Execution environment ('--env') should be 'conda', 'container', or 'none' but is currently $env"
