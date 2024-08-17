@@ -33,6 +33,7 @@ version_only=false                      # When true, just print tool & script ve
 # Defaults - tool parameters
 type=map-ont                            # Same default as Emu, other options are 'map-pb' and 'sr'
 db=/fs/ess/PAS0471/jelmer/refdata/emu   # Emu DB, downloaded using 'osf -p 56uf7 fetch osfstorage/emu-prebuilt/emu.tar'
+max_aln=25                              # Emu default is 25 but leads to v high RAM usage
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -53,6 +54,8 @@ script_help() {
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
+    echo "  --max_aln           <int>   Max number of alignments utilized for each read in minimap2 [default: $max_aln]"
+    echo "                                  Lower numbers will reduce RAM usage"
     echo "  --type              <str>   Sequence type, one of: 'map-ont' (ONT), 'map-pb' (PacBio),"
     echo "                              'sr' (short reads/Illumina)             [default: $type]"
     echo "  --db                <dir>   Dir with Emu database                   [default: $db]"
@@ -116,6 +119,7 @@ while [ "$1" != "" ]; do
         -o | --outdir )     shift && outdir=$1 ;;
         --type )            shift && type=$1 ;;
         --db )              shift && db=$1 ;;
+        --max_aln )         shift && max_aln=$1 ;;
         --more_opts )       shift && more_opts=$1 ;;
         --env )             shift && env=$1 ;;
         --dl_container )    dl_container=true ;;
@@ -146,6 +150,7 @@ load_env "$conda_path" "$container_path" "$dl_container"
 
 # Define outputs based on script parameters
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+sample_id=$(basename "$infile" | sed -E 's/(.fasta|.fastq.gz|.fq.gz)$//')
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -155,6 +160,7 @@ echo "==========================================================================
 echo "All options passed to this script:        $all_opts"
 echo "Input file:                               $infile"
 echo "Output dir:                               $outdir"
+echo "Max. nr. of alignments per read:          $max_aln"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
 ls -lh "$infile"
@@ -170,9 +176,13 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
     --output-dir "$outdir" \
     --db "$db" \
     --threads "$threads" \
+    --keep-read-assignments \
+    --keep-counts \
+    --output-unclassified \
+    --N "$max_aln" \
     $more_opts \
     "$infile"
 
-log_time "Listing files in the output dir:"
-ls -lhd "$(realpath "$outdir")"/*
+log_time "Listing the output files:"
+ls -lhd "$(realpath "$outdir")"/"$sample_id"*
 final_reporting "$LOG_DIR"
