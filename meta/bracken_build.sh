@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Build a Bracken database based on a Kraken database"
-SCRIPT_VERSION="2023-12-07"
+SCRIPT_VERSION="2024-08-24"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -49,13 +49,13 @@ script_help() {
     echo "      sbatch $0 --db data/kraken_db -o results/bracken"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  --db                <file>  Kraken database dir"
+    echo "  --db                <dir>  Kraken database dir"
     echo "                                NOTE: This needs to contain a 'library' dir, which Kraken db's"
     echo "                                downloaded from https://benlangmead.github.io/aws-indexes do not!"
-    echo "                                The solution is to use kraken_build.sh to (re)build the db"
+    echo "                                The solution is to use kraken_build.sh to (re)build the db."
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --read_len          <int>   FASTQ file read length"
+    echo "  --read_len          <int>   FASTQ file read length                  [default: $read_len]"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
@@ -110,7 +110,6 @@ threads=
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infile )     shift && kraken_report=$1 ;;
         --db )              shift && db=$1 ;;
         --read_len )        shift && read_len=$1 ;;
         --env )             shift && env=$1 ;;
