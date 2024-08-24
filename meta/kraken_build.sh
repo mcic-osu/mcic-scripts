@@ -54,7 +54,7 @@ script_help() {
     echo "OTHER KEY OPTIONS:"
     echo "  --libs              <str>   Comma-separated list of reference libraries to include [default:none]"
     echo "                                Options: 'archaea', 'bacteria', 'viral', 'plasmid', 'human', 'fungi', 'plant', 'protozoa',"
-    echo "                                         'UniVec', 'Univec_Core', 'nr', 'nt'"
+    echo "                                         'UniVec', 'UniVec_Core', 'nr', 'nt'"
     echo "                                See https://github.com/DerrickWood/kraken2/blob/master/docs/MANUAL.markdown#custom-databases"
     echo "  --genome_fa         <file>  Custom genome FASTA file to be added to the db (use if wanting to add a single genome)"
     echo "  --genome_dir        <dir>   Dir with custom genome FASTA files (use if wanting to add multiple genomes)"
