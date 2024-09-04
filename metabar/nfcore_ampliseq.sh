@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run the Nextflow-core metabarcoding pipeline from https://nf-co.re/ampliseq"
-SCRIPT_VERSION="2024-06-03"
+SCRIPT_VERSION="2024-09-04"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="nextflow run"
@@ -20,25 +20,25 @@ export TOOL_NAME="nextflow"
 VERSION_COMMAND="nextflow -v"
 
 # Constants - parameters
-WORKFLOW_NAME=ampliseq                                  # The name of the nf-core workflow
+WORKFLOW_NAME=ampliseq                                      # The name of the nf-core workflow
 OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config
 
 # Parameter defaults - workflow
-workflow_version=2.9.0                                  # The version of the nf-core workflow
+workflow_version=2.11.0                                     # The version of the nf-core workflow
 ITS_taxonomy='unite-fungi=8.3'
 is_ITS=false && ITS_opt=
-ITS_opt_default="--illumina_pe_its --addsh"             # When is_ITS is true, use this arg
+ITS_opt_default="--illumina_pe_its --addsh"                 # When is_ITS is true, use this arg
 
 # Parameter defaults - infrastructure
-osc_account=PAS0471                                     # If the scripts is submitted with another project, this will be updated (line below)
+osc_account=PAS0471                                         # If the scripts is submitted with another project, this will be updated (line below)
 [[ -n $SLURM_JOB_ACCOUNT ]] && osc_account=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
 conda_path=/fs/project/PAS0471/jelmer/conda/nextflow
-workflow_dir_base=software/nfcore-ampliseq              # Dir to download the workflow files to
-container_dir=/fs/scratch/"$osc_account"/containers     # The workflow will download containers to this dir
-work_dir=/fs/scratch/"$osc_account"/$USER/nfc-ampliseq  # 'work dir' for initial outputs (selected, final outputs go to the outdir)
+workflow_dir_base=software/nfcore-ampliseq                  # Dir to download the workflow files to
+work_dir=/fs/scratch/"$osc_account"/$USER/nfc-ampliseq      # 'work dir' for initial outputs (selected, final outputs go to the outdir)
+container_dir="$work_dir"/containers                        # The workflow will download containers to this dir
 profile="singularity"
 resume=true && resume_opt="-resume"
-version_only=false                                      # When true, just print tool & script version info and exit
+version_only=false                                          # When true, just print tool & script version info and exit
 
 # ==============================================================================
 #                                   FUNCTIONS
