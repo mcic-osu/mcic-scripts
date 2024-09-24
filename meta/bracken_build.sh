@@ -46,7 +46,7 @@ script_help() {
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage:"
-    echo "      sbatch $0 --db data/kraken_db -o results/bracken"
+    echo "      sbatch $0 --db data/kraken_db"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  --db                <dir>  Kraken database dir"
