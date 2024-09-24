@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Constants
-OSC_MODULE=miniconda3/24.1.2-py310
+OSC_MODULE=miniconda3
 
 # Defaults
 [[ -z "$env" ]] && env=conda
