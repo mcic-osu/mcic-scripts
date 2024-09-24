@@ -7,6 +7,8 @@
 #SBATCH --job-name=extract_kraken
 #SBATCH --output=slurm-extract_kraken-%j.out
 
+#TODO - Implement include-children option
+
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
