@@ -11,8 +11,8 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Make Krona plots of Kraken output"
-SCRIPT_VERSION="2023-12-17"
+DESCRIPTION="Make Krona plots from Kraken output"
+SCRIPT_VERSION="2024-09-18"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -23,12 +23,11 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 # Defaults - generics
 env=conda                           # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/krona
-container_path=
-container_url=
-dl_container=false
-container_dir="$HOME/containers"
-strict_bash=true
 version_only=false                 # When true, just print tool & script version info and exit
+
+# Defaults - software options
+update_tax=false
+tax_opt=
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -45,22 +44,15 @@ script_help() {
     echo "      sbatch $0 -i results/kraken/sampleA_main.txt -o results/krona"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile         <file>  Input file"
+    echo "  -i/--infile         <file>  Input file: Kraken main output file with per-read results"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  -o/--outdir         <dir>   Output dir (default is same as indir; dir will be created if needed)"
+    echo "  --update_tax                Update taxonomy prior to running Krona  [default: don't update]" 
     echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
-    echo "                                (NOTE: If no default '--container_url' is listed below,"
-    echo "                                 you'll have to provide one in order to run the script with a container.)"
     echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
-    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
-    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
-    echo "  --no_strict                 Don't use strict Bash settings ('set -euo pipefail') -- can be useful for troubleshooting"
     echo "  -h/--help                   Print this help message and exit"
     echo "  -v                          Print the version of this script and exit"
     echo "  --version                   Print the version of $TOOL_NAME and exit"
@@ -105,12 +97,8 @@ while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
+        --update_tax )      update_tax=true ;;
         --more_opts )       shift && more_opts=$1 ;;
-        --env )             shift && env=$1 ;;
-        --no_strict )       strict_bash=false ;;
-        --dl_container )    dl_container=true ;;
-        --container_dir )   shift && container_dir=$1 ;;
-        --container_url )   shift && container_url=$1 && dl_container=true ;;
         -h | --help )       script_help; exit 0 ;;
         -v )                script_version; exit 0 ;;
         --version )         version_only=true ;;
@@ -123,10 +111,10 @@ done
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
 # Strict Bash settings
-[[ "$strict_bash" == true ]] && set -euo pipefail
+set -euo pipefail
 
 # Load software
-load_env "$conda_path" "$container_path" "$dl_container"
+load_env "$conda_path"
 [[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
@@ -137,6 +125,13 @@ load_env "$conda_path" "$container_path" "$dl_container"
 [[ -z "$outdir" ]] && outdir=$(dirname "$infile")
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 outfile="$outdir"/$(basename "${infile%.*}").html
+if [[ $update_tax == true ]]; then
+    taxfile="$outdir"/taxonomy.tab
+    tax_opt="-tax $taxfile"
+fi
+#taxfile="$conda_path"/opt/krona/taxonomy/taxonomy.tab
+
+# Test
 [[ "$infile" == "$outfile" ]] && die "Input and output files have the same name: $infile"
 
 # ==============================================================================
@@ -147,6 +142,8 @@ echo "==========================================================================
 echo "All options passed to this script:        $all_opts"
 echo "Input file:                               $infile"
 echo "Output file:                              $outfile"
+echo "Update taxonomy first?                    $update_tax"
+[[ $update_tax == true ]] && echo "Taxonomy file:                            $taxfile"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
 ls -lh "$infile"
@@ -156,13 +153,21 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
+if [[ "$update_tax" == true ]]; then
+    log_time "Updating the taxonomy $TOOL_NAME..."
+    runstats "$conda_path"/opt/krona/updateTaxonomy.sh "$taxfile"
+    log_time "Taxonomy file:"
+    ls -lh "$taxfile"
+fi
+
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     -q 2 \
     -t 3 \
-    "$infile" \
     -o "$outfile" \
-    $more_opts
+    $tax_opt \
+    $more_opts \
+    "$infile"
 
 #? [-q <integer>]   Column of input files to use as query ID. Required if magnitude files are specified. [Default: '1']
 #? [-t <integer>]   Column of input files to use as taxonomy ID. [Default: '2']
