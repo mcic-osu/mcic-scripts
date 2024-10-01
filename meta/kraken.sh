@@ -207,7 +207,7 @@ if [[ "$infile" =~ \.fa?s?t?q.gz$ ]]; then
         fi
     else
         file_type=se
-        sample_id=${R1_basename/"$R1_suffix"/}
+        sample_id=$R1_basename
         infile_opt="--gzip-compressed $R1_in"
 
         if [[ "$write_classif" == true ]]; then
