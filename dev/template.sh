@@ -49,7 +49,7 @@ script_help() {
     echo "  $DESCRIPTION"
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage:"
+    echo "  - Basic usage example:"
     echo "      sbatch $0 -i TODO -o results/TODO" #TODO
     echo
     echo "REQUIRED OPTIONS:"
