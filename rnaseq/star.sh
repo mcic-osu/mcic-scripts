@@ -4,8 +4,8 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=100G
 #SBATCH --mail-type=FAIL
-#SBATCH --job-name=star_align
-#SBATCH --output=slurm-star_align-%j.out
+#SBATCH --job-name=star
+#SBATCH --output=slurm-star-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
@@ -13,7 +13,7 @@
 # Constants - generic
 DESCRIPTION="Align RNAseq reads to a STAR genome/transcriptome index with STAR
 NOTE: STAR is run with several non-default settings, check this script's code for details."
-SCRIPT_VERSION="2024-06-02"
+SCRIPT_VERSION="2024-09-25"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -186,6 +186,7 @@ load_env "$conda_path" "$container_path" "$dl_container"
 [[ ! -d "$index_dir" ]] && die "Index dir $index_dir does not exist"
 [[ -n "$annot" && ! -f "$annot" ]] && die "Input annotation file (-a) $annot does not exist"
 [[ "$sort_bam" != "star" && "$sort_bam" != "samtools" && "$sort_bam" != "false" ]] && die "--sort should be 'false', 'star', or 'samtools', but is $sort_bam"
+[[ -n "$quantmode_opt" && -z "$annot" ]] && die "You have not provided an annotation file (which you can do with '--annot'). If you don't want to use an annotation file, you MUST use the '--no_transcriptome' option"
 
 # Input files via FOFN
 if  [[ -n "$fofn" ]]; then
