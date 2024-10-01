@@ -1,15 +1,16 @@
 #!/bin/bash
-
 #SBATCH --account=PAS0471
 #SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=deeploc
 #SBATCH --output=slurm-deeploc-%j.out
 
+#!NOTE: This script runs version 2.0 of Deeploc.
+#!      There is a version 2.1 which seems to have significant improvements,
+#!      but is available only as a webserver: https://services.healthtech.dtu.dk/services/DeepLoc-2.1/
+#!      See also https://www.ncbi.nlm.nih.gov/pmc/articles/PMC11223819/
 
 # ==============================================================================
 #                                   FUNCTIONS
