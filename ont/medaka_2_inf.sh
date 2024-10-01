@@ -1,25 +1,30 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=20:00:00
-#SBATCH --cpus-per-task=10
-#SBATCH --mem=40G
-#SBATCH --mail-type=END,FAIL
-#SBATCH --job-name=medaka
-#SBATCH --output=slurm-medaka-%j.out
+#SBATCH --time=600
+#SBATCH --cpus-per-task=6
+#SBATCH --mem=24G
+#SBATCH --mail-type=FAIL
+#SBATCH --job-name=medaka_inf
+#SBATCH --output=slurm-medaka_inf-%j.out
+
+#? Medaka docs: 
+#> Note also that medaka inference may been seen to use resources equivalent to <threads> + 4
+#> as an additional 4 threads are used for reading and preparing input data.
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Run Medaka to polish a genome assembly with ONT reads"
-SCRIPT_VERSION="2023-09-25"
+DESCRIPTION="Run Medaka to polish a genome assembly with ONT reads.
+Parallel edition - script 2 of 3"
+SCRIPT_VERSION="2023-09-28"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
-TOOL_BINARY=medaka_consensus
+TOOL_BINARY="medaka inference"
 TOOL_NAME=Medaka
 TOOL_DOCS=https://github.com/nanoporetech/medaka
-VERSION_COMMAND="$TOOL_BINARY 2>&1 | sed -n '2p'"
+VERSION_COMMAND="medaka --version"
 
 # Defaults - generics
 env=conda                           # Use a 'conda' env or a Singularity 'container'
@@ -42,12 +47,12 @@ script_help() {
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage example:"
-    echo "      sbatch $0 -i data/my.fastq -r results/assembly.fasta -o results/medaka"
+    echo "      sbatch $0 -i results/medaka/aln.bam --contig contig1 -o results/medaka/inf"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  --reads             <file>  Input reads: FASTQ file (reads used for correction)"
-    echo "  --assembly          <file>  Input assembly: FASTA file (to be corrected)"
-    echo "  -o/--outfile        <file>  Output assembly FASTA (dir will be created if needed)"
+    echo "  -i/--infile         <file>  Input BAM file from medaka_1_align.sh"
+    echo "  --contig            <str>   Contig name: run this script for 1 contig at a time"
+    echo "  -o/--outdir        <file>   Output BAM dir (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --model             <str>   Medaka model, see the Medaka docs at https://github.com/nanoporetech/medaka#models"
@@ -105,20 +110,19 @@ source_function_script
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
-outfile=
-reads=
-assembly=
+infile=
+contig=
+outdir=
 model= && model_opt=
 more_opts=
-threads=
 
 # Parse command-line args
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -o | --outfile )    shift && outfile=$1 ;;
-        --reads )           shift && reads=$1 ;;
-        --assembly )        shift && assembly=$1 ;;
+        -i | --infile )     shift && infile=$1 ;;
+        --contig )          shift && contig=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
         --model )           shift && model=$1 ;;
         --more_opts )       shift && more_opts=$1 ;;
         --env )             shift && env=$1 ;;
@@ -144,16 +148,15 @@ load_env "$conda_path" "$container_path" "$dl_container"
 [[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
-[[ -z "$reads" ]] && die "No input reads file specified, do so with --reads" "$all_opts"
-[[ -z "$assembly" ]] && die "No input assembly file specified, do so with --assembly" "$all_opts"
-[[ -z "$outfile" ]] && die "No output file specified, do so with -o/--outfile" "$all_opts"
-[[ ! -f "$reads" ]] && die "Input reads file $reads does not exist"
-[[ ! -f "$assembly" ]] && die "Input reads file $assembly does not exist"
+[[ -z "$infile" ]] && die "No input BAM file specified, do so with -i/--infile" "$all_opts"
+[[ -z "$contig" ]] && die "No input BAM file specified, do so with --contig" "$all_opts"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
+[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 
 # Define outputs based on script parameters
-outdir=$(dirname "$outfile")
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
-[[ -n $model ]] && model_opt="-m $model"
+[[ -n $model ]] && model_opt="--model $model"
+outfile="$outdir"/"$contig".hdf
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -161,14 +164,13 @@ LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options passed to this script:        $all_opts"
-echo "Input reads (FASTQ) file:                 $reads"
-echo "Input assembly (FASTA) file:              $assembly"
-echo "Output assembly file:                     $outfile"
+echo "Input BAM file:                           $infile"
+echo "Contig to analyze:                        $contig"
 [[ -n $model ]] && echo "Medaka model:                             $model"
+echo "Output file:                              $outfile"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
-ls -lh "$reads" "$assembly" 
-set_threads "$IS_SLURM"
+ls -lh "$infile"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
@@ -176,15 +178,12 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
 runstats $CONTAINER_PREFIX $TOOL_BINARY \
-        -i "$reads" \
-        -d "$assembly" \
-        -o "$outdir" \
-        -t "$threads" \
+        $infile \
+        "$outfile" \
+        --threads 2 \
+        --regions "$contig" \
         $model_opt \
         $more_opts
-
-log_time "Copying the output file:"
-cp -v "$outdir"/consensus.fasta "$outfile"
 
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
