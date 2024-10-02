@@ -3,7 +3,7 @@
 #SBATCH --time=3:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=40G
-#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-type=FAIL
 #SBATCH --job-name=busco
 #SBATCH --output=slurm-busco-%j.out
 
@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run BUSCO to check the completeness of a genome/transcriptome assembly, or a proteome"
-SCRIPT_VERSION="2023-12-16"
+SCRIPT_VERSION="2024-09-24"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -28,7 +28,6 @@ container_path=
 container_url=
 dl_container=false
 container_dir="$HOME/containers"
-strict_bash=true
 version_only=false                 # When true, just print tool & script version info and exit
 
 # Defaults - tool parameters
@@ -46,14 +45,14 @@ script_help() {
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage:"
-    echo "      Input assembly/proteome FASTA file"
+    echo "     sbatch $0 -i results/flye/assembly.fasta -o results/busco --db eukaryota"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--infile         <file>  Input assembly/proteome FASTA file"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo "  --db                <str>   Busco database name (see https://busco.ezlab.org/list_of_lineages.html)"
     echo "                                If you don't specify the odb version, Busco will use the latest one"
-    echo "                                E.g. instead of '-d nematoda_odb10.2019-11-20' as per the website, use '-d nematoda'"
+    echo "                                E.g. instead of '--db nematoda_odb10.2019-11-20' as per the website, use '--db nematoda'"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --mode              <str>   Run mode, i.e. assembly type            [default: 'genome']"
@@ -69,7 +68,6 @@ script_help() {
     echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
     echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
     echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
-    echo "  --no_strict                 Don't use strict Bash settings ('set -euo pipefail') -- can be useful for troubleshooting"
     echo "  -h/--help                   Print this help message and exit"
     echo "  -v                          Print the version of this script and exit"
     echo "  --version                   Print the version of $TOOL_NAME and exit"
@@ -122,7 +120,6 @@ while [ "$1" != "" ]; do
         --mode )            shift && assembly_type=$1 ;;
         --more_opts )       shift && more_opts=$1 ;;
         --env )             shift && env=$1 ;;
-        --no_strict )       strict_bash=false ;;
         --dl_container )    dl_container=true ;;
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 && dl_container=true ;;
@@ -138,7 +135,7 @@ done
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
 # Strict Bash settings
-[[ "$strict_bash" == true ]] && set -euo pipefail
+set -euo pipefail
 
 # Load software
 load_env "$conda_path" "$container_path" "$dl_container"
