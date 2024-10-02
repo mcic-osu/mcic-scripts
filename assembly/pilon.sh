@@ -100,7 +100,7 @@ more_args=
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infile )     shift && infile=$1 ;;
+        -i | --assembly )   shift && infile=$1 ;;
         -o | --outfile )    shift && outfile=$1 ;;
         --bam_dir )         shift && bam_dir=$1 ;;
         --fix )             shift && fix=$1 && fix_arg="--fix $fix" ;;
