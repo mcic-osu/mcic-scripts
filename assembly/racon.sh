@@ -1,29 +1,53 @@
 #!/usr/bin/env bash
-
 #SBATCH --account=PAS0471
-#SBATCH --time=8:00:00
+#SBATCH --time=2:00:00
 #SBATCH --cpus-per-task=40
 #SBATCH --mem=170G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=racon
 #SBATCH --output=slurm-racon-%j.out
 
 # ==============================================================================
+#                          CONSTANTS AND DEFAULTS
+# ==============================================================================
+# Constants - generic
+DESCRIPTION="Run Racon (Minimap then 1 or more rounds of Racon) to polish a genome
+assembly either with short or long reads"
+SCRIPT_VERSION="2023-09-26"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+TOOL_BINARY=racon
+TOOL_NAME=Racon
+TOOL_DOCS=https://github.com/lbcb-sci/racon
+VERSION_COMMAND="$TOOL_BINARY --version; echo '# Version of Minimap:'; minimap2 --version"
+
+# Defaults - generics
+env=conda                           # Use a 'conda' env or a Singularity 'container'
+conda_path=/fs/ess/PAS0471/jelmer/conda/racon
+container_path=
+container_url=
+dl_container=false
+container_dir="$HOME/containers"
+version_only=false                 # When true, just print tool & script version info and exit
+
+# Defaults - tool parameters
+minimap_preset="map-ont"
+iterations=2
+
+# ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-# Help function
-Print_help() {
+script_help() {
+    echo -e "\n                          $0"
+    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
+    echo "        =============================================================="
+    echo "DESCRIPTION:"
+    echo "  $DESCRIPTION"
     echo
-    echo "======================================================================"
-    echo "                            $0"
-    echo "         RUN MINIMAP => RACON TO POLISH A GENOME ASSEMBLY"
-    echo "======================================================================"
-    echo
-    echo "USAGE:"
-    echo "  sbatch $0 --assembly <assembly-file> --reads <FASTQ-file> -o <output-dir> ..."
-    echo "  bash $0 -h"
+    echo "USAGE / EXAMPLE COMMANDS:"
+    echo "  - Basic usage example:"
+    echo "      batch $0 --assembly results/flye/assembly.fasta --reads data/fastq/my.fastq.gz -o results/racon"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  --assembly          <file>  Input assembly: FASTA file (to be corrected)"
@@ -33,291 +57,183 @@ Print_help() {
     echo "OTHER KEY OPTIONS:"
     echo "  --iterations        <int>   Number of Racon iterations (1 or 2)     [default: 2]"
     echo "  --minimap_preset    <str>   Minimap preset                          [default: 'map-ont']"
-    echo "  --more_args_racon   <str>   Quoted string with additional argument(s) to pass to Racon"
-    echo "  --more_args_minimap <str>   Quoted string with additional argument(s) to pass to Minimap"
+    echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --dryrun                    Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                     Run the script in debug mode (print all code)"
+    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
+    echo "                                (NOTE: If no default '--container_url' is listed below,"
+    echo "                                 you'll have to provide one in order to run the script with a container.)"
+    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
+    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
+    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
+    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
+    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
     echo "  -h/--help                   Print this help message and exit"
-    echo "  -v/--version                Print the version of Racon and exit"
+    echo "  -v                          Print the version of this script and exit"
+    echo "  --version                   Print the version of $TOOL_NAME and exit"
     echo
-    echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i data/my.fastq -a results/my.bam -r results/assembly.fasta -o results/racon"
-    echo
-    echo "SOFTWARE DOCUMENTATION:"
-    echo "  - Racon: https://github.com/lbcb-sci/racon"
-    echo
+    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
 }
 
-# Load software
-Load_racon() {
-    module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /fs/ess/PAS0471/jelmer/conda/racon-1.5.0
-}
-
-Load_minimap() {
-    module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /fs/ess/PAS0471/jelmer/conda/minimap2-2.24
-}
-
-# Print version
-Print_version() {
-    echo "# Racon:"
-    Load_racon
-    racon --version
-    echo "# Minimap:"
-    Load_minimap
-    minimap2 --version
-}
-
-# Print help for the focal program
-Print_help_program() {
-    Load_software
-    racon --help
-}
-
-# Print SLURM job resource usage info
-Resource_usage() {
-    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
-        grep -Ev "ba|ex"
-}
-
-# Print SLURM job requested resources
-Print_resources() {
-    set +u
-    echo "# SLURM job information:"
-    echo "Job ID:                       $SLURM_JOB_ID"
-    echo "Job name:                     $SLURM_JOB_NAME"
-    echo "Memory in MB (per node):      $SLURM_MEM_PER_NODE"
-    echo "CPUs per task:                $SLURM_CPUS_PER_TASK"
-    echo "Nr of tasks:                  $SLURM_NTASKS"
-    echo "Account (project):            $SLURM_JOB_ACCOUNT"
-    echo "Time limit:                   $SBATCH_TIMELIMIT"
-    echo "======================================================================"
-    echo
-    set -u
-}
-
-# Set the number of threads/CPUs
-Set_threads() {
-    set +u
-    if [[ "$slurm" = true ]]; then
-        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-            threads="$SLURM_CPUS_PER_TASK"
-        elif [[ -n "$SLURM_NTASKS" ]]; then
-            threads="$SLURM_NTASKS"
-        else 
-            echo "WARNING: Can't detect nr of threads, setting to 1"
-            threads=1
-        fi
+# Function to source the script with Bash functions
+source_function_script() {
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$IS_SLURM" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
     else
-        threads=1
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
     fi
-    set -u
-}
-
-# Recource usage information
-Time() {
-/usr/bin/time -f \
-    '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Avg Mem: %t K    Exit status: %x \n' \
-    "$@"
-}   
-
-# Exit upon error with a message
-Die() {
-    error_message=${1}
-    error_args=${2-none}
-    
-    echo
-    echo "====================================================================="
-    printf "$0: ERROR: %s\n" "$error_message" >&2
-    echo -e "\nFor help, run this script with the '-h' option"
-    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h"
-    if [[ "$error_args" != "none" ]]; then
-        echo -e "\nArguments passed to the script:"
-        echo "$error_args"
+    function_script=$(realpath "$script_dir"/../dev/"$(basename "$FUNCTION_SCRIPT_URL")")
+    # Download the function script if needed, then source it
+    if [[ ! -f "$function_script" ]]; then
+        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
+        function_script=$(basename "$FUNCTION_SCRIPT_URL")
+        wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script"
     fi
-    echo -e "\nEXITING..." >&2
-    echo "====================================================================="
-    echo
-    exit 1
+    source "$function_script"
 }
 
-# Run Racon
-Run_racon() {
-    assembly_in=${1:-none}
-    align=${2:-none}
-    assembly_out=${3:-none}
-
-    [[ $assembly_in = "none" ]] && Die "No assembly for function Run_racon"
-    [[ $align = "none" ]] && Die "No alignments for function Run_racon"
-    [[ $assembly_out = "none" ]] && Die "No outfile for function Run_racon"
-
-    Load_racon
-
-    ${e}Time racon \
-        "$reads" \
-        "$align" \
-        "$assembly_in" \
-        -t "$threads" \
-        $more_args_racon > "$assembly_out"
-
-    echo
-    date
-}
-
-# Run Minimap
-Run_minimap() {
-    assembly=${1:-none}
-    align_out=${2:-none}
-
-    [[ $assembly = "none" ]] && Die "No assembly for function Run_minimap"
-    [[ $align_out = "none" ]] && Die "No outfile for function Run_minimap"
-
-    Load_minimap
-    
-    ${e}Time minimap2 \
-        -x "$minimap_preset" \
-        -t "$threads" \
-        -a \
-        $more_args_minimap \
-        "$assembly" \
-        "$reads" \
-        > "$align_out"
-    
-    #? NOTE: Using '--threads' instead of '-t' doesn't seem to work! => Only uses 1 thread
-
-    echo
-    date
-}
-
-
-# ==============================================================================
-#                          CONSTANTS AND DEFAULTS
-# ==============================================================================
-# Option defaults
-minimap_preset="map-ont"
-iterations=2
-
-debug=false
-dryrun=false && e=""
-slurm=true
-
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-# Placeholder defaults
-reads=""
-assembly_in=""
-more_args_racon=""
-more_args_minimap=""
+# Initiate variables
+reads=
+assembly=
+outdir=
+more_opts=
+threads=
 
 # Parse command-line args
-all_args="$*"
+all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        --reads )               shift && reads=$1 ;;
-        --assembly )            shift && assembly_in=$1 ;;
-        -o | --outdir )         shift && outdir=$1 ;;
-        --minimap_preset )      shift && minimap_preset=$1 ;;
-        --iterations )          shift && iterations=$1 ;;
-        --more_args_racon )     shift && more_args_racon=$1 ;;
-        --more_args_minimap )   shift && more_args_minimap=$1 ;;
-        --debug )               debug=true ;;
-        --dryrun )              dryrun=true && e="echo ";;
-        -v | --version )        Print_version; exit ;;
-        -h | --help )           Print_help; exit ;;
-        * )                     Die "Invalid option $1" "$all_args" ;;
+        --reads )           shift && reads=$1 ;;
+        --assembly )        shift && assembly_in=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        --minimap_preset )  shift && minimap_preset=$1 ;;
+        --iterations )      shift && iterations=$1 ;;
+        --more_opts )       shift && more_opts=$1 ;;
+        --env )             shift && env=$1 ;;
+        --dl_container )    dl_container=true ;;
+        --container_dir )   shift && container_dir=$1 ;;
+        --container_url )   shift && container_url=$1 && dl_container=true ;;
+        -h | --help )       script_help; exit 0 ;;
+        -v )                script_version; exit 0 ;;
+        --version )         version_only=true ;;
+        * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
 done
 
-
 # ==============================================================================
-#                          OTHER SETUP
+#                          INFRASTRUCTURE SETUP
 # ==============================================================================
-# In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
-
-# Check if this is a SLURM job
-[[ -z "$SLURM_JOB_ID" ]] && slurm=false
-
-# Set nr of threads
-Set_threads
-
-# Bash script settings
+# Strict Bash settings
 set -euo pipefail
 
-# Define output file
+# Load software
+load_env "$conda_path" "$container_path" "$dl_container"
+[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
+
+# Check options provided to the script
+[[ -z "$assembly_in" ]] && die "No input assembly FASTA file specified, do so with --assembly" "$all_opts"
+[[ -z "$reads" ]] && die "No input FASTQ file specified, do so with --reads" "$all_opts"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
+[[ ! -f "$assembly_in" ]] && die "Input assembly FASTA file $assembly_in does not exist"
+[[ ! -f "$reads" ]] && die "Input reads FASTQ file $reads does not exist"
+
+# Define outputs based on script parameters
+LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR" "$outdir"/minimap
 assembly_ext=$(echo "$assembly_in" | sed -E 's/.*(\.fn?a?s?t?a$)/\1/')
 assembly_id=$(basename "$assembly_in" "$assembly_ext")
 assembly_out1="$outdir"/"$assembly_id"_racon1.fasta
-[[ "$iterations" = "2" ]] && assembly_out2="$outdir"/"$assembly_id"_racon2.fasta
+[[ "$iterations" -eq 2 ]] && assembly_out2="$outdir"/"$assembly_id"_racon2.fasta
 align_1="$outdir"/minimap/"$assembly_id"_iter1.sam
-[[ "$iterations" = "2" ]] && align_2="$outdir"/minimap/"$assembly_id"_iter2.sam
+[[ "$iterations" -eq 2 ]] && align_2="$outdir"/minimap/"$assembly_id"_iter2.sam
+[[ "$iterations" -gt 2 ]] && die "Number of Racon iterations cannot be greater than 2 (You asked for $iterations)" 
 
-# Check input
-[[ $reads = "" ]] && Print_args "$all_args" && Die "Please specify a file with input reads with -i"
-[[ $assembly_in = "" ]] && Print_args "$all_args" && Die "Please specify an input assembly with -r"
-[[ $outdir = "" ]] && Print_args "$all_args" && Die "Please specify an output dir with -o"
-[[ ! -f $reads ]] && Die "Input FASTQ file $reads does not exist"
-[[ ! -f $assembly_in ]] && Die "Input assembly file $assembly_in does not exist"
-[[ "$iterations" != 1 && "$iterations" != 2 ]] && Die "Number of iterations should be 1 or 2 (You asked for $iterations)" 
-
-# Report
-echo
+# ==============================================================================
+#                         REPORT PARSED OPTIONS
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "               STARTING SCRIPT RACON.SH"
-date
-echo "=========================================================================="
-echo "All arguments to this script:     $all_args"
-echo "Input reads (FASTQ) file:         $reads"
-echo "Input assembly (FASTA) file:      $assembly_in"
-echo "Output dir:                       $outdir"
-echo "Nr of Racon iterations:           $iterations"
-echo "Minimap preset:                   $minimap_preset"
-[[ $more_args_racon != "" ]] && echo "Other arguments for Racon:    $more_args_racon"
-[[ $more_args_minimap != "" ]] && echo "Other arguments for Minimap:  $more_args_minimap"
-echo "Assembly after Racon iteration 1: $assembly_out1"
-[[ "$iterations" = 2 ]] && echo "Assembly after Racon iteration 2: $assembly_out2"
-echo "SAM after Minimap iteration 1:    $align_1"
-[[ "$iterations" = 2 ]] && echo "SAM after Minimap iteration 2:    $align_2"
-echo
-echo "Listing the input files:"
-ls -lh "$reads" "$assembly_in" 
-[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
-echo "=========================================================================="
+echo "All options passed to this script:        $all_opts"
+echo "Input reads (FASTQ) file:                 $reads"
+echo "Input assembly (FASTA) file:              $assembly_in"
+echo "Output dir:                               $outdir"
+echo "Nr of Racon iterations:                   $iterations"
+echo "Minimap preset:                           $minimap_preset"
+[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
+log_time "Listing the input file(s):"
+ls -lh "$reads" "$assembly_in"
+set_threads "$IS_SLURM"
+[[ "$IS_SLURM" == true ]] && slurm_resources
 
-# Print reserved resources
-[[ "$slurm" = true ]] && Print_resources
+# ==============================================================================
+#                               FUNCTIONS
+# ==============================================================================
+# Function to run Racon
+Run_racon() {
+    assembly_in=${1:-none}
+    alignments=${2:-none}
+    assembly_out=${3:-none}
 
+    [[ $assembly_in == "none" ]] && die "No assembly for function Run_racon"
+    [[ $alignments == "none" ]] && die "No alignments for function Run_racon"
+    [[ $assembly_out == "none" ]] && die "No outfile for function Run_racon"
+
+    runstats $CONTAINER_PREFIX $TOOL_BINARY \
+        "$reads" \
+        "$alignments" \
+        "$assembly_in" \
+        -t "$threads" \
+        $more_opts \
+        > "$assembly_out"
+}
+
+# Function un Minimap
+Run_minimap() {
+    assembly=${1:-none}
+    align_out=${2:-none}
+
+    [[ $assembly == "none" ]] && die "No assembly for function Run_minimap"
+    [[ $align_out == "none" ]] && die "No outfile for function Run_minimap"
+
+    runstats $CONTAINER_PREFIX minimap2 \
+        -x "$minimap_preset" \
+        -t "$threads" \
+        -a \
+        "$assembly" \
+        "$reads" \
+        > "$align_out"
+}
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Create the output directory
-${e}mkdir -pv "$outdir"/logs "$outdir"/minimap
-
 # Minimap iteration 1
 if [[ ! -s "$align_1" ]]; then
-    echo -e "\n# Now running the first iteration of Minimap..."
-    ${e}Run_minimap "$assembly_in" "$align_1"
+    log_time "Now running the first iteration of Minimap..."
+    Run_minimap "$assembly_in" "$align_1"
 else
-    echo -e "\n# Minimap SAM from iteration 1 exists, skipping step..."
+    log_time "Minimap SAM from iteration 1 exists, skipping step..."
     ls -lh "$align_1"
 fi
 
 # Racon iteration 1
 if [[ ! -s "$assembly_out1" ]]; then
     echo -e "\n====================================================================="
-    echo -e "# Now running the first iteration of Racon..."
-    ${e}Run_racon "$assembly_in" "$align_1" "$assembly_out1"
+    log_time "Now running the first iteration of Racon..."
+    Run_racon "$assembly_in" "$align_1" "$assembly_out1"
 else
-    echo -e "\n# Assembly from Racon iteration 1 exists, skipping step..."
+    log_time "Assembly from Racon iteration 1 exists, skipping step..."
     ls -lh "$assembly_out1"
 fi
 
@@ -325,38 +241,24 @@ if [[ "$iterations" -eq 2 ]]; then
     # Minimap iteration 2
     if [[ ! -s "$align_2" ]]; then
         echo -e "\n====================================================================="
-        echo -e "\n# Now running the second iteration of Minimap..."
-        ${e}Run_minimap "$assembly_out1" "$align_2"
+        log_time "Now running the second iteration of Minimap..."
+        Run_minimap "$assembly_out1" "$align_2"
     else
-        echo -e "\n# Minimap SAM from iteration 2 exists, skipping step..."
+        log_time "Minimap SAM from iteration 2 exists, skipping step..."
         ls -lh "$align_2"
     fi
 
     # Racon iteration 2
     if [[ ! -s "$assembly_out2" ]]; then
-    echo -e "\n====================================================================="
-    echo "# Now running the second iteration of Racon..."
-        ${e}Run_racon "$assembly_out1" "$align_2" "$assembly_out2"
+        echo -e "\n====================================================================="
+        log_time "Now running the second iteration of Racon..."
+        Run_racon "$assembly_out1" "$align_2" "$assembly_out2"
     else
-        echo -e "\n# Assembly from Racon iteration 2 exists, skipping step..."
+        log_time "Assembly from Racon iteration 2 exists, skipping step..."
         ls -lh "$assembly_out2"
     fi
 fi
 
-
-# ==============================================================================
-#                               WRAP-UP
-# ==============================================================================
-echo
-echo "========================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
-    echo
-    [[ "$slurm" = true ]] && Resource_usage
-    echo
-fi
-echo "# Done with script"
-date
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/*
+final_reporting "$LOG_DIR"
