@@ -3,8 +3,6 @@
 #SBATCH --time=36:00:00
 #SBATCH --cpus-per-task=20
 #SBATCH --mem=80G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=spades
 #SBATCH --output=slurm-spades-%j.out
@@ -16,16 +14,24 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-readonly DESCRIPTION="Assemble a genome or transcriptome with SPAdes"
-readonly MODULE=miniconda3/4.12.0-py39
-readonly CONDA=/fs/ess/PAS0471/jelmer/conda/spades-3.15.5
-readonly SCRIPT_VERSION="1.0"
-readonly SCRIPT_AUTHOR="Jelmer Poelstra"
-readonly SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
-readonly TOOL_BINARY=spades.py
-readonly TOOL_NAME=SPAdes
-readonly TOOL_DOCS=https://github.com/ablab/spades
-readonly VERSION_COMMAND="spades.py --version"
+DESCRIPTION="Assemble a (meta)genome or transcriptome with SPAdes"
+SCRIPT_VERSION="2024-10-01"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+TOOL_BINARY=spades.py
+TOOL_NAME=SPAdes
+TOOL_DOCS=https://github.com/ablab/spades
+VERSION_COMMAND="$TOOL_BINARY --version"
+
+# Defaults - generics
+env=conda                           # Use a 'conda' env or a Singularity 'container'
+conda_path=/fs/ess/PAS0471/jelmer/conda/spades
+container_path=
+container_url=
+dl_container=false
+container_dir="$HOME/containers"
+version_only=false                 # When true, just print tool & script version info and exit
 
 # Constants - only used in SLURM jobs
 # In some cases, spades needs more than the alotted 1TB in $TMPDIR
@@ -43,56 +49,57 @@ mem=4                               # Only applies when not running a SLURM job
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-# Help function
 script_help() {
-    echo
-    echo "        $0 (v. $SCRIPT_VERSION): Run $TOOL_NAME"
-    echo "        =============================================="
+    echo -e "\n                          $0"
+    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
+    echo "        =============================================================="
     echo "DESCRIPTION:"
     echo "  $DESCRIPTION"
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage (always submit your scripts to SLURM with 'sbatch'):"
+    echo "  - Basic usage example:"
     echo "      sbatch $0 -i results/trim/sampleA_R1.fastq.gz -o results/spades/sampleA"
-    echo "  - Instead of specifying a single R1 files, you can also specify an input dir:"
-    echo "    (Note that all FASTQ files will be used to create a SINGLE assembly!)"
-    echo "      sbatch $0 -i results/trim -o results/spades"   
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -o/--outdir     <dir>   Output dir - NOTE: This dir should either not yet exist or be empty"
+    echo "  -o/--outdir         <dir>   Output dir - NOTE: This dir should either not yet exist or be empty"
     echo "To specify the input, use one of the following options:"
-    echo "  -i/--R1         <file>  Input R1 (forward) FASTQ file (the name of the R2 file will be inferred)"
-    echo "  --indir         <dir>   Dir with gzipped FASTQ files"
-    echo "  --fofn          <file>  File of file names (fofn): one line per input R1 FASTQ file"
+    echo "  -i/--R1             <file>  Input R1 (forward) FASTQ file (the name of the R2 file will be inferred)"
+    echo "  --indir             <dir>   Dir with gzipped FASTQ files"
+    echo "  --fofn              <file>  File of file names (fofn): one line per input R1 FASTQ file"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --mode          <str>   Spades run mode                             [default: default Spades]"
-    echo "                          Possible values: 'isolate', 'meta', 'metaplasmid, 'metaviral', 'plasmid', 'rna', 'rnaviral'"
-    echo "  --kmer_sizes    <str>   Comma-separated list of kmer sizes          [default: 'auto' => Spades default of auto-selecting kmer sizes]"
-    echo "  --strandedness  <str>   Strandedness for RNAseq libraries     [default: 'rf' (reverse)]"
-    echo "                          Options: 'rf'/'reverse', 'fr'/'forward', or 'unstranded'"
-    echo "  --careful               Run in 'careful' mode (small genomes only)  [default: don't run in careful mode]"
-    echo "  --continue              Resume an interrupted run                   [default: start anew]"
-    echo "  --use_node_tmpdir       Instead of the OSC scratch temp dir '$PFSDIR', use the node temp dir '$TMPDIR'"
-    echo "                          This is for Spades' '--tmp-dir' argument."
-    echo "                          However, note that sometimes, there isn't enough space on the '$TMPDIR'..."
-    echo "  --more_args     <str>   Quoted string with additional argument(s) for $TOOL_NAME"
+    echo "  --mode              <str>   Spades run mode                             [default: default Spades]"
+    echo "                                Possible values: 'isolate', 'meta', 'metaplasmid, 'metaviral', 'plasmid', 'rna', 'rnaviral'"
+    echo "  --kmer_sizes        <str>   Comma-separated list of kmer sizes          [default: 'auto' => Spades default of auto-selecting kmer sizes]"
+    echo "  --strandedness      <str>   Strandedness for RNAseq libraries     [default: 'rf' (reverse)]"
+    echo "                                Options: 'rf'/'reverse', 'fr'/'forward', or 'unstranded'"
+    echo "  --careful                   Run in 'careful' mode (small genomes only)  [default: don't run in careful mode]"
+    echo "  --continue                  Resume an interrupted run                   [default: start anew]"
+    echo "  --use_node_tmpdir           Instead of the OSC scratch temp dir '$PFSDIR', use the node temp dir '$TMPDIR'"
+    echo "                                This is for Spades' '--tmp-dir' argument."
+    echo "                                However, note that sometimes, there isn't enough space on the '$TMPDIR'..."
+    echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  -h/--help               Print this help message and exit"
-    echo "  -v                      Print the version of this script and exit"
-    echo "  --version               Print the version of $TOOL_NAME and exit"
+    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
+    echo "                                (NOTE: If no default '--container_url' is listed below,"
+    echo "                                 you'll have to provide one in order to run the script with a container.)"
+    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
+    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
+    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
+    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
+    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
+    echo "  -h/--help                   Print this help message and exit"
+    echo "  -v                          Print the version of this script and exit"
+    echo "  --version                   Print the version of $TOOL_NAME and exit"
     echo
     echo "TOOL DOCUMENTATION: $TOOL_DOCS"
-    echo
 }
 
 # Function to source the script with Bash functions
 source_function_script() {
-    local is_slurm=$1
-
     # Determine the location of this script, and based on that, the function script
-    if [[ "$is_slurm" == true ]]; then
+    if [[ "$IS_SLURM" == true ]]; then
         script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
         script_dir=$(dirname "$script_path")
         SCRIPT_NAME=$(basename "$script_path")
@@ -100,22 +107,19 @@ source_function_script() {
         script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
         SCRIPT_NAME=$(basename "$0")
     fi
-    function_script=$(realpath "$script_dir"/../dev/bash_functions.sh)
-    
+    function_script=$(realpath "$script_dir"/../dev/"$(basename "$FUNCTION_SCRIPT_URL")")
+    # Download the function script if needed, then source it
     if [[ ! -f "$function_script" ]]; then
         echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
-        git clone https://github.com/mcic-osu/mcic-scripts.git
-        function_script=mcic-scripts/dev/bash_functions.sh
+        function_script=$(basename "$FUNCTION_SCRIPT_URL")
+        wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script"
     fi
     source "$function_script"
 }
 
-# ==============================================================================
-#                          INFRASTRUCTURE SETUP I
-# ==============================================================================
 # Check if this is a SLURM job, then load the Bash functions
 if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
-source_function_script $IS_SLURM
+source_function_script
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
@@ -124,56 +128,66 @@ source_function_script $IS_SLURM
 R1=
 indir=
 fofn=
-outfile=
+outdir=
 mode= && mode_arg=
 strand_arg=
-more_args=
+more_opts=
+threads=
 
 # Parse command-line args
-all_args="$*"
+all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --R1 )             shift && readonly R1=$1 ;;
-        --indir )               shift && readonly indir=$1 ;;
-        --fofn )                shift && readonly fofn=$1 ;;
-        -o | --outfile )        shift && readonly outfile=$1 ;;
-        --kmer_sizes )          shift && readonly kmer_sizes=$1 ;;
-        --mode )                shift && readonly mode=$1 ;;
-        --strandedness)         shift && readonly strandedness=$1 ;;
-        --careful )             careful=true ;;
-        --continue )            continue=true ;;
-        --use_node_tmpdir )     use_node_tmpdir=true ;; 
-        --more_args )           shift && readonly more_args=$1 ;;
-        -v )                    script_version; exit 0 ;;
-        -h | --help )           script_help; exit 0 ;;
-        --version )             load_env "$MODULE" "$CONDA"
-                                tool_version "$VERSION_COMMAND" && exit 0 ;;
-        * )                     die "Invalid option $1" "$all_args" ;;
+        -i | --R1 )         shift && R1=$1 ;;
+        --indir )           shift && indir=$1 ;;
+        --fofn )            shift && fofn=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        --kmer_sizes )      shift && kmer_sizes=$1 ;;
+        --mode )            shift && mode=$1 ;;
+        --strandedness)     shift && strandedness=$1 ;;
+        --careful )         careful=true ;;
+        --continue )        continue=true ;;
+        --use_node_tmpdir ) use_node_tmpdir=true ;; 
+        --more_opts )       shift && more_opts=$1 ;;
+        --env )             shift && env=$1 ;;
+        --dl_container )    dl_container=true ;;
+        --container_dir )   shift && container_dir=$1 ;;
+        --container_url )   shift && container_url=$1 && dl_container=true ;;
+        -h | --help )       script_help; exit 0 ;;
+        -v )                script_version; exit 0 ;;
+        --version )         version_only=true ;;
+        * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
 done
 
-# Check arguments
-[[ -z "$R1" && -z "$indir" && -z "$fofn" ]] && die "Please specify either an R1 input file with -i, an input dir with -I, or an input FOFN with -f"
-[[ -z "$outfile" ]] && die "No output file specified, do so with -o/--outfile" "$all_args"
-[[ -n "$R1" && ! -f "$R1" ]] && die "Input file R1 $R1 does note exist"
-[[ -n "$fofn" && ! -f "$fofn" ]] && die "Input FOFN $fofn does note exist"
-[[ -n "$indir" && ! -f "$indir" ]] && die "Input dir $indir does note exist"
-
 # ==============================================================================
-#                          INFRASTRUCTURE SETUP II
+#                          INFRASTRUCTURE SETUP
 # ==============================================================================
 # Strict Bash settings
 set -euo pipefail
 
-# Infer outdir
-outdir=$(dirname "$outfile")
+# Load software
+load_env "$conda_path" "$container_path" "$dl_container"
+[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
+
+# Check options provided to the script
+[[ -z "$R1" && -z "$indir" && -z "$fofn" ]] && die "Please specify either an R1 input file with -i, an input dir with -I, or an input FOFN with -f"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
+[[ -n "$R1" && ! -f "$R1" ]] && die "Input file R1 $R1 does note exist"
+[[ -n "$fofn" && ! -f "$fofn" ]] && die "Input FOFN $fofn does note exist"
+[[ -n "$indir" && ! -f "$indir" ]] && die "Input dir $indir does note exist"
+
+# Define outputs based on script parameters
+mkdir -p "$outdir"
+LOG_DIR="$outdir"/logs
 
 # Additional variables
 if [[ "$IS_SLURM" == true ]]; then
     # Memory - convert MB memory to GB (and subtract 1)
     mem=$(( (SLURM_MEM_PER_NODE / 1000) - 1))
-    #mem=$(( (SLURM_MEM_PER_NODE / 1000) + 1500)) #! Testing this, following https://github.com/ablab/spades/issues/494
+    # Have also used the below, following https://github.com/ablab/spades/issues/494
+    # mem=$(( (SLURM_MEM_PER_NODE / 1000) + 1500))
     
     # Determine what to use as the temporary directory
     if [[ "$use_node_tmpdir" = true ]]; then
@@ -225,38 +239,28 @@ if [[ -n "$indir" ]]; then
     log_time "Number of input files:            $(grep -c "." "$fofn")"
 fi
 
-# Logging files and dirs
-readonly LOG_DIR="$outdir"/logs
-readonly VERSION_FILE="$LOG_DIR"/version.txt
-readonly CONDA_YML="$LOG_DIR"/conda_env.yml
-readonly ENV_FILE="$LOG_DIR"/env.txt
-mkdir -p "$outdir"
-
-# Load software and set nr of threads
-load_env "$MODULE" "$CONDA"
-set_threads "$IS_SLURM"
-
 # ==============================================================================
 #                               REPORT
 # ==============================================================================
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "All arguments to this script:     $all_args"
+echo "All arguments to this script:     $all_opts"
 [[ -n "$mode" ]] && echo "Running mode:                     $mode"
 [[ -n "$R1" ]] && echo "Input FASTQ file - R1:            $R1"
 [[ -n "$R2" ]] && echo "Input FASTQ file - R2:            $R2"
 [[ "$mode" == "rna" ]] && echo "Strandedness / strand argument:   $strandedness / $strand_arg"
-echo "Output assembly file:             $outfile"
+echo "Output dir:                       $outdir"
 echo "Kmer size(s):                     $kmer_sizes"
 echo "Using 'careful' setting:          $careful"
 echo "Continuing a previous run:        $continue"
 echo "Memory in GB:                     $mem"
 [[ $tmpdir_arg != "" ]] && echo "Temp dir argument:                $tmpdir_arg"
-[[ $more_args != "" ]] && echo "Other arguments for Spades:       $more_args"
+[[ $more_opts != "" ]] && echo "Other options for Spades:         $more_opts"
 echo "Input file argument:              $infile_arg"
 log_time "Listing the input file(s):"
 [[ -n "$R1" ]] && ls -lh "$R1" "$R2"
 [[ -n "$fofn" ]] && cat "$fofn" | xargs -I{} ls -lh {}
+set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
@@ -315,7 +319,7 @@ if [ "$continue" = false ]; then
         ${strand_arg} \
         ${careful_arg} \
         ${tmpdir_arg} \
-        ${more_args}
+        ${more_opts}
 else
     log_time "Resuming a previous SPAdes run..."
     runstats $TOOL_BINARY \
@@ -323,20 +327,10 @@ else
         --continue
 fi
 
-# Copy the assembly to get the desired output name
-log_time "Copying the SPAdes output assembly"
-if [[ "$mode" = "rna" ]]; then
-    cp -v "$outdir"/transcripts.fasta "$outfile"
-else
-    cp -v "$outdir"/contigs.fasta "$outfile"
-fi
-
 # Only now make the log dir (if we make it before running SPAdes, it will complain)
 mkdir -p "$LOG_DIR"
-load_env "$MODULE" "$CONDA" "$CONDA_YML" # And make sure we get a Conda YML file
+load_env "$conda_path" "$container_path" "$dl_container"
 
-# List the output, report version, etc
-log_time "Listing the output assembly:"
-ls -lh "$outfile"
-final_reporting "$VERSION_COMMAND" "$VERSION_FILE" "$ENV_FILE" "$IS_SLURM" \
-    "$SCRIPT_NAME" "$SCRIPT_AUTHOR" "$SCRIPT_VERSION" "$SCRIPT_URL"
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/*
+final_reporting "$LOG_DIR"
