@@ -3,22 +3,18 @@
 #SBATCH --time=32:00:00
 #SBATCH --cpus-per-task=15
 #SBATCH --mem=60G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=braker3
 #SBATCH --output=slurm-braker3-%j.out
-
-# Run Braker3 to annotate a genome assembly
-# As 'evidence' for annotation, provide RNAseq data of the same species and/or
-# protein data of the same or related species 
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Run Braker3 to annotate a genome assembly"
-SCRIPT_VERSION="2023-12-14"
+DESCRIPTION="Run Braker3 to annotate a genome assembly.
+As 'evidence' for annotation, provide RNAseq data of the same species and/or
+protein data of the same or related species."
+SCRIPT_VERSION="2024-09-28"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -34,7 +30,6 @@ container_path=/fs/ess/PAS0471/containers/braker3.sif
 container_url=
 dl_container=false
 container_dir="$HOME/containers"
-strict_bash=true
 version_only=false                 # When true, just print tool & script version info and exit
 
 # Defaults - tool parameters etc
@@ -83,7 +78,6 @@ script_help() {
     echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
     echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
     echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --no_strict                 Don't use strict Bash settings ('set -euo pipefail') -- can be useful for troubleshooting"
     echo "  -h/--help                   Print this help message and exit"
     echo "  -v                          Print the version of this script and exit"
     echo "  --version                   Print the version of $TOOL_NAME and exit"
@@ -143,7 +137,6 @@ while [ "$1" != "" ]; do
         --fungus )              is_fungus=true ;;
         --more_opts )           shift && more_opts=$1 ;;
         --env )                 shift && env=$1 ;;
-        --no_strict )           strict_bash=false ;;
         --rebuild_container )   rebuild_container=true ;;
         --container_dir )       shift && container_dir=$1 ;;
         --container_url )       shift && container_url=$1 && dl_container=true ;;
@@ -159,7 +152,7 @@ done
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
 # Strict Bash settings
-[[ "$strict_bash" == true ]] && set -euo pipefail
+set -euo pipefail
 
 # Load software
 load_env "$conda_path" "$container_path" "$dl_container"
@@ -227,14 +220,15 @@ set_threads "$IS_SLURM"
 # Rebuild the container SIF if needed
 if [[ "$rebuild_container" == "true" ]]; then
     log_time "Rebuilding container SIF file from the internet..."
-    singularity build "$container_path" docker://teambraker/braker3:latest
+    singularity build --force "$container_path" docker://teambraker/braker3:latest
 fi
 
 # Copy the Augustus config dir from the container
 # This is needed because Braker will otherwise try to write inside the container
 log_time "Copying the Augustus config dir from the container..."
 singularity exec -B "$PWD":"$PWD" "$container_path" \
-    cp -r /usr/share/augustus/config/ "$augustus_config_dir"
+    cp -r /opt/Augustus/config/ "$augustus_config_dir"
+#    cp -r /usr/share/augustus/config/ "$augustus_config_dir"
 
 log_time "Running $TOOL_NAME..."
 runstats $CONTAINER_PREFIX $TOOL_BINARY \
