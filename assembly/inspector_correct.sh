@@ -1,271 +1,192 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=4:00:00
 #SBATCH --cpus-per-task=20
 #SBATCH --mem=80G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --job-name=inspector_correct
-#SBATCH --output=slurm-inspector_correct-%j.out
-
-#TODO - Move to output dir, or it will deposit the Bloom filter file in the working dir
-
-# ==============================================================================
-#                                   FUNCTIONS
-# ==============================================================================
-# Help function
-Print_help() {
-    echo
-    echo "======================================================================"
-    echo "                            $0"
-    echo "              Run Inspector to correct a genome assembly"
-    echo "======================================================================"
-    echo "USAGE:"
-    echo "  sbatch $0 --assembly <assembly> --reads <FASTQ> -o <output-dir> [...]"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--inspector_dir  <dir>   Dir with Inspector results"
-    echo "  -o/--assembly_out   <dir>   Output dir"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --datatype          <str>   Input read type: pacbio-raw, pacbio-hifi, pacbio-corr, nano-raw, nano-corr [default: 'nano-raw']"
-    echo "  --base_error                Also correct base-errors                [default: don't correct]"
-    echo "  --more_args         <str>   Quoted string with additional argument(s) to pass to Inspector"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --dryrun                    Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                     Run the script in debug mode (print all code)"
-    echo "  -h                          Print this help message and exit"
-    echo "  --help                      Print the help for Inspector and exit"
-    echo "  -v/--version                Print the version of Inspector and exit"
-    echo
-    echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 --assembly results/assembly/my.fasta -o results/inspector"
-    echo
-    echo "SOFTWARE DOCUMENTATION:"
-    echo "  - GitHub repo: https://github.com/ChongLab/Inspector / https://github.com/Maggi-Chen/Inspector"
-    echo "  - Paper: https://genomebiology.biomedcentral.com/articles/10.1186/s13059-021-02527-4"
-    echo
-}
-
-# Load software
-Load_software() {
-    set +u
-    module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    #source activate /fs/ess/PAS0471/jelmer/conda/inspector-1.2.0
-    source activate /fs/ess/PAS0471/jelmer/conda/inspector-1.0.2
-    set -u
-}
-
-# Print version
-Print_version() {
-    set +e
-    Load_software
-    inspector.py --version
-    set -e
-}
-
-# Print help for the focal program
-Print_help_program() {
-    Load_software
-    inspector.py --help
-}
-
-# Print SLURM job resource usage info
-Resource_usage() {
-    echo
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
-    echo
-}
-
-# Print SLURM job requested resources
-Print_resources() {
-    set +u
-    echo "# SLURM job information:"
-    echo "Account (project):    $SLURM_JOB_ACCOUNT"
-    echo "Job ID:               $SLURM_JOB_ID"
-    echo "Job name:             $SLURM_JOB_NAME"
-    echo "Memory (per node):    $SLURM_MEM_PER_NODE"
-    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
-    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
-    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
-    echo "======================================================================"
-    echo
-    set -u
-}
-
-# Set the number of threads/CPUs
-Set_threads() {
-    set +u
-    if [[ "$slurm" = true ]]; then
-        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-            threads="$SLURM_CPUS_PER_TASK"
-        elif [[ -n "$SLURM_NTASKS" ]]; then
-            threads="$SLURM_NTASKS"
-        else 
-            echo "WARNING: Can't detect nr of threads, setting to 1"
-            threads=1
-        fi
-    else
-        threads=1
-    fi
-    set -u
-}
-
-# Resource usage information
-Time() {
-    /usr/bin/time -f \
-        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
-        "$@"
-}   
-
-# Exit upon error with a message
-Die() {
-    error_message=${1}
-    error_args=${2-none}
-    
-    echo >&2
-    echo "=====================================================================" >&2
-    printf "$0: ERROR: %s\n" "$error_message" >&2
-    echo -e "\nFor help, run this script with the '-h' option" >&2
-    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
-    if [[ "$error_args" != "none" ]]; then
-        echo -e "\nArguments passed to the script:" >&2
-        echo "$error_args" >&2
-    fi
-    echo -e "\nEXITING..." >&2
-    echo "=====================================================================" >&2
-    echo >&2
-    exit 1
-}
-
+#SBATCH --mail-type=END,FAIL
+#SBATCH --job-name=inspector_corr
+#SBATCH --output=slurm-inspector_corr-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-# Option defaults
-datatype="nano-raw"
-base_error=false && base_error_arg="--skip_baseerror"
+# Constants - generic
+DESCRIPTION="Run Inspector-correct to correct a genome assembly"
+SCRIPT_VERSION="2024-09-29"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+TOOL_BINARY=inspector-correct.py
+TOOL_NAME=Inspector
+TOOL_DOCS=https://github.com/Maggi-Chen/Inspector
+VERSION_COMMAND="$TOOL_BINARY --version"
 
-debug=false
-dryrun=false && e=""
-slurm=true
+# Defaults - generics
+#? Using a container, got a memory error with the Conda env
+env=container                       # Use a 'conda' env or a Singularity 'container'
+conda_path=/fs/ess/PAS0471/jelmer/conda/inspector
+container_path=
+container_url=oras://community.wave.seqera.io/library/inspector:1.3.1--1e8dfa3d2ec456ac
+dl_container=false
+container_dir="$HOME/containers"
+version_only=false                 # When true, just print tool & script version info and exit
 
+# Defaults for tool
+base_error=false
+
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
+script_help() {
+    echo -e "\n                          $0"
+    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
+    echo "        =============================================================="
+    echo "DESCRIPTION:"
+    echo "  $DESCRIPTION"
+    echo
+    echo "USAGE / EXAMPLE COMMANDS:"
+    echo "  - Basic usage example:"
+    echo "      sbatch $0 -i results/inspector -o results/inspector/asm.fasta --datatype 'nano-corr'"
+    echo
+    echo "REQUIRED OPTIONS:"
+    echo "  -i/--inspector_dir  <dir>   Dir with Inspector results -- run inspector.sh before this script"
+    echo "  -o/--outfile        <dir>   Output assembly FASTA file."
+    echo "                              NOTE: Just provide the filename, no path: file will be added to Inspector dir"
+    echo "  --datatype          <str>   Input read type: pacbio-raw, pacbio-hifi, pacbio-corr, nano-raw, nano-corr [default: 'nano-raw']"
+    echo
+    echo "OTHER KEY OPTIONS:"
+    echo "  --base_error                Also correct base-errors                [default: don't correct]"
+    echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
+    echo
+    echo "UTILITY OPTIONS:"
+    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
+    echo "                                (NOTE: If no default '--container_url' is listed below,"
+    echo "                                 you'll have to provide one in order to run the script with a container.)"
+    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
+    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
+    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
+    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
+    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
+    echo "  -h/--help                   Print this help message and exit"
+    echo "  -v                          Print the version of this script and exit"
+    echo "  --version                   Print the version of $TOOL_NAME and exit"
+    echo
+    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
+}
+
+# Function to source the script with Bash functions
+source_function_script() {
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$IS_SLURM" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
+    else
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
+    fi
+    function_script=$(realpath "$script_dir"/../dev/"$(basename "$FUNCTION_SCRIPT_URL")")
+    # Download the function script if needed, then source it
+    if [[ ! -f "$function_script" ]]; then
+        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
+        function_script=$(basename "$FUNCTION_SCRIPT_URL")
+        wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script"
+    fi
+    source "$function_script"
+}
+
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-# Placeholder defaults
-inspector_dir=""
-outdir=""
-more_args=""
+# Initiate variables
+indir=
+outfile=
+base_error_opt=
+more_opts=
+threads=
 
 # Parse command-line args
-all_args="$*"
+all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --inspector_dir )   shift && inspector_dir=$1 ;;
-        -o | --assembly_out )    shift && assembly_out=$1 ;;
-        --datatype )             shift && datatype=$1 ;;
-        --more_args )            shift && more_args=$1 ;;
-        --base_error )           base_error=true ;;
-        -v | --version )         Print_version; exit 0 ;;
-        -h )                     Print_help; exit 0 ;;
-        --help )                 Print_help_program; exit 0;;
-        --dryrun )               dryrun=true && e="echo ";;
-        --debug )                debug=true ;;
+        -i | --inspector_dir )  shift && indir=$1 ;;
+        -o | --outfile )        shift && outfile=$1 ;;
+        --datatype )            shift && datatype=$1 ;;
+        --base_error )          base_error=true ;;
+        --more_opts )           shift && more_opts=$1 ;;
+        --env )                 shift && env=$1 ;;
+        --dl_container )        dl_container=true ;;
+        --container_dir )       shift && container_dir=$1 ;;
+        --container_url )       shift && container_url=$1 && dl_container=true ;;
+        -h | --help )           script_help; exit 0 ;;
+        -v )                    script_version; exit 0 ;;
+        --version )             version_only=true ;;
+        * )                     die "Invalid option $1" "$all_opts" ;;
     esac
     shift
 done
 
-
 # ==============================================================================
-#                          OTHER SETUP
+#                          INFRASTRUCTURE SETUP
 # ==============================================================================
-# Check if this is a SLURM job
-[[ -z "$SLURM_JOB_ID" ]] && slurm=false
-
-# In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
-
-# Bash script settings
+# Strict Bash settings
 set -euo pipefail
 
-# Load software and set nr of threads
-[[ "$dryrun" = false ]] && Load_software
-Set_threads
+# Load software
+load_env "$conda_path" "$container_path" "$dl_container"
+[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
 
-# Check input
-[[ "$inspector_dir" = "" ]] && Die "Please specify an assembly -i/--inspector_dir"
-[[ "$assembly_out" = "" ]] && Die "Please specify an output assembly file with -o/--assembly_out"
-[[ ! -d "$inspector_dir" ]] && Die "Input dir (--inspector_dir) $inspector_dir does not exist"
+# Check options provided to the script
+[[ -z "$indir" ]] && die "No input dir specified, do so with -i/--inspector_dir" "$all_opts"
+[[ -z "$outfile" ]] && die "No output file specified, do so with -o/--outfile" "$all_opts"
+[[ ! -d "$indir" ]] && die "Input dir $indir does not exist"
 
-# Determine output dir
-outdir=$(dirname "$assembly_out")
+# Define outputs based on script parameters
+#outdir=$(dirname "$outfile")
+indir=$(realpath "$indir")
+outdir="$indir"
+LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+[[ "$base_error" == false ]] && base_error_opt="--skip_baseerror"
 
-# Make output assembly path absolute
-[[ ! "$assembly_out" =~ ^/ ]] && assembly_out="$PWD"/"$assembly_out"
-
-# Build other args
-[[ "$base_error" = true ]] && base_error_arg=""
-
-# Report
-echo
+# ==============================================================================
+#                         REPORT PARSED OPTIONS
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "          STARTING SCRIPT INSPECTOR_CORRECT.SH"
-date
-echo "=========================================================================="
-echo "All arguments to this script:         $all_args"
-echo "Input Inspector results dir:          $inspector_dir"
-echo "Output assembly:                      $assembly_out"
-echo "Data type:                            $datatype"
-echo "Correct base-errors, too:             $base_error"
-[[ $more_args != "" ]] && echo "Other arguments to pass to Inspector:     $more_args"
-echo "=========================================================================="
-
-# Print reserved resources
-[[ "$slurm" = true ]] && Print_resources
-
+echo "All options passed to this script:        $all_opts"
+echo "Input Inspector results dir:              $indir"
+echo "Output assembly file:                     $outfile"
+echo "Data type:                                $datatype"
+echo "Correct base-errors, too:                 $base_error"
+[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
+log_time "Listing the input file(s):"
+ls -lh "$indir"
+set_threads "$IS_SLURM"
+[[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Create the output directory
-echo -e "\n# Now creating the output directories..."
-${e}mkdir -pv "$outdir"/logs
-
 # Move to the outdir or some files will go to the working dir
+log_time "Moving into the outdir..."
 cd "$outdir" || exit 1
 
-# Run
-echo -e "\n# Now running Inspector-correct..."
-${e}Time inspector-correct.py \
-    --inspector "$inspector_dir" \
-    "$base_error_arg" \
+log_time "Running $TOOL_NAME..."
+runstats $CONTAINER_PREFIX $TOOL_BINARY \
+    --inspector . \
     -o . \
     --datatype "$datatype" \
     --thread "$threads" \
-    $more_args
+    "$base_error_opt" \
+    $more_opts
 
-# Run
-echo -e "\n# Renaming the output file..."
-${e}mv -v contig_corrected.fa "$assembly_out"
+log_time "Renaming the output file..."
+mv -v contig_corrected.fa "$outfile"
 
-
-# ==============================================================================
-#                               WRAP-UP
-# ==============================================================================
-echo
-echo "========================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing the output assembly:"
-    ls -lh "$assembly_out"
-    [[ "$slurm" = true ]] && Resource_usage
-fi
-echo
-echo "# Done with script"
-date
+log_time "Listing files in the output dir:"
+ls -lhd $PWD/*
+final_reporting "$LOG_DIR"

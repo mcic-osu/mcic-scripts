@@ -1,11 +1,8 @@
 #!/bin/bash
-
 #SBATCH --account=PAS0471
 #SBATCH --time=4:00:00
 #SBATCH --cpus-per-task=20
 #SBATCH --mem=80G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
 #SBATCH --job-name=inspector
 #SBATCH --output=slurm-inspector-%j.out
 
@@ -51,10 +48,9 @@ Print_help() {
 # Load software
 Load_software() {
     set +u
-    module load miniconda3/4.12.0-py39
+    module load miniconda3
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    #source activate /fs/ess/PAS0471/jelmer/conda/inspector-1.2.0
-    source activate /fs/ess/PAS0471/jelmer/conda/inspector-1.0.2
+    source activate /fs/ess/PAS0471/jelmer/conda/inspector
     set -u
 }
 
@@ -247,6 +243,8 @@ ${e}Time inspector.py \
     --thread "$threads" \
     $more_args
 
+echo -e "\n# Showing the summary statistics file $outdir/summary_statistics:"
+cat "$outdir"/summary_statistics
 
 # ==============================================================================
 #                               WRAP-UP
