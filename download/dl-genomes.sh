@@ -15,7 +15,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Download genomes (and associated proteomes, annotations, etc) and associated metadata with the NCBI datasets tool"
-SCRIPT_VERSION="2024-06-05"
+SCRIPT_VERSION="2024-09-29"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -198,7 +198,7 @@ meta_sel="$meta_dir"/meta_sel.tsv
 # Build command to specify which genomes to download
 if [[ -n "$accession_file" ]]; then
     accession_file=$(realpath "$accession_file")
-    [[ ! -f "$accession_file" ]] && die "Input file $accession_file does not exist"
+    [[ ! -f "$accession_file" ]] && die "Input accession nr. file $accession_file does not exist"
     data_arg=(accession --inputfile "$accession_file")
 elif [[ -n "$accession" ]]; then
     data_arg=(accession "$accession")
