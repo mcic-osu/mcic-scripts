@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
 #SBATCH --job-name=fqsub
 #SBATCH --output=slurm-fqsub-%j.out
 
