@@ -86,14 +86,19 @@ source_function_script() {
         script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
         SCRIPT_NAME=$(basename "$0")
     fi
-    function_script=$(realpath "$script_dir"/../dev/"$(basename "$FUNCTION_SCRIPT_URL")")
+    function_script_name="$(basename "$FUNCTION_SCRIPT_URL")"
+    function_script="$script_dir"/../dev/"$function_script_name"
+
     # Download the function script if needed, then source it
-    if [[ ! -f "$function_script" ]]; then
-        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
-        function_script=$(basename "$FUNCTION_SCRIPT_URL")
-        wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script"
+    if [[ -f "$function_script" ]]; then
+        source "$function_script"
+    elif [[ ! -f "$function_script_name" ]]; then
+        echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+        wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
+        source "$function_script_name"
+    else
+        source "$function_script_name"
     fi
-    source "$function_script"
 }
 
 # Check if this is a SLURM job, then load the Bash functions
@@ -168,6 +173,9 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
     --threads "$threads" \
     $more_opts
 
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
 final_reporting "$LOG_DIR"
