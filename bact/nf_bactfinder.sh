@@ -1,11 +1,8 @@
 #!/bin/bash
-
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name=nf_bactfinder
 #SBATCH --output=slurm-nf_bactfinder-%j.out
@@ -14,37 +11,50 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants
-readonly NF_REPO=https://github.com/jelmerp/nf_bactfinder
-readonly CONDA_ENV=/fs/project/PAS0471/jelmer/conda/nextflow
-readonly SCRIPT_NAME=nf_bactfinder.sh
-readonly SCRIPT_VERSION="1.0"
-readonly SCRIPT_AUTHOR="Jelmer Poelstra"
-readonly OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config
+DESCRIPTION="Run the BactFinder Nextflow workflow to examine bacterial
+genome assemblies with ResFinder, VirulenceFinder and PlasmidFinder"
+SCRIPT_VERSION="2024-11-09"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+TOOL_BINARY="nextflow run"
+export TOOL_NAME="nextflow"
+VERSION_COMMAND="nextflow -v"
 
-# Option defaults
+# Constants - paramaters
+NF_REPO=https://github.com/jelmerp/nf_bactfinder
+OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config
+OSC_CONFIG=mcic-scripts/nextflow/osc.config
+
+# Defaults - generics
+conda_path=/fs/project/PAS0471/jelmer/conda/nextflow
 osc_config=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present here
 container_dir=/fs/project/PAS0471/containers
-work_dir=/fs/scratch/PAS0471/$USER/nf_bactfinder
-outdir=results/nf_bactfinder
-profile="conda"
+container_path=
+dl_container=false
+profile="conda" #profile="standard,singularity"
 resume=true && resume_arg="-resume"
+slurm_job=$(echo "$SLURM_JOB_ACCOUNT" | tr "[a-z]" "[A-Z]")
+work_dir=/fs/scratch/$slurm_job/$USER/nf_bactfinder
+version_only=false
+
+# Defaults - parameters
+outdir=results/nf_bactfinder
 
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
 # Help function
 script_help() {
-    echo
-    echo "======================================================================"
-    echo "                     $0"
-    echo "             Run the BactFinder nextflow workflow"
-    echo "======================================================================"
-    echo "USAGE:"
-    echo "  sbatch nf_bactfinder.sh -i <indir> --species <species-name> [...]"
-    echo 
+    echo -e "\n                          $0"
+    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
+    echo "        =============================================="
     echo "DESCRIPTION:"
-    echo "  This will run the BactFinder Nextflow workflow to examine bacterial"
-    echo "  genome assemblies with ResFinder, VirulenceFinder and PlasmidFinder"
+    echo "  $DESCRIPTION"
+    echo
+    echo "USAGE / EXAMPLES:"
+    echo "  sbatch $0 -i results/assemblies --species 'Enterobacter cloacae'"
+    echo "  sbatch $0 -i results/assemblies --species 'Salmonella enterica' --file_pattern '*fna'"
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--indir      <dir>   Input directory with assembly nucleotide FASTA files"
@@ -58,19 +68,23 @@ script_help() {
     echo "                            - Example (quote the entire string!): '--more_args \"--res_cov 0.8\"'"
     echo
     echo "NEXTFLOW-RELATED OPTIONS:"
-    echo "  -no-resume              Don't attempt to resume workflow run        [default: resume workflow where it left off]"
-    echo "  -profile        <str>   Profile to use from one of the config files [default: 'conda']"
-    echo "  -work-dir       <dir>   Scratch (work) dir for the workflow         [default: '/fs/scratch/PAS0471/\$USER/nf_bactfinder']"
-    echo "  -c/-config      <file   Additional config file                      [default: none]"
-    echo "  --container_dir <dir>   Singularity container dir                   [default: '/fs/project/PAS0471/containers']"
+    echo "  --restart                   Restart workflow from the beginning     [default: resume workflow if possible]"
+    echo "  --workflow_dir      <dir>   Dir with/for the workflow repo          [default: $workflow_dir]"
+    echo "                                - If the correct workflow is already present in this dir, it won't be downloaded again"
+    echo "  --container_dir     <dir>   Directory with container images         [default: $container_dir]"
+    echo "                                - Required container images will be downloaded here when not already present"
+    echo "  --profile           <str>   'Profile' name from any of the config files to use   [default: 'standard,singularity']"
+    echo "  --config            <file>  Additional config file                  [default: none]"
+    echo "                                - Settings in this file will override default settings"
+    echo "                                - Note that the mcic-scripts OSC config file will always be included"
+    echo "                                  (https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config)"
+    echo "  --work_dir           <dir>  Scratch (work) dir for the workflow     [default: $work_dir]"
+    echo "                                - This is where the workflow results will be stored before final results are copied to the output dir."
+    echo "  --version                   Print the version of Nextflow and exit"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the workflow's help message and exit"
-    echo
-    echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i results/assemblies --species 'Enterobacter cloacae'"
-    echo "  sbatch $0 -i results/assemblies --species 'Salmonella enterica' --file_pattern '*fna'"
+    echo "  -h/--help                   Print this help message and exit"
+    echo "  -v                          Print the version of this script and exit"
     echo
     echo "DOCUMENTATION:"
     echo "- This script runs a workflow based on the GHRU <https://gitlab.com/cgps/ghru/pipelines/amr_prediction>"
@@ -78,14 +92,33 @@ script_help() {
     echo
 }
 
-# Load the software
-load_tool_conda() {
-    set +u
-    module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate "$CONDA_ENV"
-    set -u
+# Function to source the script with Bash functions
+source_function_script() {
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$IS_SLURM" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
+    else
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
+    fi
+    function_script_name="$(basename "$FUNCTION_SCRIPT_URL")"
+    function_script="$script_dir"/../dev/"$function_script_name"
 
+    # Download the function script if needed, then source it
+    if [[ -f "$function_script" ]]; then
+        source "$function_script"
+    elif [[ ! -f "$function_script_name" ]]; then
+        echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+        wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
+        source "$function_script_name"
+    else
+        source "$function_script_name"
+    fi
+}
+
+nextflow_setup() {
     # Singularity container dir - any downloaded containers will be stored here;
     # if the required container is already there, it won't be re-downloaded
     export NXF_SINGULARITY_CACHEDIR="$container_dir"
@@ -95,47 +128,10 @@ load_tool_conda() {
     export NXF_OPTS='-Xms1g -Xmx4g'
 }
 
-# Print the tool's help
-tool_help() {
-    load_tool_conda
-    nextflow run "$NF_REPO" --help
-}
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script
 
-# Exit upon error with a message
-die() {
-    local error_message=${1}
-    local error_args=${2-none}
-    log_time "ERROR: $error_message" >&2
-    log_time "For help, run this script with the '-h' option" >&2
-    if [[ "$error_args" != "none" ]]; then
-        log_time "Arguments passed to the script:" >&2
-        echo "$error_args" >&2
-    fi
-    log_time "EXITING..." >&2
-    exit 1
-}
-
-# Log messages that include the time
-log_time() { echo -e "\n[$(date +'%Y-%m-%d %H:%M:%S')]" ${1-""}; }
-
-# Print the script version
-script_version() {
-    echo "Run using $SCRIPT_NAME by $SCRIPT_AUTHOR, version $SCRIPT_VERSION (https://github.com/mcic-osu/mcic-scripts)"
-}
-
-# Print SLURM job resource usage info
-resource_usage() {
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
-}
-
-# Resource usage information for any process
-runstats() {
-    /usr/bin/time -f \
-        "\n# Ran the command: \n%C
-        \n# Run stats by /usr/bin/time:
-        Time: %E   CPU: %P    Max mem: %M K    Exit status: %x \n" \
-        "$@"
-}
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
@@ -148,7 +144,7 @@ file_pattern= && file_pattern_arg=
 more_args=
 
 # Parse command-line args
-all_args="$*"
+all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --indir )      shift && indir=$1 ;;
@@ -161,36 +157,31 @@ while [ "$1" != "" ]; do
         -config )           shift && config_file=$1 ;;
         --more_args )       shift && more_args=$1 ;;
         -no-resume )        resume=false ;;
-        -h )                script_help && exit ;;
-        --help )            tool_help && exit ;;
-        * )                 die "Invalid option $1";;
+        -h | --help )       script_help; exit 0 ;;
+        -v )                script_version; exit 0 ;;
+        --version )         version_only=true ;;
+        * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
 done
 
-# Check input
-[[ "$indir" = "" ]] && die "Please specify an input dir with -i/--indir" "$all_args"
-[[ "$species" = "" ]] && die "Please specify a species with -s/--species" "$all_args"
-[[ ! -d "$indir" ]] && die "Input dir $indir does not exist"
-
 # ==============================================================================
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
-# Check if this is a SLURM job
-if [[ -z "$SLURM_JOB_ID" ]]; then is_slurm=false; else is_slurm=true; fi
-
-# Strict bash settings
+# Strict Bash settings
 set -euo pipefail
 
 # Load software
-load_tool_conda
+load_env "$conda_path" "$container_path" "$dl_container"
+[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
 
-# ==============================================================================
-#              DEFINE OUTPUTS AND DERIVED INPUTS, BUILD ARGS
-# ==============================================================================
+# Check options provided to the script
+[[ -z "$indir" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
+[[ -z "$species" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
+[[ ! -d "$indir" ]] && die "Input dir $indir does not exist"
+
 # Define outputs based on script parameters
-readonly version_file="$outdir"/logs/version.txt
-readonly log_dir="$outdir"/logs
+LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 
 # Get the OSC config file
 if [[ ! -f "$osc_config" ]]; then
@@ -198,24 +189,21 @@ if [[ ! -f "$osc_config" ]]; then
     osc_config=$(basename "$OSC_CONFIG_URL")
 fi
 
-# Build the config argument
-[[ ! -f "$osc_config" ]] && osc_config="$outdir"/$(basename "$OSC_CONFIG_URL")
-config_arg="-c $osc_config"
-[[ "$config_file" != "" ]] && config_arg="$config_arg -c ${config_file/,/ -c }"
+# Build the config option
+[[ ! -f "$OSC_CONFIG" ]] && OSC_CONFIG="$outdir"/$(basename "$OSC_CONFIG_URL")
+config_arg="-c $OSC_CONFIG"
+[[ -n "$config_file" ]] && config_arg="$config_arg -c ${config_file/,/ -c }"
 
-# Build other args
-[[ "$resume" == false ]] && resume_arg=""
+# Build other opions
+[[ "$resume" == false ]] && resume_arg=
 [[ -n "$file_pattern" ]] && file_pattern_arg="--file_pattern $file_pattern"
-
-# Define trace output dir
-trace_dir="$outdir"/pipeline_info
 
 # ==============================================================================
 #                               REPORT
 # ==============================================================================
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "All arguments to this script:    $all_args"
+echo "All arguments to this script:    $all_opts"
 echo "Input dir:                       $indir"
 echo "Output dir:                      $outdir"
 echo "Species:                         $species"
@@ -227,36 +215,36 @@ echo "Container dir:                   $container_dir"
 echo "Scratch (work) dir:              $work_dir"
 echo "Config file argument:            $config_arg"
 [[ -n "$config_file" ]] && echo "Additional config file:          $config_file"
-echo
+[[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
 # Create the output directories
 log_time "Creating the output directories..."
-mkdir -pv "$work_dir" "$container_dir" "$log_dir" "$trace_dir"
-
-# Remove old trace files
-[[ -f "$trace_dir"/report.html ]] && rm "$trace_dir"/report.html
-[[ -f "$trace_dir"/trace.txt ]] && rm "$trace_dir"/trace.txt
-[[ -f "$trace_dir"/timeline.html ]] && rm "$trace_dir"/timeline.html
-[[ -f "$trace_dir"/dag.png ]] && rm "$trace_dir"/dag.png
+mkdir -pv "$work_dir" "$container_dir"
 
 # Download the OSC config file
-[[ ! -f "$osc_config" ]] && wget -q -O "$osc_config" "$OSC_CONFIG_URL"
+if [[ ! -f "$OSC_CONFIG" ]]; then
+    log_time "Downloading the mcic-scripts Nextflow OSC config file to $OSC_CONFIG..."
+    wget -q -O "$OSC_CONFIG" "$OSC_CONFIG_URL"
+fi
+
+# Make sure we have the latest version of the workflow
+nextflow pull $NF_REPO -r master
 
 # Run the workflow run command
 log_time "Starting the workflow...\n"
-runstats nextflow run "$NF_REPO" \
+runstats $TOOL_BINARY "$NF_REPO" \
     --indir "$indir" \
     --outdir "$outdir" \
     --species "$species" \
     $file_pattern_arg \
     -work-dir "$work_dir" \
-    -with-report "$trace_dir"/report.html \
-    -with-trace "$trace_dir"/trace.txt \
-    -with-timeline "$trace_dir"/timeline.html \
-    -with-dag "$trace_dir"/dag.png \
+    -with-report "$LOG_DIR"/report.html \
+    -with-trace "$LOG_DIR"/trace.txt \
+    -with-timeline "$LOG_DIR"/timeline.html \
+    -with-dag "$LOG_DIR"/dag.png \
     -ansi-log false \
     -profile "$profile" \
     $config_arg \
@@ -266,11 +254,6 @@ runstats nextflow run "$NF_REPO" \
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
-printf "\n======================================================================"
-log_time "Versions used:"
-script_version | tee -a "$version_file" 
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
-[[ "$is_slurm" = true ]] && echo && resource_usage
-log_time "Done with script $SCRIPT_NAME"
-echo
+final_reporting "$LOG_DIR"
