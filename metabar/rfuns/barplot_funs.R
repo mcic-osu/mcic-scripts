@@ -1,4 +1,6 @@
-# Functions to create taxonomic abundance barplots for metabarcoding data
+# A function to create taxonomic abundance barplots for metabarcoding data
+# ...and a few color vectors to use in this function
+# Jelmer Poelstra, last updated 2024-11-15
 
 # Color sets
 cols1 <- c("#a74bb4", "#62b54f", "#7064d3", "#b5b348", "#dd6fc5",
@@ -24,19 +26,21 @@ cols_kelly <- c("#f3c300", "#875692", "#f38400", "#a1caf1", "#be0032",
 
 # Function to create a barplot showing taxon abundances
 pbar <- function(
-    ps = NULL,              # Either provide a phyloseq object (ps) or an abundance df from abund_stats()
-    abund_df = NULL,        # Either provide a phyloseq object (ps) or an abundance df from abund_stats()
-    taxrank = "Phylum",     # Or 'Family', 'Genus', etc
-    x_var = "Sample",       # What to plot along the x-axis ('Sample' for indiv. samples, or provide a column name from sample_data(ps)) (quoted string)
-    facet_var = NULL,       # What to facet by (quoted string)
-    facet_var2 = NULL,      # Second variable to facet by (quoted string)
+    ps = NULL,              # Provide a phyloseq object (ps) with RELATIVE abundances as the input
+    taxrank = "Phylum",     # Taxonomic rank to summarize abundance by Or 'Family', 'Genus', etc
+    x_var = "Sample",       # What to plot along the x-axis
+                            #   'Sample' for indiv. samples, or a column name from sample_data(ps)) (quoted string)
+    facet_var = NULL,       # Which column in sample_data to facet by (quoted string)
+    facet_var2 = NULL,      # Which column in sample_data to also facet by (quoted string)
     xlab = NULL,            # X-axis label
-    abund_tres = 0.01,      # Lump taxa with abundances below this threshold into a category 'other (rare)' (use 'NA' for no threshold)
+    abund_tres = 0.01,      # Lump taxa with abundances below this threshold into a category 'other (rare)'
+                            #   (use 'NA' for no threshold)
     focal_taxa = NULL,      # Instead of filtering taxa by abundance, use the taxa listed in this vector
     na_to_unknown = TRUE,   # Change 'NA' taxa to a category 'unknown' in the graph
     sort_by_abund = TRUE,   # Sort the taxa by abundance in the graph (rather than alphabetically)
-    colors = cols_kelly     # Vector of colors. Presets are 'cols1', 'cols_brewerplus', and 'cols_kelly' (default)
+    colors = cols_kelly,    # Vector of colors. Presets are 'cols1', 'cols_brewerplus', and 'cols_kelly' (default)
                             # You can also provide your own vector of colors.
+    abund_df = NULL         # Alternative to providing a phyloseq object (ps) as input: an abundance df from abund_stats()
     ) {
 
   # Compute abundance stats if needed
@@ -55,7 +59,9 @@ pbar <- function(
   # Set colors
   ntax <- length(unique(na.omit(abund_df[[taxrank]])))
   if (is.null(colors)) {
-    colors <- randomcoloR::distinctColorPalette(k = ntax)
+    # [Package gives too many installation problems - turning this functionality off]
+    #colors <- randomcoloR::distinctColorPalette(k = ntax)
+    stop("Error: please specify colors")
   } else {
     colors <- colors[1:ntax]
   }
@@ -105,7 +111,7 @@ pbar <- function(
   print(p)
 }
 
-# Function to compute per-taxon abundances - used for/in the pbar() function
+# Helper function to compute per-taxon abundances - used for/in the pbar() function
 abund_stats <- function(
     ps,
     taxrank,
@@ -115,8 +121,6 @@ abund_stats <- function(
     na_to_unknown = TRUE,
     sort_by_abund = TRUE
     ) {
-  # ps <- ps_prop_filt; groupby = c("Sample", "INFECTION"); abund_tres = 0.01; focal_taxa = NULL
-  # na_to_unknown = TRUE; sort_by_abund = TRUE; taxrank = "Family"
   
   # If using a list of focal taxa, don't use an abundance threshold
   if (!is.null(focal_taxa)) {
