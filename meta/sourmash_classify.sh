@@ -6,6 +6,11 @@
 #SBATCH --job-name=sourmash_classify
 #SBATCH --output=slurm-sourmash_classify-%j.out
 
+#!==============================================================================
+#TODO - Needs to be updated to using the 'tax' command
+# See https://sourmash.readthedocs.io/en/latest/classifying-signatures.html#taxonomic-profiling-with-sourmash
+#!==============================================================================
+
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
@@ -27,14 +32,14 @@ container_path=
 container_url=
 dl_container=false
 container_dir="$HOME/containers"
-strict_bash=true
 version_only=false                 # When true, just print tool & script version info and exit
 
 # Constants - tool parameters etc
-K21_DB_URL=https://farm.cse.ucdavis.edu/~ctbrown/sourmash-db/gtdb-rs214/gtdb-rs214-k21.lca.json.gz
-K31_DB_URL=https://farm.cse.ucdavis.edu/~ctbrown/sourmash-db/gtdb-rs214/gtdb-rs214-k31.lca.json.gz
-K51_DB_URL=https://farm.cse.ucdavis.edu/~ctbrown/sourmash-db/gtdb-rs214/gtdb-rs214-k51.lca.json.gz
-DB_FILENAME_PREFIX=gtdb-rs214-k
+GTDB_DB=rs214
+DB_FILENAME_PREFIX=gtdb-"$GTDB_DB"-k
+K21_DB_URL=https://farm.cse.ucdavis.edu/~ctbrown/sourmash-db/gtdb-"$GTDB_DB"/"$DB_FILENAME_PREFIX"21.lca.json.gz
+K31_DB_URL=https://farm.cse.ucdavis.edu/~ctbrown/sourmash-db/gtdb-"$GTDB_DB"/"$DB_FILENAME_PREFIX"31.lca.json.gz
+K51_DB_URL=https://farm.cse.ucdavis.edu/~ctbrown/sourmash-db/gtdb-"$GTDB_DB"/"$DB_FILENAME_PREFIX"51.lca.json.gz
 
 # Defaults - tool parameters etc
 db_dir=/fs/ess/PAS0471/jelmer/refdata/sourmash
@@ -61,8 +66,10 @@ script_help() {
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --db                <file>  Path to a .lca.json.gz sourmash database [default: download GTDB database]"
-    echo "  --db_dir            <dir>   Directory to download GTDB database to  [default: $db_dir]"
-    echo "  --kmer              <int>   Kmer size: 21, 31, or 51                [default: $kmer]"
+    echo "                              Curent version of the automatically downloaded GTDB database is: $GTDB_DB"
+    echo "                              For DB info, see https://sourmash.readthedocs.io/en/latest/databases.html"
+    echo "  --db_dir            <dir>   Directory to download GTDB database to   [default: $db_dir]"
+    echo "  --kmer              <int>   Kmer size: 21, 31, or 51                 [default: $kmer]"
     echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -74,7 +81,6 @@ script_help() {
     echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
     echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
     echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
-    echo "  --no_strict                 Don't use strict Bash settings ('set -euo pipefail') -- can be useful for troubleshooting"
     echo "  -h/--help                   Print this help message and exit"
     echo "  -v                          Print the version of this script and exit"
     echo "  --version                   Print the version of $TOOL_NAME and exit"
@@ -127,7 +133,6 @@ while [ "$1" != "" ]; do
         --kmer )            shift && kmer=$1 ;;
         --more_opts )       shift && more_opts=$1 ;;
         --env )             shift && env=$1 ;;
-        --no_strict )       strict_bash=false ;;
         --dl_container )    dl_container=true ;;
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 && dl_container=true ;;
@@ -143,7 +148,7 @@ done
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
 # Strict Bash settings
-[[ "$strict_bash" == true ]] && set -euo pipefail
+set -euo pipefail
 
 # Load software
 load_env "$conda_path" "$container_path" "$dl_container"
