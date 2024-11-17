@@ -8,6 +8,7 @@
 
 #TODO - Add taxonomic info with taxonkit
 #TODO - Consider adding 'qcovus' to the output, which adjusts for overlapping alignments, see https://www.ncbi.nlm.nih.gov/books/NBK279684/table/appendices.T.options_common_to_all_blast/
+#TODO - Option to make output filename contain input filename
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
@@ -27,7 +28,7 @@ OUTPUT:
   The output will include TSV files with raw ('blast_out_raw.tsv') and filtered
   ('blast_out_filtered.tsv'), and if requested, downloaded sequences in separate
   subdirectories."
-SCRIPT_VERSION="2023-10-29"
+SCRIPT_VERSION="2024-11-17"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -41,8 +42,9 @@ export LC_ALL=C                     # Locale for sorting
 META_FIELDS="accession,assminfo-name,organism-name,assminfo-refseq-category,assminfo-level,assmstats-number-of-contigs,assmstats-contig-n50"
 # - Am not able to get scientific name of subject seq to be included ('ssciname' / 'sscinames')
 # - In addition to the 'qcovhsp' included above, there is also 'qcovs', which will contain the total coverage across all HSPs
-DEFAULT_LOCAL_DB_NT=/fs/project/pub_data/blast-database/2023-06/nt              # Default local DB for nucleotide BLAST
-DEFAULT_LOCAL_DB_AA=/fs/project/pub_data/blast-database/2023-06/nr              # Default local DB for protein BLAST
+DEFAULT_LOCAL_DB_DIR=fs/project/pub_data/blast-database/2024-07
+DEFAULT_LOCAL_DB_NT="$DEFAULT_LOCAL_DB_DIR"/nt              # Default local DB for nucleotide BLAST
+DEFAULT_LOCAL_DB_AA="$DEFAULT_LOCAL_DB_DIR"/nr              # Default local DB for protein BLAST
 
 # Defaults - generic
 env=conda                           # Use a 'conda' env or a Singularity 'container'
@@ -60,7 +62,7 @@ remote_db_nt=nt                     # Default remote db for BLAST-to-nucleotide 
 remote_db_aa=nr                     # Default remote db for BLAST-to-protein (blastp and blastx)
 blast_type=blastn                   # BLAST type
 db_type=nuc                         # 'prot' (proteins/amino acids) or 'nuc' (nucleotides)  (automatically determined)
-dl_db=nuccore                       # 'nuccore' for nucleotide db, 'protein' for protein db (automatically determined)
+dl_db=nuccore                       # For downloading full subject sequences - 'nuccore' for nucleotide db, 'protein' for protein db (automatically determined)
 blast_task=                         # 'task' within BLAST type, e.g. 'megablast' for blastn
 top_n_query=100                     # Keep the top-N hits only for each query (empty => keep all)
 top_n_subject=                      # Keep the top-N hits only for each subject, per query (empty => keep all)
@@ -116,7 +118,7 @@ script_help() {
     echo "GENERAL BLAST OPTIONS (OPTIONAL):"
     echo "  --local                     Run BLAST with a local (on-disk) database               [default: $local]"
     echo "  --db                <str>   - If running remotely: NCBI database name like 'nt'/'nr'[default: 'nt' for nucleotide, 'nr' for protein]"
-    echo "                              - If running locally: default is 'nt' or 'nr' from '/fs/project/pub_data/blast-database/2023-06'"
+    echo "                              - If running locally: default is 'nt' or 'nr' from $DEFAULT_LOCAL_DB_DIR"
     echo "                              - To run with a custom local db, use '--local' AND specify the prefix (dir + db name, no file extensions) of a local BLAST db"
     echo "  --blast_type        <str>   BLAST type: 'blastn', 'blastp', 'blastx', 'tblastx', or 'tblastn' [default: $blast_type]"
     echo "  --blast_task        <str>   'Task' for blastn or blastp, e.g. 'megablast' for blastn  [default: BLAST program default]"
@@ -210,6 +212,10 @@ run_blast() {
 }
 
 process_blast() {
+    n_subjects_raw=$(cut -f 2 "$blast_out_raw" | sort -u | wc -l)
+    n_queries_raw=$(cut -f 1 "$blast_out_raw" | sort -u | wc -l)
+    log_time "Number of distinct subjects in the raw BLAST output file: $n_subjects_raw"
+    log_time "Number of distinct queries in the raw BLAST output file: $n_queries_raw"
     log_time "Nr of hits in the raw BLAST output file: $(wc -l < "$blast_out_raw")"
 
     # Sort by: query name (1), then e-value (11), then bitscore (12), then % identical (3)
