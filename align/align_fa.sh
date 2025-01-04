@@ -11,8 +11,8 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Align sequences in a multi-FASTA file with MAFFT (default) or MUSCLE"
-SCRIPT_VERSION="2023-08-28"
+DESCRIPTION="Align nucleotide or amino acid sequences in a multi-FASTA file with MAFFT (default) or MUSCLE"
+SCRIPT_VERSION="2025-01-04"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -21,9 +21,7 @@ FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main
 env=conda                           # Use a 'conda' env or a Singularity 'container'
 container_path=
 container_url=
-dl_container=false
 container_dir="$HOME/containers"
-strict_bash=true
 version_only=false                 # When true, just print tool & script version info and exit
 
 # Defaults - tool parameters
@@ -46,11 +44,14 @@ script_help() {
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--infile         <file>  Input multi-FASTA file with sequences to be aligned"
+    echo "                              FASTA can contain either nucleotide or amino acid (protein) sequences"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)  [default: same as input dir]"
     echo "  --aligner           <str>   Aligner: 'mafft' or 'muscle'            [default: $aligner]"
-    echo "  --no_header_fix             Don't fix the FASTA header (e.g. remove 'reverse') [default: fix header]"
+    echo "  --no_header_fix             Don't fix output FASTA header           [default: fix header]"
+    echo "                              By default, the script will remove"
+    echo "                              aligner-added header text like 'reverse'"
     echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
@@ -59,10 +60,8 @@ script_help() {
     echo "                                 you'll have to provide one in order to run the script with a container.)"
     echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
     echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
+    echo "                                A container will only be downloaded if an URL is provided with this option"
     echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
-    echo "  --no_strict                 Don't use strict Bash settings ('set -euo pipefail') -- can be useful for troubleshooting"
     echo "  -h/--help                   Print this help message and exit"
     echo "  -v                          Print the version of this script and exit"
     echo "  --version                   Print the version of $TOOL_NAME and exit"
@@ -112,10 +111,8 @@ while [ "$1" != "" ]; do
         --no_header_fix )   shift && fix_header=false ;;
         --opts )            shift && opts=$1 ;;
         --env )             shift && env=$1 ;;
-        --no_strict )       strict_bash=false ;;
-        --dl_container )    dl_container=true ;;
         --container_dir )   shift && container_dir=$1 ;;
-        --container_url )   shift && container_url=$1 && dl_container=true ;;
+        --container_url )   shift && container_url=$1 ;;
         -h | --help )       script_help; exit 0 ;;
         -v )                script_version; exit 0 ;;
         --version )         version_only=true ;;
@@ -128,7 +125,7 @@ done
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
 # Strict Bash settings
-[[ "$strict_bash" == true ]] && set -euo pipefail
+set -euo pipefail
 
 # Constants and vars based on aligner choise
 TOOL_BINARY="$aligner"
@@ -145,7 +142,7 @@ else
 fi
 
 # Load software
-load_env "$conda_path" "$container_path" "$dl_container"
+load_env "$conda_path" "$container_path" #"$dl_container"
 [[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
@@ -185,15 +182,15 @@ if [[ "$aligner" == "mafft" ]]; then
         --thread "$threads" \
         $opts \
         "$infile" > "$outfile"
-else
+elif [[ "$aligner" == "muscle" ]]; then
     runstats $CONTAINER_PREFIX $TOOL_BINARY \
         -in "$infile" \
         -out "$outfile"
         $opts
 fi
 
-## Remove extra info after space from FASTA header lines
-## ... and remove "_R_" prefixes for reverse-complemented seqs
+# Remove aligner-added extra info after space from FASTA header lines
+# ... and remove "_R_" prefixes for reverse-complemented seqs
 if [[ "$fix_header" == true ]]; then
     log_time "Fixing FASTA headers..."
     sed -i -E -e 's/(^>[^ ]+) .*/\1/' -e 's/^>_R_/>/' "$outfile"
