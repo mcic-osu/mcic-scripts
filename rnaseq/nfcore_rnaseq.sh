@@ -28,9 +28,9 @@ OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/next
 ALIGNER_OPT="--aligner star_salmon "                   # Always use STAR => Salmon
 
 # Defaults
-workflow_version=3.14.0                                # The version of the nf-core workflow
+workflow_version=3.18.0                                # The version of the nf-core workflow
 conda_path=/fs/project/PAS0471/jelmer/conda/nextflow   # Conda environment with Nextflow & nf-core tools
-osc_account=PAS0471                                    # If the scripts is submitted with another project, this will be updated (line below)
+osc_account=PAS0471                                    # If the script is submitted with another project, this will be updated (line below)
 [[ -n $SLURM_JOB_ACCOUNT ]] && osc_account=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
 container_dir=/fs/scratch/"$osc_account"/containers    # The workflow will download containers to this dir
 work_dir=/fs/scratch/"$osc_account"/$USER/nfc-rnaseq   # 'work dir' for initial outputs (selected, final outputs go to the outdir)
@@ -67,8 +67,8 @@ script_help() {
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --workflow_version  <str>   Nf-core rnaseq workflow version         [default: $workflow_version]"
-    echo "  --biotype_qc                Run FeatureCounts biotype QC            [default: $biotype_qc]"
-    echo "                                Turned off by default because this will often result in errors"
+    echo "  --biotype_qc                Run FeatureCounts' biotype QC           [default: $biotype_qc]"
+    echo "                                Turned off by default because this will often result in runtime errors"
     echo "  --no_gcbias                 Don't use the Salmon '--gcBias' option  [default: use this option]"
     echo "  --no_seqbias                Don't use the Salmon '--seqBias' option [default: use this option]"
     echo "  --no_rrna_removal           Don't run SortMeRNA to remove rRNA      [default: remove rRNA]"
@@ -85,7 +85,7 @@ script_help() {
     echo "                                - If the correct version of the workflow is already present in this dir, it won't be downloaded again"
     echo "  --container_dir     <dir>   Directory with container images         [default: $container_dir]"
     echo "                                - Required container images will be downloaded here when not already present" 
-    echo "  --config            <file>  Additional config file                  [default: none]"
+    echo "  --config            <file>  Additional Nextflow config file         [default: none]"
     echo "                                - Settings in this file will override default settings"
     echo "                                - Note that the mcic-scripts OSC config file will always be included"
     echo "                                  (https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config)"
@@ -283,6 +283,7 @@ echo "Config file argument:             $config_arg"
 echo "=========================================================================="
 echo "Listing the input files and showing the first lines of the samplesheet:"
 ls -lh "$ref_fasta" "$ref_annot"
+echo
 head "$samplesheet"
 echo "=========================================================================="
 set_threads "$IS_SLURM"
@@ -310,7 +311,7 @@ fi
 if [[ ! -d "$workflow_dir_full" ]]; then
     mkdir -p "$(dirname "$workflow_dir_base")"
     log_time "Downloading the workflow repository to $workflow_dir_base"
-    nf-core download "$WORKFLOW_NAME" \
+    nf-core pipelines download "$WORKFLOW_NAME" \
         --revision "$workflow_version" \
         --compress none \
         --container-system singularity \
