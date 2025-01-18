@@ -15,32 +15,33 @@
 # Constants - generic
 DESCRIPTION="Run the Nextflow-core RNAseq pipeline from https://nf-co.re/rnaseq
   with aligner option STAR => Salmon"
-SCRIPT_VERSION="2024-06-03"
+SCRIPT_VERSION="2025-01-18"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="nextflow run"
 export TOOL_NAME="nextflow"
 VERSION_COMMAND="nextflow -v"
 
-# Constants - parameters
-WORKFLOW_NAME=rnaseq                                   # The name of the nf-core workflow
+# Constants - specific
+WORKFLOW_NAME=nf-core/rnaseq                           # The name of the nf-core workflow
 OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config # Nextflow <=> OSC config file
 ALIGNER_OPT="--aligner star_salmon "                   # Always use STAR => Salmon
 
-# Defaults
+# Defaults - pipeline parameters
 workflow_version=3.18.0                                # The version of the nf-core workflow
-conda_path=/fs/project/PAS0471/jelmer/conda/nextflow   # Conda environment with Nextflow & nf-core tools
-osc_account=PAS0471                                    # If the script is submitted with another project, this will be updated (line below)
-[[ -n $SLURM_JOB_ACCOUNT ]] && osc_account=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
-container_dir=/fs/scratch/"$osc_account"/containers    # The workflow will download containers to this dir
-work_dir=/fs/scratch/"$osc_account"/$USER/nfc-rnaseq   # 'work dir' for initial outputs (selected, final outputs go to the outdir)
-workflow_dir_base=software/nfc-rnaseq                  # Dir to download the workflow code etc. to 
-profile="singularity"                                  # 'singularity' to have the workflow use containers (alternatively, 'conda')
 resume=true && resume_arg="-resume"                    # Resume the workflow from wherever it left off
 biotype_qc=false                                       # Activate --skip_biotype_qc option of the workflow
 salmon_gcbias=true                                     # Pass the --gcBias option to Salmon
 salmon_seqbias=true                                    # Pass the --seqBias option to Salmon
 rm_rrna=true                                           # Run SortMeRNA to remove rRNA
+
+# Defaults - infrastructure
+conda_path=/fs/project/PAS0471/jelmer/conda/nextflow   # Conda environment with Nextflow & nf-core tools
+osc_account=PAS0471                                    # If the script is submitted with another project, this will be updated (line below)
+[[ -n $SLURM_JOB_ACCOUNT ]] && osc_account=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
+container_dir=/fs/scratch/"$osc_account"/containers    # The workflow will download containers to this dir
+work_dir=/fs/scratch/"$osc_account"/$USER/nfc-rnaseq   # 'work dir' for initial outputs (selected, final outputs go to the outdir)
+profile="singularity"                                  # 'singularity' to have the workflow use containers (alternatively, 'conda')
 version_only=false                                     # When true, just print tool & script version info and exit 
 
 # ==============================================================================
@@ -81,8 +82,6 @@ script_help() {
     echo
     echo "NEXTFLOW-RELATED OPTIONS:"
     echo "  --restart                   Restart workflow from the beginning     [default: resume workflow if possible]"
-    echo "  --workflow_dir      <dir>   Dir with/for the workflow repo          [default: $workflow_dir_base]"
-    echo "                                - If the correct version of the workflow is already present in this dir, it won't be downloaded again"
     echo "  --container_dir     <dir>   Directory with container images         [default: $container_dir]"
     echo "                                - Required container images will be downloaded here when not already present" 
     echo "  --config            <file>  Additional Nextflow config file         [default: none]"
@@ -189,7 +188,6 @@ while [ "$1" != "" ]; do
         --no_rrna_removal )         rm_rrna=false ;;
         --more_opts )               shift && more_opts=$1 ;;
         --workflow_version )        shift && workflow_version=$1 ;;
-        --workflow_dir )            shift && workflow_dir_base=$1 ;;
         --container_dir )           shift && container_dir=$1 ;;
         --config | -config )        shift && config_file=$1 ;;
         --profile | -profile )      shift && profile=$1 ;;
@@ -229,12 +227,12 @@ config_arg="-c $OSC_CONFIG"
 [[ -n "$config_file" ]] && config_arg="$config_arg -c ${config_file/,/ -c }"
 
 # Setup Nextflow arguments: annotation filetype
-if [[ "$ref_annot" =~ .*\.gff3? ]]; then
+if [[ "$ref_annot" =~ .*\.gff ]]; then
     annot_opt="--gff $ref_annot"
 elif [[ "$ref_annot" =~ .*\.gtf ]]; then
     annot_opt="--gtf $ref_annot"
 else
-    die "Unknown file format of annotation file $ref_annot (should be '.gff'. , 'gff3', or '.gtf')"
+    die "Annotation file $ref_annot should have extension '.gff'. or '.gtf' - please rename .gff3 files to .gff"
 fi
 
 # Other opts
@@ -248,7 +246,6 @@ else
 fi
 
 # Other output dirs
-workflow_dir_full="$workflow_dir_base"/${workflow_version//./_}
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 trace_dir="$outdir"/pipeline_info
 
@@ -276,7 +273,6 @@ echo "NEXTFLOW-RELATED SETTINGS:"
 echo "Resume previous run?              $resume"
 echo "Container dir:                    $container_dir"
 echo "Scratch (work) dir:               $work_dir"
-echo "Pipeline source code dir:         $workflow_dir_full"
 echo "Config 'profile':                 $profile"
 [[ -n "$config_file" ]] && echo "Additional config file:           $config_file"
 echo "Config file argument:             $config_arg"
@@ -307,25 +303,10 @@ if [[ "$osc_account" != "PAS0471" ]]; then
     sed -i "s/--account=PAS0471/--account=$osc_account/" "$OSC_CONFIG"
 fi
 
-# Download workflow, if needed
-if [[ ! -d "$workflow_dir_full" ]]; then
-    mkdir -p "$(dirname "$workflow_dir_base")"
-    log_time "Downloading the workflow repository to $workflow_dir_base"
-    nf-core pipelines download "$WORKFLOW_NAME" \
-        --revision "$workflow_version" \
-        --compress none \
-        --container-system singularity \
-        --container-cache-utilisation amend \
-        --parallel-downloads "$threads" \
-        --outdir "$workflow_dir_base" \
-        --force
-    echo
-fi
-
 # Run the workflow
 log_time "Starting the workflow.."
-runstats $TOOL_BINARY \
-    "$workflow_dir_full" \
+runstats $TOOL_BINARY $WORKFLOW_NAME \
+    -r $workflow_version \
     --input "$samplesheet" \
     --outdir "$outdir" \
     --fasta "$ref_fasta" \
