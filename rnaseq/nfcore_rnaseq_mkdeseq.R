@@ -7,9 +7,13 @@
 
 # DESCRIPTION ------------------------------------------------------------------
 # This script will create a DESeq object from one of the RDS files that the
-# nf-core RNAseq pipeline produces.
+# nf-core 'rnaseq' pipeline produces.
 
 # SETUP ------------------------------------------------------------------------
+# Constants
+# - Expected TSV file location within the nf-core rnaseq output:
+INFILE_PART <- "star_salmon/salmon.merged.gene_counts_length_scaled.tsv"
+
 # Load/install packages
 rep <- "https://cloud.r-project.org"
 lib <- Sys.getenv("R_LIBS_USER")
@@ -28,39 +32,40 @@ suppressPackageStartupMessages( {
 parser <- ArgumentParser()
 parser$add_argument("-i", "--indir",
                     type = "character",
-                    required = FALSE,
-                    default = "results/nfc_rnaseq",
-                    help = "Top-level dir with nf-core RNAseq workflow results")
+                    required = TRUE,
+                    default = NULL,
+                    help = "Top-level dir with nf-core RNAseq workflow results [REQUIRED]")
 parser$add_argument("-o", "--outfile",
                     type = "character",
                     required = FALSE,
                     default = NULL,
-                    help = "Output file path (default: dds.rds in input dir))")
+                    help = "Output file path [default: dds.rds in input dir])")
 parser$add_argument("--meta",
                     type = "character",
                     required = FALSE,
                     default = NULL,
-                    help = "Metadata file (TSV)")
+                    help = "Metadata file (TSV) [optional]")
 parser$add_argument("--id_col",
                     type = "integer",
                     required = FALSE,
                     default = 1,
-                    help = "In metadata file, column number with sample IDs")
+                    help = "In metadata file, column number with sample IDs [default: 1]")
 args <- parser$parse_args()
 
+# Save argument in variables
 indir <- args$indir
 outfile <- args$outfile
 meta_file <- args$meta
 sample_id_column <- args$id_col
 
 # Define input files
-infile_part <- "star_salmon/salmon.merged.gene_counts_length_scaled.rds"
-infile <- file.path(indir, infile_part)
+infile <- file.path(indir, INFILE_PART)
 
 # Output files
 if (is.null(outfile)) outfile <- file.path(indir, "dds.rds")
 outdir <- dirname(outfile)
-dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
+logdir <- file.path(outdir, "logs")
+dir.create(logdir, showWarnings = FALSE, recursive = TRUE)
 
 # Report
 message("Starting script nfc-rnaseq_make-deseq.R")
@@ -80,9 +85,10 @@ if (!is.null(meta_file)) if (!file.exists(meta_file)) stop("Metadata file ", met
 
 # CREATE THE DESEQ OBJECT ------------------------------------------------------
 # Load counts
-count_obj <- readRDS(infile)
-count_mat <- round(assays(count_obj)$counts)
-
+count_df <- read.delim(infile)
+rownames(count_df) <- count_df$gene_id
+count_df$gene_id <- count_df$gene_name <- NULL
+count_mat <- round(as.matrix(count_df))
 message("\n# Dimensions of the count matrix:")
 dim(count_mat)
 
@@ -118,7 +124,9 @@ if (!is.null(meta_file)) {
   message("\n# Sample names:")
   print(rownames(meta_df))
 } else {
-  meta_df <- count_obj@colData
+  # Create dummy metadata df on the fly
+  meta_df <- data.frame(sample_id = colnames(count_mat))
+  rownames(meta_df) <- meta_df$sample_id
 }
 
 # Create DESeq object (For now, set design to dummy `~1` => intercept only)
