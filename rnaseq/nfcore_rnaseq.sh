@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=PAS0471
-#SBATCH --time=24:00:00
+#SBATCH --time=48:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
 #SBATCH --mail-type=END,FAIL
@@ -98,9 +98,10 @@ script_help() {
     echo "  -v                          Print the version of this script and exit"
     echo
     echo "HARDCODED WORKFLOW OPTIONS & DEFAULTS THAT DIFFER FROM THE WORKFLOW DEFAULTS:"
-    echo "  - The option '--aligner star_salmon' is hardcoded"
+    echo "  - The option '--aligner star_salmon' is hardcoded (always used)"
     echo "  - Defaults of this script that differ from the workflow's defaults:"
     echo "      - Using the Salmon '--gcBias' and '--seqBias' options (see '--no_gcbias' and '--no_seqbias' script options above)"
+    echo "      - Removing rRNA with SortmeRNA using the --remove_ribo_rna option"
     echo "      - Using the workflow's '--skip_biotype_qc' option, since FeatureCounts biotype QC often results in errors due to GTF file differences"
     echo "          (see the '--biotype_qc' option of this script above)"
     echo
@@ -237,7 +238,7 @@ fi
 
 # Other opts
 [[ "$biotype_qc" == false ]] && biotype_opt="--skip_biotype_qc"
-[[ "$rm_rrna" == true ]] && rrna_opt="--remove_ribo_rna --save_non_ribo_reads"
+[[ "$rm_rrna" == true ]] && rrna_opt="--remove_ribo_rna"
 if [[ "$salmon_gcbias" == true ]]; then
    [[ "$salmon_seqbias" == true ]] && salmon_opts=(--extra_salmon_quant_args '--gcBias --seqBias')
    [[ "$salmon_seqbias" == false ]] && salmon_opts=(--extra_salmon_quant_args ' --gcBias')
