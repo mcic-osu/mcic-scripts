@@ -1,11 +1,8 @@
 #!/usr/bin/env Rscript
-
 #SBATCH --account=PAS0471
 #SBATCH --time=15
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=8G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
 #SBATCH --job-name=ps_make
 #SBATCH --output=slurm-ps_make-%j.out
 

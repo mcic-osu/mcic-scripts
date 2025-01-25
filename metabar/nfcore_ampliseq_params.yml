@@ -1,0 +1,61 @@
+# ==============================================================================
+#                         INPUT AND OUTPUT FILES
+# ==============================================================================
+# Folder with FASTQ files (all will be used)
+input_folder: '/path/to/folder/with/FASTQ/files'
+
+# FASTQ file extension pattern -- adjust as necessary
+extension: '/*_R{1,2}_001.fastq.gz'
+
+# Metadata file: plain-text TSV with sample IDs in the first column named 'ID'
+metadata: '/path/to/metadata/file.tsv'
+# Example file format (see also https://nf-co.re/ampliseq/usage#metadata)
+#> ID        treatment
+#> sample1   control
+#> sample2   inoculated
+
+# Column name in metadata file with sample category/grouping info:
+metadata_category: 'treatment'
+metadata_category_barplot: 'treatment'
+
+# ==============================================================================
+#                         KEY DATASET-SPECIFIC SETTINGS
+# ==============================================================================
+# Forward and reverse primer sequences:
+FW_primer: 'TCGTCGGCAGCGTCAGATGTGTATAAGAGACAGCCTACGGGNGGCWGCAG'
+RV_primer: 'GTCTCGTGGGCTCGGAGATGTGTATAAGAGACAGGACTACHVGGGTATCTAATCC'
+
+# Min. and max. expected ASV lengths (shorter and longer ASVs will be filtered out):
+min_len_asv: 250
+max_len_asv: 275
+
+# ==============================================================================
+#                         16S vs ITS SETTINGS
+# ==============================================================================
+# Taxa to keep/exclude
+# A)
+#   (See https://nf-co.re/ampliseq/parameters#filter_ssu)
+filter_ssu: 'bac'
+# B) 
+exclude_taxa: 'mitochondria,chloroplast,archaea'
+
+# Whether data is 16S or ITS: false => 16S / true => ITS
+illumina_pe_its: false
+# Reference taxonomy for taxonomic classification of ASVs
+dada_ref_taxonomy: 'silva=138' # For ITS, use: 'unite-fungi=9.0'
+# Whether to add UNITE species hypotheses (SH). Set to true for ITS; doesn't apply to 16S
+addsh: false
+
+# ==============================================================================
+#                         GENERAL SETTINGS
+# ==============================================================================
+# Desired forward and reverse read lengths after truncation:
+trunclenf: 200
+trunclenr: 150
+# DADA2 ASV inference method, one of: 'independent' / 'pooled' / 'pseudo'
+sample_inference: 'pseudo'
+# Min. ASV frequency (rarer will be filtered out)
+min_frequency: 2
+# If this is set to false, the pipeline will stop running when certain samples
+# have too few reads left after trimming
+ignore_failed_trimming: true
