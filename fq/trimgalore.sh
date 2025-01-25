@@ -25,12 +25,13 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 env=container              # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/trimgalore
 container_url=docker://quay.io/biocontainers/trim-galore:0.6.10--hdfd78af_0
-container_dir=/fs/ess/PAS0471/containers
+container_dir="$HOME"/containers
 version_only=false
 
 # Defaults - tool parameters
-quality=20                 # => 20 is also the TrimGalore default
-length=20                  # => 20 is also the TrimGalore default
+stringency=2               # => TrimGalore default is 1           (= min. adapter overlap) #!
+quality=20                 # => 20 is also the TrimGalore default (= min. Phred score)
+length=20                  # => 20 is also the TrimGalore default (= min. read length)
 single_end=false           # => paired-end by default
 two_color=false            # => Assume non-2-color chemistry (used by NextSeq/NovaSeq)
 run_fastqc=true            # => Run FastQC after TrimGalore
@@ -59,8 +60,9 @@ script_help() {
     echo "OTHER KEY OPTIONS:"
     echo "  -q/--quality    <int>   Quality trimming threshold         [default: $quality (also the $TOOL_NAME default)]"
     echo "  -l/--length     <int>   Minimum read length                [default: $length (also the $TOOL_NAME default)]"
-    echo "  -s/--single_end         Input is single-end                [default: $single_end]"
-    echo "  --two_color             Reads are from NextSeq/NovaSeq with 2-color chemistry"
+    echo "  --stringency    <int>   Minimum adapter overlap length     [default: $stringency (NOTE: The TrimGalore default is 1)]"
+    echo "  --single_end            Input is a single-end FASTQ file   [default: $single_end]"
+    echo "  --2colour/--nextseq     Reads are from NextSeq/NovaSeq with 2-color chemistry"
     echo "                            This setting will help remove polyG tails [default: $two_color]"
     echo "  --no_fastqc             Don't run FastQC after trimming    [default: run FastQC]"
     echo "  --more_opts             Additional options to pass to $TOOL_NAME"
@@ -125,21 +127,22 @@ more_opts=
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --R1 )         shift && R1_in=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
-        -q | --quality )    shift && quality=$1 ;;
-        -l | --length )     shift && length=$1 ;;
-        -s | --single_end ) single_end=true ;;
-        --two_color )       two_color=true ;;
-        --no_fastqc )       run_fastqc=false ;;
-        --more_opts )       shift && more_opts=$1 ;;
-        --env )             shift && env=$1 ;;
-        --container_dir )   shift && container_dir=$1 ;;
-        --container_url )   shift && container_url=$1 ;;
-        -h | --help )       script_help; exit 0 ;;
-        -v )                script_version; exit 0 ;;
-        --version )         version_only=true ;;
-        * )                 die "Invalid option $1" "$all_opts" ;;
+        -i | --R1 )             shift && R1_in=$1 ;;
+        -o | --outdir )         shift && outdir=$1 ;;
+        -q | --quality )        shift && quality=$1 ;;
+        -l | --length )         shift && length=$1 ;;
+        --stringency )          shift && stringency=$1 ;;
+        --single_end )          single_end=true ;;
+        --2colour | --nextseq ) two_color=true ;;
+        --no_fastqc )           run_fastqc=false ;;
+        --more_opts )           shift && more_opts=$1 ;;
+        --env )                 shift && env=$1 ;;
+        --container_dir )       shift && container_dir=$1 ;;
+        --container_url )       shift && container_url=$1 ;;
+        -h | --help )           script_help; exit 0 ;;
+        -v )                    script_version; exit 0 ;;
+        --version )             version_only=true ;;
+        * )                     die "Invalid option $1" "$all_opts" ;;
     esac
     shift
 done
@@ -207,18 +210,21 @@ fi
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options passed to this script:        $all_opts"
-echo "R1 input file:                            $R1_in"
-echo "Base output dir:                          $outdir"
+echo
+echo "R1 input FASTQ file:                      $R1_in"
+echo "Output dir:                               $outdir"
+echo "Are sequences single-end?                 $single_end"
+echo "Are sequences from NextSeq/NovaSeq?       $two_color"
+echo "Run FastQC after trimming?                $run_fastqc"
+echo
+echo "TRIMMING THRESHOLDS:"
 echo "Sequence quality threshold:               $quality"
 echo "Minimum sequence length:                  $length"
-echo "Sequences are single-end:                 $single_end"
-echo "Sequences are from NextSeq/NovaSeq:       $two_color"
-echo "Run FastQC:                               $run_fastqc"
+echo "Minimum adapter overlap (stringency):     $stringency"
 echo
-[[ "$single_end" != "true" ]] && echo "R2 input file (inferred):                 $R2_in"
+[[ "$single_end" != "true" ]] && echo "R2 input FASTQ file (inferred):           $R2_in"
 echo "Sample ID (inferred):                     $sample_id"
-echo "Output dir - FastQC:                      $outdir_fastqc"
-echo "R1 output file:                           $R1_out"
+echo "R1 output file:            q               $R1_out"
 [[ "$single_end" != "true" ]] && echo "R2 output file:                           $R2_out"
 [[ -n $more_opts ]] && echo "Other options for $TOOL_NAME:             $more_opts"
 log_time "Listing the input file(s):"
@@ -235,6 +241,7 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
     --output_dir "$outdir_trim" \
     $quality_arg \
     --length "$length" \
+    --stringency "$stringency" \
     --cores "$threads" \
     "${fastqc_args[@]}" \
     $more_opts \
