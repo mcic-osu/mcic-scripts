@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=16G
+#SBATCH --time=3:00:00
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=40G
 #SBATCH --job-name=fqsub
 #SBATCH --output=slurm-fqsub-%j.out
 
@@ -177,12 +177,6 @@ fi
 # Define outputs based on script parameters
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 
-# Number of reads in input FASTQ file
-n_total=$(zcat "$R1_in" | awk '{s++}END{print s/4}')
-
-# If prop_reads is given, calculate n_reads
-[[ -n $prop_reads ]] && n_reads=$(python -c "print(int($n_total * $prop_reads))")
-
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
 # ==============================================================================
@@ -192,9 +186,6 @@ echo "All options passed to this script:        $all_opts"
 echo "Output dir:                               $outdir"
 echo "Input R1 FASTQ file:                      $R1_in"
 [[ "$single_end" == false ]] && echo "Input R2 FASTQ file:                      $R2_in"
-echo "Input nr of reads:                        $n_total"
-[[ $prop_reads != "" ]] && echo "Proportion of reads to keep:              $prop_reads"
-echo "Output number of reads:                   $n_reads"
 echo "Reads are single-end:                     $single_end"
 [[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
 log_time "Listing the input file(s):"
@@ -204,21 +195,38 @@ ls -lh "$R1_in" "$R2_in"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
+# STEP A: Count nr of input reads ---------------------------------------------
+log_time "Counting the number of reads in the input..."
+# Number of reads in input FASTQ file:
+n_total=$(zcat "$R1_in" | awk '{s++}END{print s/4}')
+# If prop_reads is given, calculate n_reads:
+[[ -n $prop_reads ]] && n_reads=$(python -c "print(int($n_total * $prop_reads))")
+# Report:
+echo "Input nr of reads:                        $n_total"
+[[ $prop_reads != "" ]] && echo "Proportion of reads to keep:              $prop_reads"
+echo "Output number of reads:                   $n_reads"
+
+# STEP B: Run seqtk ------------------------------------------------------------
+# Forward reads:
 log_time "Running $TOOL_NAME..."
 runstats $CONTAINER_PREFIX $TOOL_BINARY \
     -s$rand "$R1_in" "$n_reads" $opts | gzip > "$R1_out"
+# Reverse reads:
 if [[ "$single_end" == false ]]; then
+    log_time "Running $TOOL_NAME for the reverse reads..."
     runstats $CONTAINER_PREFIX $TOOL_BINARY \
         -s$rand "$R2_in" "$n_reads" | gzip > "$R2_out"
 fi
 
-# Count reads in output
+# STEP C: Count reads in output ------------------------------------------------
+log_time "Counting the number of reads in the output..."
 n_R1_out=$(zcat "$R1_out" | awk '{s++}END{print s/4}')
 [[ "$single_end" == false ]] && n_R2_out=$(zcat "$R2_out" | awk '{s++}END{print s/4}')
 log_time "Number of reads in output file(s):"
 echo "R1: $n_R1_out"
 [[ "$single_end" == false ]] && echo "R2: $n_R2_out"
 
+# Final reporting
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/"$sample_id"*
 final_reporting "$LOG_DIR"
