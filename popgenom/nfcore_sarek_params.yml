@@ -1,0 +1,33 @@
+# Example/template parameter file for the Nextflow/nf-core ampliseq pipeline (https://nf-co.re/ampliseq)
+# Use with the script mcic-scripts/popgenom/nfcore_sarek.sh
+# Jelmer Poelstra, last edited 2025-01-26 (https://github.com/mcic-osu/mcic-scripts)
+# Available workflow parameters are listed at https://nf-co.re/sarek/parameters
+
+# ==============================================================================
+#                           INPUTS AND OUTPUTS
+# ==============================================================================
+# Only use provided reference genome:
+igenomes_ignore: true
+
+# Outputs
+save_mapped: true
+# Saves output from mapping (if --save_mapped), Markduplicates & Baserecalibration as BAM file instead of CRAM
+save_output_as_bam: true
+
+# ==============================================================================
+#                             TOOL PARAMETERS
+# ==============================================================================
+# Remove adapters with FASTP
+trim_fastq: true
+detect_adapter_for_pe: true
+
+# ==============================================================================
+#                         TOOLS TO RUN OR SKIP
+# ==============================================================================
+# Comma-separated list of one or more tools for variant calling and annotation
+# See https://nf-co.re/sarek/parameters#tools for options 
+tools: 'mpileup,freebayes,haplotypecaller'
+
+# Comma-separated list of one or more tools for variant calling and annotation
+skip_tools: 'baserecalibrator'
+
