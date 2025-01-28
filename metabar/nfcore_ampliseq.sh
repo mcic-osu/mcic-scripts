@@ -53,14 +53,15 @@ script_help() {
     echo "REQUIRED OPTIONS:"
     echo "  -o/--outdir         <dir>   Dir for pipeline output files (will be created if needed)"
     echo "  -p/--params         <file>  YAML file with workflow parameters"
-    echo "                              Use mcic-scripts/metabar/nfcore_ampliseq_params.yml as template"
+    echo "                              Use 'mcic-scripts/metabar/nfcore_ampliseq_params.yml' as template"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --workflow_version  <str>   Nf-core ampliseq workflow version to use                    [default: $workflow_version]"
-    echo "  --more_opts         <str>   Additional arguments, all in a single quoted string, to pass to the workflow"
-    echo
-    echo "NEXTFLOW AND UTILITY OPTIONS:"
     echo "  --restart                   Don't attempt to resume workflow run, but start over        [default: resume workflow]"
+    echo
+    echo "ADVANCED NEXTFLOW-RELATED OPTIONS:"
+    echo "  --work_dir           <dir>  Scratch (work) dir for the workflow                         [default: $work_dir]"
+    echo "                                - This is where the workflow results will be stored before final results are copied to the output dir."
     echo "  --container_dir     <dir>   Directory with container images                             [default: $container_dir]"
     echo "                                - Required images will be downloaded here when not already present here" 
     echo "  --config            <file>  Additional config file                                      [default: none]"
@@ -68,8 +69,8 @@ script_help() {
     echo "                                - Note that the mcic-scripts OSC config file will always be included, too"
     echo "                                  (https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config)"
     echo "  --profile            <str>  'Profile' to use from one of the config files               [default: $profile]"
-    echo "  --work_dir           <dir>  Scratch (work) dir for the workflow                         [default: $work_dir]"
-    echo "                                - This is where the workflow results will be stored before final results are copied to the output dir."
+    echo
+    echo "UTILITY OPTIONS:"
     echo "  -h/--help                   Print this help message and exit"
     echo "  -v                          Print the version of this script and exit"
     echo "  --version                   Print the version of Nextflow and exit"
@@ -123,7 +124,6 @@ source_function_script $IS_SLURM
 outdir=
 params_file=
 config_file=
-more_opts=
 
 # Parse command-line args
 all_opts="$*"
@@ -133,7 +133,6 @@ while [ "$1" != "" ]; do
         -p | --params )                 shift && params_file=$1 ;;
         --workflow_version )            shift && workflow_version=$1 ;;
         --container_dir )               shift && container_dir=$1 ;;
-        --more_opts )                   shift && more_opts=$1 ;;
         --config | -config )            shift && config_file=$1 ;;
         --profile | -profile )          shift && profile=$1 ;;
         --work_dir | -work-dir )        shift && work_dir=$1 ;;
@@ -225,8 +224,7 @@ runstats $TOOL_BINARY $WORKFLOW_NAME \
     -ansi-log false \
     -profile "$profile" \
     $config_opt \
-    $resume_opt \
-    $more_opts
+    $resume_opt
 
 # List the output, report version, etc
 log_time "Listing files in the output dir:"
