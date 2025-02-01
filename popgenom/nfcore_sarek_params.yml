@@ -19,7 +19,6 @@ save_output_as_bam: true
 # ==============================================================================
 # Remove adapters with FASTP
 trim_fastq: true
-detect_adapter_for_pe: true
 
 # ==============================================================================
 #                         TOOLS TO RUN OR SKIP
