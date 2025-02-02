@@ -1,0 +1,57 @@
+# Example/template parameter file for the Nextflow/nf-core taxprofiler pipeline (https://nf-co.re/taxprofiler)
+# Use with the shell script mcic-scripts/meta/nfcore_taxprofiler.sh
+# Jelmer Poelstra, last edited 2025-01-25 (https://github.com/mcic-osu/mcic-scripts)
+
+# ==============================================================================
+#           PIPELINE PARAMETERS THAT SHOULD *NOT* BE SPECIFIED HERE
+# ==============================================================================
+# When using the script mcic-scripts/meta/nfcore_taxprofiler.sh,
+# don't use any of the following workflow parameters in this file,
+# but instead, pass those to the script directly:
+## 'input:'       => Use the shell script's '--fq_dir' or '--samplesheet' option
+## 'outdir:'      => Use the shell script's '--outdir' option
+## 'databases:'   => Use the shell script's '--databases' option
+
+# For building databases, see:
+# https://nf-co.re/taxprofiler/1.2.2/docs/usage/usage/tutorials#retrieving-databases-or-building-custom-databases
+
+# ==============================================================================
+#                  WHICH CLASSIFIERS/PROFILERS TO RUN
+# ==============================================================================
+# For choosing tools, see also https://ccb.jhu.edu/software/choosing-a-metagenomics-classifier/
+# NOTE: For every tool included here, a database needs to be provided in the databases CSV file
+#       (Except for Bracken, which can use Kraken2 databases)
+run_metaphlan: true
+run_kraken2: true
+run_bracken: true
+
+run_krakenuniq: false
+run_diamond: false
+run_centrifuge: false
+run_kaiju: false
+run_malt: false
+run_motus: false
+run_kmcp: false
+run_ganon: false
+
+# ==============================================================================
+#                         REMOVING HOST OR CONTAMINANT READS
+# ==============================================================================
+# See https://nf-co.re/taxprofiler/1.2.2/docs/usage/usage/tutorials
+perform_shortread_hostremoval: false
+hostremoval_reference: GCF_000819615.1_ViralProj14015_genomic.fna.gz
+
+# ==============================================================================
+#                         GENERAL SETTINGS
+# ==============================================================================
+# I would recommend the below settings for most or all datasets:
+perform_shortread_qc: true
+perform_shortread_complexityfilter: true
+perform_shortread_redundancyestimation: true
+run_profile_standardisation: true
+run_krona: true
+kraken2_save_readclassifications: true
+kraken2_save_minimizers: false
+
+# The pipeline's default for min. read length is 15, higher probably better / less wasteful:
+shortread_qc_minlength: 50
