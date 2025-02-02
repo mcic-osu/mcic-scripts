@@ -8,6 +8,7 @@
 #SBATCH --output=slurm-TODO_THIS_SOFTWARE-%j.out
 
 #TODO - Print version when there's an error
+#TODO - USE A SINGLE VERSION COMMAND THAT PRINTS SCRIPT AND TOOL VERSION
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
