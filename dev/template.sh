@@ -8,25 +8,25 @@
 #SBATCH --output=slurm-TODO_THIS_SOFTWARE-%j.out
 
 #TODO - Print version when there's an error
+#TODO - USE A SINGLE VERSION COMMAND THAT PRINTS SCRIPT AND TOOL VERSION
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION=""
-SCRIPT_VERSION="2023-07-30" #TODO
+DESCRIPTION="" #TODO
+SCRIPT_VERSION="2023-07-30" #TODO - UPDATE
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
 TOOL_BINARY=#TODO
 TOOL_NAME=#TODO
-TOOL_DOCS=#TODO
+TOOL_DOCS=#TODO - URL TO TOOL DOCS WEBSITE 
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
 env=conda                           # Use a 'conda' env or a Singularity 'container'
 conda_path=#TODO
-container_path=#TODO
 container_url=
 container_dir="$HOME/containers"
 version_only=false                 # When true, just print tool & script version info and exit
@@ -60,11 +60,10 @@ script_help() {
     echo
     echo "UTILITY OPTIONS:"
     echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
-    echo "                                (NOTE: If no default '--container_url' is listed below,"
-    echo "                                 you'll have to provide one in order to run the script with a container.)"
     echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
     echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
     echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
+    echo "  --container_path    <file>  Pre-existing Singularity container image file (.sif) to use"
     echo "  -h/--help                   Print this help message and exit"
     echo "  -v                          Print the version of this script and exit"
     echo "  --version                   Print the version of $TOOL_NAME and exit"
@@ -110,6 +109,7 @@ infile=
 outdir=
 more_opts=
 threads=
+container_path=
 
 # Parse command-line args
 all_opts="$*"

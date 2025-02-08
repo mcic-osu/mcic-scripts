@@ -1,0 +1,26 @@
+# Example/template parameter file for the Nextflow/nf-core smrnaseq pipeline (https://nf-co.re/smrnaseq)
+# Use with the shell script mcic-scripts/meta/nfcore_smrnaseq.sh
+# Jelmer Poelstra, last edited 2025-02-02 (https://github.com/mcic-osu/mcic-scripts)
+
+# ==============================================================================
+#           PIPELINE PARAMETERS THAT SHOULD *NOT* BE SPECIFIED HERE
+# ==============================================================================
+# When using the script mcic-scripts/meta/nfcore_smrnaseq.sh,
+# don't use any of the following workflow parameters in this file,
+# but instead, pass those to the script directly:
+## 'input:'       => Use the shell script's '--fq_dir' or '--samplesheet' option
+## 'fasta:'       => Use the shell script's '--fasta' option
+## 'outdir:'      => Use the shell script's '--outdir' option
+
+# ==============================================================================
+#                         GENERAL SETTINGS
+# ==============================================================================
+mirtrace_species: dme #! Change
+
+# Could use mirgeneDB instead of mirtrace
+mirgenedb: false
+#mirgenedb_species: XXX
+
+skip_mirdeep: false
+save_intermediates: true
+filter_contamination: false     # Not tested with non-human species

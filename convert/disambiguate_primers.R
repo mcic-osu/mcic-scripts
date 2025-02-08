@@ -19,7 +19,7 @@ pacman::p_load(char = packages, install = TRUE)
 parser <- ArgumentParser()
 parser$add_argument("-i", "--infile",
                     type = "character", required = TRUE, default = NULL,
-                    help = "Input dir with Kallisto output files (REQUIRED)")
+                    help = "Input FASTA file with primers with ambiguity codes (REQUIRED)")
 parser$add_argument("-o", "--outfile",
                     type = "character", required = FALSE, default = NULL,
                     help = "Output file (default: same as input, with '_disambig' in the name)")

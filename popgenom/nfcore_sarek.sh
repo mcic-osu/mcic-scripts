@@ -1,8 +1,6 @@
 #!/bin/bash
 #SBATCH --account=PAS0471
 #SBATCH --time=24:00:00
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=nfc_sarek
 #SBATCH --output=slurm-nfc_sarek-%j.out
@@ -11,8 +9,8 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Run the Nextflow/nf-core Sarek pipeline for non-model organism genomic variant callling"
-SCRIPT_VERSION="2025-01-18"
+DESCRIPTION="Run the Nextflow/nf-core Sarek pipeline (https://nf-co.re/sarek) for genomic variant callling"
+SCRIPT_VERSION="2025-01-26"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="nextflow run"
@@ -22,14 +20,13 @@ VERSION_COMMAND="nextflow -v"
 # Constants - specific
 WORKFLOW_NAME=nf-core/sarek                            # The name of the nf-core workflow
 OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config # Nextflow <=> OSC config file
-NONMODEL_OPTS="--igenomes_ignore --skip_tools baserecalibrator"
 
 # Defaults - pipeline parameters
 workflow_version=3.5.0                                 # The version of the nf-core workflow
 resume=true && resume_arg="-resume"                    # Resume the workflow from wherever it left off
 
 # Defaults - infrastructure
-conda_path=/fs/project/PAS0471/jelmer/conda/nextflow   # Conda environment with Nextflow & nf-core tools
+conda_path=/fs/ess/PAS0471/jelmer/conda/nextflow       # Conda environment with Nextflow & nf-core tools
 osc_account=PAS0471                                    # If the script is submitted with another project, this will be updated (line below)
 [[ -n $SLURM_JOB_ACCOUNT ]] && osc_account=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
 container_dir=/fs/scratch/"$osc_account"/containers    # The workflow will download containers to this dir
@@ -46,31 +43,30 @@ script_help() {
     echo "        =============================================="
     echo "DESCRIPTION:"
     echo "  $DESCRIPTION"
+    echo "  - Different from the Nextflow default, this script will try to 'resume' (rather than restart) a previous incomplete run by default"
     echo
     echo "USAGE / EXAMPLES:"
     echo "  - Basic usage (always submit your scripts to SLURM with 'sbatch'):"
-    echo "      sbatch $0 --samplesheet metadata/samplesheet.csv --genome data/assembly.fna -o results/sarek --tools freebayes"
-    echo "  - Use the Freebayes variant caller in addition to mpileup:"
-    echo "      sbatch $0 --samplesheet metadata/samplesheet.csv --genome data/assembly.fna -o results/sarek --tools freebayes,mpileup"
-    echo "  - Example of using '--more_args': save the BAM files"
-    echo "      sbatch $0 --samplesheet metadata/samplesheet.csv --genome data/assembly.fna -o results/sarek --more_args '--save_mapped --save_output_as_bam'"
+    echo "      sbatch $0 --samplesheet metadata/samplesheet.csv --ref_fasta data/assembly.fna -o results/sarek"
     echo "  - To just print the help message for this script:"
     echo "      bash $0 -h"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--samplesheet    <file>  Input samplesheet CSV file (see https://nf-co.re/sarek/usage)"
-    echo "  --genome            <file>  Reference genome FASTA file"
+    echo "  --ref_fasta         <file>  Reference genome FASTA file"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
+    echo "  -p/--params         <file>  YAML file with workflow parameters"
+    echo "                              Use 'mcic-scripts/popgenom/nfcore_sarek_params.yml' as template"
+    echo "TO TELL THE WORKFLOW ABOUT YOUR FASTQ FILES, USE ONE OF THE FOLLOWING TWO OPTIONS:"
+    echo "  --samplesheet       <file>  Input samplesheet CSV file (see https://nf-co.re/sarek/usage)"
+    echo "  --fq_dir            <dir>   Dir with FASTQ files -- this script will attempt to make a samplesheet"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --tools             <str>   Comma-separated list of one or more tools for variant calling and annotation"
-    echo "                              See https://nf-co.re/sarek/parameters#tools for options   [default: 'mpileup']"
-    echo "  --workflow_version  <str>   Nf-core rnaseq workflow version         [default: $workflow_version]"
-    echo "  --more_opts         <str>   Additional workflow parameters, for usage see example above"
-    echo "                              Available workflow parameters are listed at https://nf-co.re/sarek/parameters"
-    echo
-    echo "NEXTFLOW-RELATED OPTIONS:"
+    echo "  --workflow_version  <str>   Nf-core sarek workflow version         [default: $workflow_version]"
     echo "  --restart                   Restart workflow from the beginning     [default: resume workflow if possible]"
+    echo
+    echo "ADVANCED NEXTFLOW-RELATED OPTIONS:"
+    echo "  --work_dir           <dir>  Scratch (work) dir for the workflow     [default: $work_dir]"
+    echo "                                - This is where the workflow results will be stored before final results are copied to the output dir."
     echo "  --container_dir     <dir>   Directory with container images         [default: $container_dir]"
     echo "                                - Required container images will be downloaded here when not already present" 
     echo "  --config            <file>  Additional Nextflow config file         [default: none]"
@@ -78,19 +74,11 @@ script_help() {
     echo "                                - Note that the mcic-scripts OSC config file will always be included"
     echo "                                  (https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config)"
     echo "  --profile            <str>  Name of a 'profile' from a config file that should be used [default: $profile]"
-    echo "  --work_dir           <dir>  Scratch (work) dir for the workflow     [default: $work_dir]"
-    echo "                                - This is where the workflow results will be stored before final results are copied to the output dir."
-    echo "  --version                   Print the version of Nextflow and exit"
     echo
-    echo "UTILITY OPTIONS"
+    echo "UTILITY OPTIONS:"
     echo "  -h/--help                   Print this help message and exit"
     echo "  -v                          Print the version of this script and exit"
-    echo
-    echo "HARDCODED WORKFLOW OPTIONS & DEFAULTS THAT DIFFER FROM THE WORKFLOW DEFAULTS:"
-    echo "  - The option '--aligner star_salmon' is hardcoded"
-    echo
-    echo "NF-CORE SAREK WORKFLOW DOCUMENTATION:"
-    echo "   - https://nf-co.re/sarek"
+    echo "  --version                   Print the version of Nextflow and exit"
     echo
 }
 
@@ -138,21 +126,22 @@ source_function_script $IS_SLURM
 # ==============================================================================
 #                     PARSE COMMAND-LINE OPTIONS
 # ==============================================================================
+fq_dir=
 samplesheet=
 ref_fasta=
 outdir=
 config_file=
-more_opts=
-threads=
+params_file=
 
 # Parse command-line options
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
         -o | --outdir )             shift && outdir=$1 ;;
+        -p | --params )             shift && params_file=$1 ;;
+        --fq_dir )                  shift && fq_dir=$1 ;;
         --samplesheet )             shift && samplesheet=$1 ;;
         --ref_fasta )               shift && ref_fasta=$1 ;;
-        --more_opts )               shift && more_opts=$1 ;;
         --workflow_version )        shift && workflow_version=$1 ;;
         --container_dir )           shift && container_dir=$1 ;;
         --config | -config )        shift && config_file=$1 ;;
@@ -168,11 +157,15 @@ while [ "$1" != "" ]; do
 done
 
 # Check input
-[[ -z "$samplesheet" ]] && die "Please specify a samplesheet with --samplesheet" "$all_opts"
-[[ -z "$ref_fasta" ]] && die "Please specify a reference genome FASTA file with --ref_fasta" "$all_opts"
 [[ -z "$outdir" ]] && die "Please specify an output dir with -o/--outdir" "$all_opts"
-[[ ! -f "$samplesheet" ]] && die "Samplesheet $samplesheet does not exist"
-[[ ! -f "$ref_fasta" ]] && die "Reference FASTA file $ref_fasta does not exist"
+[[ -z "$ref_fasta" ]] && die "Please specify a reference genome FASTA file with --ref_fasta" "$all_opts"
+[[ -z "$params_file" ]] && die "No parameter YAML file specified, do so with -p/--params" "$all_opts"
+[[ -z "$samplesheet" && -z "$fq_dir" ]] && die "No samplesheet or FASTQ dir specified: please specify one of these two --samplesheet or --fq_dir" "$all_opts"
+
+[[ ! -f "$ref_fasta" ]] && die "Specified reference FASTA file $ref_fasta does not exist"
+[[ ! -f "$params_file"  ]] && die "Specified input parameter YAML file $params_file does not exist"
+[[ -n "$samplesheet" && ! -f "$samplesheet" ]] && die "Specified samplesheet $samplesheet does not exist"
+[[ -n "$fq_dir" && ! -d "$fq_dir" ]] && die "Specified FASTQ dir $fq_dir does not exist"
 
 # ==============================================================================
 #                          INFRASTRUCTURE SETUP II
@@ -202,10 +195,11 @@ echo "==========================================================================
 echo "All options passed to this script: $all_opts"
 echo
 echo "INPUT AND OUTPUT:"
-echo "Sample sheet:                     $samplesheet"
+[[ -n "$samplesheet" ]] && echo "Sample sheet:                     $samplesheet"
+[[ -n "$fq_dir" ]] && echo "FASTQ file dir:                   $fq_dir"
 echo "Reference genome FASTA file:      $ref_fasta"
 echo "Output dir:                       $outdir"
-[[ -n "$more_opts" ]] && echo "Additional options:               $more_opts"
+echo "Parameter YAML file:              $params_file"
 echo
 echo "NEXTFLOW-RELATED SETTINGS:"
 echo "Resume previous run?              $resume"
@@ -215,10 +209,8 @@ echo "Config 'profile':                 $profile"
 [[ -n "$config_file" ]] && echo "Additional config file:           $config_file"
 echo "Config file argument:             $config_arg"
 echo "=========================================================================="
-echo "Listing the input files and showing the first lines of the samplesheet:"
+echo "Listing the input files:"
 ls -lh "$ref_fasta"
-echo
-head "$samplesheet"
 echo "=========================================================================="
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" = true ]] && slurm_resources
@@ -226,7 +218,7 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 #                              RUN
 # ==============================================================================
-# Make necessary dirs
+# Make necessary output dirs
 log_time "Creating the output directories..."
 mkdir -pv "$work_dir" "$container_dir" "$outdir"/logs "$trace_dir"
 
@@ -235,31 +227,35 @@ if [[ ! -f "$OSC_CONFIG" ]]; then
     log_time "Downloading the mcic-scripts Nextflow OSC config file to $OSC_CONFIG..."
     wget -q -O "$OSC_CONFIG" "$OSC_CONFIG_URL"
 fi
-
 # Modify the config file so it has the correct OSC project/account
 if [[ "$osc_account" != "PAS0471" ]]; then
     sed -i "s/--account=PAS0471/--account=$osc_account/" "$OSC_CONFIG"
 fi
 
+# Create samplesheet if a FASTQ dir was instead provided
+if [[ -z "$samplesheet" ]]; then
+    samplesheet="$outdir"/samplesheet.csv
+    log_time "Creating a samplesheet based on the files in FASTQ dir $fq_dir"
+    
+    echo "patient,sample,lane,fastq_1,fastq_2" > "$samplesheet"
+    ls -1 "$fq_dir"/*fastq.gz | paste -d, - - | sed -E 's@.*/(.*)_S[0-9]+_(L00[0-9])@\1,\1,\2,&@' >> "$samplesheet"
+fi
+log_time "Showing the first lines of the samplesheet:"
+head "$samplesheet"
+
 # Run the workflow
 log_time "Starting the workflow.."
 runstats $TOOL_BINARY $WORKFLOW_NAME \
     -r $workflow_version \
+    -params-file "$params_file" \
     --input "$samplesheet" \
-    --outdir "$outdir" \
     --fasta "$ref_fasta" \
-    --tools "$tools" \
-    $NONMODEL_OPTS \
+    --outdir "$outdir" \
     -work-dir "$work_dir" \
-    -with-report "$trace_dir"/report.html \
-    -with-trace "$trace_dir"/trace.txt \
-    -with-timeline "$trace_dir"/timeline.html \
-    -with-dag "$trace_dir"/dag.png \
     -ansi-log false \
     -profile "$profile" \
     $config_arg \
-    $resume_arg \
-    $more_opts
+    $resume_arg
 
 # Report
 log_time "Listing files in the output dir:"

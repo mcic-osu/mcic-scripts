@@ -1,13 +1,11 @@
 #!/bin/bash
 #SBATCH --account=PAS0471
 #SBATCH --time=48:00:00
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=nfc_rnaseq
 #SBATCH --output=slurm-nfc_rnaseq-%j.out
 
-#TODO - Specify MultiQC config so it doesn't include samtools stats
+#TODO - Edit MultiQC config so it doesn't include samtools stats
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
@@ -15,7 +13,7 @@
 # Constants - generic
 DESCRIPTION="Run the Nextflow-core RNAseq pipeline from https://nf-co.re/rnaseq
   with aligner option STAR => Salmon"
-SCRIPT_VERSION="2025-01-18"
+SCRIPT_VERSION="2025-01-24"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="nextflow run"

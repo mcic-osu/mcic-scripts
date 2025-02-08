@@ -19,8 +19,6 @@ FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main
 
 # Defaults - generics
 env=conda                           # Use a 'conda' env or a Singularity 'container'
-container_path=
-container_url=
 container_dir="$HOME/containers"
 version_only=false                 # When true, just print tool & script version info and exit
 
@@ -52,12 +50,10 @@ script_help() {
     echo "  --no_header_fix             Don't fix output FASTA header           [default: fix header]"
     echo "                              By default, the script will remove"
     echo "                              aligner-added header text like 'reverse'"
-    echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
+    echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
-    echo "                                (NOTE: If no default '--container_url' is listed below,"
-    echo "                                 you'll have to provide one in order to run the script with a container.)"
     echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
     echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
     echo "                                A container will only be downloaded if an URL is provided with this option"
@@ -98,8 +94,10 @@ source_function_script
 # Initiate variables
 infile=
 outdir=
-opts=
+more_opts=
 threads=
+container_path=
+container_url=
 
 # Parse command-line args
 all_opts="$*"
@@ -109,7 +107,7 @@ while [ "$1" != "" ]; do
         -o | --outdir )     shift && outdir=$1 ;;
         --aligner )         shift && aligner=$1 ;;
         --no_header_fix )   shift && fix_header=false ;;
-        --opts )            shift && opts=$1 ;;
+        --more_opts )       shift && more_opts=$1 ;;
         --env )             shift && env=$1 ;;
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 ;;
@@ -127,7 +125,7 @@ done
 # Strict Bash settings
 set -euo pipefail
 
-# Constants and vars based on aligner choise
+# Constants and vars based on aligner choice
 TOOL_BINARY="$aligner"
 if [[ "$aligner" == "mafft" ]]; then
     TOOL_NAME=MAFFT
@@ -180,13 +178,13 @@ if [[ "$aligner" == "mafft" ]]; then
         --adjustdirection \
         --leavegappyregion \
         --thread "$threads" \
-        $opts \
+        $more_opts \
         "$infile" > "$outfile"
 elif [[ "$aligner" == "muscle" ]]; then
     runstats $CONTAINER_PREFIX $TOOL_BINARY \
-        -in "$infile" \
-        -out "$outfile"
-        $opts
+        -align "$infile" \
+        -output "$outfile"
+        $more_opts
 fi
 
 # Remove aligner-added extra info after space from FASTA header lines
@@ -196,6 +194,7 @@ if [[ "$fix_header" == true ]]; then
     sed -i -E -e 's/(^>[^ ]+) .*/\1/' -e 's/^>_R_/>/' "$outfile"
 fi
 
+# Final reporting
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
 final_reporting "$LOG_DIR"

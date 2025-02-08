@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name=multiqc
 #SBATCH --output=slurm-multiqc-%j.out
@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run MultiQC to summarize log output by e.g. FastQC, Cutadapt, STAR"
-SCRIPT_VERSION="2023-12-17"
+SCRIPT_VERSION="2025-01-26"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -21,18 +21,15 @@ TOOL_NAME=MultiQC
 TOOL_DOCS=https://multiqc.info
 VERSION_COMMAND="$TOOL_BINARY --version"
 
-# Defaults - generics
-env=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/project/PAS0471/jelmer/conda/multiqc
-container_path=
-container_url=
-dl_container=false
-container_dir="$HOME/containers"
-strict_bash=true
-version_only=false                  # When true, just print tool & script version info and exit
-
 # Defaults - tool parameters
 auto_plot=false                     # By default, force interactive plots
+
+# Defaults - generics
+env=container                       # Use a 'conda' env or a Singularity 'container'
+conda_path=/fs/ess/PAS0471/jelmer/conda/multiqc
+container_url="oras://community.wave.seqera.io/library/multiqc:1.27--aa757e3b271fdcd4"
+container_dir="$HOME/containers"
+version_only=false                  # When true, just print tool & script version info and exit
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -63,10 +60,7 @@ script_help() {
     echo "                                 you'll have to provide one in order to run the script with a container.)"
     echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
     echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
     echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
-    echo "  --no_strict                 Don't use strict Bash settings ('set -euo pipefail') -- can be useful for troubleshooting"
     echo "  -h/--help                   Print this help message and exit"
     echo "  -v                          Print the version of this script and exit"
     echo "  --version                   Print the version of $TOOL_NAME and exit"
@@ -107,6 +101,7 @@ indir=
 outdir=
 outfile= && outfile_opt=
 interactive_opt=
+container_path=
 more_opts=
 
 # Parse command-line args
@@ -119,10 +114,8 @@ while [ "$1" != "" ]; do
         --outfile )         shift && outfile=$1 ;;
         --more_opts )       shift && more_opts=$1 ;;
         --env )             shift && env=$1 ;;
-        --no_strict )       strict_bash=false ;;
-        --dl_container )    dl_container=true ;;
         --container_dir )   shift && container_dir=$1 ;;
-        --container_url )   shift && container_url=$1 && dl_container=true ;;
+        --container_url )   shift && container_url=$1 ;;
         -h | --help )       script_help; exit 0 ;;
         -v )                script_version; exit 0 ;;
         --version )         version_only=true ;;
@@ -135,10 +128,10 @@ done
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
 # Strict Bash settings
-[[ "$strict_bash" == true ]] && set -euo pipefail
+set -euo pipefail
 
 # Load software
-load_env "$conda_path" "$container_path" "$dl_container"
+load_env "$conda_path" "$container_path"
 [[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script

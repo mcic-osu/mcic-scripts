@@ -58,6 +58,7 @@ load_conda() {
 
 # Set up container
 load_container() {
+    dl_container=false
     
     # If no path to a container image file was provided,
     # then build the path based on the URL, and check if the file exists
