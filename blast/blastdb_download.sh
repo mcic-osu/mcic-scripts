@@ -4,15 +4,15 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --mail-type=END,FAIL
-#SBATCH --job-name=dl_blast_db
-#SBATCH --output=slurm-dl_blast_db-%j.out
+#SBATCH --job-name=blastdb_download
+#SBATCH --output=slurm-blastdb_download-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Download a standard NCBI BLAST database"
-SCRIPT_VERSION="2024-11-17"
+SCRIPT_VERSION="2025-02-16"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -24,11 +24,7 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 # Defaults - generics
 env=conda                           # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/blast
-container_path=
-container_url=
-dl_container=false
 container_dir="$HOME/containers"
-version_only=false                 # When true, just print tool & script version info and exit
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -48,7 +44,7 @@ script_help() {
     echo "  --db                <file>  NCBI BLAST database to download"
     echo "                              Possible options include: nr, nt, core_nt, nt_euk, nt_viruses, swissprot, taxdb, mito"
     echo "                              Run 'update_blastdb.pl --showall' to see all options"
-    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
+    echo "  -o/--outdir         <dir>   Output dir for BLAST database (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
@@ -61,7 +57,6 @@ script_help() {
     echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
     echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
     echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
     echo "  -h/--help                   Print this help message and exit"
     echo "  -v                          Print the version of this script and exit"
     echo "  --version                   Print the version of $TOOL_NAME and exit"
@@ -107,6 +102,9 @@ db=
 outdir=
 more_opts=
 threads=
+container_path=
+container_url=
+version_only=false                 # When true, just print tool & script version info and exit
 
 # Parse command-line args
 all_opts="$*"
@@ -169,10 +167,10 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
     $more_opts \
     "$db"
 
-#! update_blastdb.pl --decompress taxdb
-
-#? To see which databases are available, run:
-#? update_blastdb.pl --showall
+#? - To see which databases are available, run:
+#?   update_blastdb.pl --showall
+#? - To check which sequences are in a BLAST db, run:
+#?   blastdbcmd -db <my-db> -entry all -outfmt '%a %l %T %K %S %L'
 
 # ==============================================================================
 #                               WRAP-UP
