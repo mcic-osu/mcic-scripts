@@ -1,7 +1,6 @@
 #!/bin/bash
 #SBATCH --account=PAS0471
 #SBATCH --time=3:00:00
-#SBATCH --cpus-per-task=1
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name=blast
 #SBATCH --output=slurm-blast-%j.out
@@ -28,7 +27,7 @@ OUTPUT:
   The output will include TSV files with raw ('blast_out_raw.tsv') and filtered
   ('blast_out_filtered.tsv'), and if requested, downloaded sequences in separate
   subdirectories."
-SCRIPT_VERSION="2024-11-17"
+SCRIPT_VERSION="2025-02"-15
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -42,7 +41,7 @@ export LC_ALL=C                     # Locale for sorting
 META_FIELDS="accession,assminfo-name,organism-name,assminfo-refseq-category,assminfo-level,assmstats-number-of-contigs,assmstats-contig-n50"
 # - Am not able to get scientific name of subject seq to be included ('ssciname' / 'sscinames')
 # - In addition to the 'qcovhsp' included above, there is also 'qcovs', which will contain the total coverage across all HSPs
-DEFAULT_LOCAL_DB_DIR=fs/project/pub_data/blast-database/2024-07
+DEFAULT_LOCAL_DB_DIR=/fs/project/pub_data/blast-database/2024-07
 DEFAULT_LOCAL_DB_NT="$DEFAULT_LOCAL_DB_DIR"/nt              # Default local DB for nucleotide BLAST
 DEFAULT_LOCAL_DB_AA="$DEFAULT_LOCAL_DB_DIR"/nr              # Default local DB for protein BLAST
 
@@ -51,7 +50,6 @@ env=conda                           # Use a 'conda' env or a Singularity 'contai
 conda_path=/fs/ess/PAS0471/jelmer/conda/blast
 container_path=
 container_url=
-dl_container=false
 container_dir="$HOME/containers"
 version_only=false                  # When true, just print tool & script version info and exit
 
@@ -162,9 +160,7 @@ script_help() {
     echo "                                 you must provide one to run the script with a container.)"
     echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
     echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
     echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
     echo "  -h/--help                   Print this help message and exit"
     echo "  -v                          Print the version of this script and exit"
     echo "  --version                   Print the version of BLAST and the NCBI datasets tool and exit"
@@ -495,9 +491,8 @@ while [ "$1" != "" ]; do
         --dl_subjects )     to_dl_subjects=true ;;
         --dl_aligned )      to_dl_aligned=true ;;
         --env )             shift && env=$1 ;;
-        --dl_container )    dl_container=true ;;
         --container_dir )   shift && container_dir=$1 ;;
-        --container_url )   shift && container_url=$1 && dl_container=true ;;
+        --container_url )   shift && container_url=$1 ;;
         -h | --help )       script_help; exit 0 ;;
         -v )                script_version; exit 0 ;;
         --version )         version_only=true ;;
@@ -513,7 +508,7 @@ done
 set -euo pipefail
 
 # Load software
-load_env "$conda_path" "$container_path" "$dl_container"
+load_env "$conda_path" "$container_path"
 [[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
