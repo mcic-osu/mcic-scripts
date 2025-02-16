@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
 #SBATCH --cpus-per-task=5
 #SBATCH --mem=20G
 #SBATCH --mail-type=FAIL
@@ -12,7 +11,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Align nucleotide or amino acid sequences in a multi-FASTA file with MAFFT (default) or MUSCLE"
-SCRIPT_VERSION="2025-01-04"
+SCRIPT_VERSION="2025-02-16"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -160,7 +159,7 @@ echo "==========================================================================
 echo "All options passed to this script:        $all_opts"
 echo "Input file:                               $infile"
 echo "Output file:                              $outfile"
-[[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
+[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
 ls -lh "$infile"
 set_threads "$IS_SLURM"
