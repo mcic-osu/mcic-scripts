@@ -244,6 +244,9 @@ else
     [[ "$salmon_seqbias" == true ]] && salmon_opts=(--extra_salmon_quant_args ' --seqBias')
 fi
 
+# Check nr of samples
+nsamples=$(tail -n+2 "$samplesheet" | wc -l)
+
 # Other output dirs
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 trace_dir="$outdir"/pipeline_info
@@ -257,6 +260,7 @@ echo "All options passed to this script: $all_opts"
 echo
 echo "INPUT AND OUTPUT:"
 echo "Sample sheet:                     $samplesheet"
+echo "Nr of samples in the samplesheet: $nsamples"
 echo "Reference genome FASTA file:      $ref_fasta"
 echo "Reference genome annotation file: $ref_annot"
 echo "Output dir:                       $outdir"
