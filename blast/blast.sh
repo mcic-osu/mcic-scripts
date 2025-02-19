@@ -290,7 +290,9 @@ process_blast() {
     # 5. Add taxonomy information (column 17 contains taxid)
     #!   Note - if multiple taxids are present, only the first one will be used 
     cut -f17 "$blast_out_tops" | cut -f1 -d";" |
-        taxonkit reformat -I 1 -f "{K}|{p}|{c}|{o}|{f}|{g}|{s}" > "$outdir"/taxonomy.tsv
+        taxonkit reformat -I 1 -f "{K}|{p}|{c}|{o}|{f}|{g}|{s}" \
+        > "$outdir"/taxonomy.tsv 2> /dev/null
+    sed -i 's/||||||/NA/' "$outdir"/taxonomy.tsv # If no taxid is found, replace with 'NA'
     paste "$blast_out_tops" <(cut -f2 "$outdir"/taxonomy.tsv) > "$blast_out_final"
 
     # Clean & report
