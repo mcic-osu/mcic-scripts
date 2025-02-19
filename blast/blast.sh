@@ -45,7 +45,7 @@ OUTPUT:
     17) staxids     Subject taxonomy IDs
     18) tax_string  Taxonomy string in the format: kingdom|phylum|class|order|family|genus|species
 "
-SCRIPT_VERSION="2025-02-16"
+SCRIPT_VERSION="2025-02-17"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -288,7 +288,8 @@ process_blast() {
     fi
 
     # 5. Add taxonomy information (column 17 contains taxid)
-    cut -f17 "$blast_out_tops" |
+    #!   Note - if multiple taxids are present, only the first one will be used 
+    cut -f17 "$blast_out_tops" | cut -f1 -d";" |
         taxonkit reformat -I 1 -f "{K}|{p}|{c}|{o}|{f}|{g}|{s}" > "$outdir"/taxonomy.tsv
     paste "$blast_out_tops" <(cut -f2 "$outdir"/taxonomy.tsv) > "$blast_out_final"
 
@@ -643,7 +644,7 @@ ls -lh "$infile"
 # ==============================================================================
 # Run BLAST
 if [[ -s "$blast_out_raw" && "$force" == false ]]; then
-    log_time "Skipping BLAST, output file exists ($blast_out_raw) and --force is false..."
+    log_time "Skipping BLAST, output file exists ($blast_out_raw) and --resume is true..."
 else
     run_blast
 fi
