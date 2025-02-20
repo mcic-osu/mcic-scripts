@@ -5,48 +5,74 @@ if (! "colorspace" %in% installed.packages()) install.packages("colorspace")
 if (! "BiocManager" %in% installed.packages()) install.packages("BiocManager")
 if (! "clusterProfiler" %in% installed.packages()) BiocManager::install("clusterProfiler")
 
+# GO TERM FUNCTIONS ------------------------------------------------------------
+# Get descriptions and ontologies (BP/MF/CC) for all GO terms 
+get_GO_info <- function() {
+  if (! "GO.db" %in% installed.packages()) BiocManager::install("GO.db")
+  suppressPackageStartupMessages(library(GO.db))
+  
+  df <- AnnotationDbi::select(
+    GO.db,
+    columns = c("GOID", "TERM", "ONTOLOGY"),
+    keys = keys(GO.db, keytype = "GOID"),
+    keytype = "GOID"
+  ) |>
+    dplyr::rename(
+      term = GOID,
+      description = TERM,
+      ontology = ONTOLOGY
+    ) |>
+    tibble()
+  
+  detach("package:GO.db", unload = TRUE)
+  detach("package:AnnotationDbi", unload = TRUE)
+  
+  return(df)
+}
+
 # CLUSTERPROFILER FUNCTIONS ----------------------------------------------------
 # Function to run a (GO or KEGG) standard over-representation (ORA) analysis
 run_ora <- function(
+  DE_results,                # DE results df with at least columns 'gene', 'contrast', 'lfc', 'isDE', 'padj'.
+                             #   This df should contain *all* genes, not just significantly DE ones.
   contrast,                  # DE comparison as specified in 'contrast' column in DE results
   DE_direction = "either",   # DE direction: 'either' (all DE genes), 'up' (lfc > 0), or 'down' (lfc < 0)
-  DE_res,                    # DE results df from 'extract_DE()', should have columns 'gene', 'contrast', 'lfc', 'isDE', 'padj'.
-                             # This df should contain *all* genes, not just significantly DE ones.
-  cat_map = NULL,            # Manually provide a functional category/term to gene mapping with columns: 1:category, 2:gene ID, and optionally 3:description, 4: ontology
-  OrgDb = NULL,              # BioConductor OrgDB (alternative to 'cat_map' for available organisms)
+  term_map = NULL,           # Manually provide a functional category/term to gene mapping with columns:
+                             # 1:term, 2:gene, and optionally 3:description, 4: ontology
+  OrgDb = NULL,              # BioConductor OrgDB (alternative to 'term_map' for available organisms)
   ontology_type = NULL,      # 'GO' (enrichGO function) or 'KEGG' (enrichKEGG).
-                             # Only applies when using an 'OrgDb' instead of a 'cat_map'
+                             # Only applies when using an 'OrgDb' instead of a 'term_map'
   keyType = "ENTREZID",      # OrgDB gene ID type
-                             # Only applies when using an 'OrgDb' instead of a 'cat_map'
-  GO_ontology = NULL,        # Only for GO analysis with an OrgDB *and* when return_df == TRUE (then, default is 'BP')
-                             # In all other cases, will run GO analyses across all 3 ontologies (BP, CC, MF) 
-  p_enrich = 0.05,           # Adj. p-value threshold for enrichment
+                             # Only applies when using an 'OrgDb' instead of a 'term_map'
+  GO_ontology = NULL,        # Only applies to GO analysis with an OrgDB *and* when return_df == TRUE (then, default is 'BP')
+                             #   In all other cases, the function will always run GO analyses across all 3 ontologies (BP, CC, MF) 
+  p_enrich = 0.05,           # Adjusted p-value threshold for enrichment
   q_enrich = 0.2,            # Q value threshold for enrichment
   min_DE_in_cat = 2,         # Nr. DE genes threshold for enrichment: at least this number of genes in the ontology category should be DE
-                             # (Occasionally, 'small' categories with 1 DE gene can have p-values below 0.05 -- this excludes those)
+                             #   (Occasionally, 'small' categories with 1 DE gene can have p-values below 0.05 -- this excludes those)
   min_cat_size = 5,          # Min. nr. of genes in a category (= clusterProfiler 'minGSSize' argument - NOTE: clusterProfiler default is 10)
   max_cat_size = 500,        # Min. nr. of genes in a category (= clusterProfiler 'maxGSSize' argument)
   filter_no_descrip = TRUE,  # Remove categories/terms with no description (at least for GO terms, these tend to be old/deprecated ones)
   exclude_nontested = TRUE,  # Exclude genes that weren't tested for DE from the 'universe' of genes
   allow_dups = FALSE,        # Allow a gene ID to be present multiple times in a (single-contrast, single DE-direction) list of DEGs
-                             # This should typically *not* be the case, but could be so when working with gene IDs (orthologs)
-                             # from another species than the focal species to run the GO analysis
-  sig_only = NULL,           # Return only significant results. Default: FALSE when return_df is FALSE, TRUE when return_df is TRUE. 
+                             #   This should typically *not* be the case, but could be so when working with gene IDs (orthologs)
+                             #   from another species than the focal species to run the GO analysis
+  sig_only = NULL,           #   Return only significant results. Default: FALSE when return_df is FALSE, TRUE when return_df is TRUE. 
   return_df = FALSE          # Convert results object to a simple dataframe (tibble), instead of keeping the ClusterProfiler object
-                             # Should be FALSE if you want to use the enrichPlot functions directly 
+                             #   Should be FALSE if you want to use the enrichPlot functions directly 
 ) {
 
   # Filter DE results to only get those for the focal contrast
   fcontrast <- contrast
-  DE_res <- DE_res |> dplyr::filter(contrast == fcontrast)
-  stopifnot("Error: no rows in DE_res dataframe after contrast filtering" = nrow(DE_res) > 0)
+  DE_results <- DE_results |> dplyr::filter(contrast == fcontrast)
+  stopifnot("Error: no rows in DE_results dataframe after contrast filtering" = nrow(DE_results) > 0)
   
   # Filter the DE results, if needed: only take over- or underexpressed
-  if (DE_direction == "up") DE_res <- DE_res |> dplyr::filter(lfc > 0)
-  if (DE_direction == "down") DE_res <- DE_res |> dplyr::filter(lfc < 0)
+  if (DE_direction == "up") DE_results <- DE_results |> dplyr::filter(lfc > 0)
+  if (DE_direction == "down") DE_results <- DE_results |> dplyr::filter(lfc < 0)
   
   # Create a vector with DEGs
-  DEGs <- DE_res |> dplyr::filter(isDE) |> pull(gene)
+  DEGs <- DE_results |> dplyr::filter(isDE) |> pull(gene)
   
   # Check if genes are present multiple times -- this would indicate there are multiple contrasts
   if (any(duplicated(DEGs))) {
@@ -59,38 +85,38 @@ run_ora <- function(
     return(NULL)
   }
   
-  # Prepare the category map
-  if (!is.null(cat_map)) {
-    # Rename cat_map columns
-    colnames(cat_map)[1:2] <- c("category", "gene")
-    if(ncol(cat_map) > 2) colnames(cat_map)[3] <- "description"
-    if(ncol(cat_map) > 3) colnames(cat_map)[4] <- "ontology"
+  # Prepare the term map
+  if (!is.null(term_map)) {
+    # Rename term_map columns
+    colnames(term_map)[1:2] <- c("term", "gene")
+    if(ncol(term_map) > 2) colnames(term_map)[3] <- "description"
+    if(ncol(term_map) > 3) colnames(term_map)[4] <- "ontology"
     
     # Prep term mappings - term-to-gene
-    term2gene <- cat_map |> dplyr::select(category, gene)
+    term2gene <- term_map |> dplyr::select(term, gene)
   
     # Prep term mappings - term-to-name (description)
-    if (ncol(cat_map) > 2) {
-      term2name <- cat_map |> dplyr::select(category, description)
+    if (ncol(term_map) > 2) {
+      term2name <- term_map |> dplyr::select(term, description)
       if (filter_no_descrip == TRUE) {
-        n_before <- length(unique(term2name$category))
+        n_before <- length(unique(term2name$term))
         term2name <- term2name[!is.na(term2name$description), ]
-        n_removed <- n_before - length(unique(term2name$category))
+        n_removed <- n_before - length(unique(term2name$term))
         if (n_removed > 0) message("Note: removed ", n_removed, " terms with no description")
       }
     } else {
       term2name <- NA
     }
   
-    # Check nr of DE genes in the category map
+    # Check nr of DE genes in the term map
     genes_in_map <- DEGs[DEGs %in% term2gene$gene]
     cat("Contrast: ", fcontrast, " // DE direction: ", DE_direction,
-        " // Nr DE genes (with category assigned): ", length(DEGs),
+        " // Nr DE genes (with term assigned): ", length(DEGs),
         " (", length(genes_in_map), ")", sep = "")
     if (length(genes_in_map) == 0) {
-      message("\nERROR: None of the DE genes are in the GO/KEGG category dataframe ('cat_map')")
+      message("\nERROR: None of the DE genes are in the GO/KEGG term dataframe ('term_map')")
       cat("First gene IDs from DE results: ", head(DEGs), "\n")
-      cat("First gene IDs from cat_map: ", head(term2gene$gene), "\n")
+      cat("First gene IDs from term_map: ", head(term2gene$gene), "\n")
       stop()
     }
   } else {
@@ -99,20 +125,20 @@ run_ora <- function(
   }
 
   # Get the background 'universe' of genes:
-  # genes that were tested for DE *and* occur in the ontology category map
+  # genes that were tested for DE *and* occur in the ontology term map
   # (Excluding the latter is equivalent to goseq's 'use_genes_without_cat=FALSE',
   # and this is done by default by ClusterProfiler -- but non-tested genes *are* included)
   if (exclude_nontested == TRUE) {
-    univ_df <- DE_res |> dplyr::filter(!is.na(padj))
-    if (!is.null(cat_map)) univ_df <- univ_df |> dplyr::filter(gene %in% cat_map$gene)
+    univ_df <- DE_results |> dplyr::filter(!is.na(padj))
+    if (!is.null(term_map)) univ_df <- univ_df |> dplyr::filter(gene %in% term_map$gene)
     univ_vec <- unique(univ_df$gene)
   } else {
     univ_vec <- NULL
   }
   
   # Run the enrichment analysis
-  if (!is.null(cat_map)) {
-    # With manual category map
+  if (!is.null(term_map)) {
+    # With manual term map
     res <- enricher(
       gene = DEGs,
       TERM2GENE = term2gene,
@@ -172,30 +198,30 @@ run_ora <- function(
         contrast = fcontrast, DE_direction = DE_direction
         ) |>
       dplyr::select(
-        contrast, DE_direction, category = ID, n_DE_in_cat = Count,
+        contrast, DE_direction, term = ID, n_DE_in_cat = Count,
         GeneRatio, BgRatio, padj = p.adjust, sig,
         description = Description, any_of("ontology"), gene_ids = geneID
         )
     
     # Add ontology info for GO
-    if ("ontology" %in% colnames(cat_map)) {
-      res <- cat_map |>
-        dplyr::select(category, ontology) |>
-        distinct(category, .keep_all = TRUE) |> 
-        right_join(res, by = "category") |>
+    if ("ontology" %in% colnames(term_map)) {
+      res <- term_map |>
+        dplyr::select(term, ontology) |>
+        distinct(term, .keep_all = TRUE) |> 
+        right_join(res, by = "term") |>
         relocate(ontology, .before = "gene_ids")
     }
     
     # Add mean & median LFC value
     w_lfc <- res |>
       separate_longer_delim(cols = gene_ids, delim = "/") |>
-      left_join(dplyr::select(DE_res, gene, lfc),
+      left_join(dplyr::select(DE_results, gene, lfc),
                 by = join_by("gene_ids" == "gene"),
                 relationship = "many-to-many") |>
       summarize(mean_lfc = mean(lfc),
                 median_lfc = median(lfc),
-                .by = c("category", "contrast", "DE_direction"))
-    res <- left_join(res, w_lfc, by = c("category", "contrast", "DE_direction"))
+                .by = c("term", "contrast", "DE_direction"))
+    res <- left_join(res, w_lfc, by = c("term", "contrast", "DE_direction"))
     
     # Add gene numbers and enrichment ratio
     res <- res |>
@@ -203,9 +229,9 @@ run_ora <- function(
       cols = c("GeneRatio", "BgRatio"), delim = "/", names_sep = "_"
       ) |>
       mutate(
-        # Total nr of DE genes (in+not in the focal category)
+        # Total nr of DE genes (in+not in the focal term)
         n_DE = as.integer(GeneRatio_2),
-        # Total nr of genes in the functional category
+        # Total nr of genes in the functional term
         n_cat = as.integer(BgRatio_1),
         # Total nr of genes tested
         n_total = as.integer(BgRatio_2)
@@ -222,14 +248,14 @@ run_ora <- function(
 
 # Function to run a Gene Set Enrichment Analysis (gsea)
 run_gsea <- function(
-    contrast,                 # Contrast ID, should be one of the values in column 'contrast' in DE_res
-    DE_res,                   # Differential expression results, should have columns 'contrast', 'gene', 'lfc'
-    cat_map = NULL,           # Gene-to-category map (e.g., GO or KEGG)
-                              # Either 'cat_map' (use 'manual' lookup table) or OrgDB (use BioC lookup table) is required
-    OrgDb = NULL,             # BioConductor OrgDB (alternative to 'cat_map' for available organisms)
+    DE_results,               # Differential expression results, should at least have columns 'contrast', 'gene', 'lfc'
+    contrast,                 # Contrast ID, should be one of the values in column 'contrast' in DE_results
+    term_map = NULL,          # Gene-to-term map (e.g., GO or KEGG)
+                              # Either 'term_map' (use 'manual' lookup table) or OrgDB (use BioC lookup table) is required
+    OrgDb = NULL,             # BioConductor OrgDB (alternative to 'term_map' for available organisms)
     keyType = "ENTREZID",     # OrgDB gene ID type
     ontology_type = NULL,     # 'GO' (enrichGO function) or 'KEGG' (enrichKEGG).
-                              # Only applies when using an 'OrgDb' instead of a 'cat_map'
+                              # Only applies when using an 'OrgDb' instead of a 'term_map'
     GO_ontology = NULL,       # Only for GO analysis with an OrgDB *and* when return_df == TRUE (then, default is 'BP')
                               # In all other cases, will run GO analyses across all 3 ontologies (BP, CC, MF)
                               # (The reason this applies for GO with OrgDB & keeping the ClusterProfiler format is that
@@ -244,10 +270,10 @@ run_gsea <- function(
   
   # Prep the df to later create a gene vector
   fcontrast <- contrast
-  gene_df <- DE_res |>
+  gene_df <- DE_results |>
     dplyr::filter(contrast == fcontrast, !is.na(lfc)) |>
     arrange(desc(lfc))
-  stopifnot("Error: no rows in DE_res dataframe after contrast filtering" = nrow(gene_df) > 0)
+  stopifnot("Error: no rows in DE_results dataframe after contrast filtering" = nrow(gene_df) > 0)
   n_DE <- sum(gene_df$padj < 0.05, na.rm = TRUE)
   
   # Check if genes are present multiple times -- this would indicate there are multiple contrasts
@@ -266,27 +292,27 @@ run_gsea <- function(
   lfc_vec <- gene_df$lfc
   names(lfc_vec) <- gene_df$gene
   
-  # Prepare the functional category map and report
-  if (!is.null(cat_map)) {
-    # Rename cat_map columns
-    colnames(cat_map)[1:2] <- c("category", "gene")
-    if(ncol(cat_map) > 2) colnames(cat_map)[3] <- "description"
-    if(ncol(cat_map) > 3) colnames(cat_map)[4] <- "ontology"
+  # Prepare the functional term map and report
+  if (!is.null(term_map)) {
+    # Rename term_map columns
+    colnames(term_map)[1:2] <- c("term", "gene")
+    if(ncol(term_map) > 2) colnames(term_map)[3] <- "description"
+    if(ncol(term_map) > 3) colnames(term_map)[4] <- "ontology"
     
     # Prep term mappings - if there's a third column, make a term2name df as well
-    term2gene <- cat_map[, 1:2]
+    term2gene <- term_map[, 1:2]
     term2name <- NA
-    if (ncol(cat_map) > 2) term2name <- cat_map[, c(1, 3)]
+    if (ncol(term_map) > 2) term2name <- term_map[, c(1, 3)]
     
     # Check & report
     genes_in_map <- names(lfc_vec)[names(lfc_vec) %in% term2gene[[2]]]
-    cat("Contrast: ", fcontrast, " // Nr genes with category assigned: ",
+    cat("Contrast: ", fcontrast, " // Nr genes with term assigned: ",
         length(genes_in_map), sep = "")
 
     if (length(genes_in_map) == 0) {
-      message("\nERROR: None of the genes are in the cat_map dataframe")
+      message("\nERROR: None of the genes are in the term_map dataframe")
       cat("First gene IDs from DE results: ", head(names(lfc_vec)), "\n")
-      cat("First gene IDs from cat_map: ", head(term2gene[[2]]), "\n")
+      cat("First gene IDs from term_map: ", head(term2gene[[2]]), "\n")
       stop()
     }
   } else {
@@ -300,7 +326,7 @@ run_gsea <- function(
   }
   
   # Run the enrichment analysis
-  if (!is.null(cat_map)) {
+  if (!is.null(term_map)) {
     gsea_res <- GSEA(
       geneList = lfc_vec,
       TERM2GENE = term2gene,
@@ -340,16 +366,16 @@ run_gsea <- function(
     gsea_res <- gsea_res |> 
       mutate(sig = ifelse(p.adjust < p_enrich, TRUE, FALSE),
              contrast = fcontrast) |>
-      dplyr::select(contrast, category = ID, padj = p.adjust,
+      dplyr::select(contrast, term = ID, padj = p.adjust,
                     sig, description = Description, any_of("ontology"),
                     gene_ids = core_enrichment)
     
     # Add GO info
-    if ("ontology" %in% colnames(cat_map)) {
-      gsea_res <- cat_map |>
-        dplyr::select(category, ontology) |>
-        distinct(category, .keep_all = TRUE) |> 
-        right_join(gsea_res, by = "category") |>
+    if ("ontology" %in% colnames(term_map)) {
+      gsea_res <- term_map |>
+        dplyr::select(term, ontology) |>
+        distinct(term, .keep_all = TRUE) |> 
+        right_join(gsea_res, by = "term") |>
         relocate(ontology, .before = "gene_ids")
     }
     
@@ -357,14 +383,14 @@ run_gsea <- function(
     w_lfc <- gsea_res |>
       separate_longer_delim(cols = gene_ids, delim = "/") |>
       rename(gene = gene_ids) |> 
-      left_join(DE_res |> dplyr::select(gene, contrast, lfc),
+      left_join(DE_results |> dplyr::select(gene, contrast, lfc),
                 by = c("gene", "contrast"),
                 relationship = "many-to-many") |>
       summarize(mean_lfc = mean(lfc),
                 median_lfc = median(lfc),
-                .by = c("category", "contrast"))
+                .by = c("term", "contrast"))
     
-    gsea_res <- left_join(gsea_res, w_lfc, by = c("category", "contrast"))
+    gsea_res <- left_join(gsea_res, w_lfc, by = c("term", "contrast"))
   }
 
   return(gsea_res)
@@ -390,7 +416,7 @@ tileplot <- function(
   ylab_size = 10,               # Size of y-axis labels (= categories)
   xlab_angle = 0,               # Angle of x-axis labels
   facet_labeller = "label_value", # Facet labeling
-  add_cat_id = FALSE,           # Add ontology category ID to its name/description
+  add_term_id = FALSE,          # Add ontology term ID to its name/description
   merge_directions = FALSE      # Whether to 'merge' up+down DE directions into a single cell
                                 # If both directions are significant, will show the most significant one
 ) {
@@ -423,24 +449,24 @@ tileplot <- function(
            padj = ifelse(sig == FALSE, NA, padj),
            padj_log = -log10(padj)) %>%
     # Only take GO categories with at least one significant contrast (as pre-specified in 'sig' column)
-    dplyr::filter(category %in% (dplyr::filter(., sig == TRUE) |> pull(category))) %>%
-    # Only take contrasts with at least one significant category
+    dplyr::filter(term %in% (dplyr::filter(., sig == TRUE) |> pull(term))) %>%
+    # Only take contrasts with at least one significant term
     dplyr::filter(contrast %in% (dplyr::filter(., sig == TRUE) |> pull(contrast))) |>
     arrange(padj_log)
   
-  # Modify the ontology category description
+  # Modify the ontology term description
   trunc_width <- 40
   enrich_df <- enrich_df |>
     mutate(
       # Capitalize the first letter
       description = paste0(toupper(substr(description, 1, 1)),
                            substr(description, 2, nchar(description))),
-      # If there is no description, use the category ID
-      description = ifelse(is.na(description), category, description)
+      # If there is no description, use the term ID
+      description = ifelse(is.na(description), term, description)
     )
-  if (add_cat_id) {
+  if (add_term_id) {
     enrich_df <- enrich_df |>
-      mutate(description = paste0(category, " - ", description))
+      mutate(description = paste0(term, " - ", description))
     trunc_width <- 50
   }
   enrich_df <- enrich_df |>
@@ -449,17 +475,17 @@ tileplot <- function(
   # Make sure all combinations of contrast, DE_dir, and GO cat. are present
   # A) Make a lookup table with GO terms
   go_lookup <- enrich_df |>
-    dplyr::select(any_of(c("category", "ontology", "description"))) |>
+    dplyr::select(any_of(c("term", "ontology", "description"))) |>
     distinct()
   # B) Make a df with all possible combinations of contrast, DE_dir, and GO cat.
   enrich_rows <- enrich_df |>
-    dplyr::select(contrast, DE_direction, category) |>
-    complete(contrast, DE_direction, category) |>
-    left_join(go_lookup, by = c("category"))
+    dplyr::select(contrast, DE_direction, term) |>
+    complete(contrast, DE_direction, term) |>
+    left_join(go_lookup, by = c("term"))
   # C) Merge this with the enrich_df
   enrich_df <- left_join(enrich_rows,
                          enrich_df |> dplyr::select(-(any_of(c("ontology", "description")))),
-                         by = c("contrast", "DE_direction", "category"),
+                         by = c("contrast", "DE_direction", "term"),
                          multiple = "all") |>
     mutate(sig = ifelse(is.na(sig), FALSE, sig))
   
@@ -471,7 +497,7 @@ tileplot <- function(
   }
   if (merge_directions) {
     enrich_df <- enrich_df |>
-      group_by(category, contrast) |>
+      group_by(term, contrast) |>
       arrange(padj, .by_group = TRUE) |>
       slice_head(n = 1)
   }
@@ -522,7 +548,7 @@ tileplot <- function(
   # Add x-axis label
   if (!is.null(xlabs)) p <- p + scale_x_discrete(labels = xlabs)
   
-  # Add a count of the nr of DE genes in each category
+  # Add a count of the nr of DE genes in each term
   if (countlab == TRUE) {
     p <- p + suppressWarnings(
       geom_label(aes(label = n_DE_in_cat), fill = "grey95", size = countlab_size)
@@ -572,8 +598,8 @@ cdotplot <- function(
     facet_scales = NULL,        # Facet scales: 'fixed', 'free', 'free_x', or 'free_y'
     facet_label_fun = "label_value", # Function to label facets with
     x_title = NULL,             # X-axis title
-    ylab_size = 11,             # Size of y-axis labels (= category labels)
-    add_cat_id = FALSE,          # Add category ID (e.g., 'GO:009539') to its description
+    ylab_size = 11,             # Size of y-axis labels (= term labels)
+    add_term_id = FALSE,        # Add term ID (e.g., 'GO:009539') to its description
     point_size = 6
 ) {
   
@@ -588,19 +614,19 @@ cdotplot <- function(
   if (! is.null(DE_directions))
     enrich_df <- enrich_df |> dplyr::filter(DE_direction %in% DE_directions)
   
-  # Modify the category description
+  # Modify the term description
   enrich_df <- enrich_df |>
     mutate(
       # Capitalize the first letter
       description = paste0(toupper(substr(description, 1, 1)),
                            substr(description, 2, nchar(description))),
-      # If there is no description, use the category ID
-      description = ifelse(is.na(description), category, description)
+      # If there is no description, use the term ID
+      description = ifelse(is.na(description), term, description)
     )
   trunc_width <- 40
-  if (add_cat_id) {
+  if (add_term_id) {
     enrich_df <- enrich_df |>
-      mutate(description = paste0(category, " - ", description))
+      mutate(description = paste0(term, " - ", description))
     trunc_width <- 50
   }
   enrich_df <- enrich_df |>
@@ -729,7 +755,7 @@ cdotplot <- function(
 # Heatmap for DE genes in significant GO terms
 # NOTE: This function requires (calls) the pheat() function from mcic-scripts/rnaseq/DE_funs.R
 GO_pheat <- function(
-    GO_cat,                    # GO category to plot
+    GO_cat,                    # GO term to plot
     GO_res,                    # GO results from run_enrich() or run_gsea() with return_df=TRUE
     count_mat,                 # Normalized GO matrix
     meta_df,                   # Metadata df
@@ -745,7 +771,7 @@ GO_pheat <- function(
   DE_dir <- DE_direction
   
   # Filter the GO results
-  fgo <- GO_res |> dplyr::filter(category == GO_cat)
+  fgo <- GO_res |> dplyr::filter(term == GO_cat)
   if (!is.null(DE_direction)) fgo <- fgo |> dplyr::filter(DE_direction == DE_dir)
   if (!is.null(fcontrast)) fgo <- fgo |> dplyr::filter(contrast == fcontrast)
   
@@ -753,7 +779,7 @@ GO_pheat <- function(
   fgenes <- fgo |> separate_longer_delim(cols = gene_ids, delim = "/") |> pull(gene_ids)
   
   # Report
-  message("GO category: ", GO_cat, " (", length(fgenes), " DE genes)")
+  message("GO term: ", GO_cat, " (", length(fgenes), " DE genes)")
   
   # Prepare the title
   descrip <- fgo$description[1]
@@ -776,21 +802,21 @@ GO_pheat <- function(
 # This function will run the GO analysis 3 times for each contrast:
 # for either DE direction, for LFC>0 DEGs only, and LFC<0 DEGs only.
 # Then it will save the results in a TSV and print a summary.
-rgoseq_all <- function(contrasts, DE_res, GO_map, gene_lens, ...) {
+rgoseq_all <- function(contrasts, DE_results, GO_map, gene_lens, ...) {
 
   # Either DE direction
   GO_ei <- map_dfr(.x = contrasts, .f = rgoseq,
-                   DE_res = DE_res, gene_lens = gene_len_df, GO_map = GO_map,
+                   DE_results = DE_results, gene_lens = gene_len_df, GO_map = GO_map,
                    DE_direction = "either", ...)
 
   # DE up (LFC>0)
   GO_up <- map_dfr(.x = contrasts, .f = rgoseq,
-                   DE_res = DE_res, gene_lens = gene_len_df, GO_map = GO_map,
+                   DE_results = DE_results, gene_lens = gene_len_df, GO_map = GO_map,
                    DE_direction = "up", ...)
 
   # DE down (LFC<0)
   GO_dn <- map_dfr(.x = contrasts, .f = rgoseq,
-                   DE_res = DE_res, gene_lens = gene_len_df, GO_map = GO_map,
+                   DE_results = DE_results, gene_lens = gene_len_df, GO_map = GO_map,
                    DE_direction = "down", ...)
 
   # Combine results for different DE directions
@@ -809,12 +835,12 @@ rgoseq_all <- function(contrasts, DE_res, GO_map, gene_lens, ...) {
 
 # GO analysis wrapper function
 rgoseq <- function(
-  contrast,                          # A DE contrast as specified in the 'contrast' column in the 'DE_res' df
-  DE_res,                            # Df with DE results from DESeq2
+  contrast,                          # A DE contrast as specified in the 'contrast' column in the 'DE_results' df
+  DE_results,                            # Df with DE results from DESeq2
   GO_map,                            # Df with one GOterm-to-gene relation per row, w/ columns 'gene' and 'go_term'
   gene_lens,                         # Df with gene lengths w/ columns 'gene' and 'length'
   DE_direction = "either",           # 'either' (= both together), 'up' (LFC>0), or 'down' (LFC>0)
-  min_in_cat = 2, max_in_cat = Inf,  # Min. & max. nr of total terms in GO category
+  min_in_cat = 2, max_in_cat = Inf,  # Min. & max. nr of total terms in GO term
   min_DE_in_cat = 2,                 # Min. nr. DE genes in GO term for a term to be significant
   p_DE = 0.05,                       # Adj. p-value threshold for DE significance
   lfc_DE = 0,                        # LFC threshold for DE significance
@@ -832,7 +858,7 @@ rgoseq <- function(
   
   DE_vec <- get_DE_vec(
       contrast,
-      DE_res,
+      DE_results,
       DE_direction = DE_direction,
       rm_padj_na = rm_padj_na,
       verbose = verbose,
@@ -941,7 +967,7 @@ rgoseq_internal <- function(
         contrast, DE_direction,
         sig, p = over_represented_pvalue, padj,
         n_DE_in_cat, numInCat,
-        category, ontology, description = term
+        term, ontology, description = term
         )
 
     cat(contrast,
@@ -965,7 +991,7 @@ rgoseq_internal <- function(
 # (Helper function, use rgoseq to run the analysis)
 get_DE_vec <- function(
   contrast,                # Focal comparison (contrast)
-  DE_res,                  # DE results df from DESeq2
+  DE_results,                  # DE results df from DESeq2
   DE_direction = "either", # 'either' / 'up' / 'down'
   p_DE = 0.05,             # padj threshold for DE
   lfc_DE = 0,              # LFC threshold for DE
@@ -979,7 +1005,7 @@ get_DE_vec <- function(
   # If we use a column with precomputed DE significance, don't use thresholds
   if (!is.null(use_sig_column)) {
     if (verbose == TRUE) message("Using column ", use_sig_column, " to find DE genes")
-    colnames(DE_res)[grep(use_sig_column, colnames(DE_res))] <- "isDE"
+    colnames(DE_results)[grep(use_sig_column, colnames(DE_results))] <- "isDE"
     p_DE <- NULL
     lfc_DE <- NULL
   }
@@ -992,7 +1018,7 @@ get_DE_vec <- function(
   }
 
   # Create df for focal contrast
-  fDE <- DE_res |> dplyr::filter(contrast == fcontrast) |> arrange(gene)
+  fDE <- DE_results |> dplyr::filter(contrast == fcontrast) |> arrange(gene)
   
   # Check if genes are present multiple times -- this would indicate there are multiple contrasts
   if (any(duplicated(fDE$gene))) {

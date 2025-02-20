@@ -10,7 +10,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run the Nextflow-core metabarcoding pipeline from https://nf-co.re/ampliseq"
-SCRIPT_VERSION="2025-01-25"
+SCRIPT_VERSION="2025-02-19"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="nextflow run"
@@ -22,9 +22,8 @@ WORKFLOW_NAME=nf-core/ampliseq                              # The name of the nf
 OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config
 
 # Parameter defaults - infrastructure
-version_only=false                                          # When true, just print tool & script version info and exit
-conda_path=/fs/project/PAS0471/jelmer/conda/nextflow
-osc_account=PAS0471                                         # If the scripts is submitted with another project, this will be updated (line below)
+conda_path=/fs/ess/PAS0471/jelmer/conda/nextflow
+osc_account=PAS0471                                         # If the script is submitted with another project, this will be updated (line below)
 [[ -n $SLURM_JOB_ACCOUNT ]] && osc_account=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
 
 # Parameter defaults - workflow
@@ -121,6 +120,7 @@ source_function_script $IS_SLURM
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
+version_only=false                    # When true, just print tool & script version info and exit
 outdir=
 params_file=
 config_file=
@@ -191,6 +191,10 @@ echo "Config file argument:                         $config_opt"
 echo "=========================================================================="
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" = true ]] && slurm_resources
+echo "=========================================================================="
+log_time "Printing the contents of the parameter file:"
+cat "$params_file"
+echo "=========================================================================="
 
 # ==============================================================================
 #                               RUN

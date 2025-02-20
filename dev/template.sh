@@ -153,6 +153,8 @@ LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options passed to this script:        $all_opts"
+echo "Working directory:                        $PWD"
+echo
 echo "Input file:                               $infile"
 echo "Output dir:                               $outdir"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"

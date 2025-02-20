@@ -47,6 +47,9 @@ max_len_asv: 260
 # trunclenf: 200
 # trunclenr: 150
 
+# Whether the data comes from an Illumina Nextseq or Novaseq machine
+illumina_novaseq: true
+
 # ==============================================================================
 #                         16S vs ITS SETTINGS
 # ==============================================================================

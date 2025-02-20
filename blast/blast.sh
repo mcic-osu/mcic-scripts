@@ -1,13 +1,10 @@
 #!/bin/bash
 #SBATCH --account=PAS0471
 #SBATCH --time=3:00:00
-#SBATCH --cpus-per-task=1
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name=blast
 #SBATCH --output=slurm-blast-%j.out
 
-#TODO - Add taxonomic info with taxonkit
-#TODO - Consider adding 'qcovus' to the output, which adjusts for overlapping alignments, see https://www.ncbi.nlm.nih.gov/books/NBK279684/table/appendices.T.options_common_to_all_blast/
 #TODO - Option to make output filename contain input filename
 
 # ==============================================================================
@@ -24,39 +21,57 @@ Additionally, downloaded sequences (e.g. with --download_genomes) are currently 
 output separately for each query.
 
 OUTPUT:
-  All output will be placed inside the specified output dir.
-  The output will include TSV files with raw ('blast_out_raw.tsv') and filtered
-  ('blast_out_filtered.tsv'), and if requested, downloaded sequences in separate
-  subdirectories."
-SCRIPT_VERSION="2024-11-17"
+  - All output will be placed inside the specified output dir.
+  - The output will include TSV files with raw ('blast_out_raw.tsv') and filtered
+    ('blast_out_filtered.tsv'), and if requested,
+    downloaded sequences in separate subdirectories.
+  - The columns of the BLAST output are:
+    1)  qseqid      Query sequence ID
+    2)  sacc        Subject accession number
+    3)  pident      Percent identity of hit
+    4)  length      Alignment length
+    5)  evalue      Expect value
+    6)  bitscore    Bit score
+    7)  qlen        Query sequence length
+    8)  slen        Subject sequence length
+    9)  qstart      Start position of the alignment in the query
+    10) qend        End position of the alignment in the query
+    11) sstart      Start position of the alignment in the subject
+    12) send        End position of the alignment in the subject
+    13) qcovus      Query coverage per subject
+    14) mismatch    Number of mismatches
+    15) gaps        Number of gaps
+    16) stitle      Subject title
+    17) staxids     Subject taxonomy IDs
+    18) tax_string  Taxonomy string in the format: kingdom|phylum|class|order|family|genus|species
+"
+SCRIPT_VERSION="2025-02-17"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
-VERSION_COMMAND="blastn -version; datasets --version"
-export TOOL_NAME="NCBI BLAST+ and datasets" 
+VERSION_COMMAND="blastn -version; datasets --version; taxonkit version"
+export TOOL_NAME="NCBI BLAST+; NCBI datasets; taxonkit" 
 export NCBI_API_KEY=34618c91021ccd7f17429b650a087b585f08
 export LC_ALL=C                     # Locale for sorting
 
 # Constants - settings
-# - With genome download, get separate metadata file from the NCBI datasets tool with the following fields:
-META_FIELDS="accession,assminfo-name,organism-name,assminfo-refseq-category,assminfo-level,assmstats-number-of-contigs,assmstats-contig-n50"
-# - Am not able to get scientific name of subject seq to be included ('ssciname' / 'sscinames')
-# - In addition to the 'qcovhsp' included above, there is also 'qcovs', which will contain the total coverage across all HSPs
-DEFAULT_LOCAL_DB_DIR=fs/project/pub_data/blast-database/2024-07
+DEFAULT_LOCAL_DB_DIR=/fs/ess/pub_data/blast-database/2024-07
 DEFAULT_LOCAL_DB_NT="$DEFAULT_LOCAL_DB_DIR"/nt              # Default local DB for nucleotide BLAST
 DEFAULT_LOCAL_DB_AA="$DEFAULT_LOCAL_DB_DIR"/nr              # Default local DB for protein BLAST
+# - With genome download, get separate metadata file from the NCBI datasets tool with the following fields:
+META_FIELDS="accession,assminfo-name,organism-name,assminfo-refseq-category,assminfo-level,assmstats-number-of-contigs,assmstats-contig-n50"
+BLAST_FORMAT="6 qseqid sacc pident length evalue bitscore qlen slen qstart qend sstart send qcovus mismatch gaps stitle staxids"
+#? - See https://www.ncbi.nlm.nih.gov/books/NBK279684/table/appendices.T.options_common_to_all_blast/
 
 # Defaults - generic
 env=conda                           # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/blast
 container_path=
 container_url=
-dl_container=false
 container_dir="$HOME/containers"
 version_only=false                  # When true, just print tool & script version info and exit
 
 # Defaults - settings
-blast_format="6 qseqid sacc pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen qcovhsp slen stitle staxids"
 local=false && remote_opt=" -remote" # Run BLAST locally (own db) or remotely (NCBI's db over the internet)
 remote_db_nt=nt                     # Default remote db for BLAST-to-nucleotide (blastn, tblastx, tblastn)
 remote_db_aa=nr                     # Default remote db for BLAST-to-protein (blastp and blastx)
@@ -69,7 +84,7 @@ top_n_subject=                      # Keep the top-N hits only for each subject,
 evalue="1e-6"                       # E-value threshold
 pct_id=                             # % identity threshold (empty => no threshold)
 pct_cov=                            # Threshold for % of query covered by the alignment length (empty => no threshold)
-force=false                         # Don't rerun BLAST if the output file already exists
+force=true                          # Rerun BLAST if the output file already exists
 to_find_genomes=false               # Find genomes of subjects and create lookup tables with subject acessions?
 to_dl_genomes=false                 # Download full genomes of subjects?
 to_dl_subjects=false                # Download full subjects?
@@ -112,8 +127,8 @@ script_help() {
     echo "GENERAL OPTIONS (OPTIONAL):"
     echo "  --no_header                 Don't add column headers to final BLAST output TSV file [default: add]"
     echo "                                The header won't be added to the raw output file, which can be used for filtering"
-    echo "  --force                     Run BLAST even if the output file already exists        [default: $force]"
-    echo "                                When false, BLAST won't be rerun but downstream operations will be"
+    echo "  --resume                    Don't run BLAST if the output file already exists"
+    echo "                                Only rerun downstream operations like filtering"
     echo
     echo "GENERAL BLAST OPTIONS (OPTIONAL):"
     echo "  --local                     Run BLAST with a local (on-disk) database               [default: $local]"
@@ -126,8 +141,6 @@ script_help() {
     echo "                                  More similar => less similar seqs, use 'megablast' => 'dc-megablast' (discontinuous megablast) => 'blastn'"
     echo "                                  For blastp, the default is 'blastp', other options are: 'blastp-fast', 'blastp-short'"
     echo "                                  See https://www.ncbi.nlm.nih.gov/books/NBK569839/#usrman_BLAST_feat.Tasks"
-    echo "  --out_format        <str>   BLAST output format string. NOTE: changing this may mess up output filtering steps, which rely on the default format"
-    echo "                                [default: $blast_format]"
     echo
     echo "BLAST THRESHOLD AND FILTERING OPTIONS (OPTIONAL):"
     echo "  --tax_ids           <str>   Comma-separated list of NCBI taxon IDs (just the numbers, no 'txid' prefix)"
@@ -162,9 +175,7 @@ script_help() {
     echo "                                 you must provide one to run the script with a container.)"
     echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
     echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
     echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
     echo "  -h/--help                   Print this help message and exit"
     echo "  -v                          Print the version of this script and exit"
     echo "  --version                   Print the version of BLAST and the NCBI datasets tool and exit"
@@ -206,7 +217,7 @@ run_blast() {
         -db "$db" \
         -query "$infile" \
         -out "$blast_out_raw" \
-        -outfmt "$blast_format" \
+        -outfmt "$BLAST_FORMAT" \
         -evalue "$evalue" \
         ${maxtarget_opt}${task_opt}${remote_opt}${thread_opt}${tax_opt}${spacer}"${tax_optarg}"
 }
@@ -218,9 +229,9 @@ process_blast() {
     log_time "Number of distinct queries in the raw BLAST output file: $n_queries_raw"
     log_time "Nr of hits in the raw BLAST output file: $(wc -l < "$blast_out_raw")"
 
-    # Sort by: query name (1), then e-value (11), then bitscore (12), then % identical (3)
+    # Sort by: query name (1), then e-value (5), then bitscore (6), then % identical (3)
     log_time "Sorting BLAST output by goodness of the match"
-    sort -k1,1 -k11,11g -k12,12gr -k3,3gr "$blast_out_raw" > "$blast_out_sorted"
+    sort -k1,1 -k5,5g -k6,6gr -k3,3gr "$blast_out_raw" > "$blast_out_sorted"
 
     # 1. Filter by percent identity
     if [[ -n "$pct_id" ]]; then
@@ -240,7 +251,7 @@ process_blast() {
         blast_out_cov="$outdir"/blast_out_cov.tsv
 
         awk -F"\t" -v OFS="\t" -v pct_cov="$pct_cov" \
-            '$14 >= pct_cov' "$blast_out_id" > "$blast_out_cov"
+            '$13 >= pct_cov' "$blast_out_id" > "$blast_out_cov"
         log_time "Retained $(wc -l < "$blast_out_cov") of $(wc -l < "$blast_out_id") hits"
     else
         blast_out_cov="$blast_out_id"
@@ -254,7 +265,7 @@ process_blast() {
         while read -r query; do
             grep -w -m "$top_n_query" "$query" "$blast_out_cov"
         done < <(cut -f1 "$blast_out_cov" | sort -u) |
-            sort -k1,1 -k11,11g -k12,12gr -k3,3gr > "$blast_out_topq"
+            sort -k1,1 -k5,5g -k6,6gr -k3,3gr > "$blast_out_topq"
         
         log_time "Retained $(wc -l < "$blast_out_topq") of $(wc -l < "$blast_out_cov") hits"
     else
@@ -264,16 +275,25 @@ process_blast() {
     # 4. Only retain top-N matches per subject
     if [[ -n "$top_n_subject" && "$top_n_subject" != 0 ]]; then
         log_time "Getting the top $top_n_subject hits for each subject"
+        blast_out_tops="$outdir"/blast_out_tops.tsv
         
         while read -r subject; do
             grep -w -m "$top_n_subject" "$subject" "$blast_out_topq"
         done < <(cut -f2 "$blast_out_topq" | sort -u) |
-        sort -k1,1 -k11,11g -k12,12gr -k3,3gr > "$blast_out_final"
+        sort -k1,1 -k5,5g -k6,6gr -k3,3gr > "$blast_out_tops"
         
-        log_time "Retained $(wc -l < "$blast_out_final") of $(wc -l < "$blast_out_topq") hits"
+        log_time "Retained $(wc -l < "$blast_out_tops") of $(wc -l < "$blast_out_topq") hits"
     else
-        cp "$blast_out_topq" "$blast_out_final"
+        blast_out_tops="$blast_out_topq"
     fi
+
+    # 5. Add taxonomy information (column 17 contains taxid)
+    #!   Note - if multiple taxids are present, only the first one will be used 
+    cut -f17 "$blast_out_tops" | cut -f1 -d";" |
+        taxonkit reformat -I 1 -f "{K}|{p}|{c}|{o}|{f}|{g}|{s}" \
+        > "$outdir"/taxonomy.tsv 2> /dev/null
+    sed -i 's/||||||/NA/' "$outdir"/taxonomy.tsv # If no taxid is found, replace with 'NA'
+    paste "$blast_out_tops" <(cut -f2 "$outdir"/taxonomy.tsv) > "$blast_out_final"
 
     # Clean & report
     [[ -f "$blast_out_cov" ]] && rm "$blast_out_cov"
@@ -353,7 +373,6 @@ find_genomes() {
             cat "$assembly_list_acc" >> "$assembly_list"
 
             awk -v accession="$accession" '{print $0 "\t" accession}' "$assembly_list_acc" | tee -a "$assembly_lookup"
-            #echo -e "${accession}\t${assembly}" | tee -a "$assembly_lookup"
             rm "$assembly_list_acc"
         else
             log_time "WARNING: No assembly found for subject $accession"
@@ -432,7 +451,7 @@ dl_aligned() {
         outfile="$outdir"/aligned/"$accession"_"$start"-"$stop".fa
         efetch -db "$dl_db" -format fasta \
             -id "$accession" -seq_start "$start" -seq_stop "$stop" > "$outfile"
-    done < <(cut -f 2,9,10 "$blast_out_final" | sort -u)
+    done < <(cut -f 2,11,12 "$blast_out_final" | sort -u)
 
     log_time "Listing the aligned-only output files:"
     ls -lh "$outdir"/aligned
@@ -476,8 +495,7 @@ while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
-        --out_format )      shift && blast_format=$1 ;;
-        --force )           force=true ;;
+        --resume )          force=false ;;
         --no_header )       add_header=false ;;
         --max_target_seqs ) shift && max_target_seqs=$1 ;;
         --tax_ids )         shift && tax_ids=$1 ;;
@@ -495,9 +513,8 @@ while [ "$1" != "" ]; do
         --dl_subjects )     to_dl_subjects=true ;;
         --dl_aligned )      to_dl_aligned=true ;;
         --env )             shift && env=$1 ;;
-        --dl_container )    dl_container=true ;;
         --container_dir )   shift && container_dir=$1 ;;
-        --container_url )   shift && container_url=$1 && dl_container=true ;;
+        --container_url )   shift && container_url=$1 ;;
         -h | --help )       script_help; exit 0 ;;
         -v )                script_version; exit 0 ;;
         --version )         version_only=true ;;
@@ -513,7 +530,7 @@ done
 set -euo pipefail
 
 # Load software
-load_env "$conda_path" "$container_path" "$dl_container"
+load_env "$conda_path" "$container_path"
 [[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
@@ -629,7 +646,7 @@ ls -lh "$infile"
 # ==============================================================================
 # Run BLAST
 if [[ -s "$blast_out_raw" && "$force" == false ]]; then
-    log_time "Skipping BLAST, output file exists ($blast_out_raw) and --force is false..."
+    log_time "Skipping BLAST, output file exists ($blast_out_raw) and --resume is true..."
 else
     run_blast
 fi
@@ -653,7 +670,7 @@ process_blast
 
 # Add header to the final BLAST output file
 if [[ "$add_header" == true ]]; then
-    header=$(echo "$blast_format" | sed 's/6 //' | tr " " "\t") 
+    header=$(echo "$BLAST_FORMAT" | sed 's/6 //' | tr " " "\t" | sed 's/$/\ttax_string/')
     sed -i "1s/^/$header\n/" "$blast_out_final"
 fi
 
@@ -662,31 +679,9 @@ log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
 final_reporting "$LOG_DIR"
 
-
 # ==============================================================================
 #                              SANDBOX
 # ==============================================================================
-#? Include organism taxonomy
-## First, create a lookup table with accession numbers and organism taxonomy
-## (See https://www.biostars.org/p/367121/, Accession nr examples for testing: accession=KF772785.1 / accession=MH231153.1)
-# while read -r line; do
-#    accession=$(echo "$line" | cut -f 2)
-#    esearch_result=$(esearch -db nuccore -query "$accession" </dev/null)
-#    
-#    # Get the taxon name
-#    taxon=$(echo "$esearch_result" |
-#                elink -target taxonomy |
-#                efetch -format native -mode xml |
-#                grep "ScientificName" | head -n1 |
-#                sed -E 's@</?ScientificName>@@g' | sed -e 's/^[ \t]*//')
-#
-#    echo -e "${accession}\t${taxon}"
-#    echo -e "${accession}\t${taxon}" >&2
-#    sleep 5s
-# done < "$blast_out_top" > "$organism_lookup"
-## Second, merge the BLAST output table with the taxonomy lookup table
-# join -t $'\t' -1 2 -2 1 "$blast_out_top" "$organism_lookup" > "$blast_out_proc"
-
 #? Alternative way to get aligned sequences - faster
 #blastn -remote -task blastn -db nt -outfmt '6 qseqid sacc sseq' -evalue 1e-6 \
 #    -query "$query_fa" -out blast_seq.tsv

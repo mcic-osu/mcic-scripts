@@ -339,32 +339,152 @@ pMA <- function(
   return(p)
 }
 
+# Interactive volcano plot
+pvolci <- function(
+    DE_df,                        # Output from extract_DE()
+                                  # - NOTE: Will use columns 'gene', 'gene_name', 'gene_description'
+                                  # - NOTE: Need to call 'girafe(ggobj = p)' on output!
+    shape_by = NULL,              # Column in DE_df for different shapes
+    fill_by = "contrast",         # Column in DE_df for different fill colors
+    sig_only = TRUE,              # Whether to plot all (FALSE) or only significant (TRUE) genes
+    add_ids = FALSE,              # Whether to add gene IDs with ggrepel
+    id_column = "gene_name",      # Gene ID column to use when add_ids == TRUE
+    colors = NULL,                # Optionally provide a vector with fill colors for fill_by variable
+    point_size = 2                # Size of the points (each point is a gene)
+) {
+  
+  # Remove genes with NA as the adj. pvalue
+  DE_df <- DE_df |> dplyr::filter(!is.na(padj))
+  
+  # Remove non-significant genes
+  if (sig_only == TRUE) DE_df <- DE_df |> dplyr::filter(isDE == TRUE)
+  
+  # Get log10 of padj to remove Infinite values
+  DE_df <- DE_df |>
+    mutate(padj = -log10(padj)) |>
+    dplyr::filter(!is.infinite(padj))
+  
+  # Arrange
+  DE_df <- DE_df |>
+    group_by(contrast) |>
+    dplyr::arrange(-padj, -abs(lfc), .by_group = TRUE) |>
+    ungroup()
+  
+  # Make sure the gene info columns exist
+  if(! "gene" %in% colnames(DE_df)) {
+    warning("Column gene does not exist")
+    DE_df$gene <- NA
+  }
+  if(! "gene_name" %in% colnames(DE_df)) {
+    warning("Column gene_name does not exist")
+    DE_df$gene_name <- NA
+  } 
+  if(! "gene_description" %in% colnames(DE_df)) {
+    warning("Column gene_description does not exist")
+    DE_df$gene_description <- NA
+  }
+  
+  # Set default point shape
+  update_geom_defaults("point", list(shape = 21))
+  
+  # Make the base plot with non-significant genes
+  p <- ggplot(DE_df) +
+    aes(x = lfc, y = padj) +
+    geom_point(
+      data = dplyr::filter(DE_df, isDE == FALSE),
+      fill = "grey80",
+      color = "grey40",
+      size = point_size,
+      shape = 21,
+      alpha = 0.3
+    )
+  
+  # Add points for significant genes
+  p <- p +
+    ggiraph::geom_point_interactive(
+      data = dplyr::filter(DE_df, isDE == TRUE),
+      mapping = aes(
+        fill = if (!is.null(fill_by)) .data[[fill_by]],
+        tooltip = paste(gene, "\n", gene_name, "\n", gene_description)
+      ),
+      size = point_size,
+      shape = 21,
+      color = "grey20",
+      alpha = 0.5
+    )
+  
+  # Plot polishing
+  xlab <- expression("Log"[2]*"-fold change")
+  ylab <- expression("-Log"[10]*" of adj. P")
+  
+  p <- p +
+    geom_vline(xintercept = 0, color = "grey30") +
+    scale_x_continuous(expand = expansion(mult = c(0.02, 0.02))) +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.02))) +
+    labs(x = xlab, y = ylab) +
+    theme_bw() +
+    theme(
+      panel.grid.minor = element_blank(),
+      legend.position = "top"
+    )
+  
+  # Don't include fill color legend if coloring by contrast
+  if (fill_by == "contrast") {
+    p <- p + guides(fill = "none")
+  } else {
+    p <- p + guides(fill = guide_legend(override.aes = list(shape = 21)))
+  }
+  
+  # Add fill color scheme
+  if (is.null(colors)) {
+    p <- p + scale_fill_brewer(palette = "Dark2", name = fill_by)
+  } else {
+    p <- p + scale_fill_manual(values = colors, name = fill_by)
+  }
+  
+  # Add shape scheme
+  if (! is.null(shape_by)) {
+    n_shapes <- length(unique(DE_df[[shape_by]]))
+    shapes <- c(21:25)[1:n_shapes]
+    p <- p + scale_shape_manual(values = shapes, name = shape_by)
+  }
+  
+  # Add gene IDs
+  if (add_ids == TRUE) {
+    DE_df[[id_column]] <- str_trunc(DE_df[[id_column]], width = 35)
+    
+    p <- p +
+      ggrepel::geom_text_repel(
+        data = slice_head(DE_df, n = 10, by = contrast),
+        mapping = aes(label = .data[[id_column]]),
+        max.overlaps = 20,
+        min.segment.length = 0.1,
+        color = "grey50",
+        fontface = "italic"
+      )
+  }
+  
+  print(p)
+  return(p)
+}
 
 # Volcano plot
 pvolc <- function(
-    DE_df,                        # Output from extract_DE()
-    contrasts = "all",            # Subset contrasts using 'contrast' column in DE_df. Default: no subsetting
+    DE_df,                        # Output from extract_DE(); requires 'isDE' and 'contrast' columns
+                                  # If multiple contrasts are present, the function will facet based on contrast
+    shape_by = NULL,              # Column in DE_df for different shapes
+    fill_by = "contrast",         # Column in DE_df for different fill colors
     sig_only = TRUE,              # Whether to plot all (FALSE) or only significant (TRUE) genes
-    interactive = FALSE,          # Use ggiraph to make the plot interactive
-                                  # NOTE 1: Will use columns 'gene', 'gene_name', 'gene_description'
-                                  # NOTE 2: Need to call 'girafe(ggobj = p)' on output!
-    add_ids = FALSE,              # Whether to add gene IDs with ggrepel
+    add_ids = FALSE,              # Whether to add gene IDs of top-10 DEGs with ggrepel
     id_column = "gene_name",      # Gene ID column to use when add_ids == TRUE
-    colors = NULL,                # Manual colors for each contrast
-    plot_grid = FALSE,
-    grid_rows = NULL,
-    grid_cols = NULL,
-    facet_scales = "fixed",
-    return_plot = FALSE           # Default is to print but not return the plot object
-                                  # (Except when interactive == TRUE)
+    colors = NULL,                # Optionally provide a vector with fill colors for fill_by variable
+    point_size = 2,               # Size of the points (each point is a gene)
+    plot_grid = FALSE,            # Facet in a grid format with facet_grid() (instead of facet_wrap())
+    grid_rows = NULL,             # For gridwise faceting, which variable to facet across rows
+    grid_cols = NULL,             # For gridwise faceting, which variable to facet across columns
+    facet_scales = "fixed"
     ) {
 
-  # Rename contrasts vector
-  fcontrasts <- contrasts
-
-  # Whether to return the plot object
-  if (interactive == TRUE) return_plot <- TRUE
-  
   # Remove genes with NA as the adj. pvalue
   DE_df <- DE_df |> dplyr::filter(!is.na(padj))
 
@@ -376,100 +496,105 @@ pvolc <- function(
     mutate(padj = -log10(padj)) |>
     dplyr::filter(!is.infinite(padj))
 
-  # Only take results for the the focal contrast
-  if (!is.null(fcontrasts) && fcontrasts[1] != "all") {
-    message("Selecting only the focal contrasts...")
-    DE_df <- DE_df |> dplyr::filter(contrast %in% fcontrasts)
-  }
-  
-  # Arrange
+  # Sort by p-value and LFC within contrasts
   DE_df <- DE_df |>
     group_by(contrast) |>
-    dplyr::arrange(-padj, -abs(lfc)) |>
+    dplyr::arrange(-padj, -abs(lfc), .by_group = TRUE) |>
     ungroup()
   
-  # Make sure the gene info columns exist
-  if (interactive == TRUE) {
-    if(! "gene" %in% colnames(DE_df)) {
-      warning("Column gene does not exist")
-      DE_df$gene <- NA
-    }
-    if(! "gene_name" %in% colnames(DE_df)) {
-      warning("Column gene_name does not exist")
-      DE_df$gene_name <- NA
-    } 
-    if(! "gene_description" %in% colnames(DE_df)) {
-      warning("Column gene_description does not exist")
-      DE_df$gene_description <- NA
-    }
-  }
+  # Set default point shape
+  update_geom_defaults("point", list(shape = 21))
   
-  # Axis titles
-  xlab <- expression("Log"[2]*"-fold change")
-  ylab <- expression("-Log"[10]*" of adj. P")
-
-  # Make the base plot
+  # Make the base plot with non-significant genes
   p <- ggplot(DE_df) +
     aes(x = lfc, y = padj) +
-    geom_point(data = dplyr::filter(DE_df, isDE == FALSE),
-               fill = "grey80", color = "grey40",
-               size = 2, shape = 21, alpha = 0.3)
+    geom_point(
+      data = dplyr::filter(DE_df, isDE == FALSE),
+      fill = "grey80",
+      color = "grey40",
+      size = point_size,
+      shape = 21,
+      alpha = 0.3
+      )
   
-  # Add points
-  if (interactive == TRUE) {
-    p <- p + ggiraph::geom_point_interactive(
-      data = dplyr::filter(DE_df, isDE == TRUE),
-      mapping = aes(fill = contrast,
-                    tooltip = paste(gene, "\n", gene_name, "\n", gene_description)),
-      size = 2, shape = 21, color = "grey20", alpha = 0.5
-    )
-  } else {
-    p <- p + geom_point(
-      data = dplyr::filter(DE_df, isDE == TRUE),
-      mapping = aes(fill = contrast),
-      size = 2, shape = 21, color = "grey20", alpha = 0.5
-    )
-  }
-    
+  # Add points for significant genes
+  p <- p +
+    geom_point(
+        data = dplyr::filter(DE_df, isDE == TRUE),
+        mapping = aes(
+          fill = if (!is.null(fill_by)) .data[[fill_by]],
+          shape = if (!is.null(shape_by)) .data[[shape_by]]
+          ),
+        size = point_size,
+        color = "grey20",
+        alpha = 0.5
+      )
+  
+  # Plot polishing
+  xlab <- expression("Log"[2]*"-fold change")
+  ylab <- expression("-Log"[10]*" of adj. P")
+  
   p <- p +
     geom_vline(xintercept = 0, color = "grey30") +
     scale_x_continuous(expand = expansion(mult = c(0.02, 0.02))) +
     scale_y_continuous(expand = expansion(mult = c(0, 0.02))) +
     labs(x = xlab, y = ylab) +
-    guides(fill = "none") +
-    theme(panel.grid.minor = element_blank())
+    theme_bw() +
+    theme(
+      panel.grid.minor = element_blank(),
+      legend.position = "top"
+      )
 
-  # Add color scheme
-  if (is.null(colors)) p <- p + scale_fill_brewer(palette = "Dark2")
-  if (! is.null(colors)) p <- p + scale_fill_manual(values = colors)
-
+  # Don't include fill color legend if coloring by contrast
+  if (fill_by == "contrast") {
+    p <- p + guides(fill = "none")
+  } else {
+    p <- p + guides(fill = guide_legend(override.aes = list(shape = 21)))
+  }
+    
+  # Add fill color scheme
+  if (is.null(colors)) {
+    p <- p + scale_fill_brewer(palette = "Dark2", name = fill_by)
+  } else {
+    p <- p + scale_fill_manual(values = colors, name = fill_by)
+  }
+  
+  # Add shape scheme
+  if (! is.null(shape_by)) {
+    n_shapes <- length(unique(DE_df[[shape_by]]))
+    shapes <- c(21:25)[1:n_shapes]
+    p <- p + scale_shape_manual(values = shapes, name = shape_by)
+  }
+  
   # Add gene IDs
   if (add_ids == TRUE) {
     DE_df[[id_column]] <- str_trunc(DE_df[[id_column]], width = 35)
-    
-    p <- p + ggrepel::geom_text_repel(
-      data = slice_head(DE_df, n = 10, by = contrast),
-      mapping = aes(label = .data[[id_column]]),
-      max.overlaps = 20,
-      min.segment.length = 0.1,
-      color = "grey50",
-      fontface = "italic"
-    )
+    p <- p +
+      ggrepel::geom_text_repel(
+        data = slice_head(DE_df, n = 10, by = contrast),
+        mapping = aes(label = .data[[id_column]]),
+        max.overlaps = 20,
+        min.segment.length = 0.1,
+        color = "grey50",
+        fontface = "italic"
+      )
   }
   
-  # When no focal contrast is specified, show all with a facet
-  if ((length(fcontrasts) > 1 || fcontrasts[1] == "all") & plot_grid == FALSE) {
+  # Faceting
+  if (length(unique(DE_df$contrast)) > 1 && plot_grid == FALSE) {
     p <- p + facet_wrap(vars(contrast), nrow = 1, scales = facet_scales)
   }
-  
   if (plot_grid == TRUE) {
-    p <- p + facet_grid(rows = vars(!!sym(grid_rows)),
-                        cols = vars(!!sym(grid_cols)),
-                        scales = facet_scales)
+    p <- p +
+      facet_grid(
+        rows = vars(!!sym(grid_rows)),
+        cols = vars(!!sym(grid_cols)),
+        scales = facet_scales
+      )
   }
   
   print(p)
-  if (return_plot == TRUE) return(p)
+  return(p)
 }
 
 # Heatmap with ComplexHeatmap
