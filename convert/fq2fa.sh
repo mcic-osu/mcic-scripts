@@ -3,7 +3,7 @@
 #SBATCH --time=30
 #SBATCH --cpus-per-task=4
 #SBATCH --mail-type=FAIL
-#SBATCH --name=fq2fa
+#SBATCH --job-name=fq2fa
 #SBATCH --output=slurm-fq2fa-%j.out
 
 # Convert FASTQ to FASTA with seqtk
