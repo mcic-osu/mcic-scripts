@@ -1,6 +1,10 @@
 # A function to create taxonomic abundance barplots for metabarcoding data
 # ...and a few color vectors to use in this function
-# Jelmer Poelstra, last updated 2024-11-15
+# Jelmer Poelstra, last updated 2025-02-22
+
+# Install packages if needed
+if (!require(tidyverse)) install.packages("tidyverse")
+if (!require(randomcoloR)) install.packages("randomcoloR")
 
 # Color sets
 cols1 <- c("#a74bb4", "#62b54f", "#7064d3", "#b5b348", "#dd6fc5",
@@ -18,11 +22,12 @@ cols_brewerplus <- c("#A6CEE3", "#1F78B4", "#B2DF8A", "#33A02C", "#FB9A99",
                      "#c497cf", "#773a27", "#7cb9cb", "#594e50", "#d3c4a8",
                      "#c17e7f")
                      
-# This one is from microViz::distinct_palette(pal = "kelly", add = NA)
+# This one is based on microViz::distinct_palette(pal = "kelly", add = NA)
+# (Removed gray colors)
 cols_kelly <- c("#f3c300", "#875692", "#f38400", "#a1caf1", "#be0032",
-                "#c2b280", "#848482", "#008856", "#e68fac", "#0067a5",
+                "#c2b280", "#008856", "#e68fac", "#0067a5",
                 "#f99379", "#604e97", "#f6a600", "#b3446c", "#dcd300",
-                "#882d17", "#8db600", "#654522", "#e25822", "#2b3d26")
+                "#882d17", "#8db600", "#654522", "#e25822")
 
 # Function to create a barplot showing taxon abundances
 pbar <- function(
@@ -41,6 +46,8 @@ pbar <- function(
     colors = cols_kelly,    # Vector of colors. Presets are 'cols1', 'cols_brewerplus', and 'cols_kelly' (default)
                             # You can also provide your own vector of colors.
     abund_df = NULL         # Alternative to providing a phyloseq object (ps) as input: an abundance df from abund_stats()
+                            # With columns 'OTU', 'Sample', 'Abundance', any metadata grouping variables,
+                            # and the focal taxonomic rank
     ) {
 
   # Compute abundance stats if needed
@@ -59,9 +66,7 @@ pbar <- function(
   # Set colors
   ntax <- length(unique(na.omit(abund_df[[taxrank]])))
   if (is.null(colors)) {
-    # [Package gives too many installation problems - turning this functionality off]
-    #colors <- randomcoloR::distinctColorPalette(k = ntax)
-    stop("Error: please specify colors")
+    colors <- randomcoloR::distinctColorPalette(k = ntax)
   } else {
     colors <- colors[1:ntax]
   }
@@ -150,7 +155,6 @@ abund_stats <- function(
   
   # Change NA taxa to "unknown"
   if (na_to_unknown == TRUE) {
-    #levels(df[[taxrank]]) <- c(levels(df[[taxrank]]), "unknown")
     df[[taxrank]][is.na(df[[taxrank]])] <- "unknown"
   }
   
@@ -193,11 +197,13 @@ abund_stats <- function(
       group_by_at(groupby) |> 
       summarize(Abundance = sum(Abundance))
     
-    if (groupby[1] == "Sample") {
-      other_df <- other_df |>
-        left_join(meta, by = "Sample") |>
-        select(!contains(".y"))
-      colnames(other_df) <- sub("\\.x$", "", colnames(other_df))
+    if (!is.null(groupby)) {
+      if (groupby[1] == "Sample") {
+        other_df <- other_df |>
+          left_join(meta, by = "Sample") |>
+          select(!contains(".y"))
+        colnames(other_df) <- sub("\\.x$", "", colnames(other_df))
+      }
     }
     other_df[[taxrank]] <- "other (rare)"
     
@@ -236,5 +242,99 @@ abund_stats <- function(
     df[[taxrank]] <- fct_relevel(df[[taxrank]], "unknown", after = Inf)
   }
   
-  return(df)
+  return(tibble(df))
+}
+
+# Function to prepare and abundance_df for the pbar() function.
+# based on merely a taxonomy table without actual abundances
+# NOTE: input tax_df should only contain results from a single database
+#       (combine with barplot_db() function below)
+tax_stats <- function(
+    tax_df,                # Taxonomy table with one column per taxonomic rank and 'database' ID column
+    tax_rank,              # Taxonomic rank (e.g. 'Kingdom'), should be a column name in tax_df
+    db_id = NULL,          # Database ID - will use value in 'database' column by default 
+    abund_tres = 0.01,     # Taxa with lower 'abundance' than this will be
+                           # converted to a catch-all 'other' category
+                           # NA => no abundance threshold
+    sort_by_abund = TRUE,  # Whether to sort taxa by abundance (default: sort alphabetically)
+    na_to_unknown = TRUE   # Whether to include NAs (=unassigned) as an 'unknown' category
+                           # Otherwise, these will simply be removed
+) {
+  
+  # Get the ID
+  if (is.null(db_id)) db_id <- tax_df$database[1]
+  
+  # Add 'abundance'
+  df <- tax_df |>
+    mutate(Abundance = 1 / nrow(tax_df)) |>
+    summarize(Abundance = sum(Abundance), .by = all_of(tax_rank))
+  
+  # Get vector of low-abundance taxa to be lumped
+  if (!is.na(abund_tres)) {
+    taxa_to_lump <- df |>
+      filter(Abundance <= abund_tres) |>
+      pull(.data[[tax_rank]])
+    
+    ntaxa_to_lump <- sum(!is.na(taxa_to_lump))
+    message(ntaxa_to_lump, " low-abundance taxa will be lumped into 'other'")
+  }
+  
+  # Process low-abundance taxa
+  if (ntaxa_to_lump > 0) {
+    # Create a df for the lumped taxa, with summed abundance
+    to_lump_df <- df |>
+      filter(.data[[tax_rank]] %in% taxa_to_lump) |>
+      summarize(Abundance = sum(Abundance))
+    to_lump_df[[tax_rank]] <- "other (rare)"
+    
+    # Filter out original low-abundance taxa and add lumped one
+    df <- df |>
+      filter(! .data[[tax_rank]] %in% taxa_to_lump) |>
+      bind_rows(to_lump_df)
+  }
+  
+  # Sort ASVs by mean overall abundance
+  if (sort_by_abund == TRUE) {
+    tax_order <- df |>
+      group_by(.data[[tax_rank]]) |>
+      summarize(abund = mean(Abundance)) |>
+      arrange(-abund) |>
+      drop_na() |>
+      pull(.data[[tax_rank]])
+    if (any(tax_order == "other (rare)")) {
+      tax_order <- tax_order[-which(tax_order == "other (rare)")]
+    }
+    tax_order <- c(tax_order, "other (rare)", "unknown")
+    df[[tax_rank]] <- factor(df[[tax_rank]], levels = tax_order)
+  }
+  
+  # Change NA taxa to "unknown"
+  if (na_to_unknown == TRUE) {
+    df[[tax_rank]][is.na(df[[tax_rank]])] <- "unknown"
+  } else {
+    df <- df |> filter(!is.na(.data[[tax_rank]]))
+  }
+  
+  # Add 'Sample' ID
+  df$Sample <- db_id
+  
+  return(tibble(df))
+}
+
+# Create a barplot comparing taxonomic assignments with different databases
+barplot_db <- function(
+    df_list,             # A list of input taxonomy tables, with 'database' column with the DB ID
+    tax_rank             # Taxonomic rank to plot, e.g. 'Kingdom' (column needs to exist in input df's)
+    ) {
+  
+  # Get taxon abundances for each input dataframe
+  x <- map_dfr(.x = df_list, .f = tax_stats, tax_rank = tax_rank)
+  
+  # Make sure the Other and Unknown categories come last
+  x[[tax_rank]] <- fct_relevel(x[[tax_rank]], "other (rare)", after = Inf)
+  x[[tax_rank]] <- fct_relevel(x[[tax_rank]], "unknown", after = Inf)
+  
+  # Create the plot
+  pbar(abund_df = x, taxrank = tax_rank) +
+    theme(axis.text.x = element_text(angle = 0))
 }
