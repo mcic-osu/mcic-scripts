@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
+#SBATCH --time=2:00:00
+#SBATCH --cpus-per-task=5
+#SBATCH --mem=20G
 #SBATCH --mail-type=FAIL
-#SBATCH --job-name=makeblastdb
-#SBATCH --output=slurm-makeblastdb-%j.out
+#SBATCH --job-name=blastdb_make
+#SBATCH --output=slurm-blastdb_make-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Create a custom BLAST database"
-SCRIPT_VERSION="2023-09-05"
+SCRIPT_VERSION="2025-02-21"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -23,12 +23,7 @@ VERSION_COMMAND="$TOOL_BINARY -version"
 # Defaults - generics
 env=conda                           # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/blast
-container_path=
-container_url=
-dl_container=false
 container_dir="$HOME/containers"
-strict_bash=true
-version_only=false                 # When true, just print tool & script version info and exit
 
 # Defaults - tool parameters
 db_type=nucl                       # 'nucl' or 'prot'
@@ -61,11 +56,8 @@ script_help() {
     echo "                                (NOTE: If no default '--container_url' is listed below,"
     echo "                                 you'll have to provide one in order to run the script with a container.)"
     echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
-    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
+    echo "  --container_url     <str>   URL to download the container from"
     echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
-    echo "  --no_strict                 Don't use strict Bash settings ('set -euo pipefail') -- can be useful for troubleshooting"
     echo "  -h/--help                   Print this help message and exit"
     echo "  -v                          Print the version of this script and exit"
     echo "  --version                   Print the version of $TOOL_NAME and exit"
@@ -104,6 +96,9 @@ infile=
 outdir=
 db_name=
 opts=
+container_path=
+container_url=
+version_only=false                 # When true, just print tool & script version info and exit
 
 # Parse command-line args
 all_opts="$*"
@@ -115,10 +110,8 @@ while [ "$1" != "" ]; do
         --db_name )         shift && db_name=$1 ;;
         --opts )            shift && opts=$1 ;;
         --env )             shift && env=$1 ;;
-        --no_strict )       strict_bash=false ;;
-        --dl_container )    dl_container=true ;;
         --container_dir )   shift && container_dir=$1 ;;
-        --container_url )   shift && container_url=$1 && dl_container=true ;;
+        --container_url )   shift && container_url=$1 ;;
         -h | --help )       script_help; exit 0 ;;
         -v )                script_version; exit 0 ;;
         --version )         version_only=true ;;
@@ -131,10 +124,10 @@ done
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
 # Strict Bash settings
-[[ "$strict_bash" == true ]] && set -euo pipefail
+set -euo pipefail
 
 # Load software
-load_env "$conda_path" "$container_path" "$dl_container"
+load_env "$conda_path" "$container_path" "$container_url"
 [[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
