@@ -193,7 +193,11 @@ set_threads "$IS_SLURM"
 [[ "$IS_SLURM" = true ]] && slurm_resources
 echo "=========================================================================="
 log_time "Printing the contents of the parameter file:"
-cat "$params_file"
+cat -n "$params_file"
+if [[ -n "$config_file" ]]; then
+    log_time "Printing the contents of the additional config file:"
+    cat -n "$config_file"
+fi
 echo "=========================================================================="
 
 # ==============================================================================
