@@ -98,7 +98,7 @@ source_function_script
 infile=
 outdir=
 db_name=
-taxid_map=
+taxid_map= && taxid_opt=
 more_opts=
 container_path=
 container_url=
