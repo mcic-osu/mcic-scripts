@@ -1,12 +1,9 @@
 #!/usr/bin/env Rscript
-
 #SBATCH --account=PAS0471
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --job-name=tax_assign
-#SBATCH --output=slurm-tax_assign-%j.out
+#SBATCH --job-name=tax_assign_dada
+#SBATCH --output=slurm-tax_assign_dada-%j.out
 
 #? This script will assign taxonomy to a set of ASV sequences, by default using the Silva database
 #? Run this script after the 'dada.R' script, using the 'seqtab.rds' output from that script as input here
