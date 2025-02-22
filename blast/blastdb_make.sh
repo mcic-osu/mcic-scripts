@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=2:00:00
-#SBATCH --cpus-per-task=5
 #SBATCH --mem=20G
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name=blastdb_make
@@ -12,7 +11,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Create a custom BLAST database"
-SCRIPT_VERSION="2025-02-21"
+SCRIPT_VERSION="2025-02-22"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
@@ -44,12 +43,16 @@ script_help() {
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--infile         <file>  Input FASTA file"
+    echo "                                Header lines should not contain '|' characters"
+    echo "                                See https://www.ncbi.nlm.nih.gov/books/NBK569841"
     echo "  -o/--outdir         <dir>   Output dir for BLAST db (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --db_type           <str>   'nucl' or 'prot'                        [default: $db_type]"
     echo "  --db_name           <str>   BLAST db (base)name                     [default: same as FASTA file]"
-    echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
+    echo "  --taxid_map         <file>  Two-column file with seq ID and tax ID  [default: none]"
+    echo "                              See See https://www.ncbi.nlm.nih.gov/books/NBK569841"
+    echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
@@ -95,7 +98,8 @@ source_function_script
 infile=
 outdir=
 db_name=
-opts=
+taxid_map=
+more_opts=
 container_path=
 container_url=
 version_only=false                 # When true, just print tool & script version info and exit
@@ -108,7 +112,8 @@ while [ "$1" != "" ]; do
         -o | --outdir )     shift && outdir=$1 ;;
         --db_type )         shift && db_type=$1 ;;
         --db_name )         shift && db_name=$1 ;;
-        --opts )            shift && opts=$1 ;;
+        --taxid_map )       shift && taxid_map=$1 ;;
+        --more_opts )       shift && more_opts=$1 ;;
         --env )             shift && env=$1 ;;
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 ;;
@@ -139,6 +144,12 @@ load_env "$conda_path" "$container_path" "$container_url"
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 [[ -z $db_name ]] && db_name=$(basename "${infile%.*}")
 
+# Build the taxid_map options
+if [[ -n $taxid_map ]]; then
+    taxid_opt="-taxid_map $taxid_map"
+    [[ ! -f $taxid_map ]] && die "TaxID map file $taxid_map does not exist"
+fi
+
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
 # ==============================================================================
@@ -149,7 +160,8 @@ echo "Input file:                               $infile"
 echo "Output dir:                               $outdir"
 echo "DB type:                                  $db_type"
 echo "DB name:                                  $db_name"
-[[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
+[[ -n $taxid_map ]] && echo "TaxID map file:                           $taxid_map"
+[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
 ls -lh "$infile"
 [[ "$IS_SLURM" == true ]] && slurm_resources
@@ -164,7 +176,8 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
     -dbtype "$db_type" \
     -title "$db_name" \
     -parse_seqids \
-    $opts
+    $taxid_opt \
+    $more_opts
 
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
