@@ -3,8 +3,10 @@
 # Jelmer Poelstra, last updated 2025-02-22
 
 # Install packages if needed
-if (!require(tidyverse)) install.packages("tidyverse")
-if (!require(randomcoloR)) install.packages("randomcoloR")
+if (!require(tidyverse, quietly = TRUE)) install.packages("tidyverse")
+if (!require(randomcoloR, quietly = TRUE)) install.packages("randomcoloR")
+if (!require(BiocManager, quietly = TRUE)) install.packages("BiocManager")
+if (!require(phyloseq, quietly = TRUE)) BiocManager::install("phyloseq")
 
 # Color sets
 cols1 <- c("#a74bb4", "#62b54f", "#7064d3", "#b5b348", "#dd6fc5",
@@ -31,7 +33,8 @@ cols_kelly <- c("#f3c300", "#875692", "#f38400", "#a1caf1", "#be0032",
 
 # Function to create a barplot showing taxon abundances
 pbar <- function(
-    ps = NULL,              # Provide a phyloseq object (ps) with RELATIVE abundances as the input
+    ps = NULL,              # Provide a phyloseq object (ps)
+                            # Abundances are expected to be relative: if not, set convert_abund = TRUE
     taxrank = "Phylum",     # Taxonomic rank to summarize abundance by Or 'Family', 'Genus', etc
     x_var = "Sample",       # What to plot along the x-axis
                             #   'Sample' for indiv. samples, or a column name from sample_data(ps)) (quoted string)
@@ -45,11 +48,15 @@ pbar <- function(
     sort_by_abund = TRUE,   # Sort the taxa by abundance in the graph (rather than alphabetically)
     colors = cols_kelly,    # Vector of colors. Presets are 'cols1', 'cols_brewerplus', and 'cols_kelly' (default)
                             # You can also provide your own vector of colors.
-    abund_df = NULL         # Alternative to providing a phyloseq object (ps) as input: an abundance df from abund_stats()
+    abund_df = NULL,        # Alternative to providing a phyloseq object (ps) as input: an abundance df from abund_stats()
                             # With columns 'OTU', 'Sample', 'Abundance', any metadata grouping variables,
                             # and the focal taxonomic rank
+    convert_abund = FALSE   # If the ps object has absolute counts, set to TRUE to convert to relative 
     ) {
 
+  # Convert to proportional if needed
+  if(convert_abund) ps <- transform_sample_counts(ps, function(x) {x / sum(x)} )
+  
   # Compute abundance stats if needed
   if (is.null(abund_df)) {
     abund_df <- abund_stats(
@@ -337,4 +344,34 @@ barplot_db <- function(
   # Create the plot
   pbar(abund_df = x, taxrank = tax_rank) +
     theme(axis.text.x = element_text(angle = 0))
+}
+
+
+# Function to create a (dummy) phyloseq object just from a taxonomy table
+# (All the ASV counts will be 1, and there will be 1 sample only)
+ps_from_taxtable <- function(
+    taxtable,
+    tax_levels = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species"))
+{
+  sample_id <- "S1"
+  
+  # Create matrix from taxtable dataframe
+  tax_mat <- taxtable |> select(all_of(tax_levels)) |> as.matrix()
+  rownames(tax_mat) <- taxtable$ASV
+  
+  # Create dummy count matrix
+  count_mat <- data.frame(rep(1, nrow(tax_mat)))
+  colnames(count_mat) <- sample_id
+  rownames(count_mat) <- rownames(tax_mat)
+  
+  # Create dummy metadata
+  meta <- data.frame(group = "S", treatment = "A")
+  rownames(meta) <- sample_id
+  
+  # Create dummy phyloseq object
+  phyloseq(
+    otu_table(count_mat, taxa_are_rows = TRUE),
+    tax_table(tax_mat),
+    sample_data(meta)
+  )
 }
