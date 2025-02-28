@@ -10,7 +10,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run the Nextflow-core metabarcoding pipeline from https://nf-co.re/ampliseq"
-SCRIPT_VERSION="2025-02-19"
+SCRIPT_VERSION="2025-02-28"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="nextflow run"
@@ -168,7 +168,6 @@ config_opt="-c $OSC_CONFIG"
 
 # Other dirs
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
-trace_dir="$outdir"/pipeline_info
 
 # ==============================================================================
 #                               REPORT
@@ -205,7 +204,7 @@ echo "==========================================================================
 # ==============================================================================
 # Make necessary dirs
 log_time "Creating the output directories..."
-mkdir -pv "$work_dir" "$container_dir" "$outdir"/logs "$trace_dir"
+mkdir -pv "$work_dir" "$container_dir" "$outdir"/logs
 
 # Download the OSC config file
 if [[ ! -f "$OSC_CONFIG" ]]; then
@@ -225,12 +224,8 @@ runstats $TOOL_BINARY $WORKFLOW_NAME \
     -params-file "$params_file" \
     --outdir "$outdir" \
     -work-dir "$work_dir" \
-    -with-report "$trace_dir"/report.html \
-    -with-trace "$trace_dir"/trace.txt \
-    -with-timeline "$trace_dir"/timeline.html \
-    -with-dag "$trace_dir"/dag.png \
-    -ansi-log false \
     -profile "$profile" \
+    -ansi-log false \
     $config_opt \
     $resume_opt
 
