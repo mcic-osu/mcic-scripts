@@ -14,7 +14,7 @@ DESCRIPTION="Align nucleotide or amino acid sequences in a multi-FASTA file with
 SCRIPT_VERSION="2025-02-16"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
-FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 
 # Defaults - generics
 env=conda                           # Use a 'conda' env or a Singularity 'container'

@@ -17,7 +17,7 @@ protein data of the same or related species."
 SCRIPT_VERSION="2024-09-28"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
-FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 TOOL_BINARY=braker.pl
 TOOL_NAME=Braker3
 TOOL_DOCS=https://github.com/Gaius-Augustus/BRAKER

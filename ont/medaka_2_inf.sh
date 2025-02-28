@@ -20,7 +20,7 @@ Parallel edition - script 2 of 3"
 SCRIPT_VERSION="2023-09-28"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
-FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 TOOL_BINARY="medaka inference"
 TOOL_NAME=Medaka
 TOOL_DOCS=https://github.com/nanoporetech/medaka

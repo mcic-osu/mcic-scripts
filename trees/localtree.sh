@@ -20,7 +20,7 @@ MODULE=miniconda3/23.3.1-py310
 IQTREE_CONDA=/fs/ess/PAS0471/jelmer/conda/iqtree
 BEDTOOLS_CONDA=/fs/ess/PAS0471/jelmer/conda/bedtools
 TREE_CONDA=/fs/ess/PAS0471/jelmer/conda/r_tree
-FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 
 # Defaults
 color_column=pathovar               # Name of the metadata column to color tip labels by

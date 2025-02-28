@@ -17,7 +17,7 @@ IDed by .t1/.p1-style suffices"
 SCRIPT_VERSION="2023-12-18"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
-FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 TOOL_NAME=seqkit
 VERSION_COMMAND="seqkit | sed -n '3p'"
 

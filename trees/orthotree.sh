@@ -16,7 +16,7 @@ in a focal genome based on its Orthofinder orthogroup"
 SCRIPT_VERSION="2023-10-18"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
-FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 conda_path=/fs/ess/PAS0471/jelmer/conda/iqtree          # Includes IQ-tree, MAFFT, csvtk
 
 # Defaults

@@ -17,7 +17,7 @@ as rRNA (unmapped)"
 SCRIPT_VERSION="2023-08-10"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
-FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 TOOL_BINARY=sortmerna
 TOOL_NAME=SortMeRNA
 TOOL_DOCS=https://github.com/biocore/sortmerna

@@ -17,7 +17,7 @@
 DESCRIPTION="" #TODO
 SCRIPT_VERSION="2025-03-01" #TODO - UPDATE
 SCRIPT_AUTHOR="Jelmer Poelstra"
-FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 TOOL_BINARY=#TODO
 TOOL_NAME=#TODO
 TOOL_DOCS=#TODO - URL TO TOOL DOCS WEBSITE 

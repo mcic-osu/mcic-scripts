@@ -48,7 +48,7 @@ OUTPUT:
 SCRIPT_VERSION="2025-02-17"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
-FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 VERSION_COMMAND="blastn -version; datasets --version; taxonkit version"
 export TOOL_NAME="NCBI BLAST+; NCBI datasets; taxonkit" 
 export NCBI_API_KEY=34618c91021ccd7f17429b650a087b585f08

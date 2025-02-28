@@ -16,7 +16,7 @@ assembly either with short or long reads"
 SCRIPT_VERSION="2023-09-26"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
-FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions2.sh
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 TOOL_BINARY=racon
 TOOL_NAME=Racon
 TOOL_DOCS=https://github.com/lbcb-sci/racon
