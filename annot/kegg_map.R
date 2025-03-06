@@ -95,9 +95,10 @@ dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 
 # Read input files
 message("\n# Now reading the input file...")
-ko_terms <- read_tsv(ko_file, show_col_types = FALSE, col_names = FALSE) |>
-    drop_na() |>
-    pull(2)
+ko_terms <- read.delim(ko_file, sep = "\t", header = FALSE) |>
+  mutate(K_nr = ifelse(V2 == "", NA, V2)) |> 
+  drop_na() |>
+  pull(K_nr)
 message("\n# Number of ko_terms: ", length(ko_terms))
 
 # Get KEGG pathways associated with the different K-terms
