@@ -122,7 +122,7 @@ while [ "$1" != "" ]; do
         --conda_path )      shift && conda_path=$1 ;;
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 ;;
-        --container_path )   shift && container_path=$1 ;;
+        --container_path )  shift && container_path=$1 ;;
         -h | --help )       script_help; exit 0 ;;
         -v | --version)     version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
