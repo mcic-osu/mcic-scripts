@@ -113,9 +113,8 @@ while [ "$1" != "" ]; do
         --force_tree )      force_tree=true ;;
         --out_prefix )      shift && out_prefix=$1 ;;
         --more_args )       shift && more_args=$1 ;;
-        -v )                script_version; exit 0 ;;
         -h | --help )       script_help; exit 0 ;;
-        --version )         load_env "$MODULE" "$CONDA"
+        -v | --version )         load_env "$MODULE" "$CONDA"
                             tool_version "$VERSION_COMMAND" && exit 0 ;;
         * )                 die "Invalid option $1" "$all_args" ;;
     esac

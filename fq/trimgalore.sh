@@ -22,7 +22,7 @@ TOOL_DOCS=https://github.com/FelixKrueger/TrimGalore/blob/master/Docs/Trim_Galor
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env=container              # Use a 'conda' env or a Singularity 'container'
+env_type=container              # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/trimgalore
 container_url=docker://quay.io/biocontainers/trim-galore:0.6.10--hdfd78af_0
 container_dir="$HOME"/containers
@@ -68,7 +68,7 @@ script_help() {
     echo "  --more_opts             Additional options to pass to $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --env           <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
+    echo "  --env_type           <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
     echo "  --container_url <str>   URL to download the container from      [default: $container_url]"
     echo "  --container_dir <str>   Dir to download the container to        [default: $container_dir]"
     echo "  --conda_env     <dir>   Full path to a Conda environment to use [default: $conda_path]"
@@ -136,12 +136,11 @@ while [ "$1" != "" ]; do
         --2colour | --nextseq ) two_color=true ;;
         --no_fastqc )           run_fastqc=false ;;
         --more_opts )           shift && more_opts=$1 ;;
-        --env )                 shift && env=$1 ;;
+        --env_type )                 shift && env_type=$1 ;;
         --container_dir )       shift && container_dir=$1 ;;
         --container_url )       shift && container_url=$1 ;;
         -h | --help )           script_help; exit 0 ;;
-        -v )                    script_version; exit 0 ;;
-        --version )             version_only=true ;;
+        -v | --version )             version_only=true ;;
         * )                     die "Invalid option $1" "$all_opts" ;;
     esac
     shift

@@ -210,7 +210,7 @@ while [ "$1" != "" ]; do
         --more_args )       shift && more_args=$1 ;;
         --print_workflows ) print_workflows; exit 0 ;;
         --list_configs )    list_configs; exit 0 ;;
-        -v | --version )    tool_version; exit 0 ;;
+        -v | -v | --version )    tool_version; exit 0 ;;
         -h )                script_help; exit 0 ;;
         --help )            tool_help; exit 0;;
         * )                 die "Invalid option $1" "$all_args" ;;

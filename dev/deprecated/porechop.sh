@@ -182,9 +182,8 @@ while [ "$1" != "" ]; do
         -o | --outdir )     shift && readonly outdir=$1 ;;
         --discard_middle )  discard_middle=true ;;
         --more_args )       shift && readonly more_args=$1 ;;
-        -v )                script_version; exit 0 ;;
         -h )                script_help; exit 0 ;;
-        --version )         tool_version; exit 0 ;;
+        -v | --version )         tool_version; exit 0 ;;
         --help )            tool_help; exit 0;;
         * )                 die "Invalid option $1" "$all_args" ;;
     esac

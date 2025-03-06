@@ -64,7 +64,7 @@ BLAST_FORMAT="6 qseqid sacc pident length evalue bitscore qlen slen qstart qend 
 #? - See https://www.ncbi.nlm.nih.gov/books/NBK279684/table/appendices.T.options_common_to_all_blast/
 
 # Defaults - generic
-env=conda                           # Use a 'conda' env or a Singularity 'container'
+env_type=conda                           # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/blast
 container_path=
 container_url=
@@ -170,7 +170,7 @@ script_help() {
     echo "  --dl_genomes                Download full genomes of aligned sequences              [default: $to_dl_genomes]"
     echo
     echo "UTILITY OPTIONS (OPTIONAL):"
-    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
+    echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
     echo "                                (NOTE: If no default '--container_url' is listed below,"
     echo "                                 you must provide one to run the script with a container.)"
     echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
@@ -512,12 +512,11 @@ while [ "$1" != "" ]; do
         --dl_genomes )      to_dl_genomes=true ;;
         --dl_subjects )     to_dl_subjects=true ;;
         --dl_aligned )      to_dl_aligned=true ;;
-        --env )             shift && env=$1 ;;
+        --env_type )             shift && env_type=$1 ;;
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v )                script_version; exit 0 ;;
-        --version )         version_only=true ;;
+        -v | --version )         version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift

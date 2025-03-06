@@ -83,7 +83,7 @@ count=0
 while [ "$1" != "" ]; do
     case "$1" in
         -o | --outfile )    shift && outfile=$1 ;;
-        -v | --version )    Print_version; exit 0 ;;
+        -v | -v | --version )    Print_version; exit 0 ;;
         -h | --help )       Print_help; exit 0 ;;
         --dryrun )          dryrun=true ;;
         --debug )           debug=true ;;

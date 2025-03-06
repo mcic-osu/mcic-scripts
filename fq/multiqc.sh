@@ -25,7 +25,7 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 auto_plot=false                     # By default, force interactive plots
 
 # Defaults - generics
-env=container                       # Use a 'conda' env or a Singularity 'container'
+env_type=container                       # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/multiqc
 container_url="oras://community.wave.seqera.io/library/multiqc:1.27--aa757e3b271fdcd4"
 container_dir="$HOME/containers"
@@ -55,7 +55,7 @@ script_help() {
     echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
+    echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
     echo "                                (NOTE: If no default '--container_url' is listed below,"
     echo "                                 you'll have to provide one in order to run the script with a container.)"
     echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
@@ -113,12 +113,11 @@ while [ "$1" != "" ]; do
         --auto_plot )       auto_plot=true ;;
         --outfile )         shift && outfile=$1 ;;
         --more_opts )       shift && more_opts=$1 ;;
-        --env )             shift && env=$1 ;;
+        --env_type )             shift && env_type=$1 ;;
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v )                script_version; exit 0 ;;
-        --version )         version_only=true ;;
+        -v | --version )         version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift

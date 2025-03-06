@@ -106,8 +106,7 @@ while [ "$1" != "" ]; do
         --keep_intermed )   keep_intermed=true ;;
         --no_strict )       strict_bash=false ;;
         -h | --help )       script_help; exit 0 ;;
-        -v )                script_version; exit 0 ;;
-        --version )         version_only=true ;;
+        -v | --version )         version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift

@@ -153,9 +153,8 @@ while [ "$1" != "" ]; do
         --config )              shift && extra_config_file=$1 ;;
         --profile )             shift && profile=$1 ;;
         --restart )             resume=false ;;
-        -v )                    script_version; exit 0 ;;
         -h )                    script_help; exit 0 ;;
-        --version )             load_env "$MODULE" "$CONDA"
+        -v | --version )             load_env "$MODULE" "$CONDA"
                                 tool_version "$VERSION_COMMAND" && exit 0 ;;
         --help )                load_env "$MODULE" "$CONDA"
                                 tool_help "$HELP_COMMAND" && exit 0;;

@@ -4,7 +4,7 @@
 # See https://pcingola.github.io/SnpEff/snpeff/build_db
 
 # Load the software
-conda_env=/fs/ess/PAS0471/jelmer/conda/snpeff
+conda_env_type=/fs/ess/PAS0471/jelmer/conda/snpeff
 module load miniconda3
 conda activate "$conda_env"
 

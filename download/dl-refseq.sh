@@ -91,7 +91,6 @@ while [ "$1" != "" ]; do
         --more_opts )       shift && more_opts=$1 ;;
         --no_strict )       strict_bash=false ;;
         -h | --help )       script_help; exit 0 ;;
-        -v )                script_version; exit 0 ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift

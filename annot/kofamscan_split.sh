@@ -124,7 +124,6 @@ while [ "$1" != "" ]; do
         --db_dir )          shift && readonly db_dir=$1 ;;
         --download_db )     readonly download_db=true ;;
         --out_format )      shift && readonly out_format=$1 ;;
-        -v )                script_version; exit 0 ;;
         -h )                script_help; exit 0 ;;
         * )                 die "Invalid option $1" "$all_args" ;;
     esac

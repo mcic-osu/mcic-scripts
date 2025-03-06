@@ -92,35 +92,47 @@ pbar <- function(
   
   # Create the plot
   p <- ggplot(abund_df) +
-    aes(x = .data[[x_var]],
-        y = Abundance,
-        fill = .data[[taxrank]]) +
-    geom_col(color = "grey20",
-             position = position_stack(reverse = TRUE)) +
-    scale_y_continuous(expand = expansion(mult = c(0, 0.005)),
-                       labels = scales::label_percent()) +
-    scale_fill_manual(values = colors,
-                      guide = guide_legend(ncol = 1, reverse = TRUE)) +
+    aes(x = .data[[x_var]], y = Abundance, fill = .data[[taxrank]]) +
+    geom_col(
+      color = "grey20",
+      position = position_stack(reverse = TRUE)
+      ) +
+    scale_y_continuous(
+      expand = expansion(mult = c(0, 0.005)),
+      labels = scales::label_percent()
+      ) +
+    scale_fill_manual(
+      values = colors,
+      guide = guide_legend(ncol = 1, reverse = TRUE)
+      ) +
     labs(x = xlab) +
-    theme(panel.grid.major.x = element_blank(),
-          panel.grid.minor = element_blank())
+    theme(
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor = element_blank()
+      )
   
   if (!is.null(facet_var)) {
     if (is.null(facet_var2)) {
       p <- p +
-        facet_grid(cols = vars(.data[[facet_var]]),
-                   scales = "free_x", space = "free")
+        facet_grid(
+          cols = vars(.data[[facet_var]]),
+          scales = "free_x",
+          space = "free"
+          )
     } else {
       p <- p +
-        facet_grid(cols = vars(.data[[facet_var]]),
-                   rows = vars(.data[[facet_var2]]),
-                   scales = "free_x", space = "free")
+        facet_grid(
+          cols = vars(.data[[facet_var]]),
+          rows = vars(.data[[facet_var2]]),
+          scales = "free_x",
+          space = "free"
+          )
     }
   }
     
   if (x_var == "Sample") p <- p + theme(axis.text.x = element_text(angle = 270))
   
-  print(p)
+  return(p)
 }
 
 # Helper function to compute per-taxon abundances - used for/in the pbar() function
@@ -254,12 +266,11 @@ abund_stats <- function(
 
 # Function to prepare and abundance_df for the pbar() function.
 # based on merely a taxonomy table without actual abundances
-# NOTE: input tax_df should only contain results from a single database
-#       (combine with barplot_db() function below)
 tax_stats <- function(
     tax_df,                # Taxonomy table with one column per taxonomic rank and 'database' ID column
     tax_rank,              # Taxonomic rank (e.g. 'Kingdom'), should be a column name in tax_df
-    db_id = NULL,          # Database ID - will use value in 'database' column by default 
+    method_column = "method", # Method/Database column, e.g. 'dada' vs 'qiime'
+    method_id = NULL,      # Database ID - will use value in 'database' column by default 
     abund_tres = 0.01,     # Taxa with lower 'abundance' than this will be
                            # converted to a catch-all 'other' category
                            # NA => no abundance threshold
@@ -269,7 +280,7 @@ tax_stats <- function(
 ) {
   
   # Get the ID
-  if (is.null(db_id)) db_id <- tax_df$database[1]
+  if (is.null(method_id)) method_id <- tax_df[[method_column]][1]
   
   # Add 'abundance'
   df <- tax_df |>
@@ -323,29 +334,10 @@ tax_stats <- function(
   }
   
   # Add 'Sample' ID
-  df$Sample <- db_id
+  df$Sample <- method_id
   
   return(tibble(df))
 }
-
-# Create a barplot comparing taxonomic assignments with different databases
-barplot_db <- function(
-    df_list,             # A list of input taxonomy tables, with 'database' column with the DB ID
-    tax_rank             # Taxonomic rank to plot, e.g. 'Kingdom' (column needs to exist in input df's)
-    ) {
-  
-  # Get taxon abundances for each input dataframe
-  x <- map_dfr(.x = df_list, .f = tax_stats, tax_rank = tax_rank)
-  
-  # Make sure the Other and Unknown categories come last
-  x[[tax_rank]] <- fct_relevel(x[[tax_rank]], "other (rare)", after = Inf)
-  x[[tax_rank]] <- fct_relevel(x[[tax_rank]], "unknown", after = Inf)
-  
-  # Create the plot
-  pbar(abund_df = x, taxrank = tax_rank) +
-    theme(axis.text.x = element_text(angle = 0))
-}
-
 
 # Function to create a (dummy) phyloseq object just from a taxonomy table
 # (All the ASV counts will be 1, and there will be 1 sample only)

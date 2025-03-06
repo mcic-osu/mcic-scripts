@@ -175,7 +175,7 @@ while [ "$1" != "" ]; do
         --mhap-sensitivity )    shift && mhap_sensitivity=$1 ;;
         --fast )                fast=true ;;
         --more-args )           shift && more_args=$1 ;;
-        -v | --version )        Print_version; exit 0 ;;
+        -v | -v | --version )        Print_version; exit 0 ;;
         -h )                    Print_help; exit 0 ;;
         --help )                Print_help_program; exit 0 ;;
         --dryrun )              dryrun=true && e="echo " ;;

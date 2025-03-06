@@ -22,7 +22,7 @@ TOOL_DOCS=https://gtonkinhill.github.io/panaroo
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env=container                           # 'conda' or 'container'
+env_type=container                           # 'conda' or 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/panaroo
 container_path=/fs/ess/PAS0471/containers/depot.galaxyproject.org-singularity-panaroo-1.3.3--pyhdfd78af_0.img
 container_url=https://depot.galaxyproject.org/singularity/panaroo:1.3.3--pyhdfd78af_0
@@ -63,7 +63,7 @@ script_help() {
     echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
+    echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
     echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
     echo "                                A container will only be downloaded if an URL is provided with this option, or --dl_container is used"
     echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
@@ -125,13 +125,12 @@ while [ "$1" != "" ]; do
         --clean_mode )      shift && mode=$1 ;;
         --core_threshold )  shift && core_threshold=$1 ;;
         --more_opts )       shift && more_opts=$1 ;;
-        --env )             shift && env=$1 ;;
+        --env_type )             shift && env_type=$1 ;;
         --dl_container )    dl_container=true ;;
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 && dl_container=true ;;
         -h | --help )       script_help; exit 0 ;;
-        -v )                script_version; exit 0 ;;
-        --version )         version_only=true ;;
+        -v | --version )         version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift

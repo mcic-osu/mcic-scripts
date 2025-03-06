@@ -89,7 +89,7 @@ while [ "$1" != "" ]; do
         -i | --asm_alltrans_in )    shift && alltrans_in=$1 ;;
         -I | --asm_1trans )         shift && onetrans=$1 ;;
         -o | --asm_alltrans_out )   shift && alltrans_out=$1 ;;
-        -v | --version )            Print_version; exit 0 ;;
+        -v | -v | --version )            Print_version; exit 0 ;;
         -h )                        Print_help; exit 0 ;;
         --help )                    Print_help_program; exit 0;;
         --debug )                   debug=true ;;

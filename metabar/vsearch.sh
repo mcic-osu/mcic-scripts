@@ -22,7 +22,7 @@ TOOL_DOCS=https://github.com/torognes/vsearch
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env=conda                           # Use a 'conda' env or a Singularity 'container'
+env_type=conda                           # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/vsearch
 container_url=
 container_dir="$HOME/containers"
@@ -50,7 +50,7 @@ script_help() {
     echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_BINARY"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
+    echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
     echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
     echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
     echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
@@ -112,12 +112,11 @@ while [ "$1" != "" ]; do
         --ref_fasta )       shift && ref_fasta=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
         --more_opts )       shift && more_opts=$1 ;;
-        --env )             shift && env=$1 ;;
+        --env_type )             shift && env_type=$1 ;;
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v )                script_version; exit 0 ;;
-        --version )         version_only=true ;;
+        -v | --version )         version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift

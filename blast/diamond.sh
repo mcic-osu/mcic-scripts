@@ -22,7 +22,7 @@ TOOL_DOCS=https://github.com/bbuchfink/diamond/wiki
 VERSION_COMMAND="$TOOL_BINARY version"
 
 # Defaults - generics
-env=container                       # Use a 'conda' env or a Singularity 'container'
+env_type=container                       # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/diamond
 container_path=
 container_url=docker://quay.io/biocontainers/diamond:2.1.8--h43eeafb_0
@@ -77,7 +77,7 @@ script_help() {
     echo "  --pct_qcov          <int>   Threshold for % of query covered by the alignment       [default: $pct_scov]"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
+    echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
     echo "                                (NOTE: If no default '--container_url' is listed below,"
     echo "                                 you'll have to provide one in order to run the script with a container.)"
     echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
@@ -147,14 +147,13 @@ while [ "$1" != "" ]; do
         --pct_qcov )         shift && pct_qcov=$1 ;;
         --pct_scov )         shift && pct_scov=$1 ;;
         --more_opts )       shift && more_opts=$1 ;;
-        --env )             shift && env=$1 ;;
+        --env_type )             shift && env_type=$1 ;;
         --no_strict )       strict_bash=false ;;
         --dl_container )    dl_container=true ;;
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 && dl_container=true ;;
         -h | --help )       script_help; exit 0 ;;
-        -v )                script_version; exit 0 ;;
-        --version )         version_only=true ;;
+        -v | --version )         version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift

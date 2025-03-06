@@ -165,8 +165,7 @@ while [ "$1" != "" ]; do
         --work_dir )            shift && work_dir=$1 ;;
         -restart )              resume=false && resume_arg= ;;
         -h | --help )           script_help; exit 0 ;;
-        -v )                    script_version; exit 0 ;;
-        --version )             load_env "$MODULE" "$CONDA"
+        -v | --version )             load_env "$MODULE" "$CONDA"
                                 tool_version "$VERSION_COMMAND" && exit 0 ;;
         * )                     die "Invalid option $1" "$all_args" ;;
     esac

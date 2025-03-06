@@ -142,8 +142,7 @@ while [ "$1" != "" ]; do
         --container_dir )               shift && container_dir=$1 ;;
         --restart | -restart )          resume=false && resume_opt= ;;
         -h | --help )                   script_help; exit 0 ;;
-        -v )                            script_version; exit 0 ;;
-        --version )                     version_only=true ;;
+        -v | --version )                     version_only=true ;;
         * )                             die "Invalid option $1" "$all_opts" ;;
     esac
     shift

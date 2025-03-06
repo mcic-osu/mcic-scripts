@@ -184,7 +184,7 @@ while [ "$1" != "" ]; do
         --lowcov-edge )         lowcov_edge=true ;;
         --debug )               debug=true ;;
         --dryrun )              dryrun=true ;;
-        -v | --version )        Print_version; exit ;;
+        -v | -v | --version )        Print_version; exit ;;
         -h )                    Print_help; exit 0;;
         --help )                Print_help_program; exit 0;;
         * )                     Print_help; Die "Invalid option $1" ;;

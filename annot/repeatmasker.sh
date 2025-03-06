@@ -174,7 +174,7 @@ while [ "$1" != "" ]; do
         --genome_lib )          shift && genome_lib=$1 ;;
         --species )             shift && species=$1 ;;
         --more_args )           shift && more_args=$1 ;;
-        -v | --version )        Print_version; exit 0 ;;
+        -v | -v | --version )        Print_version; exit 0 ;;
         -h )                    Print_help; exit 0 ;;
         --help )                Print_help_program; exit 0;;
         --dryrun )              dryrun=true && e="echo ";;

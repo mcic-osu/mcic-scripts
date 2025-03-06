@@ -198,9 +198,8 @@ while [ "$1" != "" ]; do
         --db_dir )          shift && readonly db_dir=$1 ;;
         --dont_get_db )     readonly get_db=false ;;
         --more_args )       shift && readonly more_args=$1 ;;
-        -v )                script_version; exit 0 ;;
         -h )                script_help; exit 0 ;;
-        --version )         tool_version; exit 0 ;;
+        -v | --version )         tool_version; exit 0 ;;
         --help )            tool_help; exit 0;;
         * )                 die "Invalid option $1" "$all_args" ;;
     esac

@@ -22,7 +22,7 @@ TOOL_DOCS=https://salmon.readthedocs.io/en/latest/salmon.html
 VERSION_COMMAND="salmon --version"
 
 # Defaults - generics
-env=conda                           # Use a 'conda' env or a Singularity 'container'
+env_type=conda                           # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/salmon # NOTE: Also includes RSEM
 container_path=/fs/ess/PAS0471/containers/depot.galaxyproject.org-singularity-salmon-1.10.1--h7e5ed60_0.img
 container_url=
@@ -65,7 +65,7 @@ script_help() {
     echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
+    echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
     echo "                                (NOTE: If no default '--container_url' is listed below,"
     echo "                                 you'll have to provide one in order to run the script with a container.)"
     echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
@@ -128,7 +128,7 @@ while [ "$1" != "" ]; do
         --transcripts )     shift && transcripts=$1 ;;
         --libtype )         shift && libtype=$1 ;;
         --opts )            shift && opts=$1 ;;
-        --env )             shift && env=$1 ;;
+        --env_type )             shift && env_type=$1 ;;
         --no_gcbias )       gcbias_opt= ;;
         --no_seqbias )      seqbias_opt= ;;
         --no_strict )       strict_bash=false ;;
@@ -136,8 +136,7 @@ while [ "$1" != "" ]; do
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 && dl_container=true ;;
         -h | --help )       script_help; exit 0 ;;
-        -v )                script_version; exit 0 ;;
-        --version )         version_only=true ;;
+        -v | --version )         version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift

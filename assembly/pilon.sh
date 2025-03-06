@@ -105,9 +105,8 @@ while [ "$1" != "" ]; do
         --bam_dir )         shift && bam_dir=$1 ;;
         --fix )             shift && fix=$1 && fix_arg="--fix $fix" ;;
         --more_args )       shift && more_args=$1 ;;
-        -v )                script_version; exit 0 ;;
         -h | --help )       script_help; exit 0 ;;
-        --version )         load_env "$MODULE" "$CONDA"
+        -v | --version )         load_env "$MODULE" "$CONDA"
                             tool_version "$VERSION_COMMAND" && exit 0 ;;
         * )                 die "Invalid option $1" "$all_args" ;;
     esac

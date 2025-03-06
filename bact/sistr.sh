@@ -87,7 +87,7 @@ while [ "$1" != "" ]; do
         -o | --outdir )         shift && outdir=$1 ;;
         -a | --more_args )      shift && more_args=$1 ;;
         -h | --help )           Print_help; exit ;;
-        -v | --version )        Load_software && Print_version; exit ;;
+        -v | -v | --version )        Load_software && Print_version; exit ;;
         * )                     Print_help; Die "Invalid option $1" ;;
     esac
     shift

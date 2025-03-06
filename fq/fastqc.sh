@@ -104,9 +104,8 @@ while [ "$1" != "" ]; do
         -i | --infile )     shift && infiles[0]=$1 ;;
         -o | --outdir )     shift && readonly outdir=$1 ;;
         --more_args )       shift && readonly more_args=$1 ;;
-        -v )                script_version; exit 0 ;;
         -h | --help )       script_help; exit 0 ;;
-        --version )         load_env "$MODULE" "$CONDA"
+        -v | --version )         load_env "$MODULE" "$CONDA"
                             tool_version "$VERSION_COMMAND" && exit 0 ;;
         * )                 infiles[$count]=$1 && count=$(( count + 1 )) ;;
     esac

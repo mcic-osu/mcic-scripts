@@ -102,7 +102,7 @@ while [ "$1" != "" ]; do
         --more_args )           shift && more_args=$1 ;;
         --debug )               debug=true ;;
         --dryrun )              dryrun=true ;;
-        -v | --version )        Print_version; exit ;;
+        -v | -v | --version )        Print_version; exit ;;
         -h | --help )           Print_help; exit ;;
         * )                     Print_help; Die "Invalid option $1" ;;
     esac

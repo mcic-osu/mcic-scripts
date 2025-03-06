@@ -115,7 +115,6 @@ while [ "$1" != "" ]; do
         --allow_filter )    keep_all=false && curated_opt= ;;
         -o | --outdir )     shift && outdir=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v )                script_version; exit 0 ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift

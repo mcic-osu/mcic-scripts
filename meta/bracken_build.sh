@@ -22,7 +22,7 @@ TOOL_DOCS=https://github.com/jenniferlu717/Bracken
 VERSION_COMMAND="$TOOL_BINARY -v"
 
 # Defaults - generics
-env=conda                           # Use a 'conda' env or a Singularity 'container'
+env_type=conda                           # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/bracken
 container_path=
 container_url=
@@ -58,7 +58,7 @@ script_help() {
     echo "  --read_len          <int>   FASTQ file read length                  [default: $read_len]"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
+    echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
     echo "                                (NOTE: If no default '--container_url' is listed below,"
     echo "                                 you'll have to provide one in order to run the script with a container.)"
     echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
@@ -112,14 +112,13 @@ while [ "$1" != "" ]; do
     case "$1" in
         --db )              shift && db=$1 ;;
         --read_len )        shift && read_len=$1 ;;
-        --env )             shift && env=$1 ;;
+        --env_type )             shift && env_type=$1 ;;
         --no_strict )       strict_bash=false ;;
         --dl_container )    dl_container=true ;;
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 && dl_container=true ;;
         -h | --help )       script_help; exit 0 ;;
-        -v )                script_version; exit 0 ;;
-        --version )         version_only=true ;;
+        -v | --version )         version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift

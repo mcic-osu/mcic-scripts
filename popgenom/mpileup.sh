@@ -118,7 +118,6 @@ while [ "$1" != "" ]; do
         --allsites )        allsites=true ;;
         --args_mpileup )    shift && readonly args_mpileup=$1 ;;
         --args_call )       shift && readonly args_call=$1 ;;
-        -v )                script_version; exit 0 ;;
         -h )                script_help; exit 0 ;;
         * )                 die "Invalid option $1" "$all_args" ;;
     esac

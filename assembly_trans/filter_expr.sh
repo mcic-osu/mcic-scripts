@@ -164,7 +164,7 @@ while [ "$1" != "" ]; do
         --min_tpm )                 shift && min_tpm=$1 ;;
         --mean_tpm )                shift && mean_tpm=$1 ;;
         --no_genesum )              sum_by_gene=false ;;
-        -v | --version )            Print_version; exit 0 ;;
+        -v | -v | --version )            Print_version; exit 0 ;;
         -h )                        Print_help; exit 0 ;;
         --help )                    Print_help_program; exit 0;;
         --debug )                   debug=true ;;

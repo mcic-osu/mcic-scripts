@@ -11,15 +11,16 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Align nucleotide or amino acid sequences in a multi-FASTA file with MAFFT (default) or MUSCLE"
-SCRIPT_VERSION="2025-02-16"
+SCRIPT_VERSION="2025-03-05"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 
 # Defaults - generics
-env=conda                           # Use a 'conda' env or a Singularity 'container'
+env_type=conda                           # Use a 'conda' env or a Singularity 'container'
+conda_path=/fs/ess/PAS0471/jelmer/conda/mafft # Also contains Muscle
 container_dir="$HOME/containers"
-version_only=false                 # When true, just print tool & script version info and exit
+container_url=
 
 # Defaults - tool parameters
 aligner=mafft
@@ -29,37 +30,42 @@ fix_header=true
 #                                   FUNCTIONS
 # ==============================================================================
 script_help() {
-    echo -e "\n                          $0"
-    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
-    echo "        =============================================================="
-    echo "DESCRIPTION:"
-    echo "  $DESCRIPTION"
-    echo
-    echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage:"
-    echo "      sbatch $0 -i my.fa -o aln.fa"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile         <file>  Input multi-FASTA file with sequences to be aligned"
-    echo "                              FASTA can contain either nucleotide or amino acid (protein) sequences"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)  [default: same as input dir]"
-    echo "  --aligner           <str>   Aligner: 'mafft' or 'muscle'            [default: $aligner]"
-    echo "  --no_header_fix             Don't fix output FASTA header           [default: fix header]"
-    echo "                              By default, the script will remove"
-    echo "                              aligner-added header text like 'reverse'"
-    echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
-    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
-    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "                                A container will only be downloaded if an URL is provided with this option"
-    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  -h/--help                   Print this help message and exit"
-    echo "  -v                          Print the version of this script and exit"
-    echo "  --version                   Print the version of $TOOL_NAME and exit"
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+    
+USAGE / EXAMPLE COMMANDS:
+  - Basic usage example:
+      sbatch $0 -i TODO -o results/TODO
+    
+REQUIRED OPTIONS:
+  -i/--infile         <file>  Input multi-FASTA file with sequences to be aligned
+                              FASTA can contain either nucleotide or amino acid (protein) sequences
+    
+OTHER KEY OPTIONS:
+  -o/--outdir         <dir>   Output dir (will be created if needed)            [default: same as input dir]
+  --aligner           <str>   Aligner: 'mafft' or 'muscle'                      [default: $aligner]
+  --no_header_fix             Don't fix output FASTA header                     [default: fix header]
+                              By default, the script will remove aligner-added
+                              header text like 'reverse'
+
+UTILITY OPTIONS:
+  --env_type          <str>   Use a Singularity container ('container')         [default: $env_type]
+                              or a Conda environment ('conda') 
+  --conda_path        <dir>   Full path to a Conda environment to use           [default: $conda_path]
+  --container_url     <str>   URL to download a container from                  [default: $container_url]
+  --container_dir     <str>   Dir to download the container to                  [default: $container_dir]
+  --container_path    <file>  Singularity container image file (.sif) to use
+  -h/--help                   Print help and exit
+  -v/--version                Print the version of this script and of $TOOL_NAME
+    
+TOOL DOCUMENTATION:
+$TOOL_DOCS
+"
 }
 
 # Function to source the script with Bash functions
@@ -91,12 +97,12 @@ source_function_script
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
+version_only=false   # When true, just print tool & script version info and exit
 infile=
 outdir=
 more_opts=
 threads=
 container_path=
-container_url=
 
 # Parse command-line args
 all_opts="$*"
@@ -107,12 +113,11 @@ while [ "$1" != "" ]; do
         --aligner )         shift && aligner=$1 ;;
         --no_header_fix )   shift && fix_header=false ;;
         --more_opts )       shift && more_opts=$1 ;;
-        --env )             shift && env=$1 ;;
+        --env_type )        shift && env_type=$1 ;;
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v )                script_version; exit 0 ;;
-        --version )         version_only=true ;;
+        -v | --version )         version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
@@ -128,15 +133,12 @@ set -euo pipefail
 TOOL_BINARY="$aligner"
 if [[ "$aligner" == "mafft" ]]; then
     TOOL_NAME=MAFFT
-    VERSION_COMMAND="$TOOL_BINARY --version"
-    conda_path=/fs/ess/PAS0471/jelmer/conda/mafft
 elif [[ "$aligner" == "muscle" ]]; then
     TOOL_NAME=MUSCLE
-    VERSION_COMMAND="$TOOL_BINARY --version"
-    conda_path=/fs/ess/PAS0471/jelmer/conda/muscle
 else
     die "Aligner should be 'mafft' or 'muscle' but is $aligner"
 fi
+VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Load software
 load_env "$conda_path" "$container_path" #"$dl_container"

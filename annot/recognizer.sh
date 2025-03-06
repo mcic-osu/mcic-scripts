@@ -185,9 +185,8 @@ while [ "$1" != "" ]; do
         --download_db )     readonly download_db=true ;;
         --evalue )          shift && readonly evalue=$1 ;;
         --more_args )       shift && readonly more_args=$1 ;;
-        -v )                script_version; exit 0 ;;
         -h )                script_help; exit 0 ;;
-        --version )         tool_version; exit 0 ;;
+        -v | --version )         tool_version; exit 0 ;;
         --help )            tool_help; exit 0;;
         * )                 die "Invalid option $1" "$all_args" ;;
     esac

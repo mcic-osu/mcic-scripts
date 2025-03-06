@@ -7,9 +7,6 @@
 #SBATCH --job-name=TODO_THIS_SOFTWARE
 #SBATCH --output=slurm-TODO_THIS_SOFTWARE-%j.out
 
-#TODO - Print version when there's an error
-#TODO - USE A SINGLE VERSION COMMAND THAT PRINTS SCRIPT AND TOOL VERSION
-
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
@@ -24,7 +21,7 @@ TOOL_DOCS=#TODO - URL TO TOOL DOCS WEBSITE
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=conda                     # Use a 'conda' env or a Singularity 'container'
+env_type=conda
 conda_path=#TODO
 container_url=
 container_dir="$HOME/containers"
@@ -39,34 +36,38 @@ container_dir="$HOME/containers"
 #                                   FUNCTIONS
 # ==============================================================================
 script_help() {
-    echo -e "\n                          $0"
-    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
-    echo "        =============================================================="
-    echo "DESCRIPTION:"
-    echo "  $DESCRIPTION"
-    echo
-    echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage example:"
-    echo "      sbatch $0 -i TODO -o results/TODO" #TODO
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile         <file>  Input file"
-    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --env_type          <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
-    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
-    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --container_path    <file>  Pre-existing Singularity container image file (.sif) to use"
-    echo "  -h/--help                   Print this help message and exit"
-    echo "  -v                          Print the version of this script and exit"
-    echo "  --version                   Print the version of $TOOL_NAME and exit"
-    echo
-    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+    
+USAGE / EXAMPLE COMMANDS:
+  - Basic usage example:
+      sbatch $0 -i TODO -o results/TODO
+    
+REQUIRED OPTIONS:
+  -i/--infile         <file>  Input file
+  -o/--outdir         <dir>   Output dir (will be created if needed)
+    
+OTHER KEY OPTIONS:
+  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME
+    
+UTILITY OPTIONS:
+  --env_type          <str>   Use a Singularity container ('container')         [default: $env_type]
+                              or a Conda environment ('conda') 
+  --conda_path        <dir>   Full path to a Conda environment to use           [default: $conda_path]
+  --container_url     <str>   URL to download a container from                  [default: $container_url]
+  --container_dir     <str>   Dir to download the container to                  [default: $container_dir]
+  --container_path    <file>  Singularity container image file (.sif) to use
+  -h/--help                   Print help and exit
+  -v/--version                Print the version of this script and of $TOOL_NAME
+    
+TOOL DOCUMENTATION:
+$TOOL_DOCS
+"
 }
 
 # Function to source the script with Bash functions
@@ -81,16 +82,16 @@ source_function_script() {
         SCRIPT_NAME=$(basename "$0")
     fi
     function_script_name="$(basename "$FUNCTION_SCRIPT_URL")"
-    function_script="$script_dir"/../dev/"$function_script_name"
+    function_script_path="$script_dir"/../dev/"$function_script_name"
 
     # Download the function script if needed, then source it
-    if [[ -f "$function_script" ]]; then
-        source "$function_script"
-    elif [[ ! -f "$function_script_name" ]]; then
-        echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
-        wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
-        source "$function_script_name"
+    if [[ -f "$function_script_path" ]]; then
+        source "$function_script_path"
     else
+        if [[ ! -f "$function_script_name" ]]; then
+            echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+            wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
+        fi
         source "$function_script_name"
     fi
 }
@@ -118,11 +119,12 @@ while [ "$1" != "" ]; do
         -o | --outdir )     shift && outdir=$1 ;;
         --more_opts )       shift && more_opts=$1 ;;
         --env_type )        shift && env_type=$1 ;;
+        --conda_path )      shift && conda_path=$1 ;;
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 ;;
+        --container_path )   shift && container_path=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v )                script_version; exit 0 ;;
-        --version )         version_only=true ;;
+        -v | --version)     version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
@@ -135,8 +137,8 @@ done
 set -euo pipefail
 
 # Load software
-load_env "$conda_path" "$container_path"
-[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
+load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$container_url"
+[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
 [[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
@@ -144,7 +146,8 @@ load_env "$conda_path" "$container_path"
 [[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 
 # Define outputs based on script parameters
-LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+LOG_DIR="$outdir"/logs
+mkdir -p "$LOG_DIR"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -166,7 +169,7 @@ set_threads "$IS_SLURM"
 #                               RUN
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     --threads "$threads" \
     $more_opts
 

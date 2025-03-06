@@ -6,6 +6,7 @@ REPO_URL=https://github.com/mcic-osu/mcic-scripts
 
 # Dummy defaults
 [[ -z "$env_type" ]] && env_type=conda
+[[ -z "$container_path" ]] && container_path=
 [[ -z "$SCRIPT_NAME" ]] && SCRIPT_NAME=script-name
 [[ -z "$SCRIPT_VERSION" ]] && SCRIPT_VERSION=script-version
 [[ -z "$SCRIPT_AUTHOR" ]] && SCRIPT_AUTHOR=script-author
@@ -29,7 +30,7 @@ load_env() {
     elif [[ "$env_type" == "none" ]]; then
         log_time "NOTE: not using a Conda environment OR a container, software expected to be in PATH"
     else
-        die "Execution environment ('--env') should be 'conda', 'container', or 'none' but is currently $env"
+        die "Execution environment ('--env_type') should be 'conda', 'container', or 'none' but is currently $env_type"
     fi
 }
 
@@ -82,39 +83,27 @@ load_container() {
 
     # Set the final 'prefix' to run the container
     CONTAINER_PREFIX="singularity exec $container_path"
+    TOOL_BINARY="$CONTAINER_PREFIX $TOOL_BINARY"
+    VERSION_COMMAND="$CONTAINER_PREFIX $VERSION_COMMAND"
     log_time "Using a container with base call: $CONTAINER_PREFIX"
 }
 
 # Print the tool's version
-tool_version() {
+print_version() {
     local version_command=${1-none}
     set +e
     
+    echo "# Version of this shell script:"
+    echo "$SCRIPT_NAME by $SCRIPT_AUTHOR, version $SCRIPT_VERSION ($REPO_URL)"
+
     echo "# Version of $TOOL_NAME:"
     if [[ "$version_command" == "none" ]]; then
-        $CONTAINER_PREFIX $TOOL_BINARY --version
+        $TOOL_BINARY --version
     else
         eval $CONTAINER_PREFIX $version_command
     fi
     
     set -e
-}
-
-# Print the script version
-script_version() {
-    echo "# Version of this shell script:"
-    echo "$SCRIPT_NAME by $SCRIPT_AUTHOR, version $SCRIPT_VERSION ($REPO_URL)"
-}
-
-# Print the tool's help
-tool_help() {
-    local help_command=${1-none}
-
-    if [[ "$help_command" == "none" ]]; then
-        $TOOL_BINARY --help
-    else
-        eval $help_command
-    fi
 }
 
 # Print SLURM job resource usage info
@@ -145,16 +134,14 @@ set_threads() {
     if [[ "$is_slurm" == true ]]; then
         if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
             readonly threads="$SLURM_CPUS_PER_TASK"
-            #log_time "Setting nr of threads (based on SLURM_CPUS_PER_TASK) to $threads"
         elif [[ -n "$SLURM_NTASKS" ]]; then
             readonly threads="$SLURM_NTASKS"
-            #log_time "Setting nr of threads (based on SLURM_NTASKS) to $threads"
         else 
-            log_time "WARNING: Can't detect nr of Slurm job threads, setting to 1"
+            log_time "WARNING: This is a Slurm job but I can't detect the number of job threads, setting to 1"
             readonly threads=1
         fi
     else
-        log_time "This is not a Slurm job, setting nr of threads to 1"
+        log_time "This is not a Slurm job, setting number of threads to 1"
         readonly threads=1
     fi
     
@@ -162,13 +149,18 @@ set_threads() {
     set -u
 }
 
-# Resource usage information for any process
+# Print command ran and its resource usage information for any process
 runstats() {
     /usr/bin/time -f \
         "\n# Ran the command: \n%C
         \n# Run stats by /usr/bin/time:
         Time: %E   CPU: %P    Max mem: %M K    Exit status: %x \n" \
         "$@"
+}
+
+# Print log messages that include the time
+log_time() {
+    echo -e "\n[$(date +'%Y-%m-%d %H:%M:%S')]" ${1-""};
 }
 
 # Exit upon error with a message
@@ -178,7 +170,8 @@ die() {
 
     log_time "$0: ERROR: $error_message" >&2
     log_time "For help, run this script with the '-h' option" >&2
-    
+    print_version
+
     if [[ "$error_args" != "none" ]]; then
         log_time "Options passed to the script:" >&2
         echo "$error_args" >&2
@@ -186,11 +179,6 @@ die() {
     
     log_time "EXITING..." >&2
     exit 1
-}
-
-# Log messages that include the time
-log_time() {
-    echo -e "\n[$(date +'%Y-%m-%d %H:%M:%S')]" ${1-""};
 }
 
 # Final reporting
@@ -204,14 +192,8 @@ final_reporting() {
 
     printf "\n======================================================================"
     log_time "Versions used:"
-    tool_version "$VERSION_COMMAND"
-    script_version
-    
-    script_version > "$VERSION_FILE"
-    tool_version "$VERSION_COMMAND" &>> "$VERSION_FILE"
+    print_version "$VERSION_COMMAND" | tee "$VERSION_FILE" 
     env | sort > "$ENV_FILE"
-    
     [[ "$IS_SLURM" == true ]] && resource_usage
-    
     log_time "Done with script $SCRIPT_NAME\n"
 }

@@ -103,9 +103,8 @@ while [ "$1" != "" ]; do
         -i | --infile )     shift && readonly infile=$1 ;;
         -o | --outfile )    shift && readonly outfile=$1 ;;
         --args )            shift && readonly args=$1 ;;
-        -v )                script_version; exit 0 ;;
         -h )                script_help; exit 0 ;;
-        --version )         load_env "$MODULE" "$CONDA"
+        -v | --version )         load_env "$MODULE" "$CONDA"
                             tool_version "$VERSION_COMMAND" && exit 0 ;;
         --help )            load_env "$MODULE" "$CONDA"
                             tool_help "$HELP_COMMAND" && exit 0;;

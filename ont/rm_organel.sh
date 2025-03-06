@@ -168,7 +168,6 @@ while [ "$1" != "" ]; do
         -r | --ref )            shift && ref=$1 ;;
         --seqids )              shift && seqids=$1 ;;
         --keep_sam )            keep_sam=true ;;    
-        -v | --version )        script_version; exit 0;;
         -h | --help )           script_help; exit 0;;
         * )                     die "Invalid option $1" "$all_args" ;;
     esac

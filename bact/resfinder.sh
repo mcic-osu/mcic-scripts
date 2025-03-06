@@ -22,7 +22,7 @@ TOOL_DOCS=https://bitbucket.org/genomicepidemiology/resfinder
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env=conda                           # Use a 'conda' env or a Singularity 'container'
+env_type=conda                           # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/resfinder
 container_path=
 container_url=https://depot.galaxyproject.org/singularity/resfinder:4.1.11--hdfd78af_0
@@ -73,7 +73,7 @@ script_help() {
     echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
+    echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
     echo "                                NOTE: If no default '--container_url' or '--container_dir' is listed below,"
     echo "                                you'll have to provide one of these to run the script with a container."
     echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
@@ -139,13 +139,12 @@ while [ "$1" != "" ]; do
         --min_cov )         shift && readonly min_cov=$1 ;;
         --min_id )          shift && readonly min_id=$1 ;;
         --opts )            shift && opts=$1 ;;
-        --env )             shift && env=$1 ;;
+        --env_type )             shift && env_type=$1 ;;
         --dl_container )    dl_container=true ;;
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 && dl_container=true ;;
         -h | --help )       script_help; exit 0 ;;
-        -v )                script_version; exit 0 ;;
-        --version )         version_only=true ;;
+        -v | --version )         version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift

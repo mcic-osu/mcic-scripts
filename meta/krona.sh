@@ -21,7 +21,7 @@ TOOL_NAME=Krona
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env=conda                           # Use a 'conda' env or a Singularity 'container'
+env_type=conda                           # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/krona
 version_only=false                 # When true, just print tool & script version info and exit
 
@@ -100,8 +100,7 @@ while [ "$1" != "" ]; do
         --update_tax )      update_tax=true ;;
         --more_opts )       shift && more_opts=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v )                script_version; exit 0 ;;
-        --version )         version_only=true ;;
+        -v | --version )         version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift

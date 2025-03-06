@@ -176,7 +176,7 @@ while [ "$1" != "" ]; do
         -o | --outdir )     shift && outdir=$1 ;;
         --read-length )     shift && readlen=$1 ;;
         --more-args )       shift && more_args=$1 ;;
-        -v | --version )    Print_version; exit 0 ;;
+        -v | -v | --version )    Print_version; exit 0 ;;
         -h )                Print_help; exit 0 ;;
         --help )            Print_help_program; exit 0;;
         --dryrun )          dryrun=true && e="echo ";;

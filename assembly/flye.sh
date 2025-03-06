@@ -23,7 +23,7 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
 #? 2024-09-24: Using a container by default because I regularly get malloc and core dumping with the Conda env
-env=container                                    # Use a 'conda' env or a Singularity 'container'
+env_type=container                                    # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/flye
 container_path=/fs/ess/PAS0471/containers/flye_2.9.5--eb07d7b7094f222c.sif
 container_url=
@@ -66,7 +66,7 @@ script_help() {
     echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --env               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env]"
+    echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
     echo "                                (NOTE: If no default '--container_url' is listed below,"
     echo "                                 you'll have to provide one in order to run the script with a container.)"
     echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
@@ -130,13 +130,12 @@ while [ "$1" != "" ]; do
         --iterations )      shift && iterations=$1 ;;
         --resume )          resume=true && resume_opt="--resume" ;;
         --more_opts )       shift && more_opts=$1 ;;
-        --env )             shift && env=$1 ;;
+        --env_type )             shift && env_type=$1 ;;
         --dl_container )    dl_container=true ;;
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 && dl_container=true ;;
         -h | --help )       script_help; exit 0 ;;
-        -v )                script_version; exit 0 ;;
-        --version )         version_only=true ;;
+        -v | --version )         version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift

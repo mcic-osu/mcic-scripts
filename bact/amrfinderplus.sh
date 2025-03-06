@@ -181,7 +181,7 @@ while [ "$1" != "" ]; do
         --annotation_format )   shift && annotation_format=$1 ;;
         --more_args )           shift && more_args=$1 ;;
         --update_db )           update_db=true ;;      
-        -v | --version )        Print_version; exit 0 ;;
+        -v | -v | --version )        Print_version; exit 0 ;;
         -h )                    Print_help; exit 0 ;;
         --help )                Print_help_program; exit 0;;
         * )                     Die "Invalid option $1" "$all_args" ;;

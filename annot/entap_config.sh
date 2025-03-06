@@ -190,7 +190,7 @@ while [ "$1" != "" ]; do
         --evalue )          shift && evalue=$1 ;;
         --fpkm )            shift && fpkm=$1 ;;
         --more_args )       shift && more_args=$1 ;;
-        -v | --version )    Print_version; exit 0 ;;
+        -v | -v | --version )    Print_version; exit 0 ;;
         -h )                Print_help; exit 0 ;;
         --help )            Print_help_program; exit 0;;
         --debug )           debug=true ;;

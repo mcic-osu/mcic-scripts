@@ -37,7 +37,7 @@ profile=singularity
 resume=true && resume_opt="-resume"
 
 # Defaults - other generics
-env=conda                                       # Use a 'conda' env or a Singularity 'container'
+env_type=conda                                       # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/project/PAS0471/jelmer/conda/bactopia3
 version_only=false                              # When true, just print tool & script version info and exit
 
@@ -155,8 +155,7 @@ while [ "$1" != "" ]; do
         --work_dir )            shift && work_dir=$1 ;;
         --restart )             resume=false && resume_opt= ;;
         -h | --help )           script_help; exit 0 ;;
-        -v )                    script_version; exit 0 ;;
-        --version )             load_env "$MODULE" "$CONDA"
+        -v | --version )             load_env "$MODULE" "$CONDA"
                                 tool_version "$VERSION_COMMAND" && exit 0 ;;
         * )                     die "Invalid option $1" "$all_opts" ;;
     esac

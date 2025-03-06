@@ -3,7 +3,7 @@
 # Load software
 load_env() {
     local module=$1
-    local conda_env=$2
+    local conda_env_type=$2
     local yml_file=${3-none}
     set +u
 
