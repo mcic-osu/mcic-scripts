@@ -33,8 +33,8 @@ get_GO_info <- function() {
 # CLUSTERPROFILER FUNCTIONS ----------------------------------------------------
 # Function to run a (GO or KEGG) standard over-representation (ORA) analysis
 run_ora <- function(
-  DE_results,                # DE results df with at least columns 'gene', 'contrast', 'lfc', 'isDE', 'padj'.
-                             #   This df should contain *all* genes, not just significantly DE ones.
+  df,                        # DE results df with at least columns 'gene', 'contrast', 'lfc'/'log2FoldChange', 'padj'.
+                             # This df should contain *all* genes, not just significantly DE ones.
   contrast,                  # DE comparison as specified in 'contrast' column in DE results
   DE_direction = "either",   # DE direction: 'either' (all DE genes), 'up' (lfc > 0), or 'down' (lfc < 0)
   term_map = NULL,           # Manually provide a functional category/term to gene mapping with columns:
@@ -62,17 +62,25 @@ run_ora <- function(
                              #   Should be FALSE if you want to use the enrichPlot functions directly 
 ) {
 
+  # Check for name of lfc column, and presence of isDE column
+  if ("log2FoldChange" %in% colnames(df) & ! "lfc" %in% colnames(df)) {
+    df <- df |> dplyr::rename(lfc = log2FoldChange)
+  }
+  if (! "isDE" %in% colnames(df)) {
+    df <- df |> mutate(isDE = ifelse(padj < 0.05, TRUE, FALSE))
+  }
+  
   # Filter DE results to only get those for the focal contrast
   fcontrast <- contrast
-  DE_results <- DE_results |> dplyr::filter(contrast == fcontrast)
-  stopifnot("Error: no rows in DE_results dataframe after contrast filtering" = nrow(DE_results) > 0)
+  df <- df |> dplyr::filter(contrast == fcontrast)
+  stopifnot("Error: no rows in DE results dataframe after contrast filtering" = nrow(df) > 0)
   
   # Filter the DE results, if needed: only take over- or underexpressed
-  if (DE_direction == "up") DE_results <- DE_results |> dplyr::filter(lfc > 0)
-  if (DE_direction == "down") DE_results <- DE_results |> dplyr::filter(lfc < 0)
+  if (DE_direction == "up") df <- df |> dplyr::filter(lfc > 0)
+  if (DE_direction == "down") df <- df |> dplyr::filter(lfc < 0)
   
   # Create a vector with DEGs
-  DEGs <- DE_results |> dplyr::filter(isDE) |> pull(gene)
+  DEGs <- df |> dplyr::filter(isDE) |> pull(gene)
   
   # Check if genes are present multiple times -- this would indicate there are multiple contrasts
   if (any(duplicated(DEGs))) {
@@ -129,7 +137,7 @@ run_ora <- function(
   # (Excluding the latter is equivalent to goseq's 'use_genes_without_cat=FALSE',
   # and this is done by default by ClusterProfiler -- but non-tested genes *are* included)
   if (exclude_nontested == TRUE) {
-    univ_df <- DE_results |> dplyr::filter(!is.na(padj))
+    univ_df <- df |> dplyr::filter(!is.na(padj))
     if (!is.null(term_map)) univ_df <- univ_df |> dplyr::filter(gene %in% term_map$gene)
     univ_vec <- unique(univ_df$gene)
   } else {
@@ -215,7 +223,7 @@ run_ora <- function(
     # Add mean & median LFC value
     w_lfc <- res |>
       separate_longer_delim(cols = gene_ids, delim = "/") |>
-      left_join(dplyr::select(DE_results, gene, lfc),
+      left_join(dplyr::select(df, gene, lfc),
                 by = join_by("gene_ids" == "gene"),
                 relationship = "many-to-many") |>
       summarize(mean_lfc = mean(lfc),
@@ -248,8 +256,8 @@ run_ora <- function(
 
 # Function to run a Gene Set Enrichment Analysis (gsea)
 run_gsea <- function(
-    DE_results,               # Differential expression results, should at least have columns 'contrast', 'gene', 'lfc'
-    contrast,                 # Contrast ID, should be one of the values in column 'contrast' in DE_results
+    df,                       # Differential expression results, should at least have columns 'contrast', 'gene', 'lfc'
+    contrast,                 # Contrast ID, should be one of the values in column 'contrast' in df
     term_map = NULL,          # Gene-to-term map (e.g., GO or KEGG)
                               # Either 'term_map' (use 'manual' lookup table) or OrgDB (use BioC lookup table) is required
     OrgDb = NULL,             # BioConductor OrgDB (alternative to 'term_map' for available organisms)
@@ -268,12 +276,17 @@ run_gsea <- function(
     return_df = FALSE         # Convert results object to a simple dataframe (tibble)
   ) {
   
+  # Check for name of lfc column, and presence of isDE column
+  if ("log2FoldChange" %in% colnames(df) & ! "lfc" %in% colnames(df)) {
+    df <- df |> dplyr::rename(lfc = log2FoldChange)
+  }
+  
   # Prep the df to later create a gene vector
   fcontrast <- contrast
-  gene_df <- DE_results |>
+  gene_df <- df |>
     dplyr::filter(contrast == fcontrast, !is.na(lfc)) |>
     arrange(desc(lfc))
-  stopifnot("Error: no rows in DE_results dataframe after contrast filtering" = nrow(gene_df) > 0)
+  stopifnot("Error: no rows in DE results dataframe after contrast filtering" = nrow(gene_df) > 0)
   n_DE <- sum(gene_df$padj < 0.05, na.rm = TRUE)
   
   # Check if genes are present multiple times -- this would indicate there are multiple contrasts
@@ -383,7 +396,7 @@ run_gsea <- function(
     w_lfc <- gsea_res |>
       separate_longer_delim(cols = gene_ids, delim = "/") |>
       rename(gene = gene_ids) |> 
-      left_join(DE_results |> dplyr::select(gene, contrast, lfc),
+      left_join(df |> dplyr::select(gene, contrast, lfc),
                 by = c("gene", "contrast"),
                 relationship = "many-to-many") |>
       summarize(mean_lfc = mean(lfc),
