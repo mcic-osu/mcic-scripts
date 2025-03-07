@@ -26,7 +26,7 @@ load_env() {
 }
 
 # Print the tool's version
-tool_version() {
+print_version() {
     local version_command=${1-none}
 
     set +e
@@ -153,7 +153,7 @@ final_reporting() {
 
     printf "\n======================================================================"
     log_time "Versions used:"
-    tool_version "$version_command" | tee "$version_file"
+    print_version "$version_command" | tee "$version_file"
     script_version "$script_name" "$script_author" "$script_version" "$script_url" | tee -a "$version_file" 
     env | sort > "$env_file"
     [[ "$is_slurm" = true ]] && resource_usage

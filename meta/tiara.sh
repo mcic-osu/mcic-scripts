@@ -130,7 +130,7 @@ set -euo pipefail
 
 # Load software
 load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$container_url"
-[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
+[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
 [[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"

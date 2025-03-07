@@ -200,7 +200,7 @@ LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 
 # Load software
 load_env "$conda_path"
-[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
+[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 nextflow_env
 
 # Get the OSC config file, then build the config argument

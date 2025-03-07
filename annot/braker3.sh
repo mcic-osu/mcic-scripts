@@ -155,7 +155,7 @@ set -euo pipefail
 
 # Load software
 load_env "$conda_path" "$container_path" "$dl_container"
-[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
+[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 # GeneMark license key - See https://github.com/Gaius-Augustus/BRAKER#genemark-ex
 #GENEMARK_BASEDIR=/fs/project/PAS0471/jelmer/software/genemark-ex
 #cp "$GENEMARK_BASEDIR"/gm_key_64 ~/.gm_key

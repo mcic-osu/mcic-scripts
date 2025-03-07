@@ -122,7 +122,7 @@ while [ "$1" != "" ]; do
         --more_args )       shift && readonly more_args=$1 ;;
         -h | --help )       script_help; exit 0 ;;
         -v | --version )         load_env "$MODULE" "$CONDA"
-                            tool_version "$VERSION_COMMAND" && exit 0 ;;
+                            print_version "$VERSION_COMMAND" && exit 0 ;;
         * )                 die "Invalid option $1" "$all_args" ;;
     esac
     shift
@@ -247,7 +247,7 @@ grep "primary mapped" "$flagstat_file"
 # ==============================================================================
 printf "\n======================================================================"
 log_time "Versions used:"
-tool_version "$VERSION_COMMAND" | tee "$VERSION_FILE"
+print_version "$VERSION_COMMAND" | tee "$VERSION_FILE"
 script_version "$SCRIPT_NAME" "$SCRIPT_AUTHOR" "$SCRIPT_VERSION" "$SCRIPT_URL" | tee -a "$VERSION_FILE" 
 env | sort > "$ENV_FILE"
 [[ "$IS_SLURM" = true ]] && resource_usage

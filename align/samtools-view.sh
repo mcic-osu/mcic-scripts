@@ -105,7 +105,7 @@ while [ "$1" != "" ]; do
         --args )            shift && readonly args=$1 ;;
         -h )                script_help; exit 0 ;;
         -v | --version )         load_env "$MODULE" "$CONDA"
-                            tool_version "$VERSION_COMMAND" && exit 0 ;;
+                            print_version "$VERSION_COMMAND" && exit 0 ;;
         --help )            load_env "$MODULE" "$CONDA"
                             tool_help "$HELP_COMMAND" && exit 0;;
         * )                 die "Invalid option $1" "$all_args" ;;
@@ -174,7 +174,7 @@ ls -lh "$outfile"
 # ==============================================================================
 printf "\n======================================================================"
 log_time "Versions used:"
-tool_version "$VERSION_COMMAND" | tee "$VERSION_FILE"
+print_version "$VERSION_COMMAND" | tee "$VERSION_FILE"
 script_version "$SCRIPT_NAME" "$SCRIPT_AUTHOR" "$SCRIPT_VERSION" "$SCRIPT_URL" | tee -a "$VERSION_FILE" 
 env | sort > "$ENV_FILE"
 [[ "$IS_SLURM" = true ]] && resource_usage

@@ -126,7 +126,7 @@ script_version() {
 }
 
 # Print the tool's version
-tool_version() {
+print_version() {
     load_tool
     $TOOL_BINARY --version | head -1
 }
@@ -210,7 +210,7 @@ while [ "$1" != "" ]; do
         --more_args )       shift && more_args=$1 ;;
         --print_workflows ) print_workflows; exit 0 ;;
         --list_configs )    list_configs; exit 0 ;;
-        -v | -v | --version )    tool_version; exit 0 ;;
+        -v | -v | --version )    print_version; exit 0 ;;
         -h )                script_help; exit 0 ;;
         --help )            tool_help; exit 0;;
         * )                 die "Invalid option $1" "$all_args" ;;
@@ -323,7 +323,7 @@ runstats $TOOL_BINARY \
 # ==============================================================================
 printf "\n======================================================================"
 log_time "Versions used:"
-tool_version | tee "$version_file"
+print_version | tee "$version_file"
 script_version | tee -a "$version_file" 
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*

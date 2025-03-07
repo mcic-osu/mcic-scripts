@@ -168,7 +168,7 @@ set -euo pipefail
 
 # Load software
 load_env "$conda_path" "$container_path" "$dl_container"
-[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
+[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
 [[ -z "$R1" && -z "$indir" && -z "$fofn" ]] && die "Please specify either an R1 input file with -i, an input dir with -I, or an input FOFN with -f"

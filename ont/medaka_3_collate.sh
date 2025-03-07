@@ -130,7 +130,7 @@ set -euo pipefail
 
 # Load software
 load_env "$conda_path" "$container_path" "$dl_container"
-[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
+[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
 [[ -z "$assembly_in" ]] && die "No input assembly specified, do so with -i/assembly_in" "$all_opts"

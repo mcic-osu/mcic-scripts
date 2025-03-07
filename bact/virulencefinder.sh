@@ -117,7 +117,7 @@ script_version() {
 }
 
 # Print the tool's version
-tool_version() {
+print_version() {
     set +e
     load_tool_conda
     conda list | grep -i $TOOL_NAME | tail -n +2
@@ -197,7 +197,7 @@ while [ "$1" != "" ]; do
         --dont_get_db )     readonly get_db=false ;;
         --more_args )       shift && readonly more_args=$1 ;;
         -h )                script_help; exit 0 ;;
-        -v | --version )         tool_version; exit 0 ;;
+        -v | --version )         print_version; exit 0 ;;
         --help )            tool_help; exit 0;;
         * )                 die "Invalid option $1" "$all_args" ;;
     esac
@@ -295,7 +295,7 @@ runstats virulencefinder.py \
 # ==============================================================================
 printf "\n======================================================================"
 log_time "Versions used:"
-tool_version | tee "$version_file"
+print_version | tee "$version_file"
 script_version | tee -a "$version_file" 
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*

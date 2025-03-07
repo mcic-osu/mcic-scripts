@@ -106,7 +106,7 @@ while [ "$1" != "" ]; do
         --more_args )       shift && readonly more_args=$1 ;;
         -h | --help )       script_help; exit 0 ;;
         -v | --version )         load_env "$MODULE" "$CONDA"
-                            tool_version "$VERSION_COMMAND" && exit 0 ;;
+                            print_version "$VERSION_COMMAND" && exit 0 ;;
         * )                 infiles[$count]=$1 && count=$(( count + 1 )) ;;
     esac
     shift

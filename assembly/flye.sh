@@ -149,7 +149,7 @@ set -euo pipefail
 
 # Load software
 load_env "$conda_path" "$container_path" "$dl_container"
-[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
+[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
 [[ ${#infiles[@]} = 0 && "$fofn" = "" ]] && die "No input file specified, do so with -i/--reads or --fofn" "$all_opts"

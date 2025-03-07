@@ -179,7 +179,7 @@ set -euo pipefail
 # Load software
 load_env "$conda_path" "$container_path" "$dl_container"
 export NCBI_API_KEY=34618c91021ccd7f17429b650a087b585f08
-[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
+[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"

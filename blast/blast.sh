@@ -10,8 +10,6 @@
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-# BLAST docs: https://www.ncbi.nlm.nih.gov/blast/BLAST_guide.pdf
-
 # Constants - generic
 DESCRIPTION="Run NCBI BLAST on an input (query) FASTA file, and optionally download
 aligned sequences and/or genomes. The input (query) FASTA file can contain multiple
@@ -19,6 +17,8 @@ or even many sequences, though it will be quicker to split a multiFASTA file,
 and submit a separate job for each single-sequence FASTA file.
 Additionally, downloaded sequences (e.g. with --download_genomes) are currently not
 output separately for each query.
+
+BLAST docs: https://www.ncbi.nlm.nih.gov/blast/BLAST_guide.pdf
 
 OUTPUT:
   - All output will be placed inside the specified output dir.
@@ -45,9 +45,8 @@ OUTPUT:
     17) staxids     Subject taxonomy IDs
     18) tax_string  Taxonomy string in the format: kingdom|phylum|class|order|family|genus|species
 "
-SCRIPT_VERSION="2025-02-17"
+SCRIPT_VERSION="2025-03-07"
 SCRIPT_AUTHOR="Jelmer Poelstra"
-REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 VERSION_COMMAND="blastn -version; datasets --version; taxonkit version"
 export TOOL_NAME="NCBI BLAST+; NCBI datasets; taxonkit" 
@@ -69,7 +68,6 @@ conda_path=/fs/ess/PAS0471/jelmer/conda/blast
 container_path=
 container_url=
 container_dir="$HOME/containers"
-version_only=false                  # When true, just print tool & script version info and exit
 
 # Defaults - settings
 local=false && remote_opt=" -remote" # Run BLAST locally (own db) or remotely (NCBI's db over the internet)
@@ -170,15 +168,13 @@ script_help() {
     echo "  --dl_genomes                Download full genomes of aligned sequences              [default: $to_dl_genomes]"
     echo
     echo "UTILITY OPTIONS (OPTIONAL):"
-    echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
-    echo "                                (NOTE: If no default '--container_url' is listed below,"
-    echo "                                 you must provide one to run the script with a container.)"
+    echo "  --env_type          <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
     echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
     echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
     echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
     echo "  -h/--help                   Print this help message and exit"
-    echo "  -v                          Print the version of this script and exit"
-    echo "  --version                   Print the version of BLAST and the NCBI datasets tool and exit"
+    echo "  -v/--version                Print the version of this script, of BLAST"
+    echo "                              and of the NCBI datasets tool, and exit"
     echo
 }
 
@@ -213,7 +209,7 @@ source_function_script
 run_blast() {
     log_time "Now running BLAST..."
     #(Options need to be awkwardly collapsed like this or BLAST will choke on the empty spaces)
-    runstats "$blast_type" \
+    runstats $TOOL_BINARY \
         -db "$db" \
         -query "$infile" \
         -out "$blast_out_raw" \
@@ -488,6 +484,7 @@ max_target_seqs= && maxtarget_opt=
 spacer=
 db=
 threads= && thread_opt=
+version_only=false # When true, just print tool & script version info and exit
 
 # Parse command-line args
 all_opts="$*"
@@ -512,11 +509,11 @@ while [ "$1" != "" ]; do
         --dl_genomes )      to_dl_genomes=true ;;
         --dl_subjects )     to_dl_subjects=true ;;
         --dl_aligned )      to_dl_aligned=true ;;
-        --env_type )             shift && env_type=$1 ;;
+        --env_type )        shift && env_type=$1 ;;
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v | --version )         version_only=true ;;
+        -v | --version )    version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
@@ -529,8 +526,9 @@ done
 set -euo pipefail
 
 # Load software
-load_env "$conda_path" "$container_path"
-[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
+TOOL_BINARY=$blast_type
+load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$container_url"
+[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
 [[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"

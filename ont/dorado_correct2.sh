@@ -136,7 +136,7 @@ set -euo pipefail
 # Load software
 load_env "$conda_path" "$container_path" "$dl_container"
 module load cuda/12.3.0
-[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
+[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
 [[ -z "$reads" ]] && die "No input reads file specified, do so with -i/--reads" "$all_opts"

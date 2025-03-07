@@ -175,7 +175,7 @@ set -euo pipefail
 # Load software
 load_env "$conda_path"
 nextflow_setup
-[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
+[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Build the config argument
 OSC_CONFIG="$outdir"/$(basename "$OSC_CONFIG_URL")

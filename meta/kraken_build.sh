@@ -142,7 +142,7 @@ shopt -s nullglob # Needed for flexible globbing
 
 # Load software
 load_env "$conda_path" "$container_path" "$dl_container"
-[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
+[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
 [[ -z "$db_dir" ]] && die "No db dir specified, do so with -o/--db" "$all_opts"

@@ -199,7 +199,7 @@ echo "==========================================================================
 # Load software and set nr of threads
 load_env "$conda_path"
 nextflow_setup
-[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
+[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" = true ]] && slurm_resources
 

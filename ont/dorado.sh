@@ -143,7 +143,7 @@ done
 # Load software
 module load cuda/12.3.0
 load_env "$conda_path" "$container_path" "$dl_container"
-[[ "$version_only" == true ]] && tool_version "$VERSION_COMMAND" && exit 0
+[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
 [[ -z "$input" ]] && die "No input file/dir specified, do so with -i/--input" "$all_opts"
