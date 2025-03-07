@@ -93,7 +93,7 @@ print_version() {
     local version_command=${1-none}
     set +e
     
-    echo "# Version of this shell script:"
+    echo -e "\n# Version of this shell script:"
     echo "$SCRIPT_NAME by $SCRIPT_AUTHOR, version $SCRIPT_VERSION ($REPO_URL)"
 
     echo "# Version of $TOOL_NAME:"
@@ -169,8 +169,8 @@ die() {
     local error_args=${2-none}
 
     log_time "$0: ERROR: $error_message" >&2
-    log_time "For help, run this script with the '-h' option" >&2
-    print_version
+    log_time "For help, run this script with the '-h' or '--help' option" >&2
+    print_version "$VERSION_COMMAND"
 
     if [[ "$error_args" != "none" ]]; then
         log_time "Options passed to the script:" >&2

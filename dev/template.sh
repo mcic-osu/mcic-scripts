@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="" #TODO
-SCRIPT_VERSION="2025-03-01" #TODO - UPDATE
+SCRIPT_VERSION="2025-03-07" #TODO - UPDATE
 SCRIPT_AUTHOR="Jelmer Poelstra"
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 TOOL_BINARY=#TODO
@@ -23,8 +23,9 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 # Defaults - generics
 env_type=conda
 conda_path=#TODO
-container_url=
 container_dir="$HOME/containers"
+container_url=
+container_path=
 
 # Constants - tool parameters
 #TODO
@@ -59,9 +60,9 @@ UTILITY OPTIONS:
   --env_type          <str>   Use a Singularity container ('container')         [default: $env_type]
                               or a Conda environment ('conda') 
   --conda_path        <dir>   Full path to a Conda environment to use           [default: $conda_path]
-  --container_url     <str>   URL to download a container from                  [default: $container_url]
-  --container_dir     <str>   Dir to download the container to                  [default: $container_dir]
-  --container_path    <file>  Singularity container image file (.sif) to use
+  --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
+  --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
+  --container_path    <file>  Local singularity image file (.sif) to use        [default (if any): $container_path]
   -h/--help                   Print help and exit
   -v/--version                Print the version of this script and of $TOOL_NAME
     
@@ -109,7 +110,6 @@ infile=
 outdir=
 more_opts=
 threads=
-container_path=
 
 # Parse command-line args
 all_opts="$*"
