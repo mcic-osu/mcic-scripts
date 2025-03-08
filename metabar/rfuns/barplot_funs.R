@@ -48,7 +48,8 @@ pbar <- function(
     sort_by_abund = TRUE,   # Sort the taxa by abundance in the graph (rather than alphabetically)
     colors = cols_kelly,    # Vector of colors. Presets are 'cols1', 'cols_brewerplus', and 'cols_kelly' (default)
                             # You can also provide your own vector of colors.
-    abund_df = NULL,        # Alternative to providing a phyloseq object (ps) as input: an abundance df from abund_stats()
+    abund_df = NULL,        # Alternative to providing a phyloseq object (ps) as input: 
+                            # an abundance df from abund_stats()
                             # With columns 'OTU', 'Sample', 'Abundance', any metadata grouping variables,
                             # and the focal taxonomic rank
     convert_abund = FALSE   # If the ps object has absolute counts, set to TRUE to convert to relative 
@@ -265,10 +266,12 @@ abund_stats <- function(
 }
 
 # Function to prepare and abundance_df for the pbar() function.
-# based on merely a taxonomy table without actual abundances
+# based on merely a taxonomy table without actual abundances,
+# or a single-sample abundance table
 tax_stats <- function(
     tax_df,                # Taxonomy table with one column per taxonomic rank and 'database' ID column
     tax_rank,              # Taxonomic rank (e.g. 'Kingdom'), should be a column name in tax_df
+    abund_column = NULL,   # Name of column with abundance values (optional)
     method_column = "method", # Method/Database column, e.g. 'dada' vs 'qiime'
     method_id = NULL,      # Database ID - will use value in 'database' column by default 
     abund_tres = 0.01,     # Taxa with lower 'abundance' than this will be
@@ -283,9 +286,17 @@ tax_stats <- function(
   if (is.null(method_id)) method_id <- tax_df[[method_column]][1]
   
   # Add 'abundance'
-  df <- tax_df |>
-    mutate(Abundance = 1 / nrow(tax_df)) |>
-    summarize(Abundance = sum(Abundance), .by = all_of(tax_rank))
+  if (is.null(abund_column)) {
+    df <- tax_df |> mutate(Abundance = 1 / nrow(tax_df))
+  } else {
+    df <- tax_df |>
+      mutate(
+        Abundance = .data[[abund_column]] / sum(.data[[abund_column]], na.rm = TRUE)
+        )
+  }
+  df <- df |> summarize(
+    Abundance = sum(Abundance, na.rm = TRUE), .by = all_of(tax_rank)
+    )
   
   # Get vector of low-abundance taxa to be lumped
   if (!is.na(abund_tres)) {
