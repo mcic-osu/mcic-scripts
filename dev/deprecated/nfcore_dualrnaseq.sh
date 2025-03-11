@@ -118,12 +118,12 @@ source_function_script() {
         script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
         SCRIPT_NAME=$(basename "$0")
     fi
-    function_script=$(realpath "$script_dir"/../dev/bash_functions2.sh)
+    function_script=$(realpath "$script_dir"/../dev/bash_functions.sh)
     
     if [[ ! -f "$function_script" ]]; then
         echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
         git clone https://github.com/mcic-osu/mcic-scripts.git
-        function_script=mcic-scripts/dev/bash_functions2.sh
+        function_script=mcic-scripts/dev/bash_functions.sh
     fi
     source "$function_script"
 }
