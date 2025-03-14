@@ -176,6 +176,7 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
 runstats $TOOL_BINARY \
+    --outdir "$outdir" \
     --threads "$threads" \
     $more_opts \
     "$infile"

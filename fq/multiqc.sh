@@ -161,7 +161,7 @@ set_threads "$IS_SLURM"
 #                               RUN
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
-runstats $TOOL_BINARY \
+runstats $CONTAINER_PREFIX $TOOL_BINARY \
     --force \
     --outdir "$outdir" \
     $outfile_opt \
