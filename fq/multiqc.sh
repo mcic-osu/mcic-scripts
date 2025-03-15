@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run MultiQC to summarize log output by e.g. FastQC, Cutadapt, STAR"
-SCRIPT_VERSION="2025-01-26"
+SCRIPT_VERSION="2025-03-15"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -27,7 +27,7 @@ auto_plot=false                     # By default, force interactive plots
 # Defaults - generics
 env_type=container                       # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/multiqc
-container_url="oras://community.wave.seqera.io/library/multiqc:1.27--aa757e3b271fdcd4"
+container_url="oras://community.wave.seqera.io/library/multiqc:1.27.1--2f34f6019140fbc5"
 container_dir="$HOME/containers"
 version_only=false                  # When true, just print tool & script version info and exit
 
@@ -35,37 +35,36 @@ version_only=false                  # When true, just print tool & script versio
 #                                   FUNCTIONS
 # ==============================================================================
 script_help() {
-    echo -e "\n                          $0"
-    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
-    echo "        =============================================================="
-    echo "DESCRIPTION:"
-    echo "  $DESCRIPTION"
-    echo
-    echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage:"
-    echo "      sbatch $0 -i results/fastqc -o results/multiqc"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--indir          <file>  Input dir - should contain e.g. FastQC output"
-    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --auto_plot                 Don't force plots to be interactive     [default: always use interactive plots]"
-    echo "  --outfile           <str>   Name of the output report               [default: 'multiqc_report.html']"
-    echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
-    echo "                                (NOTE: If no default '--container_url' is listed below,"
-    echo "                                 you'll have to provide one in order to run the script with a container.)"
-    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
-    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  -h/--help                   Print this help message and exit"
-    echo "  -v                          Print the version of this script and exit"
-    echo "  --version                   Print the version of $TOOL_NAME and exit"
-    echo
-    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+    
+USAGE / EXAMPLE COMMANDS:
+    sbatch $0 -i results/fastqc -o results/multiqc
+
+REQUIRED OPTIONS:
+  -i/--indir          <file>  Input dir - should contain e.g. FastQC output
+  -o/--outdir         <dir>   Output dir (will be created if needed)
+
+OTHER KEY OPTIONS:
+  --auto_plot                 Don't force plots to be interactive               [default: always use interactive plots]
+  --outfile           <str>   Name of the output HTML report                    [default: 'multiqc_report.html']
+  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME
+
+UTILITY OPTIONS:
+  --env_type          <str>   Use a Singularity container ('container')         [default: $env_type]
+                              or a Conda env ('conda')
+  --conda_env         <dir>   Full path to a Conda environment to use           [default: $conda_path]
+  --container_url     <str>   URL to download the container from                [default: $container_url]
+  --container_dir     <str>   Dir to download the container to                  [default: $container_dir]
+  -h/--help                   Print this help message
+  -v/--version                Print script and $TOOL_NAME versions
+
+TOOL DOCUMENTATION: $TOOL_DOCS"
 }
 
 # Function to source the script with Bash functions

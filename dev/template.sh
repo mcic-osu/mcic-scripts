@@ -14,6 +14,7 @@
 DESCRIPTION="" #TODO
 SCRIPT_VERSION="2025-03-07" #TODO - UPDATE
 SCRIPT_AUTHOR="Jelmer Poelstra"
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 TOOL_BINARY=#TODO
 TOOL_NAME=#TODO
@@ -39,7 +40,7 @@ container_path=
 script_help() {
     echo -e "
                         $0
-    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL
             =================================================
 
 DESCRIPTION:
@@ -63,11 +64,11 @@ UTILITY OPTIONS:
   --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
   --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
   --container_path    <file>  Local singularity image file (.sif) to use        [default (if any): $container_path]
-  -h/--help                   Print help and exit
-  -v/--version                Print the version of this script and of $TOOL_NAME
+  -h/--help                   Print this help message
+  -v/--version                Print script and $TOOL_NAME versions
     
 TOOL DOCUMENTATION:
-$TOOL_DOCS
+  $TOOL_DOCS
 "
 }
 
@@ -99,7 +100,7 @@ source_function_script() {
 
 # Check if this is a SLURM job, then load the Bash functions
 if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
-source_function_script
+source_function_script $IS_SLURM
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
@@ -111,7 +112,7 @@ outdir=
 more_opts=
 threads=
 
-# Parse command-line args
+# Parse command-line options
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in

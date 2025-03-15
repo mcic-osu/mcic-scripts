@@ -2,15 +2,18 @@
 
 # Constants
 OSC_MODULE=miniconda3
-REPO_URL=https://github.com/mcic-osu/mcic-scripts
 
 # Dummy defaults
 [[ -z "$env_type" ]] && env_type=conda
 [[ -z "$container_path" ]] && container_path=
+[[ -z "$container_url" ]] && container_url=
+[[ -z "$container_dir" ]] && container_dir=
+[[ -z "$conda_path" ]] && conda_path=
 [[ -z "$SCRIPT_NAME" ]] && SCRIPT_NAME=script-name
 [[ -z "$SCRIPT_VERSION" ]] && SCRIPT_VERSION=script-version
 [[ -z "$SCRIPT_AUTHOR" ]] && SCRIPT_AUTHOR=script-author
 [[ -z "$TOOL_NAME" ]] && TOOL_NAME=tool-name
+[[ -z "$REPO_URL" ]] && REPO_URL=https://github.com/mcic-osu/mcic-scripts
 
 # Variables that can/should be loaded in the script calling these functions
 # conda_path        - Absolute path to a Conda environment dir
@@ -20,6 +23,7 @@ REPO_URL=https://github.com/mcic-osu/mcic-scripts
 # SCRIPT_NAME       - Name of the shell script
 # SCRIPT_VERSION    - Version of the shell script
 # SCRIPT_AUTHOR     - Author of the shell script
+# REPO_URL          - URL to the GitHub repo
 
 # Load Conda or Singularity env
 load_env() {
@@ -67,8 +71,9 @@ load_container() {
         container_path="$container_dir"/${url_basename/:/_}.sif
         
         if [[ -f "$container_path" ]]; then
-            log_time "No container path was provided, but the container in $container_url
-            was found at $container_path and will be used"
+            log_time "No container path was provided,
+            \n   but the container $container_url
+            \n   was found at $container_path and will be used."
         else
             dl_container=true
         fi
@@ -88,19 +93,24 @@ load_container() {
     log_time "Using a container with base call: $CONTAINER_PREFIX"
 }
 
-# Print the tool's version
+# Print the script version only
+print_script_version() {
+    log_time "Version of this shell script:"
+    echo "$SCRIPT_NAME by $SCRIPT_AUTHOR, version $SCRIPT_VERSION ($REPO_URL)"
+}
+
+# Print the script AND tool's version
 print_version() {
     local version_command=${1-none}
     set +e
     
-    log_time "Version of this shell script:"
-    echo "$SCRIPT_NAME by $SCRIPT_AUTHOR, version $SCRIPT_VERSION ($REPO_URL)"
+    print_script_version
 
     log_time "Version of $TOOL_NAME:"
     if [[ "$version_command" == "none" ]]; then
         $TOOL_BINARY --version
     else
-        eval $CONTAINER_PREFIX $version_command
+        eval $version_command
     fi
     
     set -e
@@ -137,7 +147,7 @@ set_threads() {
         elif [[ -n "$SLURM_NTASKS" ]]; then
             readonly threads="$SLURM_NTASKS"
         else 
-            log_time "WARNING: This is a Slurm job but I can't detect the number of job threads, setting to 1"
+            log_time "WARNING: This is a Slurm job, but this script can't detect the number of threads/cores: setting to 1"
             readonly threads=1
         fi
     else
@@ -177,7 +187,7 @@ die() {
         echo "$error_args" >&2
     fi
 
-    print_version "$VERSION_COMMAND"
+    print_script_version "$VERSION_COMMAND"
 
     log_time "EXITING..." >&2
     exit 1
