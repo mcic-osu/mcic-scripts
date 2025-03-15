@@ -10,15 +10,16 @@
 igenomes_ignore: true
 
 # Outputs
-save_mapped: true
+save_mapped: false
 # Saves output from mapping (if --save_mapped), Markduplicates & Baserecalibration as BAM file instead of CRAM
-save_output_as_bam: true
+save_output_as_bam: false
 
 # ==============================================================================
 #                             TOOL PARAMETERS
 # ==============================================================================
 # Remove adapters with FASTP
 trim_fastq: true
+trim_nextseq: false
 
 # ==============================================================================
 #                         TOOLS TO RUN OR SKIP
@@ -26,7 +27,7 @@ trim_fastq: true
 # Comma-separated list of one or more tools for variant calling and annotation
 # See https://nf-co.re/sarek/parameters#tools for options 
 tools: 'mpileup,freebayes,haplotypecaller'
+joint_germline: true   # GATK joint (across-sample) genotyping
 
 # Comma-separated list of one or more tools for variant calling and annotation
 skip_tools: 'baserecalibrator'
-
