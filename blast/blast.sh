@@ -1,6 +1,7 @@
 #!/bin/bash
 #SBATCH --account=PAS0471
 #SBATCH --time=3:00:00
+#SBATCH --cpus-per-task=1
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name=blast
 #SBATCH --output=slurm-blast-%j.out
@@ -45,7 +46,7 @@ OUTPUT:
     17) staxids     Subject taxonomy IDs
     18) tax_string  Taxonomy string in the format: kingdom|phylum|class|order|family|genus|species
 "
-SCRIPT_VERSION="2025-03-07"
+SCRIPT_VERSION="2025-03-15"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 VERSION_COMMAND="blastn -version; datasets --version; taxonkit version"
@@ -93,89 +94,108 @@ add_header=true                     # Add column header to final BLAST output fi
 #                           GENERIC FUNCTIONS
 # ==============================================================================
 script_help() {
-    echo -e "\n                          $0"
-    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
-    echo "        =============================================================="
-    echo "DESCRIPTION:"
-    echo "  $DESCRIPTION"
-    echo
-    echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage - will run BLAST remotely with the nt database & no output filtering or sequence downloading:"
-    echo "      sbatch $0 -i my_seq.fa -o results/blast"
-    echo
-    echo "  - Run a local BLAST using OSCs June 2023 BLAST db (used by default with --local):"
-    echo "      sbatch $0 -i my_seq.fa -o results/blast --local"
-    echo
-    echo "  - Limit online BLAST database to specific taxa (using NCBI taxon IDs):"
-    echo "      sbatch $0 -i my_seq.fa -o results/blast --tax_ids '343,56448'"
-    echo
-    echo "  - Download aligned parts of sequences, full subjects, and full genomes:"
-    echo "      sbatch $0 -i my_seq.fa -o results/blast --dl_aligned --dl_subjects --dl_genomes"
-    echo
-    echo "  - Use % identity and query coverage thresholds:"
-    echo "      sbatch $0 -i my_seq.fa -o results/blast --pct_id 90 --pct_cov 90"
-    echo
-    echo "  - Keep only the best 10 hits per query:"
-    echo "      sbatch $0 -i my_seq.fa -o results/blast --top_n 10"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile         <file>  Input FASTA file (can contain one or more sequences)"
-    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
-    echo
-    echo "GENERAL OPTIONS (OPTIONAL):"
-    echo "  --no_header                 Don't add column headers to final BLAST output TSV file [default: add]"
-    echo "                                The header won't be added to the raw output file, which can be used for filtering"
-    echo "  --resume                    Don't run BLAST if the output file already exists"
-    echo "                                Only rerun downstream operations like filtering"
-    echo
-    echo "GENERAL BLAST OPTIONS (OPTIONAL):"
-    echo "  --local                     Run BLAST with a local (on-disk) database               [default: $local]"
-    echo "  --db                <str>   - If running remotely: NCBI database name like 'nt'/'nr'[default: 'nt' for nucleotide, 'nr' for protein]"
-    echo "                              - If running locally: default is 'nt' or 'nr' from $DEFAULT_LOCAL_DB_DIR"
-    echo "                              - To run with a custom local db, use '--local' AND specify the prefix (dir + db name, no file extensions) of a local BLAST db"
-    echo "  --blast_type        <str>   BLAST type: 'blastn', 'blastp', 'blastx', 'tblastx', or 'tblastn' [default: $blast_type]"
-    echo "  --blast_task        <str>   'Task' for blastn or blastp, e.g. 'megablast' for blastn  [default: BLAST program default]"
-    echo "                                  For blastn, the default is 'megablast', other options are: 'blastn', 'blastn-short', 'dc-megablast', 'rmblastn'"
-    echo "                                  More similar => less similar seqs, use 'megablast' => 'dc-megablast' (discontinuous megablast) => 'blastn'"
-    echo "                                  For blastp, the default is 'blastp', other options are: 'blastp-fast', 'blastp-short'"
-    echo "                                  See https://www.ncbi.nlm.nih.gov/books/NBK569839/#usrman_BLAST_feat.Tasks"
-    echo
-    echo "BLAST THRESHOLD AND FILTERING OPTIONS (OPTIONAL):"
-    echo "  --tax_ids           <str>   Comma-separated list of NCBI taxon IDs (just the numbers, no 'txid' prefix)"
-    echo "                                The BLAST search will be limited to these taxa        [default: use full database]"
-    echo "                                NOTE: This option only works for remote, nucleotide-based searches!"
-    echo "  --max_target_seqs   <int>   Max. nr of target sequences to keep                     [default: BLAST default (=500)]"
-    echo "                                This option will be applied *during* the BLAST run"
-    echo "                                This number should be increased from the default when ~hundreds of hits are expected"
-    echo "  --evalue            <num>   E-value threshold in scientific notation                [default: $evalue]"
-    echo "                                This option will be applied *during* the BLAST run"
-    echo "  --pct_id            <num>   Percentage identity threshold                           [default: none]"
-    echo "                                This threshold will be applied *after* running BLAST"
-    echo "  --pct_cov           <num>   Threshold for % of query covered by the alignment       [default: none]"
-    echo "                                This threshold will be applied *after* running BLAST"
-    echo "  --top_n_query       <int>   Only keep the top N hits for each query                 [default: $top_n_query]"
-    echo "                                This threshold will be applied *after* running BLAST"
-    echo "                                A threshold of 0 means no filtering"
-    echo "  --top_n_subject     <int>   Only keep the top N hits for each subject, per query    [default: keep all]"
-    echo "                                This threshold will be applied *after* running BLAST"
-    echo "                                A threshold of 0 means no filtering"
-    echo
-    echo "SEQUENCE LOOKUP AND DOWNLOAD OPTIONS (OPTIONAL):"
-    echo "  --dl_aligned                Download aligned parts of subject (db) sequences        [default: $to_dl_aligned]"
-    echo "  --dl_subjects               Download full subject (db) sequences that were aligned  [default: $to_dl_subjects]"
-    echo "                                For protein BLAST, this will also download nucleotide sequences for non 'WP_' (multi-species) accessions"
-    echo "  --find_genomes              Find genome accession numbers of aligned sequences      [default: $to_find_genomes]"
-    echo "  --dl_genomes                Download full genomes of aligned sequences              [default: $to_dl_genomes]"
-    echo
-    echo "UTILITY OPTIONS (OPTIONAL):"
-    echo "  --env_type          <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
-    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
-    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  -h/--help                   Print this help message and exit"
-    echo "  -v/--version                Print the version of this script, of BLAST"
-    echo "                              and of the NCBI datasets tool, and exit"
-    echo
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+    
+USAGE / EXAMPLE COMMANDS:
+  - Basic usage - will run BLAST remotely with the nt database & no output filtering or sequence downloading:
+      sbatch $0 -i my_seq.fa -o results/blast
+
+  - Run a local BLAST using OSCs BLAST db (used by default with --local):
+    NOTE: Use multiple cores with '--cpus-per-task' or '-c' in the sbatch command
+      sbatch -c 12 $0 -i my_seq.fa -o results/blast --local
+
+  - Limit online BLAST database to specific taxa (using NCBI taxon IDs):
+      sbatch $0 -i my_seq.fa -o results/blast --tax_ids '343,56448'
+
+  - Download aligned parts of sequences, full subjects, and full genomes:
+      sbatch $0 -i my_seq.fa -o results/blast --dl_aligned --dl_subjects --dl_genomes
+
+  - Use % identity and query coverage thresholds:
+      sbatch $0 -i my_seq.fa -o results/blast --pct_id 90 --pct_cov 90
+
+  - Keep only the best 10 hits per query:
+      sbatch $0 -i my_seq.fa -o results/blast --top_n 10
+
+REQUIRED OPTIONS:
+  -i/--infile         <file>  Input FASTA file (can contain one or more sequences)
+  -o/--outdir         <dir>   Output dir (will be created if needed)
+
+GENERAL OPTIONS (OPTIONAL):
+  --no_header                 Don't add headers to final BLAST output file      [default: add]
+  --resume                    Don't run BLAST if the output file already exists;
+                                only rerun downstream operations like filtering.
+
+GENERAL BLAST OPTIONS (OPTIONAL):
+  --local                     Run BLAST with a local (on-disk) database         [default: $local]
+  --db                <str>   - If running remotely:                            [default: 'nt' for nucleotide, 'nr' for protein]
+                                NCBI database name like 'nt'/'nr'
+                              - If running locally:
+                                default is 'nt' or 'nr' from $DEFAULT_LOCAL_DB_DIR
+                              - To run with a custom local db, use '--local'
+                                AND specify the prefix (dir + db name, no file
+                                extensions) of a local BLAST db
+  --blast_type        <str>   BLAST type: 'blastn', 'blastp', 'blastx',         [default: $blast_type]
+                              'tblastx', or 'tblastn' 
+  --blast_task        <str>   'Task' for blastn or blastp,                      [default: BLAST program default]
+                              e.g. 'megablast' for blastn
+                              For blastn, the default is 'megablast',
+                                other options are: 'blastn', 'blastn-short',
+                                'dc-megablast', 'rmblastn'.
+                               More similar => less similar seqs, use 'megablast'
+                                => 'dc-megablast' (discontinuous megablast) =>
+                                'blastn'.
+                              For blastp, the default is 'blastp',
+                                other options are: 'blastp-fast', 'blastp-short'
+                              See https://www.ncbi.nlm.nih.gov/books/NBK569839/#usrman_BLAST_feat.Tasks
+
+BLAST THRESHOLD AND FILTERING OPTIONS (OPTIONAL):
+  --tax_ids           <str>   Comma-separated list of NCBI taxon IDs            [default: use full database]
+                                (just the numbers, no 'txid' prefix)
+                                The BLAST search will be limited to these taxa        
+                                NOTE: This only works for remote,
+                                nucleotide-based searches!
+  --max_target_seqs   <int>   Max. nr of target sequences to keep               [default: BLAST default (=500)]
+                                This option is applied *during* the BLAST run.
+                                This number should be increased from the default
+                                when ~hundreds of hits are expected.
+  --evalue            <num>   E-value threshold in scientific notation          [default: $evalue]
+                                This option is applied *during* the BLAST run.
+  --pct_id            <num>   Percentage identity threshold                     [default: none]
+                                This threshold is applied *after* running BLAST.
+  --pct_cov           <num>   Threshold for % of query covered by the alignment [default: none]
+                                This threshold is applied *after* running BLAST.
+  --top_n_query       <int>   Only keep the top N hits for each query           [default: $top_n_query]
+                                This threshold is applied *after* running BLAST.
+                                A threshold of 0 means no filtering
+  --top_n_subject     <int>   Only keep top N hits for each subject, per query. [default: keep all]
+                                This threshold is applied *after* running BLAST.
+                                A threshold of 0 means no filtering.
+
+SEQUENCE LOOKUP AND DOWNLOAD OPTIONS (OPTIONAL):
+  --dl_aligned                Download aligned parts of subject (db) sequences. [default: $to_dl_aligned]
+  --dl_subjects               Download full subject (db) sequences.             [default: $to_dl_subjects]
+                                For protein BLAST, this will also download
+                                nucleotide sequences for non 'WP_'
+                                (multi-species) accessions.
+  --find_genomes              Get genome accession numbers of aligned sequences [default: $to_find_genomes]
+  --dl_genomes                Download full genomes of aligned sequences.       [default: $to_dl_genomes]
+
+UTILITY OPTIONS (OPTIONAL):
+  --env_type          <str>   Use a Singularity container ('container')         [default: $env_type]
+                              or a Conda environment ('conda') 
+  --conda_path        <dir>   Full path to a Conda environment to use           [default: $conda_path]
+  --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
+  --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
+  --container_path    <file>  Local singularity image file (.sif) to use        [default (if any): $container_path]
+  -h/--help                   Print this help message
+  -v/--version                Print script and $TOOL_NAME versions
+"
 }
 
 # Function to source the script with Bash functions
