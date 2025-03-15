@@ -177,7 +177,7 @@ ls -lh "$input"
 #                               RUN
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     $out_format_opt \
     $more_opts \
     $model \

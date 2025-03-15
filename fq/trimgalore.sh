@@ -236,7 +236,7 @@ ls -lh "$R1_in"
 # ==============================================================================
 # Run TrimGalore
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     --output_dir "$outdir_trim" \
     $quality_arg \
     --length "$length" \

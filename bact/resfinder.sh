@@ -229,7 +229,7 @@ log_time "Moving into the output dir $outdir..."
 cd "$outdir" || die "Can't move to output dir $outdir"
 
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     --inputfasta "$infile" \
     --outputPath "$outdir" \
     --species "$species" \

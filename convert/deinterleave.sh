@@ -159,7 +159,7 @@ set_threads "$IS_SLURM"
 #                               RUN
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     in="$infile" \
     out1="$R1_out" \
     out2="$R2_out" \

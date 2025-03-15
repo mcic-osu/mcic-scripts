@@ -173,7 +173,7 @@ ls -lh "$kraken_report" "$db"/*k2d
 #                               RUN
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     -i "$kraken_report" \
     -d "$db" \
     -o "$outdir"/bracken.txt \

@@ -182,7 +182,7 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 # Run Parsnp
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     --output-dir "$outdir" \
     --reference "$ref" \
     --vcf${curated_opt} \
@@ -196,7 +196,7 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY \
 
 # Create a multi-FASTA alignment file (https://harvest.readthedocs.io/en/latest/content/harvest/quickstart.html)
 log_time "Running Harvesttool to convert to a FASTA alignment file..."
-runstats $CONTAINER_PREFIX harvesttools \
+runstats harvesttools \
     -i "$outdir"/parsnp.ggr -M "$outdir"/parsnp.aln
 
 log_time "Listing files in the output dir:"

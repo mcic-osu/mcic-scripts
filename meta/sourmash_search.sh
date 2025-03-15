@@ -200,7 +200,7 @@ cd "$outdir" || exit
 # Create a signature for the query FASTA file
 if [[ ! -f "$infile_signature" ]]; then
     log_time "Creating sourmash signature for query file $infile..."
-    runstats $CONTAINER_PREFIX $TOOL_BINARY \
+    runstats $TOOL_BINARY \
         sketch dna -p k="$kmer_size" "$infile"
 else
     log_time "Sourmash signature for query file already exists ($infile_signature)"
@@ -208,7 +208,7 @@ fi
 
 # Run the search
 log_time "Now running sourmash search..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     search --num-results "$n_results" "$infile_signature" "$db" |
     tee > "$sample_id".txt
 

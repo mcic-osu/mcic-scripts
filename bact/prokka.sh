@@ -180,7 +180,7 @@ set_threads "$IS_SLURM"
 #                               RUN
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     --outdir "$outdir" \
     --prefix "$out_prefix" \
     --cpus "$threads" \

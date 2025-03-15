@@ -209,7 +209,7 @@ fi
 
 # Run the tool
 log_time "Building the database..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     --build \
     --db "$db_dir" \
     -t "$threads" \

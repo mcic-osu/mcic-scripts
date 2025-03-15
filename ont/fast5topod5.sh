@@ -161,7 +161,7 @@ set_threads "$IS_SLURM"
 #                               RUN
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY convert fast5 \
+runstats $TOOL_BINARY convert fast5 \
     --output "$outdir" \
     --one-to-one "$indir" \
     --force-overwrite \

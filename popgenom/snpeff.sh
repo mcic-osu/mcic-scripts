@@ -155,7 +155,7 @@ ls -lh "$infile"
 #                               RUN
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY ann \
+runstats $TOOL_BINARY ann \
     -o vcf \
     $more_opts \
     "$genome_id" \

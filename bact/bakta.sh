@@ -192,7 +192,7 @@ fi
 
 # Run Bakta
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     --output "$outdir" \
     --prefix "$sample_id" \
     --genus "$genus" \

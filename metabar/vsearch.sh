@@ -166,14 +166,14 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 # Importing the reference sequences
 log_time "Importing the reference sequence..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     --makeudb_usearch "$ref_fasta" \
     --output "$vsearch_db" \
     --threads "$threads"
 
 # Run the classifier
 log_time "Running the classifier..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     --sintax "$query_fasta" \
     -db "$vsearch_db" \
     -tabbedout "$outfile" \

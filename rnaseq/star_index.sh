@@ -214,7 +214,7 @@ if [[ -n "$read_len" ]]; then
 fi
 
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     --runMode genomeGenerate \
     --limitGenomeGenerateRAM "$mem_bytes" \
     --genomeDir "$outdir" \

@@ -194,7 +194,7 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 # Importing the ASV sequences
 log_time "Importing the ASV sequences..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY tools import \
+runstats $TOOL_BINARY tools import \
     --type 'FeatureData[Sequence]' \
     --input-path "$query_fasta" \
     --output-path "$outdir"/"$prefix"_query-seq.qza
@@ -203,21 +203,21 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY tools import \
 if [[ -z "$classifier" ]]; then
     # Import the reference taxonomy
     log_time "Importing the reference taxonomy..."
-    runstats $CONTAINER_PREFIX $TOOL_BINARY tools import \
+    runstats $TOOL_BINARY tools import \
         --type 'FeatureData[Taxonomy]' \
         --input-path "$ref_tax" \
         --output-path "$outdir"/"$prefix"_ref-tax.qza
 
     # Import the reference sequences
     log_time "Importing the reference sequence..."
-    runstats $CONTAINER_PREFIX $TOOL_BINARY tools import \
+    runstats $TOOL_BINARY tools import \
         --type 'FeatureData[Sequence]' \
         --input-path "$ref_fasta" \
         --output-path "$outdir"/"$prefix"_ref-seq.qza
 
     # Train the classifier
     log_time "Training the classifier..."
-    runstats $CONTAINER_PREFIX $TOOL_BINARY feature-classifier fit-classifier-naive-bayes \
+    runstats $TOOL_BINARY feature-classifier fit-classifier-naive-bayes \
         --i-reference-reads "$outdir"/"$prefix"_ref-seq.qza \
         --i-reference-taxonomy "$outdir"/"$prefix"_ref-tax.qza \
         --o-classifier "$outdir"/"$prefix"_classifier.qza
@@ -227,7 +227,7 @@ fi
 
 # Run the classifier
 log_time "Running the classifier..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY feature-classifier classify-sklearn \
+runstats $TOOL_BINARY feature-classifier classify-sklearn \
     --i-classifier "$outdir"/"$prefix"_classifier.qza \
     --i-reads "$outdir"/"$prefix"_query-seq.qza \
     --o-classification "$outdir"/"$prefix"_taxonomy.qza \
@@ -236,7 +236,7 @@ runstats $CONTAINER_PREFIX $TOOL_BINARY feature-classifier classify-sklearn \
 
 
 log_time "Exporting the classification results to a TSV file..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY tools export \
+runstats $TOOL_BINARY tools export \
     --input-path "$outdir"/"$prefix"_taxonomy.qza \
     --output-path "$outdir"
 

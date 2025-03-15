@@ -170,7 +170,7 @@ set_threads "$IS_SLURM"
 #                               RUN
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY collate \
+runstats $TOOL_BINARY collate \
     -@ "$threads" $ref_opt -u -O "$infile" |
     $CONTAINER_PREFIX $TOOL_BINARY fastq \
     -@ "$threads" $ref_opt -1 "$fq_R1" -2 "$fq_R2" \

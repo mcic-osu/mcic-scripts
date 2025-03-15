@@ -166,7 +166,7 @@ ls -lh "$indir"
 #                               RUN
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     --force \
     --output "$outdir"/"$run_id".fa \
     --plot "$outdir"/"$run_id".html \

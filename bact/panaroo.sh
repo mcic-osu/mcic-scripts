@@ -178,7 +178,7 @@ set_threads "$IS_SLURM"
 #                               RUN
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     -o "$outdir" \
     --clean-mode "$mode" \
     --core_threshold "$core_threshold" \

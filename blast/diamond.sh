@@ -209,7 +209,7 @@ set_threads "$IS_SLURM"
 #                               RUN
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY $blast_type \
+runstats $TOOL_BINARY $blast_type \
     --db "$db" \
     --query "$infile" \
     --out "$outfile" \

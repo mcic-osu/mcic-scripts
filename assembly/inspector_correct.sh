@@ -175,7 +175,7 @@ log_time "Moving into the outdir..."
 cd "$outdir" || exit 1
 
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     --inspector . \
     -o . \
     --datatype "$datatype" \

@@ -190,7 +190,7 @@ set_threads "$IS_SLURM"
 log_time "Starting downloads..."
 for accession in "${accession_array[@]}"; do
     log_time "Now downloading accession $accession"
-    runstats $CONTAINER_PREFIX $TOOL_BINARY \
+    runstats $TOOL_BINARY \
         --accession "$accession" \
         --outdir "$outdir" \
         --cpus "$threads" \

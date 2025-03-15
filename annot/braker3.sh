@@ -230,7 +230,7 @@ singularity exec -B "$PWD":"$PWD" "$container_path" \
 #    cp -r /usr/share/augustus/config/ "$augustus_config_dir"
 
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     --workingdir="$outdir" \
     --genome="$infile" \
     $prot_opt \

@@ -217,7 +217,7 @@ log_time "Moving into the output dir $outdir..."
 cd  "$outdir" || exit
 
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     in="$R1" \
     in2="$R2" \
     ref="$ref_opt" \

@@ -187,7 +187,7 @@ ls -lh "$infile" "$date_file"
 #                               RUN
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     --aln "$infile" \
     --outdir "$outdir" \
     $tree_opt \

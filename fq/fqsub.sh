@@ -208,12 +208,12 @@ echo "Output number of reads:                   $n_reads"
 # STEP B: Run seqtk ------------------------------------------------------------
 # Forward reads:
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     -s$rand "$R1_in" "$n_reads" $opts | gzip > "$R1_out"
 # Reverse reads:
 if [[ "$single_end" == false ]]; then
     log_time "Running $TOOL_NAME for the reverse reads..."
-    runstats $CONTAINER_PREFIX $TOOL_BINARY \
+    runstats $TOOL_BINARY \
         -s$rand "$R2_in" "$n_reads" | gzip > "$R2_out"
 fi
 

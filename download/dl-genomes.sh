@@ -261,7 +261,7 @@ column -ts $'\t' "$meta_sel"
 # Download the genomes
 if [[ "$meta_only" == false ]]; then
     log_time "Downloading the genomes..."
-    runstats $CONTAINER_PREFIX $TOOL_BINARY \
+    runstats $TOOL_BINARY \
         "${data_arg[@]}" \
         --include "$include" \
         --filename genomes.zip \

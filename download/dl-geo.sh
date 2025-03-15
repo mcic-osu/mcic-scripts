@@ -175,7 +175,7 @@ log_time "Running $TOOL_NAME..."
 
 if [[ "$skip_meta" == false && "$skip_counts" == true ]]; then
     log_time "Downloading meta data..."
-    runstats $CONTAINER_PREFIX $TOOL_BINARY \
+    runstats $TOOL_BINARY \
         -i "$accession" \
          --just-metadata \
         --metadata-folder "$outdir"/meta \
@@ -184,7 +184,7 @@ fi
 
 if [[ "$skip_counts" == false ]]; then
     log_time "Downloading count & meta data..."
-    runstats $CONTAINER_PREFIX $TOOL_BINARY \
+    runstats $TOOL_BINARY \
         -i "$accession" \
         --processed \
         --geo-folder "$outdir"/counts \
@@ -197,7 +197,7 @@ if [[ "$skip_fastq" == false ]]; then
     #echo "/repository/user/main/public/root = \"$DATA\"" > ${HOME}/.ncbi/user-settings.mkfg
 
     log_time "Downloading FASTQ files..."
-    runstats $CONTAINER_PREFIX $TOOL_BINARY \
+    runstats $TOOL_BINARY \
         -i "$accession" \
         --fq-folder "$outdir"/fastq \
         $more_opts

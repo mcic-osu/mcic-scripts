@@ -179,7 +179,7 @@ set_threads "$IS_SLURM"
 #                               RUN
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY merge \
+runstats $TOOL_BINARY merge \
     $more_opts \
     -o - \
     "${infiles[@]}" |

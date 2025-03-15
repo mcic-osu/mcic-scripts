@@ -232,7 +232,7 @@ fi
 
 # Run SortMeRNA
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     --ref "$DB1" --ref "$DB2" --ref "$DB3" --ref "$DB4" \
     --ref "$DB5" --ref "$DB6" --ref "$DB7" --ref "$DB8" \
     --reads "$R1" \

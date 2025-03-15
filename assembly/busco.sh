@@ -177,7 +177,7 @@ cd "$outdir" || exit 1
 
 # Run Busco
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     -i "$infile" \
     -o "$file_id" \
     -l "$busco_db" \

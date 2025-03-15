@@ -270,7 +270,7 @@ mkdir -p "$outdir"/logs
 
 # Run Kraken
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     ${more_opts}--threads "$threads" \
     ${mem_opt}${hitgroup_opt}${conf_opt}--report-minimizer-data \
     ${classif_opt}--db "$db" \

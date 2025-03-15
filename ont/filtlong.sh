@@ -167,7 +167,7 @@ ls -lh "$infile"
 #                               RUN
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     $more_opts \
     "$infile" |
     gzip > "$outfile"

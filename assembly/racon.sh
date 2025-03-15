@@ -188,7 +188,7 @@ Run_racon() {
     [[ $alignments == "none" ]] && die "No alignments for function Run_racon"
     [[ $assembly_out == "none" ]] && die "No outfile for function Run_racon"
 
-    runstats $CONTAINER_PREFIX $TOOL_BINARY \
+    runstats $TOOL_BINARY \
         "$reads" \
         "$alignments" \
         "$assembly_in" \
@@ -205,7 +205,7 @@ Run_minimap() {
     [[ $assembly == "none" ]] && die "No assembly for function Run_minimap"
     [[ $align_out == "none" ]] && die "No outfile for function Run_minimap"
 
-    runstats $CONTAINER_PREFIX minimap2 \
+    runstats minimap2 \
         -x "$minimap_preset" \
         -t "$threads" \
         -a \

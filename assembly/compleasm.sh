@@ -166,7 +166,7 @@ set_threads "$IS_SLURM"
 #                               RUN
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     --threads "$threads" \
     --assembly_path "$infile" \
     --output_dir "$outdir" \

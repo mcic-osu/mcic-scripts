@@ -172,7 +172,7 @@ set_threads "$IS_SLURM"
 #                               RUN
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     --in-long "$fq_long" \
     --in-short "$fq_short_list" \
     --out-long "$fq_out" \

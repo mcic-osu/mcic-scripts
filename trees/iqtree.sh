@@ -196,7 +196,7 @@ set_threads "$IS_SLURM"
 #                               RUN
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     -s "$infile" \
     --prefix "$outdir"/"$out_prefix" \
     $model_opt \

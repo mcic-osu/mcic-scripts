@@ -158,7 +158,7 @@ log_time "Moving into output dir $outdir..."
 cd "$outdir" || exit 1
 
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     --decompress \
     --num_threads "$threads" \
     $more_opts \

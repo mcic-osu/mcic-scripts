@@ -157,10 +157,10 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 if [[ $infile = *.gtf ]]; then
     log_time "Converting from GTF to BED..."
-    runstats $CONTAINER_PREFIX gtf2bed < "$infile" > "$outfile"
+    runstats gtf2bed < "$infile" > "$outfile"
 elif [[ $infile = *.gff || $infile = *.gff3 ]]; then
     log_time "Converting from GFF to BED"
-    runstats $CONTAINER_PREFIX gff2bed < "$infile" > "$outfile"
+    runstats gff2bed < "$infile" > "$outfile"
 else
     die "Not converting input file $infile, make sure it has extension '.gtf', '.gff', or '.gff3'"
 fi

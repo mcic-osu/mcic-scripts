@@ -189,7 +189,7 @@ echo
 
 # Run Purge-dups
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     --platform bash \
     $more_opts \
     $config \

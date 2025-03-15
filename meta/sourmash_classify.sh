@@ -194,7 +194,7 @@ cd "$outdir" || exit
 # Create a signature for the FASTA file
 if [[ ! -f "$sigfile" ]]; then
     log_time "Create sourmash signature for query file... ($sigfile)"
-    $CONTAINER_PREFIX $TOOL_BINARY sketch dna -p k="$kmer" "$infile"
+    runstats $TOOL_BINARY sketch dna -p k="$kmer" "$infile"
 else
     log_time "Sourmash signature file for query already exists ($sigfile)"
 fi
@@ -214,7 +214,7 @@ fi
 
 # Run Sourmash
 log_time "Running sourmash classify..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY lca classify \
+runstats $TOOL_BINARY lca classify \
     --db "$db" \
     --query "$sigfile" \
     $more_opts |

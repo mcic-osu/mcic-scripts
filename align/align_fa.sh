@@ -173,7 +173,7 @@ set_threads "$IS_SLURM"
 # Run the alignment
 log_time "Running $TOOL_NAME..."
 if [[ "$aligner" == "mafft" ]]; then
-    runstats $CONTAINER_PREFIX $TOOL_BINARY \
+    runstats $TOOL_BINARY \
         --reorder \
         --auto \
         --adjustdirection \
@@ -182,7 +182,7 @@ if [[ "$aligner" == "mafft" ]]; then
         $more_opts \
         "$infile" > "$outfile"
 elif [[ "$aligner" == "muscle" ]]; then
-    runstats $CONTAINER_PREFIX $TOOL_BINARY \
+    runstats $TOOL_BINARY \
         -align "$infile" \
         -output "$outfile"
         $more_opts

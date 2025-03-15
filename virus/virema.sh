@@ -174,7 +174,7 @@ set_threads "$IS_SLURM"
 #                               RUN
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     --Output_Dir "$outdir" \
     --Output_Tag "$sample_id" \
     --p "$threads" \

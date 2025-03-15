@@ -181,7 +181,7 @@ cd "$sig_dir" || exit
 log_time "Creating genome sketches for each FASTA file..."
 for fa in "${infiles[@]}"; do
     if [[ ! -f $(basename "$fa").sig ]]; then
-        runstats $CONTAINER_PREFIX $TOOL_BINARY \
+        runstats $TOOL_BINARY \
             sketch dna -p k="$kmer_size" "$fa"
     fi
 done
@@ -189,7 +189,7 @@ done
 # Create the database
 log_time "Creating the database with all genome sketches..."
 cd ..
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     index -k"$kmer_size" "$db_name" $opts "$sig_dir"/*.sig
 
 # Report

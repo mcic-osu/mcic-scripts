@@ -217,7 +217,7 @@ fi
 
 # Run kSNP3
 log_time "Running $TOOL_NAME..."
-runstats $CONTAINER_PREFIX $TOOL_BINARY \
+runstats $TOOL_BINARY \
     -in "$infile" \
     -outdir "$outdir" \
     -k "$kmer_size" \
