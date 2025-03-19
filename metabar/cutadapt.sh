@@ -3,7 +3,7 @@
 #SBATCH --time=1:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
-#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-type=FAIL
 #SBATCH --job-name=cutadapt
 #SBATCH --output=slurm-cutadapt-%j.out
 
@@ -11,9 +11,9 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Run Cutadapt to remove metabarcoding primers for a single pair of FASTQ files
+DESCRIPTION="Run Cutadapt to remove (metabarcoding) PRIMERS for a single pair of FASTQ files
 The script will compute and use the reverse complements of all primers as well."
-SCRIPT_VERSION="2025-02-28"
+SCRIPT_VERSION="2025-03-19"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 TOOL_BINARY=cutadapt
@@ -24,8 +24,9 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 # Defaults - generics
 env_type=conda                     # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/cutadapt
-container_url=
 container_dir="$HOME/containers"
+container_url=
+container_path=
 
 # Defaults - tool parameters
 single_end=false
@@ -35,46 +36,54 @@ discard_untrimmed=true
 #                                   FUNCTIONS
 # ==============================================================================
 script_help() {
-    echo -e "\n                          $0"
-    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
-    echo "        =============================================================="
-    echo "DESCRIPTION:"
-    echo "  $DESCRIPTION"
-    echo
-    echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage (always submit your scripts to SLURM with 'sbatch'):"
-    echo "      sbatch $0 -i data/sample1_R1.fastq.gz -o results/cutadapt -f GAGTGYCAGCMGCCGCGGTAA -r ACGGACTACNVGGGTWTCTAAT"
-    echo "  - Using a primer file instead:"
-    echo "      sbatch $0 -i data/sample1_R1.fastq.gz -o results/cutadapt --primer_file metadata/primers.txt"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--R1             <file>  Input R1 FASTQ/FASTA file (name of R2 will be inferred in case of paired-end)"
-    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
-    echo "There are two ways of specifying primers: (1) with '-f' and '-r' or (2) with '--primer_file' (use the latter if you have multiple primer pairs):"
-    echo "  -f/--primer_f       <str>   Forward primer sequence (use in combination with -r)"
-    echo "  -r/--primer_r       <str>   Reverse primer sequence (use in combination with -f)"
-    echo "  --primer_file       <file>  File with primer sequences, one pair per line separated by a space (*alternative* to using -f and -r)"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --single_end                Sequences are single-end                [default: $single_end]"
-    echo "  --keep_untrimmed            Don't discard untrimmed sequences (i.e. those with no primers) [default: discard]"
-    echo "  --more_opts         <str>   Quoted string with additional argument(s) for $TOOL_NAME"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --env_type          <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
-    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
-    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --container_path    <file>  Pre-existing Singularity container image file (.sif) to use"
-    echo "  -h/--help                   Print this help message and exit"
-    echo "  -v                          Print the version of this script and exit"
-    echo "  --version                   Print the version of $TOOL_NAME and exit"
-    echo
-    echo "HARDCODED OPTIONS:"
-    echo "  - The CutAdapt option '--pair-filter=any' is always used."
-    echo 
-    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
-    echo
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+    
+USAGE / EXAMPLE COMMANDS:
+  - Basic usage example:
+      sbatch $0 -i data/sample1_R1.fastq.gz -o results/cutadapt -f GAGTGYCAGCMGCCGCGGTAA -r ACGGACTACNVGGGTWTCTAAT
+  - Using a primer file instead:
+      sbatch $0 -i data/sample1_R1.fastq.gz -o results/cutadapt --primer_file metadata/primers.txt
+
+REQUIRED OPTIONS:
+  -i/--R1             <file>  Input R1 FASTQ/FASTA file (name of R2 will be inferred in case of paired-end)
+  -o/--outdir         <dir>   Output dir (will be created if needed)
+
+There are two ways of specifying primers:
+(1) with '-f' and '-r', or
+(2) with '--primer_file' (use the latter if you have multiple primer pairs):
+  -f/--primer_f       <str>   Forward primer sequence (use with '-r')
+  -r/--primer_r       <str>   Reverse primer sequence (use with '-f')
+  --primer_file       <file>  File with primer sequences, one pair per line,
+                              separated by a space
+                              (*alternative* to using -f and -r)
+
+OTHER KEY OPTIONS:
+  --single_end                Sequences are single-end                          [default: $single_end]
+  --keep_untrimmed            Don't discard untrimmed sequences                 [default: discard]
+                              (i.e. those with no primers)
+  --more_opts         <str>   Quoted string with additional argument(s) for $TOOL_NAME
+
+UTILITY OPTIONS:
+  --env_type          <str>   Use a Singularity container ('container')         [default: $env_type]
+                              or a Conda environment ('conda') 
+  --conda_env         <dir>   Full path to a Conda environment to use           [default: $conda_path]
+  --container_url     <str>   URL to download the container from                [default: $container_url]
+  --container_dir     <str>   Dir to download the container to                  [default: $container_dir]
+  --container_path    <file>  Pre-existing Singularity container image file (.sif) to use
+  -h/--help                   Print this help message and exit
+  -v/--version                Print the version of this script and of $TOOL_NAME
+
+HARDCODED OPTIONS:
+  - The CutAdapt option '--pair-filter=any' is always used.
+
+TOOL DOCUMENTATION: $TOOL_DOCS
+"
 }
 
 # Function to source the script with Bash functions
@@ -139,7 +148,7 @@ while [ "$1" != "" ]; do
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v | --version )         version_only=true ;;
+        -v | --version )    version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
@@ -213,30 +222,46 @@ if [[ -z "$primer_file" ]]; then
     else
         primer_opt="-a $primer_f...$primer_r_rc"
     fi
+
+    # Report
+    log_time "Forward primer (-f):              $primer_f"
+    log_time "Reverse primer (-r):              $primer_r"
+    log_time "Forward primer - rev. comp.:      $primer_f_rc"
+    log_time "Reverse primer - rev. comp.:      $primer_r_rc"
+    log_time "Primer option:                    $primer_opt"
+
 else
     log_time "Using primer file $primer_file to read primers..."
     [[ ! -f "$primer_file" ]] && die "Primer file $primer_file not found"
+    i=0
 
     while read -r primer_f primer_r; do
+        i=$((i+1))
+
         primer_f_rc=$(echo "$primer_f" | tr ATCGYRKMBDHV TAGCRYMKVHDB | rev)
         primer_r_rc=$(echo "$primer_r" | tr ATCGYRKMBDHV TAGCRYMKVHDB | rev)
 
         if [[ "$single_end" == false ]]; then
-            primer_opt="-a $primer_f...$primer_r_rc -A $primer_r...$primer_f_rc"
+            primer_opt_one="-a $primer_f...$primer_r_rc -A $primer_r...$primer_f_rc"
         else
-            primer_opt="-a $primer_f...$primer_r_rc"
+            primer_opt_one="-a $primer_f...$primer_r_rc"
         fi
         # Remove leading whitespace:
-        primer_opt=$(echo "$primer_opt" | sed -E 's/^ +//')
-    done <"$primer_file"
-fi
+        primer_opt_one=$(echo "$primer_opt_one" | sed -E 's/^ +//')
+        primer_opt+=" $primer_opt_one"
 
-# Report
-log_time "Forward primer (-f):              $primer_f"
-log_time "Reverse primer (-r):              $primer_r"
-log_time "Forward primer - rev. comp.:      $primer_f_rc"
-log_time "Reverse primer - rev. comp.:      $primer_r_rc"
-log_time "Primer option:                    $primer_opt"
+        # Report
+        log_time "PRIMER PAIR NUMBER $i" 
+        echo "Forward primer (-f):              $primer_f"
+        echo "Reverse primer (-r):              $primer_r"
+        echo "Forward primer - rev. comp.:      $primer_f_rc"
+        echo "Reverse primer - rev. comp.:      $primer_r_rc"
+        echo "Primer option:                    $primer_opt_one"
+
+    done <"$primer_file"
+
+    log_time "Full primer option:                    $primer_opt"
+fi
 
 # ==============================================================================
 #                               RUN
@@ -244,6 +269,7 @@ log_time "Primer option:                    $primer_opt"
 # Run Cutadapt
 log_time "Running $TOOL_NAME..."
 if [[ "$single_end" == false ]]; then
+    # Paired-end
     runstats $TOOL_BINARY \
             $primer_opt \
             --output "$outdir"/"$R1_basename" \
@@ -253,10 +279,8 @@ if [[ "$single_end" == false ]]; then
             --cores "$threads" \
             $more_opts \
             "$R1" "$R2"
-
-    #? --pair-filter=any: Remove pair if one read is filtered (=Default)
-
 else
+    # Single-end
     runstats $TOOL_BINARY \
             $primer_opt \
             --output "$outdir"/"$R1_basename" \
@@ -266,6 +290,7 @@ else
             "$R1"
 fi
 
+#? --pair-filter=any: Remove pair if one read is filtered (=Default)
 
 # ==============================================================================
 #                               WRAP-UP
