@@ -188,7 +188,8 @@ if [[ -n "$gtf" ]]; then
         sort -k2,2 > "$gene2iso"
     
     n_genes_gtf=$(grep -v "^#" "$gtf" | awk '$3 == "gene"' | wc -l)
-    log_time "Total number of genes in the GTF file (can include noncoding): $n_genes_gtf"
+    log_time "Total number of genes in the GTF file quantified by counting
+    'gene' entries in third column (can include noncoding): $n_genes_gtf"
 elif [[ "$t1_style" == true ]]; then
     # Extract gene2iso lookup directly from the FASTA file
     awk -v OFS="\t" '{print $1,$1}' "$iso_lens" |
