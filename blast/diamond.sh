@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run DIAMOND to perform fast BLAST-like alignment of proteins"
-SCRIPT_VERSION="2023-12-09"
+SCRIPT_VERSION="2025-03-22"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -24,12 +24,9 @@ VERSION_COMMAND="$TOOL_BINARY version"
 # Defaults - generics
 env_type=container                       # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/diamond
+container_url=oras://community.wave.seqera.io/library/diamond:2.1.11--8bbb53f9a405f963
 container_path=
-container_url=docker://quay.io/biocontainers/diamond:2.1.8--h43eeafb_0
-dl_container=false
 container_dir="$HOME/containers"
-strict_bash=true
-version_only=false                 # When true, just print tool & script version info and exit
 
 # Defaults - tool parameters
 blast_type=blastp                   # Or blastx
@@ -40,6 +37,7 @@ pct_id=0                            # % identity threshold (empty => no threshol
 pct_qcov=0                          # Threshold for % of query covered by the alignment length
 pct_scov=0                          # Threshold for % of subject covered by the alignment length
 add_header=true                     # Add column header to final BLAST output file
+sensitivity=sensitive               # Sensitivity
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -63,8 +61,9 @@ script_help() {
     echo "GENERAL OPTIONS (OPTIONAL):"
     echo "  --blast_type        <str>   BLAST type: 'blastp' or 'blastx'        [default: $blast_type]"
     echo "  --sens              <str>   Sensitivity: one of 'fast', 'mid-sensitive', 'sensitive', 'more-sensitive', 'very-sensitive', 'ultra-sensitive'"
+    echo "                                                                      [default: $sensitivity]"
     echo "  --out_format        <str>   Output format string. NOTE: changing this may mess up output filtering steps, which rely on the default format"
-    echo "                                [default: $out_format]"
+    echo "                                                                      [default: $out_format]"
     echo "  --no_header                 Don't add column headers to final output TSV file [default: add]"
     echo "                                The header won't be added to the raw output file, which can be used for filtering"
     echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
@@ -74,21 +73,15 @@ script_help() {
     echo "  --evalue            <num>   E-value threshold in scientific notation                [default: $evalue]"
     echo "  --pct_id            <int>   Percentage identity threshold                           [default: $pct_id]"
     echo "  --pct_qcov          <int>   Threshold for % of query covered by the alignment       [default: $pct_qcov]"
-    echo "  --pct_qcov          <int>   Threshold for % of query covered by the alignment       [default: $pct_scov]"
+    echo "  --pct_scov          <int>   Threshold for % of query covered by the alignment       [default: $pct_scov]"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
-    echo "                                (NOTE: If no default '--container_url' is listed below,"
-    echo "                                 you'll have to provide one in order to run the script with a container.)"
+    echo "  --env_type          <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
     echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
     echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
     echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
-    echo "  --no_strict                 Don't use strict Bash settings ('set -euo pipefail') -- can be useful for troubleshooting"
     echo "  -h/--help                   Print this help message and exit"
-    echo "  -v                          Print the version of this script and exit"
-    echo "  --version                   Print the version of $TOOL_NAME and exit"
+    echo "  -v/--version                Print the version of this script and exit"
     echo
     echo "TOOL DOCUMENTATION: $TOOL_DOCS"
 }
@@ -122,10 +115,10 @@ source_function_script
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
+version_only=false                 # When true, just print tool & script version info and exit
 infile=
 outdir=
 db=
-sensitivity=
 header_opt=
 more_opts=
 threads=
@@ -147,13 +140,11 @@ while [ "$1" != "" ]; do
         --pct_qcov )         shift && pct_qcov=$1 ;;
         --pct_scov )         shift && pct_scov=$1 ;;
         --more_opts )       shift && more_opts=$1 ;;
-        --env_type )             shift && env_type=$1 ;;
-        --no_strict )       strict_bash=false ;;
-        --dl_container )    dl_container=true ;;
+        --env_type )        shift && env_type=$1 ;;
         --container_dir )   shift && container_dir=$1 ;;
-        --container_url )   shift && container_url=$1 && dl_container=true ;;
+        --container_url )   shift && container_url=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v | --version )         version_only=true ;;
+        -v | --version )    version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
@@ -163,10 +154,10 @@ done
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
 # Strict Bash settings
-[[ "$strict_bash" == true ]] && set -euo pipefail
+set -euo pipefail
 
 # Load software
-load_env "$conda_path" "$container_path" "$dl_container"
+load_env "$conda_path" "$container_path"
 [[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
@@ -180,6 +171,7 @@ load_env "$conda_path" "$container_path" "$dl_container"
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 outfile="$outdir"/diamond_out.tsv
 [[ "$add_header" == true ]] && header_opt="--header"
+n_in=$(grep -c "^>" "$infile")
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -193,13 +185,13 @@ echo "DIAMOND db:                               $db"
 echo
 echo "BLAST type:                               $blast_type"
 echo "Add column header to output?              $add_header"
-[[ -n "$sensitivity" ]] && echo "Sensitivity:                              $sensitivity"
+echo "Sensitivity:                              $sensitivity"
 echo "Evalue threshold:                         $evalue"
 [[ -n "$pct_id" ]] && echo "Percent identity threshold:               $pct_id"
 [[ -n "$pct_qcov" ]] && echo "Percent query coverage threshold:         $pct_qcov"
 [[ -n "$pct_scov" ]] && echo "Percent subject coverage threshold:       $pct_scov"
 [[ -n "$max_target_seqs" ]] && echo "Max. nr. of target sequences:             $max_target_seqs"
-echo "Number of queries in the input file:      $(grep -c "^>" "$infile")"
+echo "Number of queries in the input file:      $n_in"
 log_time "Listing the input file(s):"
 ls -lh "$infile"
 set_threads "$IS_SLURM"
@@ -237,9 +229,13 @@ else
     n_queries=$(tail -n+4 "$outfile" | sort -u | wc -l)
     n_subjects=$(tail -n+4 "$outfile" | cut -f 2 | sort -u | wc -l)
 fi
-log_time "Number of hits in the final output file: $n_hits"
-log_time "Number of distinct queries in the final output file: $n_queries"
-log_time "Number of distinct subjects in the final output file: $n_subjects"
+
+#
+log_time "Done. Summary of hits:"
+echo "Number of queries in the input file:                  $n_in"
+echo "Total number of hits in the final output file:        $n_hits"
+echo "Number of distinct queries in the final output file:  $n_queries"
+echo "Number of distinct subjects in the final output file: $n_subjects"
 
 # Final logging
 log_time "Listing the output file:"

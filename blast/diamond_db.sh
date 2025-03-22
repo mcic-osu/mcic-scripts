@@ -1,255 +1,184 @@
 #!/usr/bin/env bash
-
 #SBATCH --account=PAS0471
-#SBATCH --time=3:00:00
-#SBATCH --cpus-per-task=10
-#SBATCH --mem=40G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
+#SBATCH --time=1:00:00
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32G
+#SBATCH --mail-type=FAIL
 #SBATCH --job-name=diamond_db
 #SBATCH --output=slurm-diamond_db-%j.out
 
 # ==============================================================================
-#                                   FUNCTIONS
-# ==============================================================================
-# Help function
-Print_help() {
-    echo
-    echo "======================================================================"
-    echo "                            $0"
-    echo "             CREATE A DIAMOND DATABASE FROM A PROTEIN FASTA FILE"
-    echo "======================================================================"
-    echo
-    echo "USAGE:"
-    echo "  sbatch $0 -i <input file> -o <output dir> [...]"
-    echo "  bash $0 -h"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile     <file>  Input protein FASTA file"
-    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to DIAMOND"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                 Run the script in debug mode (print all code)"
-    echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for DIAMOND and exit"
-    echo "  -v/--version            Print the version of DIAMOND and exit"
-    echo
-    echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i data/proteins.fasta -o results/diamond"
-    echo
-    echo "OUTPUT:"
-    echo "  - A DIAMOND dabatabase file with the same filename as the input FASTA,"
-    echo "      with added extension '.dmnd'"
-    echo
-    echo "SOFTWARE DOCUMENTATION:"
-    echo "  - Docs: https://github.com/bbuchfink/diamond"
-    echo
-}
-
-# Load software
-Load_software() {
-    set +u
-    module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /fs/ess/PAS0471/jelmer/conda/diamond
-    set -u
-}
-
-# Print version
-Print_version() {
-    set +e
-    Load_software
-    diamond --version
-    set -e
-}
-
-# Print help for the focal program
-Print_help_program() {
-    Load_software
-    diamond --help
-}
-
-# Print SLURM job resource usage info
-Resource_usage() {
-    echo
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
-    echo
-}
-
-# Print SLURM job requested resources
-Print_resources() {
-    set +u
-    echo "# SLURM job information:"
-    echo "Account (project):    $SLURM_JOB_ACCOUNT"
-    echo "Job ID:               $SLURM_JOB_ID"
-    echo "Job name:             $SLURM_JOB_NAME"
-    echo "Memory (per node):    $SLURM_MEM_PER_NODE"
-    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
-    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
-    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
-    echo "======================================================================"
-    echo
-    set -u
-}
-
-# Set the number of threads/CPUs
-Set_threads() {
-    set +u
-    if [[ "$slurm" = true ]]; then
-        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-            threads="$SLURM_CPUS_PER_TASK"
-        elif [[ -n "$SLURM_NTASKS" ]]; then
-            threads="$SLURM_NTASKS"
-        else 
-            echo "WARNING: Can't detect nr of threads, setting to 1"
-            threads=1
-        fi
-    else
-        threads=1
-    fi
-    set -u
-}
-
-# Resource usage information
-Time() {
-    /usr/bin/time -f \
-        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
-        "$@"
-}   
-
-# Exit upon error with a message
-Die() {
-    error_message=${1}
-    error_args=${2-none}
-    
-    echo >&2
-    echo "=====================================================================" >&2
-    printf "$0: ERROR: %s\n" "$error_message" >&2
-    echo -e "\nFor help, run this script with the '-h' option" >&2
-    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
-    if [[ "$error_args" != "none" ]]; then
-        echo -e "\nArguments passed to the script:" >&2
-        echo "$error_args" >&2
-    fi
-    echo -e "\nEXITING..." >&2
-    echo "=====================================================================" >&2
-    echo >&2
-    exit 1
-}
-
-
-# ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-# Option defaults
-debug=false
-dryrun=false && e=""
-slurm=true
+# Constants - generic
+DESCRIPTION="Create a Diamond database from a protein FASTA file"
+SCRIPT_VERSION="2025-03-22"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
+TOOL_BINARY="diamond makedb"
+TOOL_NAME=Diamond
+TOOL_DOCS=https://github.com/bbuchfink/diamond
+VERSION_COMMAND="diamond --version"
 
+# Defaults - generics
+env_type=conda
+conda_path=/fs/ess/PAS0471/jelmer/conda/diamond
+container_dir="$HOME/containers"
+container_url=oras://community.wave.seqera.io/library/diamond:2.1.11--8bbb53f9a405f963
+container_path=
+
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
+script_help() {
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+    
+USAGE / EXAMPLE COMMANDS:
+  - Basic usage example:
+      sbatch $0 -i my.faa -o results/diamond_db
+    
+REQUIRED OPTIONS:
+  -i/--infile         <file>  Input file
+  -o/--outdir         <dir>   Output dir (will be created if needed)
+    
+OTHER KEY OPTIONS:
+  --db_name           <str>   Name of the database to create                    [default: based on input file name]
+                              Use a '.dmnd' extension (e.g. 'my_db.dmnd')
+  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME
+    
+UTILITY OPTIONS:
+  --env_type          <str>   Use a Singularity container ('container')         [default: $env_type]
+                              or a Conda environment ('conda') 
+  --conda_path        <dir>   Full path to a Conda environment to use           [default: $conda_path]
+  --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
+  --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
+  --container_path    <file>  Local singularity image file (.sif) to use        [default (if any): $container_path]
+  -h/--help                   Print this help message
+  -v/--version                Print script and $TOOL_NAME versions
+    
+TOOL DOCUMENTATION:
+  $TOOL_DOCS
+"
+}
+
+# Function to source the script with Bash functions
+source_function_script() {
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$IS_SLURM" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
+    else
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
+    fi
+    function_script_name="$(basename "$FUNCTION_SCRIPT_URL")"
+    function_script_path="$script_dir"/../dev/"$function_script_name"
+
+    # Download the function script if needed, then source it
+    if [[ -f "$function_script_path" ]]; then
+        source "$function_script_path"
+    else
+        if [[ ! -f "$function_script_name" ]]; then
+            echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+            wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
+        fi
+        source "$function_script_name"
+    fi
+}
+
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script $IS_SLURM
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-# Placeholder defaults
-infile=""
-outdir=""
-more_args=""
+# Initiate variables
+version_only=false  # When true, just print tool & script version info and exit
+infile=
+outdir=
+more_opts=
+threads=
 
-# Parse command-line args
-all_args="$*"
+# Parse command-line options
+all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
-        --more_args )       shift && more_args=$1 ;;
-        -v | -v | --version )    Print_version; exit 0 ;;
-        -h )                Print_help; exit 0 ;;
-        --help )            Print_help_program; exit 0;;
-        --dryrun )          dryrun=true && e="echo ";;
-        --debug )           debug=true ;;
-        * )                 Die "Invalid option $1" "$all_args" ;;
+        --db_name )         shift && db_name=$1 ;;
+        --more_opts )       shift && more_opts=$1 ;;
+        --env_type )        shift && env_type=$1 ;;
+        --conda_path )      shift && conda_path=$1 ;;
+        --container_dir )   shift && container_dir=$1 ;;
+        --container_url )   shift && container_url=$1 ;;
+        --container_path )  shift && container_path=$1 ;;
+        -h | --help )       script_help; exit 0 ;;
+        -v | --version)     version_only=true ;;
+        * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
 done
 
-
 # ==============================================================================
-#                          OTHER SETUP
+#                          INFRASTRUCTURE SETUP
 # ==============================================================================
-# In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
-
-# Check if this is a SLURM job
-[[ -z "$SLURM_JOB_ID" ]] && slurm=false
-
-# Bash script settings
+# Strict Bash settings
 set -euo pipefail
 
-# Load software and set nr of threads
-[[ "$dryrun" = false ]] && Load_software
-Set_threads
+# Load software
+load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$container_url"
+[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
-# Check input
-[[ "$infile" = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
-[[ ! -f "$infile" ]] && Die "Input file $infile does not exist"
+# Check options provided to the script
+[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
+[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 
-# Define the output file name
+# Define outputs based on script parameters
+LOG_DIR="$outdir"/logs
+mkdir -p "$LOG_DIR"
 infile_base=$(basename "$infile")
-outfile="$outdir"/${infile_base%.*}.dmnd
+[[ -n "$db_name" ]] && outfile="$outdir/$db_name"
+[[ -z "$db_name" ]] && outfile="$outdir"/${infile_base%.*}.dmnd
 
-# Report
+# ==============================================================================
+#                         REPORT PARSED OPTIONS
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
+echo "=========================================================================="
+echo "All options passed to this script:        $all_opts"
+echo "Working directory:                        $PWD"
 echo
-echo "=========================================================================="
-echo "                    STARTING SCRIPT DIAMOND_DB.SH"
-date
-echo "=========================================================================="
-echo "All arguments to this script:     $all_args"
-echo "Input file:                       $infile"
-echo "Output file:                      $outdir"
-echo "Number of threads/cores:          $threads"
-[[ $more_args != "" ]] && echo "Other arguments for DIAMOND:      $more_args"
-echo "# Listing the input file(s):"
+echo "Input file:                               $infile"
+echo "Output DB file:                           $outfile"
+[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
+log_time "Listing the input file(s):"
 ls -lh "$infile"
-[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
-echo "=========================================================================="
-
-# Print reserved resources
-[[ "$slurm" = true ]] && Print_resources
-
+set_threads "$IS_SLURM"
+[[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Create the output directory
-echo -e "\n# Creating the output dirs..."
-${e}mkdir -pv "$outdir"/logs
-
-# Run
-echo -e "\n# Running DIAMOND makedb..."
-${e}Time \
-    diamond makedb \
-        --threads "$threads" \
-        --in "$infile" \
-        --db "$outfile" \
-        $more_args
-
+log_time "Running $TOOL_NAME..."
+runstats $TOOL_BINARY \
+    --threads "$threads" \
+    --in "$infile" \
+    --db "$outfile" \
+    $more_opts
 
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
-echo
-echo "========================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing the output file:"
-    ls -lh "$outfile"
-    [[ "$slurm" = true ]] && Resource_usage
-fi
-echo "# Done with script"
-date
+log_time "Listing the output file:"
+ls -lh "$outfile"
+final_reporting "$LOG_DIR"
