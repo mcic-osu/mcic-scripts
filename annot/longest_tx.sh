@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
 #SBATCH --job-name=longest_tx
 #SBATCH --output=slurm-longest_tx-%j.out
 
@@ -10,11 +8,13 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Create a longest-transcript/isoform proteome FASTA
-Works with matching NCBI proteome FASTA and GTF files
-Also works with proteome FASTA files only, as long as transcripts/isoforms are
-IDed by .t1/.p1-style suffices"
-SCRIPT_VERSION="2023-12-18"
+DESCRIPTION="Create a longest-transcript/isoform proteome FASTA.
+- Works with matching proteome FASTA and GTF files
+- Also works with proteome FASTA files only, if transcripts/isoforms are
+  IDed by .t1/.p1-style suffices
+- If multiple isoforms have the same length, the first one is chosen
+"
+SCRIPT_VERSION="2025-03-22"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -22,9 +22,11 @@ TOOL_NAME=seqkit
 VERSION_COMMAND="seqkit | sed -n '3p'"
 
 # Defaults - generics
+env_type=conda
 conda_path=/fs/ess/PAS0471/jelmer/conda/seqkit
-strict_bash=true
-version_only=false                  # When true, just print tool & script version info and exit
+container_dir="$HOME/containers"
+container_url=
+container_path=
 
 # Defaults - tool parameters
 keep_intermed=false                 # Remove intermediate files
@@ -35,32 +37,38 @@ t1_style=true                       # Isoforms have .t1/.p1 suffices in proteome
 #                                   FUNCTIONS
 # ==============================================================================
 script_help() {
-    echo -e "\n                          $0"
-    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
-    echo "        =============================================================="
-    echo "DESCRIPTION:"
-    echo "  $DESCRIPTION"
-    echo
-    echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage:"
-    echo "      sbatch $0 -i my.faa --gtf my.gtf -o results/longest_iso"
-    echo "      sbatch $0 -i my.faa -o results/longest_iso"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--faa            <file>  Input proteome FASTA file with multiple isoforms per gene"
-    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --gtf               <file>  Input annotation file in GTF format"
-    echo "  --keep_intermed             Keep intermediate files [default: remove]"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --no_strict                 Don't use strict Bash settings ('set -euo pipefail') -- can be useful for troubleshooting"
-    echo "  -h/--help                   Print this help message and exit"
-    echo "  -v                          Print the version of this script and exit"
-    echo "  --version                   Print the version of $TOOL_NAME and exit"
-    echo
-    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+    
+USAGE / EXAMPLE COMMANDS:
+  - Basic usage example:
+      sbatch $0 -i my.faa --gtf my.gtf -o results/longest_iso
+      sbatch $0 -i my.faa -o results/longest_iso
+    
+REQUIRED OPTIONS:
+  -i/--faa            <file>  Input proteome FASTA file with multiple isoforms per gene
+  -o/--outdir         <dir>   Output dir (will be created if needed)
+    
+OTHER KEY OPTIONS:
+  --gtf               <file>  Input annotation file in GTF format
+  --keep_intermed             Keep intermediate files                           [default: remove]
+    
+UTILITY OPTIONS:
+  NOTE: The software used in this script is Seqkit (https://bioinf.shenwei.me/seqkit)
+  --env_type          <str>   Use a Singularity container ('container')         [default: $env_type]
+                              or a Conda environment ('conda') 
+  --conda_path        <dir>   Full path to a Conda environment to use           [default: $conda_path]
+  --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
+  --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
+  --container_path    <file>  Local singularity image file (.sif) to use        [default (if any): $container_path]
+  -h/--help                   Print this help message
+  -v/--version                Print script and $TOOL_NAME versions
+"
 }
 
 # Function to source the script with Bash functions
@@ -92,6 +100,7 @@ source_function_script
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
+version_only=false                  # When true, just print tool & script version info and exit
 infile=
 gtf=
 outdir=
@@ -101,12 +110,16 @@ all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --faa )        shift && infile=$1 ;;
-        --gtf )             shift && gtf=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
+        --gtf )             shift && gtf=$1 ;;
         --keep_intermed )   keep_intermed=true ;;
-        --no_strict )       strict_bash=false ;;
+        --env_type )        shift && env_type=$1 ;;
+        --conda_path )      shift && conda_path=$1 ;;
+        --container_dir )   shift && container_dir=$1 ;;
+        --container_url )   shift && container_url=$1 ;;
+        --container_path )  shift && container_path=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v | --version )         version_only=true ;;
+        -v | --version )    version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
@@ -116,7 +129,7 @@ done
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
 # Strict Bash settings
-[[ "$strict_bash" == true ]] && set -euo pipefail
+set -euo pipefail
 
 # Load software
 load_env "$conda_path"
@@ -155,59 +168,64 @@ ls -lh "$infile"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
-#                               RUN
+#                               MAIN
 # ==============================================================================
-# Clean the FASTA headers
-#if [[ "$clean_header" == true ]]; then
-#    log_time "Keeping only the first 'word' in the FASTA header..."
-#    awk '{print $1}' "$infile" > "$infile_prepped"
-#else
-#    infile_prepped="$infile"
-#fi
-#else
-#    log_time "Replacing tabs with spaces in the FASTA header..."
-#    tr "\t" " " < "$infile" > "$infile_prepped"
-#fi
-
+# Create a table with the length of each isoform
 log_time "Getting the isoform lengths..."
-awk '{print $1}' "$infile" | seqkit fx2tab --length --name | sort -k1,1 > "$iso_lens"
+awk '{print $1}' "$infile" |
+    seqkit fx2tab --length --name |
+    sort -k1,1 > "$iso_lens"
 
+# Create a gene to isoform ID lookup table
 log_time "Creating a gene2isoform lookup file..."
 if [[ -n "$gtf" ]]; then
-    # Use a GTF file to ID genes and proteins #TODO also allow for transcript_id
-    grep -v "^#" "$gtf" | awk '$3 == "CDS"' |
+    # Use a GTF file to ID genes and proteins
+    #TODO also allow for transcript_id
+    grep -v "^#" "$gtf" |
+        awk '$3 == "CDS"' |
         sed -E 's/.*gene_id "([^;]+)";.*protein_id "([^;]+)";.*/\1\t\2/' |
-        sort -u | sort -k2,2 > "$gene2iso"
+        sort -u |
+        sort -k2,2 > "$gene2iso"
+    
     n_genes_gtf=$(grep -v "^#" "$gtf" | awk '$3 == "gene"' | wc -l)
-    log_time "Number of genes in the GTF file (can include noncoding): $n_genes_gtf"
+    log_time "Total number of genes in the GTF file (can include noncoding): $n_genes_gtf"
 elif [[ "$t1_style" == true ]]; then
-    # Extract from the FASTA file directly
-    awk -v OFS="\t" '{print $1,$1}' "$iso_lens" | sed -E 's/\.[pt][0-9]+//' |
+    # Extract gene2iso lookup directly from the FASTA file
+    awk -v OFS="\t" '{print $1,$1}' "$iso_lens" |
+        sed -E 's/\.[pt][0-9]+//' |
         sort -k2,2 > "$gene2iso"
 fi
 
-n_genes=$(cut -f1 "$gene2iso" | sort -u | wc -l)
-log_time "Number of genes in the original proteome file: $n_genes"
-
+# Get a list with the longest isoform for each gene
 log_time "Getting the IDs of the longest isoforms..."
-join -t$'\t' -1 2 -2 1 "$gene2iso" "$iso_lens" |
-    sort -k2,2 -u | cut -f1 > "$longest_iso_ids"
+join -t$'\t' -1 2 -2 1 "$gene2iso" "$iso_lens" | 
+    sort -k3,3nr |
+    sort -k2,2 -u |
+    cut -f1 > "$longest_iso_ids"
 
+# Create the final output file, a protein FASTA containing only the longest
+# isoform for each gene
 log_time "Extracting the longest isoforms..."
 seqkit grep -f "$longest_iso_ids" "$infile" > "$outfile"
 
 # Report
-n_in=$(grep -c "^>" "$infile")
+n_iso=$(cut -f2 "$gene2iso" | sort -u | wc -l)
+n_genes=$(cut -f1 "$gene2iso" | sort -u | wc -l)
 n_ids=$(wc -l < "$longest_iso_ids")
+n_in=$(grep -c "^>" "$infile")
 n_out=$(grep -c "^>" "$outfile")
+log_time "Done. Numbers of genes and isoforms:"
+echo "Number of isoforms/genes:                      $n_iso / $n_genes"
+echo "Number of entries in the in-/output file:      $n_in / $n_out"
 
-log_time "Number of proteins in the input file:         $n_in"
-log_time "Number of proteins in the output file:        $n_out"
-
-# Check that all proteins were found in the input file
+# Check that all proteins were found in the input file,
+# and that the number of isoforms is higher than the number of genes
 if [[ ! "$n_ids" -eq "$n_out" ]]; then
     log_time "WARNING: Nr of longest-isoform IDs ($n_ids) is not the same as the
     nr of proteins in the output file ($n_out)"
+fi
+if [[ "$n_iso" -eq "$n_genes" ]]; then
+    log_time "WARNING: The number of isoforms is the same as the number of genes"
 fi
 
 # Remove intermediate files
@@ -215,6 +233,7 @@ if [[ "$keep_intermed" == false ]]; then
     rm "$gene2iso" "$iso_lens" "$longest_iso_ids"
 fi
 
+# Final reporting
 log_time "Listing the output file:"
 ls -lh "$outfile"
 final_reporting "$LOG_DIR"
