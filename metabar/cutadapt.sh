@@ -13,7 +13,7 @@
 # Constants - generic
 DESCRIPTION="Run Cutadapt to remove (metabarcoding) PRIMERS for a single pair of FASTQ files
 The script will compute and use the reverse complements of all primers as well."
-SCRIPT_VERSION="2025-03-19"
+SCRIPT_VERSION="2025-03-21"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 TOOL_BINARY=cutadapt
@@ -31,6 +31,9 @@ container_path=
 # Defaults - tool parameters
 single_end=false
 discard_untrimmed=true
+save_untrimmed=false            # Save untrimmed reads to separate files
+pair_filter=any
+overlap=10
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -65,8 +68,15 @@ There are two ways of specifying primers:
 
 OTHER KEY OPTIONS:
   --single_end                Sequences are single-end                          [default: $single_end]
+  --overlap                 Minimum overlap length for adapter removal          [default: $overlap]
   --keep_untrimmed            Don't discard untrimmed sequences                 [default: discard]
                               (i.e. those with no primers)
+  --save_untrimmed            Save untrimmed sequences to (a) separate file(s)                              
+  --pair_filter       <str>   For paired-end sequences:                         [default: $pair_filter]
+                              - 'any':  remove read pair if either read does not
+                                        contain the primer
+                              - 'both': remove read pair only if both reads do
+                                        not contain the primer                            
   --more_opts         <str>   Quoted string with additional argument(s) for $TOOL_NAME
 
 UTILITY OPTIONS:
@@ -123,7 +133,7 @@ source_function_script
 version_only=false  # When true, just print tool & script version info and exit
 R1=
 outdir=
-discard_opt=
+untrimmed_opt=
 primer_f=
 primer_r=
 primer_file=
@@ -141,9 +151,12 @@ while [ "$1" != "" ]; do
         -f | --primer_f )   shift && primer_f=$1 ;;
         -r | --primer_r )   shift && primer_r=$1 ;;
         --primer_file )     shift && primer_file=$1 ;;
+        --pair_filter )     shift && pair_filter=$1 ;;
         --keep_untrimmed )  discard_untrimmed=false ;;
+        --save_untrimmed )  save_untrimmed=true ;;
         --single_end )      single_end=true ;;
         --more_opts )       shift && more_opts=$1 ;;
+        --overlap )         shift && overlap=$1 ;;
         --env_type )        shift && env_type=$1 ;;
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 ;;
@@ -171,22 +184,35 @@ load_env "$env_type" "$conda_path" "$container_path" "$container_dir" "$containe
 
 # Define outputs based on script parameters
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
-[[ "$discard_untrimmed" == true ]] && discard_opt="--discard-untrimmed"
 indir=$(dirname "$R1")
 R1_base=$(basename "$R1")
 file_ext=$(echo "$R1_base" | sed -E 's/.*(.fastq|.fq|.fastq.gz|.fq.gz)$/\1/')
 R1_suffix=$(basename "$R1" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
-R1_basename=$(basename "$R1")
+R1_filename=$(basename "$R1")
 sample_id=$(basename "$R1" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
-[[ "$indir" == "$outdir" ]] && die "Input dir should not be the same as output dir ($indir)"
-
 if [[ "$single_end" == false ]]; then
-    log_time "Assuming paired-end sequences, inferring the R2 filename..."
+    log_time "Assuming that reads are paired-end: inferring the R2 filename..."
     R2_suffix=${R1_suffix/1/2}
     R2="$indir"/${R1_base/$R1_suffix/$R2_suffix}
-    R2_basename=$(basename "$R2")
+    R2_filename=$(basename "$R2")
     [[ ! -f "$R2" ]] && die "Input FASTQ file $R2 not found"
 fi
+if [[ "$save_untrimmed" == true ]]; then
+    mkdir -p "$outdir"/untrimmed
+    untrimmed_R1=$(echo "$outdir"/untrimmed/"$R1_filename" | sed 's/.fastq.gz/_untrimmed.fastq.gz/')
+    untrimmed_opt="--untrimmed-output $untrimmed_R1"
+    
+    if [[ "$single_end" == false ]]; then
+        untrimmed_R2=$(echo "$outdir"/untrimmed/"$R2_filename" | sed 's/.fastq.gz/_untrimmed.fastq.gz/')
+        untrimmed_opt+=" --untrimmed-paired-output $untrimmed_R2"
+    fi
+    
+    elif [[ "$discard_untrimmed" == true ]]; then
+        untrimmed_opt="--discard-untrimmed"
+fi
+
+# Check
+[[ "$indir" == "$outdir" ]] && die "Input dir should not be the same as output dir ($indir)"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -198,7 +224,11 @@ echo "Working directory:                        $PWD"
 echo "Input (R1) FASTQ file:                    $R1"
 [[ "$single_end" == false ]] && echo "Input R2 FASTQ file:                      $R2"
 echo "Output dir:                               $outdir"
-echo "Discard untrimmed (-d):                   $discard_untrimmed"
+echo "Minimum overlap between primer and read:  $overlap"
+echo "Remove untrimmed reads from main output:  $discard_untrimmed"
+echo "Save untrimmed reads to separate files:   $save_untrimmed"
+echo "Pair-filter option:                       $pair_filter"
+echo "Is the input single-end?                  $single_end"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
 ls -lh "$R1"
@@ -224,12 +254,12 @@ if [[ -z "$primer_file" ]]; then
     fi
 
     # Report
-    log_time "Forward primer (-f):              $primer_f"
-    log_time "Reverse primer (-r):              $primer_r"
-    log_time "Forward primer - rev. comp.:      $primer_f_rc"
-    log_time "Reverse primer - rev. comp.:      $primer_r_rc"
-    log_time "Primer option:                    $primer_opt"
-
+    log_time "Primer sequences:" 
+    echo "Forward primer (-f):              $primer_f"
+    echo "Reverse primer (-r):              $primer_r"
+    echo "Forward primer - rev. comp.:      $primer_f_rc"
+    echo "Reverse primer - rev. comp.:      $primer_r_rc"
+    echo "Primer option:                    $primer_opt"
 else
     log_time "Using primer file $primer_file to read primers..."
     [[ ! -f "$primer_file" ]] && die "Primer file $primer_file not found"
@@ -272,25 +302,27 @@ if [[ "$single_end" == false ]]; then
     # Paired-end
     runstats $TOOL_BINARY \
             $primer_opt \
-            --output "$outdir"/"$R1_basename" \
-            --paired-output "$outdir"/"$R2_basename" \
-            --pair-filter=any \
-            $discard_opt \
+            --output "$outdir"/"$R1_filename" \
+            --paired-output "$outdir"/"$R2_filename" \
+            --pair-filter="$pair_filter" \
+            --overlap "$overlap" \
+            $untrimmed_opt \
             --cores "$threads" \
             $more_opts \
-            "$R1" "$R2"
+            "$R1" "$R2" \
+            2>&1 | tee "$LOG_DIR"/"$sample_id"_log.txt
 else
     # Single-end
     runstats $TOOL_BINARY \
             $primer_opt \
-            --output "$outdir"/"$R1_basename" \
-            $discard_opt \
+            --output "$outdir"/"$R1_filename" \
+            --overlap "$overlap" \
+            $untrimmed_opt \
             --cores "$threads" \
             $more_opts \
-            "$R1"
+            "$R1" \
+            2>&1 | tee "$LOG_DIR"/"$sample_id"_log.txt
 fi
-
-#? --pair-filter=any: Remove pair if one read is filtered (=Default)
 
 # ==============================================================================
 #                               WRAP-UP
