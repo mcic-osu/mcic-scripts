@@ -1,0 +1,28 @@
+# Params file the Assembly QC pipeline
+# https://github.com/Plant-Food-Research-Open/assemblyqc
+
+# BUSCO
+busco_skip: false
+busco_lineage_datasets: viridiplantae_odb10
+busco_mode: genome
+
+# NCBI contamination check
+# TODO get db - https://github.com/Plant-Food-Research-Open/assemblyqc/blob/main/docs/usage.md#ncbi-fcs-gx-database
+ncbi_fcs_gx_skip: true 
+#ncbi_fcs_gx_tax_id: X
+#ncbi_fcs_gx_tax_id
+#ncbi_fcs_gx_db_path
+
+# Kraken2
+kraken2_skip: true
+#kraken2_db_path: x
+
+# Merqury kmer analysis (#? Needs Illumina sequences I think?)
+# To run merqury, reads_1/reads_2 needs to be added to the SAMPLESHEET
+# see https://github.com/Plant-Food-Research-Open/assemblyqc/blob/main/docs/usage.md#merqury-k-mer-analysis
+merqury_skip: true
+
+# Telomore identification with TIDK
+# https://github.com/tolkit/telomeric-identifier
+tidk_skip: false
+tidk_repeat_seq: TTTAGGG
