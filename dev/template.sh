@@ -55,7 +55,8 @@ REQUIRED OPTIONS:
   -o/--outdir         <dir>   Output dir (will be created if needed)
     
 OTHER KEY OPTIONS:
-  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME
+  --more_opts         <str>   Quoted string with one or more additional options
+                              for $TOOL_NAME
     
 UTILITY OPTIONS:
   --env_type          <str>   Use a Singularity container ('container')         [default: $env_type]
