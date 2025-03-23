@@ -16,6 +16,7 @@ REPO_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="nextflow run"
 export TOOL_NAME="nextflow"
 VERSION_COMMAND="nextflow -v"
+TOOL_DOCS=https://nf-co.re/ampliseq/
 
 # Constants - parameters
 WORKFLOW_NAME=nf-core/ampliseq                              # The name of the nf-core workflow
@@ -38,42 +39,52 @@ container_dir="$work_dir"/containers                        # The workflow will 
 # ==============================================================================
 # Help function
 script_help() {
-    echo -e "\n                          $0"
-    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
-    echo "        =============================================="
-    echo "DESCRIPTION:"
-    echo "  $DESCRIPTION"
-    echo "  - Different from the Nextflow default, this script will try to 'resume' (rather than restart) a previous incomplete run by default"
-    echo "  - This workflow can be used for both 16S and ITS data: default is 16S; change the settings in nfcore_ampliseq_params.yml for ITS"
-    echo
-    echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -o results/ampliseq -p config/nfcore_ampliseq_params.yml"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -o/--outdir         <dir>   Dir for pipeline output files (will be created if needed)"
-    echo "  -p/--params         <file>  YAML file with workflow parameters"
-    echo "                              Use 'mcic-scripts/metabar/nfcore_ampliseq_params.yml' as template"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --workflow_version  <str>   Nf-core ampliseq workflow version to use                    [default: $workflow_version]"
-    echo "  --restart                   Don't attempt to resume workflow run, but start over        [default: resume workflow]"
-    echo
-    echo "ADVANCED NEXTFLOW-RELATED OPTIONS:"
-    echo "  --work_dir           <dir>  Scratch (work) dir for the workflow                         [default: $work_dir]"
-    echo "                                - This is where the workflow results will be stored before final results are copied to the output dir."
-    echo "  --container_dir     <dir>   Directory with container images                             [default: $container_dir]"
-    echo "                                - Required images will be downloaded here when not already present here" 
-    echo "  --config            <file>  Additional config file                                      [default: none]"
-    echo "                                - Settings in this file will override default settings"
-    echo "                                - Note that the mcic-scripts OSC config file will always be included, too"
-    echo "                                  (https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config)"
-    echo "  --profile            <str>  'Profile' to use from one of the config files               [default: $profile]"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  -h/--help                   Print this help message and exit"
-    echo "  -v                          Print the version of this script and exit"
-    echo "  --version                   Print the version of Nextflow and exit"
-    echo
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+  - Different from the Nextflow default, this script will try to 'resume' (rather than restart) a previous incomplete run by default
+  - This workflow can be used for both 16S and ITS data: default is 16S; change the settings in nfcore_ampliseq_params.yml for ITS
+    
+USAGE / EXAMPLE COMMANDS:
+  - Basic usage example:
+      sbatch $0 -o results/ampliseq -p config/nfcore_ampliseq_params.yml
+    
+REQUIRED OPTIONS:
+  -p/--params         <file>  YAML file with workflow parameters. Template:
+                              'mcic-scripts/metabar/nfcore_ampliseq_params.yml'
+  -o/--outdir         <dir>   Dir for pipeline output files
+                              (will be created if needed)
+    
+OTHER KEY OPTIONS:
+  --workflow_version  <str>   Nf-core ampliseq workflow version to use          [default: $workflow_version]
+  --restart                   Don't attempt to resume workflow: start over      [default: resume workflow]
+
+NEXTFLOW OPTIONS:
+  --work_dir           <dir>  Scratch (work) dir for the workflow               [default: $work_dir]
+                                - This is where workflow results are created
+                                  before final results are copied to the output
+                                  dir.
+  --container_dir     <dir>   Directory with container images                   [default: $container_dir]
+                                - Required images will be downloaded here
+  --config            <file>  Additional config file                            [default: none]
+                                - Settings in this file will override defaults
+                                - Note that the mcic-scripts OSC config file will
+                                  always be included, too
+                                  (https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config)
+  --profile            <str>  'Profile' to use from one of the config files     [default: $profile]
+
+UTILITY OPTIONS:
+  --conda_path        <dir>   Full path to a Nextflow Conda environment to use  [default: $conda_path]
+  -h/--help                   Print this help message
+  -v/--version                Print script and $TOOL_NAME versions
+    
+PIPELINE DOCUMENTATION:
+  $TOOL_DOCS
+"
 }
 
 # Function to source the script with Bash functions
@@ -138,13 +149,13 @@ while [ "$1" != "" ]; do
         --work_dir | -work-dir )        shift && work_dir=$1 ;;
         --restart | -restart )          resume=false && resume_opt= ;;
         -h | --help )                   script_help; exit 0 ;;
-        -v | --version )                     version_only=true ;;
+        -v | --version )                version_only=true ;;
         * )                             die "Invalid option $1" "$all_opts" ;;
     esac
     shift
 done
 
-# Check arguments
+# Check options provided to the script
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
 [[ -z "$params_file" ]] && die "No parameter YAML file specified, do so with -p/--params" "$all_opts"
 [[ ! -f "$params_file"  ]] && die "Input parameter YAML file $params_file does not exist"
@@ -216,7 +227,7 @@ if [[ "$osc_account" != "PAS0471" ]]; then
     sed -i "s/--account=PAS0471/--account=$osc_account/" "$OSC_CONFIG"
 fi
 
-# Run the tool
+# Run the workflow
 log_time "Starting the workflow.."
 runstats $TOOL_BINARY $WORKFLOW_NAME \
     -r "$workflow_version" \
