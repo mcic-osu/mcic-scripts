@@ -14,7 +14,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run Compleasm to evaluate genome assembly completeness (similar to Busco)"
-SCRIPT_VERSION="2024-09-26"
+SCRIPT_VERSION="2025-03-22"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -26,49 +26,47 @@ VERSION_COMMAND="compleasm -v"
 # Defaults - generics
 env_type=conda                           # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/compleasm
-container_path=
-container_url=
-dl_container=false
 container_dir="$HOME/containers"
-version_only=false                 # When true, just print tool & script version info and exit
+container_url=
+container_path=
 
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
 script_help() {
-    echo -e "\n                          $0"
-    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
-    echo "        =============================================================="
-    echo "DESCRIPTION:"
-    echo "  $DESCRIPTION"
-    echo
-    echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage example:"
-    echo "      sbatch $0 -i results/flye/assembly.fasta -o results/compleasm --lineage eukaryota"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile         <file>  Input nucleotide FASTA genome assembly file"
-    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
-    echo "  --lineage           <str>   Busco lineage name (see https://busco.ezlab.org/list_of_lineages.html)"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --library_path      <dir>   Dir for/with Busco DB downloads         [default: <outdir>/downloads]"
-    echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
-    echo "                                (NOTE: If no default '--container_url' is listed below,"
-    echo "                                 you'll have to provide one in order to run the script with a container.)"
-    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
-    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
-    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
-    echo "  -h/--help                   Print this help message and exit"
-    echo "  -v                          Print the version of this script and exit"
-    echo "  --version                   Print the version of $TOOL_NAME and exit"
-    echo
-    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+    
+USAGE / EXAMPLE COMMANDS:
+        sbatch $0 -i results/flye/assembly.fasta -o results/compleasm --lineage eukaryota  
+  
+REQUIRED OPTIONS:  
+  -i/--infile         <file>  Input nucleotide FASTA genome assembly file  
+  -o/--outdir         <dir>   Output dir (will be created if needed)  
+  --lineage           <str>   Busco lineage name (see https://busco.ezlab.org/list_of_lineages.html)  
+  
+OTHER KEY OPTIONS:  
+  --library_path      <dir>   Dir for/with Busco DB downloads                   [default: <outdir>/downloads]  
+  --more_opts         <str>   Quoted string with one or more additional options
+                              for $TOOL_NAME
+  
+UTILITY OPTIONS:
+  --env_type          <str>   Use a Singularity container ('container')         [default: $env_type]
+                              or a Conda environment ('conda') 
+  --conda_path        <dir>   Full path to a Conda environment to use           [default: $conda_path]
+  --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
+  --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
+  --container_path    <file>  Local singularity image file (.sif) to use        [default (if any): $container_path]
+  -h/--help                   Print this help message
+  -v/--version                Print script and $TOOL_NAME versions
+  
+  TOOL DOCUMENTATION: $TOOL_DOCS
+"
 }
 
 # Function to source the script with Bash functions
@@ -100,6 +98,7 @@ source_function_script
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
+version_only=false # When true, just print tool & script version info and exit
 infile=
 outdir=
 lineage=
@@ -116,12 +115,13 @@ while [ "$1" != "" ]; do
         --lineage )         shift && lineage=$1 ;;
         --library_path )    shift && library_path=$1 ;;
         --more_opts )       shift && more_opts=$1 ;;
-        --env_type )             shift && env_type=$1 ;;
-        --dl_container )    dl_container=true ;;
+        --env_type )        shift && env_type=$1 ;;
+        --conda_path )      shift && conda_path=$1 ;;
         --container_dir )   shift && container_dir=$1 ;;
-        --container_url )   shift && container_url=$1 && dl_container=true ;;
+        --container_url )   shift && container_url=$1 ;;
+        --container_path )  shift && container_path=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v | --version )         version_only=true ;;
+        -v | --version)     version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
@@ -134,7 +134,7 @@ done
 set -euo pipefail
 
 # Load software
-load_env "$conda_path" "$container_path" "$dl_container"
+load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$container_url"
 [[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
@@ -174,6 +174,9 @@ runstats $TOOL_BINARY \
     --library_path "$library_path" \
     $more_opts
 
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
 final_reporting "$LOG_DIR"

@@ -1,199 +1,154 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=20
 #SBATCH --mem=80G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=quast
 #SBATCH --output=slurm-quast-%j.out
 
 # ==============================================================================
-#                                   FUNCTIONS
-# ==============================================================================
-# Help function
-Print_help() {
-    echo
-    echo "======================================================================"
-    echo "                            $0"
-    echo "   Run QUAST to check the quality of one or more genome assemblies"
-    echo "======================================================================"
-    echo "USAGE:"
-    echo "  sbatch $0 -o <output-dir> [...] [ --assembly <assembly> | --assembly_dir <input-dir> | assembly1 assembly2 ... ]"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -o/--outdir         <dir>   Output dir"
-    echo "  To specify the input assembly/assemblies, use one of the following options:"
-    echo "    A) -i/--assembly  <file>  Input assembly FASTA file"
-    echo "    B) --assembly_dir <dir>   Input dir with assembly FASTA files (extension '.fasta')"
-    echo "    C) Pass assembly FASTA files(s) as positional arguments at the end of the command."
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --ref_fa            <file>  Reference genome nucleotide FASTA file      [default: no reference genome]"
-    echo "  --ref_annot         <file>  Reference genome annotation (GFF/GTF) file  [default: no reference genome]"
-    echo "  --R1                <file>  FASTQ file with forward (R1) Illumina reads [default: no reads]"
-    echo "                              (The R2 filename will be inferred)"
-    echo "  --reads             <file>  FASTQ file with single-end Illumina reads"
-    echo "  --fragmented                QUAST's '--fragmented' option, use for fragmented assemblies"
-    echo "  --large                     QUAST's '--large' option, recommended for genomes >100 Mbp"
-    echo "  --kmer_stats                QUAST's '--k-mer-stats' option, recommended for genomes >100 Mbp"
-    echo "  --run_busco                 Use this flag to run BUSCO within QUAST"
-    echo "                              BUSCO is not run by default, because at least for eukaryotes it fails to download the database"
-    echo "  --more_args         <str>   Quoted string with additional argument(s) to pass to QUAST"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --dryrun                    Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                     Run the script in debug mode (print all code)"
-    echo "  -h                          Print this help message and exit"
-    echo "  --help                      Print the help for Quast and exit"
-    echo "  -v/--version                Print the version of Quast and exit"
-    echo
-    echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 --assembly results/assembly/my.fasta -o results/quast"
-    echo "  sbatch $0 --assembly_dir results/assemblies -o results/quast"
-    echo "  sbatch $0 -o results/quast results/racon/assembly.fasta results/smartdenovo/assembly.fasta"
-    echo "  sbatch $0 --assembly_dir results/assemblies -o results/quast --more_args '--eukaryote'"
-    echo
-    echo "SOFTWARE DOCUMENTATION:"
-    echo "  - GitHub repo: https://github.com/ablab/quast"
-    echo "  - Manual: https://quast.sourceforge.net/docs/manual.html"
-    echo "  - Paper: https://academic.oup.com/bioinformatics/article/29/8/1072/228832"
-    echo
-}
-
-# Load software
-Load_software() {
-    set +u
-    module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /fs/ess/PAS0471/jelmer/conda/quast-5.0.2
-    set -u
-}
-
-# Print version
-Print_version() {
-    set +e
-    Load_software
-    quast.py --version
-    set -e
-}
-
-# Print help for the focal program
-Print_help_program() {
-    Load_software
-    quast.py --help
-}
-
-# Print SLURM job resource usage info
-Resource_usage() {
-    echo
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
-    echo
-}
-
-# Print SLURM job requested resources
-Print_resources() {
-    set +u
-    echo "# SLURM job information:"
-    echo "Account (project):    $SLURM_JOB_ACCOUNT"
-    echo "Job ID:               $SLURM_JOB_ID"
-    echo "Job name:             $SLURM_JOB_NAME"
-    echo "Memory (per node):    $SLURM_MEM_PER_NODE"
-    echo "CPUs per task:        $SLURM_CPUS_PER_TASK"
-    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
-    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
-    echo "======================================================================"
-    echo
-    set -u
-}
-
-# Set the number of threads/CPUs
-Set_threads() {
-    set +u
-    if [[ "$slurm" = true ]]; then
-        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-            threads="$SLURM_CPUS_PER_TASK"
-        elif [[ -n "$SLURM_NTASKS" ]]; then
-            threads="$SLURM_NTASKS"
-        else 
-            echo "WARNING: Can't detect nr of threads, setting to 1"
-            threads=1
-        fi
-    else
-        threads=1
-    fi
-    set -u
-}
-
-# Resource usage information
-Time() {
-    /usr/bin/time -f \
-        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
-        "$@"
-}   
-
-# Exit upon error with a message
-Die() {
-    error_message=${1}
-    error_args=${2-none}
-    
-    echo >&2
-    echo "=====================================================================" >&2
-    printf "$0: ERROR: %s\n" "$error_message" >&2
-    echo -e "\nFor help, run this script with the '-h' option" >&2
-    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
-    if [[ "$error_args" != "none" ]]; then
-        echo -e "\nArguments passed to the script:" >&2
-        echo "$error_args" >&2
-    fi
-    echo -e "\nEXITING..." >&2
-    echo "=====================================================================" >&2
-    echo >&2
-    exit 1
-}
-
-
-# ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-# Option defaults
-kmer_stats=false && kmer_stats_arg=""
-is_large=false && is_large_arg=""
-is_fragmented=false && is_fragmented_arg=""
-run_busco=false        # Not run by default -- at least for eukaryotes, it fails to download the database file
+# Constants - generic
+DESCRIPTION="Run QUAST to check the quality of one or more genome assemblies"
+SCRIPT_VERSION="2025-03-23"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
+TOOL_BINARY=quast.py
+TOOL_NAME=Quast
+TOOL_DOCS="https://github.com/ablab/quast / https://quast.sourceforge.net/docs/manual.html"
+VERSION_COMMAND="$TOOL_BINARY --version"
 
-debug=false
-dryrun=false && e=""
-slurm=true
+# Defaults - generics
+env_type=conda
+conda_path=/fs/ess/PAS0471/jelmer/conda/quast
+container_dir="$HOME/containers"
+container_url=
+container_path=
 
+# Defaults - tool parameters
+is_fragmented=false && is_fragmented_opt=
+is_large=false && is_large_opt=
+kmer_stats=false && kmer_stats_opt=
+run_busco=false && busco_opt=
+
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
+script_help() {
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+    
+USAGE / EXAMPLE COMMANDS:
+  - Usage examples:
+    sbatch $0 --assembly results/assembly/my.fasta -o results/quast
+    sbatch $0 --assembly_dir results/assemblies -o results/quast
+    sbatch $0 -o results/quast results/racon/assembly.fasta results/smartdenovo/assembly.fasta
+    sbatch $0 --assembly_dir results/assemblies -o results/quast --more_opts '--eukaryote'
+    
+REQUIRED OPTIONS:
+  -o/--outdir         <dir>   Output dir (will be created if needed)
+
+  To specify the input assembly/assemblies, use ONE of the following options:
+  -i/--assembly      <file>  Input assembly FASTA file
+  --assembly_dir     <dir>   Input dir with assembly FASTA files (extension '.fasta')
+  ...Pass assembly FASTA files(s) as positional arguments at the end of the command.
+    
+OTHER KEY OPTIONS:
+  --ref_fa            <file>  Reference genome nucleotide FASTA file
+  --ref_annot         <file>  Reference genome annotation (GFF/GTF) file
+  --R1                <file>  FASTQ file with forward (R1) Illumina reads
+                              (The R2 filename will be inferred)
+  --reads             <file>  FASTQ file with single-end Illumina reads
+  --fragmented                QUAST's '--fragmented' option,
+                                use for fragmented assemblies
+  --large                     QUAST's '--large' option,
+                                recommended for genomes >100 Mbp
+  --kmer_stats                QUAST's '--k-mer-stats' option,
+                                recommended for genomes >100 Mbp
+  --run_busco                 Use this flag to run BUSCO within QUAST
+                              BUSCO is not run by default, because at least for
+                              eukaryotes it fails to download the database.
+  --more_opts         <str>   Quoted string with one or more additional options
+                              for $TOOL_NAME.
+    
+UTILITY OPTIONS:
+  --env_type          <str>   Use a Singularity container ('container')         [default: $env_type]
+                              or a Conda environment ('conda') 
+  --conda_path        <dir>   Full path to a Conda environment to use           [default: $conda_path]
+  --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
+  --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
+  --container_path    <file>  Local singularity image file (.sif) to use        [default (if any): $container_path]
+  -h/--help                   Print this help message
+  -v/--version                Print script and $TOOL_NAME versions
+    
+TOOL DOCUMENTATION:
+  $TOOL_DOCS
+"
+}
+
+# Function to source the script with Bash functions
+source_function_script() {
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$IS_SLURM" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
+    else
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
+    fi
+    function_script_name="$(basename "$FUNCTION_SCRIPT_URL")"
+    function_script_path="$script_dir"/../dev/"$function_script_name"
+
+    # Download the function script if needed, then source it
+    if [[ -f "$function_script_path" ]]; then
+        source "$function_script_path"
+    else
+        if [[ ! -f "$function_script_name" ]]; then
+            echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+            wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
+        fi
+        source "$function_script_name"
+    fi
+}
+
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script $IS_SLURM
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-# Placeholder defaults
-assembly=""
-assembly_dir=""
+# Initiate variables
+version_only=false  # When true, just print tool & script version info and exit
+outdir=
+infile=
+assembly_dir=
 declare -a assemblies
-outdir=""
-ref_fa="" && ref_fa_arg=""
-ref_annot="" && ref_annot_arg=""
-R1=""
-R2=""
-reads="" && illumina_reads_arg=""
-nanopore="" && nanopore_arg=""
+R1=
+R2=
+ref_fa= && ref_fa_opt=
+ref_annot= && ref_annot_opt=
+reads= && illumina_reads_opt=
+nanopore= && nanopore_opt=
+busco_opt=
+more_opts=
+threads=
 
-busco_arg=""
-more_args=""
-
-# Parse command-line args
-all_args="$*"
-count=0
+# Parse command-line options
+all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
+        -i | --assembly )   shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
-        -i | --assembly )   shift && assembly=$1 ;;
         --assembly_dir )    shift && assembly_dir=$1 ;;
         --ref_fa )          shift && ref_fa=$1 ;;
         --ref_annot )       shift && ref_annot=$1 ;;
@@ -204,141 +159,133 @@ while [ "$1" != "" ]; do
         --large )           is_large=true ;;
         --kmer_stats )      kmer_stats=true ;;
         --run_busco )       run_busco=true ;;
-        --more_args )       shift && more_args=$1 ;;
-        -v | -v | --version )    Print_version; exit 0 ;;
-        -h )                Print_help; exit 0 ;;
-        --help )            Print_help_program; exit 0;;
-        --dryrun )          dryrun=true && e="echo ";;
-        --debug )           debug=true ;;
-        * )                 assemblies[count]=$1 && count=$(( count + 1 )) ;;
+        --more_opts )       shift && more_opts=$1 ;;
+        --env_type )        shift && env_type=$1 ;;
+        --conda_path )      shift && conda_path=$1 ;;
+        --container_dir )   shift && container_dir=$1 ;;
+        --container_url )   shift && container_url=$1 ;;
+        --container_path )  shift && container_path=$1 ;;
+        -h | --help )       script_help; exit 0 ;;
+        -v | --version)     version_only=true ;;
+        * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
 done
 
-
 # ==============================================================================
-#                          OTHER SETUP
+#                          INFRASTRUCTURE SETUP
 # ==============================================================================
-# Check if this is a SLURM job
-[[ -z "$SLURM_JOB_ID" ]] && slurm=false
-
-# In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
-
-# Bash script settings
+# Strict Bash settings
 set -euo pipefail
 
-# Load software and set nr of threads
-[[ "$dryrun" = false ]] && Load_software
-Set_threads
+# Load software
+load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$container_url"
+[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
-# Check input
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir"
-[[ "$assembly" != "" && ! -f "$assembly" ]] && Die "Input file (--assembly) $assembly does not exist or is not a regular file"
-[[ "$assembly_dir" != "" && ! -d "$assembly_dir" ]] && Die "Input dir (--assembly_dir) $assembly_dir does not exist or is not a directory"
+# Check options provided to the script
+[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
+[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
+
+# Define outputs based on script parameters
+LOG_DIR="$outdir"/logs
+mkdir -p "$LOG_DIR"
 
 # Build argument for assembly input
-if [[ $assembly_dir != "" ]]; then
+if [[ -n $assembly_dir ]]; then
     mapfile -t assemblies < <(find "$assembly_dir" -name "*.fasta")
-elif [[ $assembly != "" ]]; then
-    assemblies=("$assembly")
+elif [[ -n $infile ]]; then
+    assemblies=("$infile")
 elif [[ ${#assemblies[@]} -eq 0 ]]; then
-    Die "Please specify input with --assembly_dir, --assembly or positional arguments"
+    die "Please specify input with --assembly_dir, --assembly or positional arguments"
 fi
 
 # If the input is a single file, make a separate output dir
-if [[ $assembly != "" ]]; then
-    sampleID=$(basename "$assembly" | sed -E 's/.fn?as?t?a?//')
+if [[ -n $infile ]]; then
+    sampleID=$(basename "$infile" | sed -E 's/.fn?as?t?a?//')
     outdir=$outdir/"$sampleID"
 fi
 
 # Build input reads arg(s)
-if [[ $R1 != "" ]]; then
+if [[ -n $R1 ]]; then
     file_ext=$(basename "$R1" | sed -E 's/.*(.fastq.gz|.fq.gz)$/\1/')
     R1_suffix=$(basename "$R1" "$file_ext" | sed -E "s/.*(_R?1)_?[[:digit:]]*/\1/")
     R2_suffix=${R1_suffix/1/2}
     R2=${R1/$R1_suffix/$R2_suffix}
-    illumina_reads_arg="-1 $R1 -2 $R2"
-    [[ ! -f "$R1" ]] && Die "Input R1 reads file $R1 does not exist"
-    [[ ! -f "$R2" ]] && Die "Input R2 reads file $R2 does not exist"
-    [[ "$R1" = "$R2" ]] && Die "R1 and R2 FASTQ files are the same file: $R1"
-elif [[ $reads != "" ]]; then
-    illumina_reads_arg="--single $reads"
-    [[ ! -f "$reads" ]] && Die "Input single-end reads file $reads does not exist"
+    illumina_reads_opt="-1 $R1 -2 $R2"
+    [[ ! -f "$R1" ]] && die "Input R1 reads file $R1 does not exist"
+    [[ ! -f "$R2" ]] && die "Input R2 reads file $R2 does not exist"
+    [[ "$R1" = "$R2" ]] && die "R1 and R2 FASTQ files are the same file: $R1"
+elif [[ -n $reads ]]; then
+    illumina_reads_opt="--single $reads"
+    [[ ! -f "$reads" ]] && die "Input single-end reads file $reads does not exist"
 fi
 
-if [[ $nanopore != "" ]]; then
-    nanopore_arg="--nanopore $nanopore"
-    [[ ! -f "$nanopore" ]] && Die "Input Nanopore reads file $nanopore does not exist"
+if [[ -n $nanopore ]]; then
+    nanopore_opt="--nanopore $nanopore"
+    [[ ! -f "$nanopore" ]] && die "Input Nanopore reads file $nanopore does not exist"
 fi
 
 # Build other arguments
-[[ "$ref_fa" != "" ]] && ref_fa_arg="-r $ref_fa"
-[[ "$ref_annot" != "" ]] && ref_annot_arg="--features $ref_annot"
-[[ "$is_fragmented" = true ]] && is_fragmented_arg="--fragmented"
-[[ "$is_large" = true ]] && is_large_arg="--large"
-[[ "$kmer_stats" = true ]] && kmer_stats_arg="--k-mer-stats"
-[[ "$run_busco" = true ]] && busco_arg="--conserved-genes-finding"
+[[ -n "$ref_fa" ]] && ref_fa_opt="-r $ref_fa"
+[[ -n "$ref_annot" ]] && ref_annot_opt="--features $ref_annot"
+[[ "$is_fragmented" == true ]] && is_fragmented_opt="--fragmented"
+[[ "$is_large" == true ]] && is_large_opt="--large"
+[[ "$kmer_stats" == true ]] && kmer_stats_opt="--k-mer-stats"
+[[ "$run_busco" == true ]] && busco_opt="--conserved-genes-finding"
 
-# Report
+# ==============================================================================
+#                         REPORT PARSED OPTIONS
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
+echo "=========================================================================="
+echo "All options passed to this script:        $all_opts"
+echo "Working directory:                        $PWD"
 echo
-echo "=========================================================================="
-echo "               STARTING SCRIPT QUAST.SH"
-date
-echo "=========================================================================="
-echo "All arguments to this script:         $all_args"
-echo "Output dir:                           $outdir"
-echo "Assemblies:                           ${assemblies[*]}"
-echo "Number of assemblies:                 ${#assemblies[@]}"
-[[ $assembly != "" ]] && echo "Input assembly FASTA:                 $assembly"
-[[ $assembly_dir != "" ]] && echo "Input dir with assemblies:            $assembly_dir"
-[[ $ref_fa != "" ]] && echo "Reference FASTA file:                 $ref_fa"
-[[ $ref_annot != "" ]] && echo "Reference annotation file:            $ref_annot"
-[[ $R1 != "" ]] && echo "R1 FASTQ file:                        $R1"
-[[ $R2 != "" ]] && echo "R2 FASTQ file:                        $R2"
-[[ $reads != "" ]] && echo "Single-end FASTQ file:                $reads"
-[[ $nanopore != "" ]] && echo "Nanopore FASTQ file:                  $nanopore"
-[[ $more_args != "" ]] && echo "Other arguments to pass to QUAST:     $more_args"
-echo "Fragmented assembly:                  $is_fragmented"
-echo "Large assembly (>100 Mbp):            $is_large"
-echo "Use kmer stats:                       $kmer_stats"
+echo "Output dir:                               $outdir"
+echo "Assemblies:                               ${assemblies[*]}"
+echo "Number of assemblies:                     ${#assemblies[@]}"
+[[ -n $infile ]] && echo "Input assembly FASTA:                     $infile"
+[[ -n $assembly_dir ]] && echo "Input dir with assemblies:                $assembly_dir"
+[[ -n $ref_fa ]] && echo "Reference FASTA file:                     $ref_fa"
+[[ -n $ref_annot ]] && echo "Reference annotation file:                $ref_annot"
+[[ -n $R1 ]] && echo "R1 FASTQ file:                            $R1"
+[[ -n $R2 ]] && echo "R2 FASTQ file:                            $R2"
+[[ -n $reads ]] && echo "Single-end FASTQ file:                    $reads"
+[[ -n $nanopore ]] && echo "Nanopore FASTQ file:                      $nanopore"
+[[ -n $more_opts ]] && echo "Other options to pass to QUAST:           $more_opts"
+echo "Fragmented assembly:                      $is_fragmented"
+echo "Large assembly (>100 Mbp):                $is_large"
+echo "Use kmer stats:                           $kmer_stats"
 echo -e "\n# Listing the input files:"
-[[ "$ref_fa" != "" ]] && ls -lh "$ref_fa"
-[[ "$ref_annot" != "" ]] && ls -lh "$ref_annot"
-[[ "$R1" != "" ]] && ls -lh "$R1" "$R2"
-[[ "$reads" != "" ]] && ls -lh "$reads" 
-[[ "$nanopore" != "" ]] && ls -lh "$nanopore"
+[[ "$ref_fa" ]] && ls -lh "$ref_fa"
+[[ "$ref_annot" ]] && ls -lh "$ref_annot"
+[[ "$R1" ]] && ls -lh "$R1" "$R2"
+[[ "$reads" ]] && ls -lh "$reads" 
+[[ "$nanopore" ]] && ls -lh "$nanopore"
 ls -lh "${assemblies[@]}"
-echo "=========================================================================="
-
-# Print reserved resources
-[[ "$slurm" = true ]] && Print_resources
-
+set_threads "$IS_SLURM"
+[[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Create the output directory
-echo -e "\n# Now creating the output directories..."
-${e}mkdir -pv "$outdir"/logs
-
-# Run
-echo -e "\n# Now running QUAST..."
-${e}Time quast.py \
+log_time "Running $TOOL_NAME..."
+runstats $TOOL_BINARY \
     --threads "$threads" \
     --output-dir "$outdir" \
     --glimmer \
     --circos \
     --no-snps \
-    $busco_arg \
-    $ref_fa_arg \
-    $ref_annot_arg \
-    $illumina_reads_arg \
-    $nanopore_arg \
-    $is_fragmented_arg \
-    $is_large_arg \
-    $kmer_stats_arg \
-    $more_args \
+    $busco_opt \
+    $ref_fa_opt \
+    $ref_annot_opt \
+    $illumina_reads_opt \
+    $nanopore_opt \
+    $is_fragmented_opt \
+    $is_large_opt \
+    $kmer_stats_opt \
+    $more_opts \
     "${assemblies[@]}"
 
 #? - glimmer: Acticate gene-finding, use Glimmer instead of GeneMark tools (trouble running those due to licensing issues)
@@ -347,19 +294,9 @@ ${e}Time quast.py \
 #? -k  --k-mer-stats   Compute k-mer-based quality metrics (recommended for large genomes)
 #?                     This may significantly increase memory and time consumption on large genomes
 
-
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
-echo
-echo "========================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
-    [[ "$slurm" = true ]] && Resource_usage
-fi
-echo
-echo "# Done with script"
-date
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/*
+final_reporting "$LOG_DIR"
