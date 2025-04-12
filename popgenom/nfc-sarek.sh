@@ -11,7 +11,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run the Nextflow/nf-core Sarek pipeline (https://nf-co.re/sarek) for genomic variant calling"
-SCRIPT_VERSION="2025-03-15"
+SCRIPT_VERSION="2025-04-11"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -30,8 +30,6 @@ resume=true && resume_arg="-resume"                    # Resume the workflow fro
 # Defaults - generics
 conda_path=/fs/ess/PAS0471/jelmer/conda/nextflow
 container_dir="$HOME/containers"
-#container_url=
-#container_path=
 osc_account=PAS0471
 [[ -n $SLURM_JOB_ACCOUNT ]] && osc_account=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
 work_dir=/fs/scratch/"$osc_account"/$USER/nfc-sarek    # 'work dir' for initial outputs (selected, final outputs go to the outdir)
@@ -66,22 +64,22 @@ TO SPECIFY INPUT FASTQ FILES, USE ONE OF THE FOLLOWING TWO OPTIONS:
 OTHER KEY OPTIONS:
   --workflow_version  <str>   Nf-core sarek workflow version                    [default: $workflow_version]
   --restart                   Restart nf-core workflow from the beginning       [default: resume if possible]
+  --conda_path        <dir>   Full path to a Nextflow Conda environment to use  [default: $conda_path]
 
 ADVANCED NEXTFLOW-RELATED OPTIONS:
   --work_dir           <dir>  Scratch (work) dir for the workflow               [default: $work_dir]
-                                This is where all workflow results are stored
-                                before final results are copied to the output dir.
-  --container_dir     <dir>   Directory with container images                   [default: $container_dir]
+                              This is where all workflow results are stored
+                              before final results are copied to the output dir.
+  --container_dir     <dir>   Dir with/for the pipeline's container images      [default: $container_dir]
   --config            <file>  Additional Nextflow config file                   [default: none]
-                                Settings in this file will override defaults.
-                                The mcic-scripts OSC config file is always included
-                                  (https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config)
+                              Settings in this file will override defaults.
+                              The mcic-scripts OSC config file is always included
+                              (https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config)
   --profile            <str>  Name of a 'profile' from a config file that       [default: $profile]
                               should be used
 
 UTILITY OPTIONS:
-  --conda_path        <dir>   Full path to a Nextflow Conda environment to use  [default: $conda_path]
-  -h/--help                   Print help and exit
+  -h/--help                   Print this script's help and exit
   -v/--version                Print the version of this script and of $TOOL_NAME
     
 TOOL DOCUMENTATION:
