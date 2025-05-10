@@ -12,11 +12,11 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Create a local phylogenetic tree with Parsnp"
-SCRIPT_VERSION="2023-09-20"
+SCRIPT_VERSION="2025-05-10"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
-PARSNP_CONTAINER_PREFIX="singularity exec /users/PAS0471/jelmer/containers/parsnp_1.7.4--hd03093a_1.sif"
-MODULE=miniconda3/23.3.1-py310
+OSC_MODULE=miniconda3
+PARSNP_CONTAINER_PREFIX="singularity exec /fs/ess/PAS0471/containers/parsnp_1.7.4--d3c1e3879a4f7186.sif"
 IQTREE_CONDA=/fs/ess/PAS0471/jelmer/conda/iqtree
 BEDTOOLS_CONDA=/fs/ess/PAS0471/jelmer/conda/bedtools
 TREE_CONDA=/fs/ess/PAS0471/jelmer/conda/r_tree
@@ -191,7 +191,7 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-module load "$MODULE"
+module load "$OSC_MODULE"
 
 # Extract FASTA from BED file with all desired regions
 source activate "$BEDTOOLS_CONDA"
@@ -245,7 +245,7 @@ fi
 
 # Plot the tree (Note: module purge etc is necessary or r_tree Conda env gives weird errors)
 for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-module purge && module load "$MODULE" && conda activate "$TREE_CONDA"
+module purge && module load "$OSC_MODULE" && conda activate "$TREE_CONDA"
 log_time "Plotting the tree in $final_tree..."
 runstats Rscript mcic-scripts/trees/ggtree.R -i "$final_tree" $root_opt $meta_opt
 
