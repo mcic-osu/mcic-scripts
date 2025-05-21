@@ -10,7 +10,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run the Nextflow-core metabarcoding pipeline from https://nf-co.re/ampliseq"
-SCRIPT_VERSION="2025-02-28"
+SCRIPT_VERSION="2025-05-21"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="nextflow run"
@@ -28,7 +28,7 @@ osc_account=PAS0471                                         # If the script is s
 [[ -n $SLURM_JOB_ACCOUNT ]] && osc_account=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
 
 # Parameter defaults - workflow
-workflow_version=2.12.0                                     # The version of the nf-core workflow
+workflow_version=2.13.0                                     # The version of the nf-core workflow
 work_dir=/fs/scratch/"$osc_account"/$USER/nfc-ampliseq      # 'work dir' for initial outputs (selected, final outputs go to the outdir)
 profile="singularity"
 resume=true && resume_opt="-resume"
@@ -148,6 +148,7 @@ while [ "$1" != "" ]; do
         --profile | -profile )          shift && profile=$1 ;;
         --work_dir | -work-dir )        shift && work_dir=$1 ;;
         --restart | -restart )          resume=false && resume_opt= ;;
+        --conda_path )                  shift && conda_path=$1 ;;
         -h | --help )                   script_help; exit 0 ;;
         -v | --version )                version_only=true ;;
         * )                             die "Invalid option $1" "$all_opts" ;;
@@ -184,19 +185,19 @@ LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 # ==============================================================================
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "All arguments to this script:                 $all_opts"
+echo "All arguments to this script:             $all_opts"
 echo
 echo "INPUT AND OUTPUT:"
-echo "Parameter YAML file:                          $params_file"
-echo "Output dir:                                   $outdir"
+echo "Parameter YAML file:                      $params_file"
+echo "Output dir:                               $outdir"
 echo
 echo "NEXTFLOW-RELATED SETTINGS:"
-echo "Resume previous run (if any):                 $resume"
-echo "Container dir:                                $container_dir"
-echo "Scratch (work) dir:                           $work_dir"
-echo "Config 'profile':                             $profile"
-echo "Config file argument:                         $config_opt"
-[[ -n "$config_file" ]] && echo "Additional config file:                       $config_file"
+echo "Resume previous run (if any):             $resume"
+echo "Container dir:                            $container_dir"
+echo "Scratch (work) dir:                       $work_dir"
+echo "Config 'profile':                         $profile"
+echo "Config file argument:                     $config_opt"
+[[ -n "$config_file" ]] && echo "Additional config file:             $config_file"
 echo "=========================================================================="
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" = true ]] && slurm_resources
