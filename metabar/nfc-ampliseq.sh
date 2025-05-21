@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=24:00:00
+#SBATCH --cpus-per-task=1
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=nfc_ampliseq
 #SBATCH --output=slurm-nfc_ampliseq-%j.out
