@@ -69,6 +69,8 @@ illumina_pe_its: false
 # - For 16S, use the Silva database as in the example entry below
 # - For ITS, use: 'unite-fungi=9.0'
 dada_ref_taxonomy: 'silva=138'
+#dada_ref_tax_custom     # Use to point to a custom FASTA file
+#dada_ref_tax_taxlevels: Domain,Subdomain,Class,Order,Family,Genus,Species
 
 # Whether to add UNITE species hypotheses (SH).
 # Set to true for ITS; doesn't apply to 16S so set to false like below or comment out
