@@ -11,7 +11,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run the Nextflow/nf-core Sarek pipeline (https://nf-co.re/sarek) for genomic variant calling"
-SCRIPT_VERSION="2025-04-11"
+SCRIPT_VERSION="2025-05-04"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -22,6 +22,7 @@ VERSION_COMMAND="nextflow -v"
 # Constants - specific
 WORKFLOW_NAME=nf-core/sarek                            # The name of the nf-core workflow
 OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config # Nextflow <=> OSC config file
+TOOL_DOCS=https://nf-co.re/sarek
 
 # Defaults - pipeline parameters
 workflow_version=3.5.1                                 # The version of the nf-core workflow
@@ -56,6 +57,7 @@ REQUIRED OPTIONS:
   -o/--outdir         <dir>   Output dir (will be created if needed)
   -p/--params         <file>  YAML file with workflow parameters. As a template,
                               use 'mcic-scripts/popgenom/nfcore_sarek_params.yml'
+
 TO SPECIFY INPUT FASTQ FILES, USE ONE OF THE FOLLOWING TWO OPTIONS:
   --samplesheet       <file>  Input samplesheet CSV file (see https://nf-co.re/sarek/usage)
   --fq_dir            <dir>   Dir with FASTQ files. When provided, this shell
@@ -64,13 +66,12 @@ TO SPECIFY INPUT FASTQ FILES, USE ONE OF THE FOLLOWING TWO OPTIONS:
 OTHER KEY OPTIONS:
   --workflow_version  <str>   Nf-core sarek workflow version                    [default: $workflow_version]
   --restart                   Restart nf-core workflow from the beginning       [default: resume if possible]
-  --conda_path        <dir>   Full path to a Nextflow Conda environment to use  [default: $conda_path]
 
 ADVANCED NEXTFLOW-RELATED OPTIONS:
   --work_dir           <dir>  Scratch (work) dir for the workflow               [default: $work_dir]
                               This is where all workflow results are stored
                               before final results are copied to the output dir.
-  --container_dir     <dir>   Dir with/for the pipeline's container images      [default: $container_dir]
+  --container_dir     <dir>   Directory with container images                   [default: $container_dir]
   --config            <file>  Additional Nextflow config file                   [default: none]
                               Settings in this file will override defaults.
                               The mcic-scripts OSC config file is always included
@@ -79,10 +80,11 @@ ADVANCED NEXTFLOW-RELATED OPTIONS:
                               should be used
 
 UTILITY OPTIONS:
-  -h/--help                   Print this script's help and exit
+  --conda_path        <dir>   Full path to a Nextflow Conda environment to use  [default: $conda_path]
+  -h/--help                   Print help and exit
   -v/--version                Print the version of this script and of $TOOL_NAME
     
-TOOL DOCUMENTATION:
+PIPELINE DOCUMENTATION:
 $TOOL_DOCS
 "
 }
