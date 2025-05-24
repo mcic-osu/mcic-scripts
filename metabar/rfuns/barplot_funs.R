@@ -7,6 +7,7 @@ if (!require(tidyverse, quietly = TRUE)) install.packages("tidyverse")
 if (!require(randomcoloR, quietly = TRUE)) install.packages("randomcoloR")
 if (!require(BiocManager, quietly = TRUE)) install.packages("BiocManager")
 if (!require(phyloseq, quietly = TRUE)) BiocManager::install("phyloseq")
+if (!require(ggh4x, quietly = TRUE)) BiocManager::install("ggh4x")
 
 # Color sets
 cols1 <- c("#a74bb4", "#62b54f", "#7064d3", "#b5b348", "#dd6fc5",
@@ -33,26 +34,30 @@ cols_kelly <- c("#f3c300", "#875692", "#f38400", "#a1caf1", "#be0032",
 
 # Function to create a barplot showing taxon abundances
 pbar <- function(
-    ps = NULL,              # Provide a phyloseq object (ps)
-                            # Abundances are expected to be relative: if not, set convert_abund = TRUE
-    taxrank = "Phylum",     # Taxonomic rank to summarize abundance by Or 'Family', 'Genus', etc
-    x_var = "Sample",       # What to plot along the x-axis
-                            #   'Sample' for indiv. samples, or a column name from sample_data(ps)) (quoted string)
-    facet_var = NULL,       # Which column in sample_data to facet by (quoted string)
-    facet_var2 = NULL,      # Which column in sample_data to also facet by (quoted string)
-    xlab = NULL,            # X-axis label
-    abund_tres = 0.01,      # Lump taxa with abundances below this threshold into a category 'other (rare)'
-                            #   (use 'NA' for no threshold)
-    focal_taxa = NULL,      # Instead of filtering taxa by abundance, use the taxa listed in this vector
-    na_to_unknown = TRUE,   # Change 'NA' taxa to a category 'unknown' in the graph
-    sort_by_abund = TRUE,   # Sort the taxa by abundance in the graph (rather than alphabetically)
-    colors = cols_kelly,    # Vector of colors. Presets are 'cols1', 'cols_brewerplus', and 'cols_kelly' (default)
-                            # You can also provide your own vector of colors.
-    abund_df = NULL,        # Alternative to providing a phyloseq object (ps) as input: 
-                            # an abundance df from abund_stats()
-                            # With columns 'OTU', 'Sample', 'Abundance', any metadata grouping variables,
-                            # and the focal taxonomic rank
-    convert_abund = FALSE   # If the ps object has absolute counts, set to TRUE to convert to relative 
+    ps = NULL,                  # Provide a phyloseq object (ps)
+                                # Abundances are expected to be relative: if not, set convert_abund = TRUE
+    taxrank = "Phylum",         # Taxonomic rank to summarize abundance by Or 'Family', 'Genus', etc
+    x_var = "Sample",           # What to plot along the x-axis
+                                #   'Sample' for indiv. samples, or a column name from sample_data(ps)) (quoted string)
+    facet_var = NULL,           # Which column in sample_data to facet by (quoted string)
+    facet_var2 = NULL,          # Which column in sample_data to also facet by (quoted string)
+    xlab = NULL,                # X-axis label
+    abund_tres = 0.01,          # Lump taxa with abundances below this threshold into a category 'other (rare)'
+                                #   (use 'NA' for no threshold)
+    focal_taxa = NULL,          # Instead of filtering taxa by abundance, use the taxa listed in this vector
+    na_to_unknown = TRUE,       # Change 'NA' taxa to a category 'unknown' in the graph
+    sort_by_abund = TRUE,       # Sort the taxa by abundance in the graph (rather than alphabetically)
+    colors = cols_kelly,        # Vector of colors. Presets are 'cols1', 'cols_brewerplus', and 'cols_kelly' (default)
+                                # You can also provide your own vector of colors.
+    abund_df = NULL,            # Alternative to providing a phyloseq object (ps) as input: 
+                                # an abundance df from abund_stats()
+                                # With columns 'OTU', 'Sample', 'Abundance', any metadata grouping variables,
+                                # and the focal taxonomic rank
+    convert_abund = FALSE,      # If the ps object has absolute counts, set to TRUE to convert to relative 
+    unknown_label = "unknown",  # Label for 'unknown' category
+    rare_label = "other (rare)", # Label for 'rare' category
+    alpha = 1,                  # Opacity of fill colors
+    facet_scales = "free_x"     # Scaling option for faceting
     ) {
 
   # Convert to proportional if needed
@@ -67,7 +72,9 @@ pbar <- function(
       focal_taxa = focal_taxa,
       na_to_unknown = na_to_unknown,
       sort_by_abund = sort_by_abund,
-      groupby = c(x_var, facet_var, facet_var2)
+      groupby = c(x_var, facet_var, facet_var2),
+      unknown_label = unknown_label,
+      rare_label = rare_label
       )
   }
   
@@ -80,14 +87,14 @@ pbar <- function(
   }
   
   # Set last color ('other' category) to grey:
-  if (any(abund_df[[taxrank]] == "other (rare)")) {
-    if (any(abund_df[[taxrank]] == "unknown")) {
+  if (any(abund_df[[taxrank]] == rare_label)) {
+    if (any(abund_df[[taxrank]] == unknown_label)) {
       colors[length(colors) - 1] <- "grey80"
       colors[length(colors)] <- "grey60"
     } else {
       colors[length(colors)] <- "grey80"
     }
-  } else if (any(abund_df[[taxrank]] == "unknown")) {
+  } else if (any(abund_df[[taxrank]] == unknown_label)) {
     colors[length(colors)] <- "grey60"
   }
   
@@ -96,6 +103,7 @@ pbar <- function(
     aes(x = .data[[x_var]], y = Abundance, fill = .data[[taxrank]]) +
     geom_col(
       color = "grey20",
+      alpha = alpha,
       position = position_stack(reverse = TRUE)
       ) +
     scale_y_continuous(
@@ -115,18 +123,22 @@ pbar <- function(
   if (!is.null(facet_var)) {
     if (is.null(facet_var2)) {
       p <- p +
-        facet_grid(
+        ggh4x::facet_grid2(
           cols = vars(.data[[facet_var]]),
-          scales = "free_x",
-          space = "free"
+          scales = facet_scales,
+          space = "free",
+          axes = "margins",
+          independent = "none"
           )
     } else {
       p <- p +
-        facet_grid(
+        ggh4x::facet_grid2(
           cols = vars(.data[[facet_var]]),
           rows = vars(.data[[facet_var2]]),
-          scales = "free_x",
-          space = "free"
+          scales = facet_scales,
+          space = "free",
+          axes = "margins",
+          independent = "none"
           )
     }
   }
@@ -141,16 +153,18 @@ abund_stats <- function(
     ps,
     taxrank,
     groupby = NULL,
-    abund_tres = 0.01,        # NA => no abundance threshold
-    focal_taxa = NULL,        # Alternative to abundance threshold, use vector of taxa to keep
+    abund_tres = 0.01,            # NA => no abundance threshold
+    focal_taxa = NULL,            # Alternative to abundance threshold, use vector of taxa to keep
     na_to_unknown = TRUE,
-    sort_by_abund = TRUE
+    sort_by_abund = TRUE,
+    unknown_label = "unknown",    # Label for 'unknown' category
+    rare_label = "other (rare)"   # Label for 'rare' category
     ) {
   
   # If using a list of focal taxa, don't use an abundance threshold
   if (!is.null(focal_taxa)) {
     abund_tres <- NA
-    focal_taxa <- c(focal_taxa, "unknown")
+    focal_taxa <- c(focal_taxa, unknown_label)
   }
   
   # Agglomerate by a taxrank
@@ -175,7 +189,7 @@ abund_stats <- function(
   
   # Change NA taxa to "unknown"
   if (na_to_unknown == TRUE) {
-    df[[taxrank]][is.na(df[[taxrank]])] <- "unknown"
+    df[[taxrank]][is.na(df[[taxrank]])] <- unknown_label
   }
   
   # If not plotting by sample, compute mean by a grouping variable
@@ -225,7 +239,7 @@ abund_stats <- function(
         colnames(other_df) <- sub("\\.x$", "", colnames(other_df))
       }
     }
-    other_df[[taxrank]] <- "other (rare)"
+    other_df[[taxrank]] <- rare_label
     
     # Filter out original low-abund taxa and add lumped one
     df <- df |>
@@ -244,7 +258,7 @@ abund_stats <- function(
     }
     
     # Make sure the 'other' category is the last factor level
-    df[[taxrank]] <- fct_relevel(df[[taxrank]], "other (rare)", after = Inf)
+    df[[taxrank]] <- fct_relevel(df[[taxrank]], rare_label, after = Inf)
     
   } else if (sort_by_abund == TRUE) {
     # Sort ASVs by mean overall abundance
@@ -259,7 +273,7 @@ abund_stats <- function(
   
   # Change NA taxa to "unknown"
   if (na_to_unknown == TRUE) {
-    df[[taxrank]] <- fct_relevel(df[[taxrank]], "unknown", after = Inf)
+    df[[taxrank]] <- fct_relevel(df[[taxrank]], unknown_label, after = Inf)
   }
   
   return(tibble(df))
@@ -314,7 +328,7 @@ tax_stats <- function(
     to_lump_df <- df |>
       filter(.data[[tax_rank]] %in% taxa_to_lump) |>
       summarize(Abundance = sum(Abundance))
-    to_lump_df[[tax_rank]] <- "other (rare)"
+    to_lump_df[[tax_rank]] <- rare_label
     
     # Filter out original low-abundance taxa and add lumped one
     df <- df |>
@@ -330,16 +344,16 @@ tax_stats <- function(
       arrange(-abund) |>
       drop_na() |>
       pull(.data[[tax_rank]])
-    if (any(tax_order == "other (rare)")) {
-      tax_order <- tax_order[-which(tax_order == "other (rare)")]
+    if (any(tax_order == rare_label)) {
+      tax_order <- tax_order[-which(tax_order == rare_label)]
     }
-    tax_order <- c(tax_order, "other (rare)", "unknown")
+    tax_order <- c(tax_order, rare_label, unknown_label)
     df[[tax_rank]] <- factor(df[[tax_rank]], levels = tax_order)
   }
   
   # Change NA taxa to "unknown"
   if (na_to_unknown == TRUE) {
-    df[[tax_rank]][is.na(df[[tax_rank]])] <- "unknown"
+    df[[tax_rank]][is.na(df[[tax_rank]])] <- unknown_label
   } else {
     df <- df |> filter(!is.na(.data[[tax_rank]]))
   }
