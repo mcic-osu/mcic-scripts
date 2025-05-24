@@ -19,7 +19,7 @@ save_output_as_bam: false
 # ==============================================================================
 # Remove adapters with FASTP
 trim_fastq: true
-trim_nextseq: false
+#trim_nextseq: 10   # the minimum length to detect polyG in the read tail.
 
 # ==============================================================================
 #                         TOOLS TO RUN OR SKIP
