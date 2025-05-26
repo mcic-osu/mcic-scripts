@@ -28,6 +28,9 @@ container_dir="$HOME/containers"
 container_url=
 container_path=
 
+# Defaults - RepeatModeler parameters
+run_LTRStruct=true
+
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
@@ -49,6 +52,8 @@ REQUIRED OPTIONS:
   -o/--outdir         <dir>   Output dir (will be created if needed)
     
 OTHER KEY OPTIONS:
+  --no_LTRStruct              Don't use the -LTRStruct option                   [default: run]
+                                Use this to save time if needed
   --more_opts         <str>   Quoted string with one or more additional options
                               for $TOOL_NAME
     
@@ -104,6 +109,7 @@ source_function_script $IS_SLURM
 version_only=false  # When true, just print tool & script version info and exit
 infile=
 outdir=
+LTRStruct_opt=
 more_opts=
 threads=
 
@@ -113,6 +119,7 @@ while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
+        --no_LTRStruct )    run_LTRStruct=false ;;
         --more_opts )       shift && more_opts=$1 ;;
         --env_type )        shift && env_type=$1 ;;
         --conda_path )      shift && conda_path=$1 ;;
@@ -148,8 +155,8 @@ infile=$(realpath "$infile")
 # Define outputs based on script parameters
 LOG_DIR="$outdir"/logs
 mkdir -p "$LOG_DIR"
-# Get genome ID for database prefix
-genomeID=$(basename "${infile%.*}")
+genomeID=$(basename "${infile%.*}")  # Get genome ID for database prefix
+[[ "$run_LTRStruct" == true ]] && LTRStruct_opt="-LTRStruct"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -182,7 +189,7 @@ log_time "Runnning RepeatModeler..."
 runstats RepeatModeler \
     -database "$genomeID" \
     -threads "$threads" \
-    -LTRStruct \
+    $LTRStruct_opt \
     $more_opts \
     "$infile"
 
