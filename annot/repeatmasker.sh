@@ -154,14 +154,13 @@ load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$containe
 [[ -n "$species" ]] && [[ -n "$genome_lib" ]] && die "Both --species and --genome_lib are specified, but you can only use one of these options" "$all_opts"
 [[ -n "$genome_lib" && ! -f "$genome_lib" ]] && die "Input file $genome_lib does not exist"
 
-# Define outputs based on script parameters
-LOG_DIR="$outdir"/logs
-mkdir -p "$LOG_DIR"
-
 # Make file paths absolute
 infile=$(realpath "$infile")
 genome_lib=$(realpath "$genome_lib")
 [[ ! "$outdir" =~ ^/ ]] && outdir="$PWD"/"$outdir"
+
+# Define outputs based on script parameters
+LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 
 # Species/genome lib args
 [[ -n "$species" ]] && species_opt="-species $species"
@@ -190,7 +189,7 @@ set_threads "$IS_SLURM"
 #                               RUN
 # ==============================================================================
 # Move into the output dir
-cd "$outdir" || exit
+cd "$outdir" || die "Can't change to output dir $outdir"
 
 # Run
 log_time "Running $TOOL_NAME..."
@@ -220,5 +219,5 @@ runstats $TOOL_BINARY \
 #                               WRAP-UP
 # ==============================================================================
 log_time "Listing files in the output dir:"
-ls -lhd "$(realpath "$outdir")"/*
+ls -lh
 final_reporting "$LOG_DIR"
