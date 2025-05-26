@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=5:00:00
-#SBATCH --cpus-per-task=5
-#SBATCH --mem=20G
+#SBATCH --time=24:00:00
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=64G
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=repeatmasker
 #SBATCH --output=slurm-repeatmasker-%j.out
