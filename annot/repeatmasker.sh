@@ -1,292 +1,224 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=6:00:00
-#SBATCH --mem=20G
+#SBATCH --time=5:00:00
 #SBATCH --cpus-per-task=5
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
+#SBATCH --mem=20G
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=repeatmasker
 #SBATCH --output=slurm-repeatmasker-%j.out
 
 # ==============================================================================
-#                                   FUNCTIONS
-# ==============================================================================
-# Help function
-Print_help() {
-    echo
-    echo "======================================================================"
-    echo "                            $0"
-    echo "                        RUN REPEATMASKER"
-    echo "======================================================================"
-    echo
-    echo "USAGE:"
-    echo "  sbatch $0 $0 -i <genome-FASTA> -l <genome-lib-FASTA> -o <output-dir> -s <species> ..."
-    echo "  bash $0 -h"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--assembly_in   <file>   Input assembly: a nucleotide FASTA file"
-    echo "  -o/--assembly_out  <file>   Output, masked, assembly"
-    echo
-    echo "ONE OF THESE TWO IS REQUIRED (THEY ARE MUTUALLY EXCLUSIVE):"
-    echo "  --genome_lib    <file>  Genome repeat library FASTA file produced by RepeatModeler (repeatmodeler.sh script)"
-    echo "  --species       <str>   Species or taxonomic group name"
-    echo "                          To check which species/groups are available, run, e.g:"
-    echo "                          /fs/project/PAS0471/jelmer/conda/repeatmasker-4.1.2.p1/share/RepeatMasker/famdb.py names 'oomycetes'"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to RepeatMasker"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                 Run the script in debug mode (print all code)"
-    echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for RepeatMasker and exit"
-    echo "  -v/--version            Print the version of RepeatMasker and exit"
-    echo
-    echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i results/genome.fa -o results/repeatmasker"
-    echo
-    echo "SOFTWARE DOCUMENTATION:"
-    echo "  - Docs: https://www.repeatmasker.org/"
-    echo
-}
-
-# Load software
-Load_software() {
-    set +u
-    module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /fs/project/PAS0471/jelmer/conda/repeatmasker-4.1.2.p1
-    set -u
-}
-
-# Print version
-Print_version() {
-    set +e
-    Load_software
-    RepeatMasker --help | head -n 1
-    set -e
-}
-
-# Print help for the focal program
-Print_help_program() {
-    Load_software
-    RepeatMasker
-}
-
-# Print SLURM job resource usage info
-Resource_usage() {
-    echo
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
-    echo
-}
-
-# Print SLURM job requested resources
-Print_resources() {
-    set +u
-    echo "# SLURM job information:"
-    echo "Account (project):    $SLURM_JOB_ACCOUNT"
-    echo "Job ID:               $SLURM_JOB_ID"
-    echo "Job name:             $SLURM_JOB_NAME"
-    echo "Memory (MB per node): $SLURM_MEM_PER_NODE"
-    echo "CPUs (per task):      $SLURM_CPUS_PER_TASK"
-    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
-    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
-    echo "======================================================================"
-    echo
-    set -u
-}
-
-# Set the number of threads/CPUs
-Set_threads() {
-    set +u
-    if [[ "$slurm" = true ]]; then
-        if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-            threads="$SLURM_CPUS_PER_TASK"
-        elif [[ -n "$SLURM_NTASKS" ]]; then
-            threads="$SLURM_NTASKS"
-        else 
-            echo "WARNING: Can't detect nr of threads, setting to 1"
-            threads=1
-        fi
-    else
-        threads=1
-    fi
-    set -u
-}
-
-# Resource usage information
-Time() {
-    /usr/bin/time -f \
-        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
-        "$@"
-}   
-
-# Exit upon error with a message
-Die() {
-    error_message=${1}
-    error_args=${2-none}
-    
-    echo >&2
-    echo "=====================================================================" >&2
-    date
-    printf "$0: ERROR: %s\n" "$error_message" >&2
-    echo -e "\nFor help, run this script with the '-h' option" >&2
-    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
-    if [[ "$error_args" != "none" ]]; then
-        echo -e "\nArguments passed to the script:" >&2
-        echo "$error_args" >&2
-    fi
-    echo -e "\nEXITING..." >&2
-    echo "=====================================================================" >&2
-    echo >&2
-    exit 1
-}
-
-
-# ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-# Option defaults
-debug=false
-dryrun=false && e=""
-slurm=true
+# Constants - generic
+DESCRIPTION="Run RepeatMasker on a genome assembly to identify and mask repetitive elements."
+SCRIPT_VERSION="2025-05-26"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
+TOOL_BINARY=RepeatMasker
+TOOL_NAME=RepeatMasker
+TOOL_DOCS=https://www.repeatmasker.org/
+VERSION_COMMAND="$TOOL_BINARY --version"
 
+# Defaults - generics
+env_type=conda
+conda_path=/fs/ess/PAS0471/jelmer/conda/repeatmasker
+container_dir="$HOME/containers"
+container_url=
+container_path=
+
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
+script_help() {
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+    
+USAGE / EXAMPLE COMMANDS:
+  - Basic usage example:
+      sbatch $0 -i results/genome.fa -o results/repeatmasker --genome_lib results/repeatmodeler/GCA_009761285.1-families.fa
+    
+REQUIRED OPTIONS:
+  -i/--infile         <file>  Input FASTA file (genome assembly)
+  -o/--outdir         <dir>   Output dir (will be created if needed)
+
+ONE OF THESE TWO OPTIONS IS REQUIRED (THEY ARE MUTUALLY EXCLUSIVE):
+  --genome_lib        <file>  Genome repeat library FASTA file produced by RepeatModeler (repeatmodeler.sh script)
+  --species           <str>   Species or taxonomic group name
+                              To check which species/groups are available, run, e.g:
+                              /fs/ess/PAS0471/jelmer/conda/repeatmasker/share/RepeatMasker/famdb.py names 'oomycetes'
+    
+OTHER KEY OPTIONS:
+  --more_opts         <str>   Quoted string with one or more additional options
+                              for $TOOL_NAME
+    
+UTILITY OPTIONS:
+  --env_type          <str>   Use a Singularity container ('container')         [default: $env_type]
+                              or a Conda environment ('conda') 
+  --conda_path        <dir>   Full path to a Conda environment to use           [default: $conda_path]
+  --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
+  --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
+  --container_path    <file>  Local singularity image file (.sif) to use        [default (if any): $container_path]
+  -h/--help                   Print this help message
+  -v/--version                Print script and $TOOL_NAME versions
+    
+TOOL DOCUMENTATION:
+  $TOOL_DOCS
+"
+}
+
+# Function to source the script with Bash functions
+source_function_script() {
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$IS_SLURM" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
+    else
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
+    fi
+    function_script_name="$(basename "$FUNCTION_SCRIPT_URL")"
+    function_script_path="$script_dir"/../dev/"$function_script_name"
+
+    # Download the function script if needed, then source it
+    if [[ -f "$function_script_path" ]]; then
+        source "$function_script_path"
+    else
+        if [[ ! -f "$function_script_name" ]]; then
+            echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+            wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
+        fi
+        source "$function_script_name"
+    fi
+}
+
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script $IS_SLURM
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-# Placeholder defaults
-assembly_in=""
-assembly_out=""
-genome_lib=""
-species="" && species_arg=""
-more_args=""
+# Initiate variables
+version_only=false  # When true, just print tool & script version info and exit
+infile=
+outdir=
+genome_lib=
+species= && species_opt=
+more_opts=
+threads=
 
-# Parse command-line args
-all_args="$*"
+# Parse command-line options
+all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --assembly_in )    shift && assembly_in=$1 ;;
-        -o | --assembly_out )   shift && assembly_out=$1 ;;
-        --genome_lib )          shift && genome_lib=$1 ;;
-        --species )             shift && species=$1 ;;
-        --more_args )           shift && more_args=$1 ;;
-        -v | -v | --version )        Print_version; exit 0 ;;
-        -h )                    Print_help; exit 0 ;;
-        --help )                Print_help_program; exit 0;;
-        --dryrun )              dryrun=true && e="echo ";;
-        --debug )               debug=true ;;
-        * )                     Die "Invalid option $1" "$all_args" ;;
+        -i | --infile )     shift && infile=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        --genome_lib )      shift && genome_lib=$1 ;;
+        --species )         shift && species=$1 ;;
+        --more_opts )       shift && more_opts=$1 ;;
+        --env_type )        shift && env_type=$1 ;;
+        --conda_path )      shift && conda_path=$1 ;;
+        --container_dir )   shift && container_dir=$1 ;;
+        --container_url )   shift && container_url=$1 ;;
+        --container_path )  shift && container_path=$1 ;;
+        -h | --help )       script_help; exit 0 ;;
+        -v | --version)     version_only=true ;;
+        * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
 done
 
-
 # ==============================================================================
-#                          OTHER SETUP
+#                          INFRASTRUCTURE SETUP
 # ==============================================================================
-# In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
-
-# Check if this is a SLURM job
-[[ -z "$SLURM_JOB_ID" ]] && slurm=false
-
-# Bash script settings
+# Strict Bash settings
 set -euo pipefail
 
-# Load software and set nr of threads
-[[ "$dryrun" = false ]] && Load_software
-Set_threads
+# Load software
+load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$container_url"
+[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
-# Check input
-[[ "$assembly_in" = "" ]] && Die "Please specify an input file with -i/--assembly_in" "$all_args"
-[[ "$assembly_out" = "" ]] && Die "Please specify an output assembly with -o/--assembly_out" "$all_args"
-[[ ! -f "$assembly_in" ]] && Die "Input file $assembly_in does not exist"
-[[ "$species" = "" ]] && [[ "$genome_lib" = "" ]] && Die "Specify one of --species or --genome_lib"
-[[ "$species" != "" ]] && [[ "$genome_lib" != "" ]] && Die "Specify --species or --genome_lib, not both"
-[[ "$genome_lib" != "" && ! -f "$genome_lib" ]] && Die "Input file $genome_lib does not exist"
+# Check options provided to the script
+[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
+[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
+[[ -z "$species" ]] && [[ -z "$genome_lib" ]] && die "No --species or --genome_lib specified, one of these is required" "$all_opts"
+[[ -n "$species" ]] && [[ -n "$genome_lib" ]] && die "Both --species and --genome_lib are specified, but you can only use one of these options" "$all_opts"
+[[ -n "$genome_lib" && ! -f "$genome_lib" ]] && die "Input file $genome_lib does not exist"
+
+# Define outputs based on script parameters
+LOG_DIR="$outdir"/logs
+mkdir -p "$LOG_DIR"
 
 # Make file paths absolute
-[[ ! "$assembly_in" =~ ^/ ]] && assembly_in=$(realpath "$assembly_in")
-[[ ! "$genome_lib" =~ ^/ ]] && genome_lib=$(realpath "$genome_lib")
-[[ ! "$assembly_out" =~ ^/ ]] && assembly_out="$PWD"/"$assembly_out"
+infile=$(realpath "$infile")
+genome_lib=$(realpath "$genome_lib")
+[[ ! "$outdir" =~ ^/ ]] && outdir="$PWD"/"$outdir"
 
 # Species/genome lib args
-[[ "$species" != "" ]] && species_arg="-species $species"
-[[ "$genome_lib" != "" ]] && genome_lib_arg="-lib $genome_lib"
+[[ -n "$species" ]] && species_opt="-species $species"
+[[ -n "$genome_lib" ]] && genome_lib_opt="-lib $genome_lib"
 
-# Get outdir
-outdir=$(dirname "$assembly_out")
-
-# Report
+# ==============================================================================
+#                         REPORT PARSED OPTIONS
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
+echo "=========================================================================="
+echo "All options passed to this script:        $all_opts"
+echo "Working directory:                        $PWD"
 echo
-echo "=========================================================================="
-echo "                    STARTING SCRIPT REPEATMASKER.SH"
-date
-echo "=========================================================================="
-echo "All arguments to this script:         $all_args"
-echo "Input assembly (nucleotide FASTA):    $assembly_in"
-echo "Output assembly:                      $assembly_out"
-echo "Genome database from RepeatModeler:   $genome_lib"
-[[ $species_arg != "" ]] && echo "Species name:                         $species"
-[[ $more_args != "" ]] && echo "Other arguments for RepeatMasker:     $more_args"
-echo "Number of threads/cores:              $threads"
-echo
-echo "Listing the input file(s):"
-ls -lh "$assembly_in" "$genome_lib"
-[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
-echo "=========================================================================="
-
-# Print reserved resources
-[[ "$slurm" = true ]] && Print_resources
-
+echo "Input file:                               $infile"
+echo "Output dir:                               $outdir"
+[[ -n $genome_lib ]] && echo "Genome database from RepeatModeler:       $genome_lib"
+[[ -n $species ]] && echo "Species name:                             $species"
+[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
+log_time "Listing the input file(s):"
+ls -lh "$infile"
+[[ -n $genome_lib ]] && ls -lh "$genome_lib"
+set_threads "$IS_SLURM"
+[[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Create the output directory
-echo -e "\n# Creating the output directories..."
-${e}mkdir -pv "$outdir"/logs
-
 # Move into the output dir
 cd "$outdir" || exit
 
 # Run
-echo -e "\n# Now runnning RepeatMasker..."
-${e}Time \
-    RepeatMasker \
+log_time "Running $TOOL_NAME..."
+runstats $TOOL_BINARY \
+    -pa $(( "$threads" / 4 )) \
     -dir . \
-    $genome_lib_arg \
-    $species_arg \
-    $more_args \
-    "$assembly_in"
+    -gff \
+    -html \
+    $genome_lib_opt \
+    $species_opt \
+    $more_opts \
+    "$infile"
 
-# Copy the output file
-echo -e "\n# Now copying the masked assembly..."
-cp -v "$outdir"/"$(basename "$assembly_in")".masked "$assembly_out"
+#? -s  Slow search; 0-5% more sensitive, 2-3 times slower than default
+#? -q  Quick search; 5-10% less sensitive, 2-5 times faster than default
+#? -qq Rush job; about 10% less sensitive, 4->10 times faster than default
+#?        (quick searches are fine under most circumstances) repeat options
 
+#? To check available species, e.g:
+# /fs/project/PAS0471/jelmer/conda/repeatmasker-4.1.2.p1/share/RepeatMasker/famdb.py names 'oomycetes'
+# /fs/project/PAS0471/jelmer/conda/repeatmasker-4.1.2.p1/share/RepeatMasker/famdb.py names 'stramenopiles'
+# /fs/project/PAS0471/jelmer/conda/repeatmasker-4.1.2.p1/share/RepeatMasker/famdb.py names 'phytophthora'
+
+#? Download parts of the Dfam database: https://www.dfam.org/releases/current/families/FamDB/
 
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
-echo
-echo "========================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo "# Version used:"
-    Print_version | tee logs/version.txt
-    echo -e "\n# Listing the output assembly file:"
-    ls -lh "$(realpath "$assembly_out")"
-    [[ "$slurm" = true ]] && Resource_usage
-fi
-echo "# Done with script"
-date
-echo
-
-## To check available species, e.g:
-# /fs/project/PAS0471/jelmer/conda/repeatmasker-4.1.2.p1/share/RepeatMasker/famdb.py names 'oomycetes'
-# /fs/project/PAS0471/jelmer/conda/repeatmasker-4.1.2.p1/share/RepeatMasker/famdb.py names 'stramenopiles'
-# /fs/project/PAS0471/jelmer/conda/repeatmasker-4.1.2.p1/share/RepeatMasker/famdb.py names 'phytophthora'
-#>67593 Phytophthora megasperma f. sp. glycinea (includes), Phytophthora sojae (scientific name)
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/*
+final_reporting "$LOG_DIR"
