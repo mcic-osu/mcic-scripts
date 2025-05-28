@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=8:00:00
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=48G
-#SBATCH --mail-type=FAIL
+#SBATCH --time=1:00:00
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
+#SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=iqtree
 #SBATCH --output=slurm-iqtree-%j.out
 
@@ -12,22 +12,21 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Construct a phylogenetic tree from a FASTA alignment using IQ-tree"
-SCRIPT_VERSION="2023-10-23"
+SCRIPT_VERSION="2025-05-28"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 TOOL_BINARY=iqtree
-TOOL_NAME=IQ-tree
-TOOL_DOCS=http://www.iqtree.org/doc
+TOOL_NAME=IQ-TREE
+TOOL_DOCS=https://iqtree.org/doc
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
+env_type=conda
 conda_path=/fs/ess/PAS0471/jelmer/conda/iqtree
-container_path=
-container_url=docker://quay.io/biocontainers/iqtree:2.2.2.7--h21ec9f0_2
-env_type=conda                           # 'conda' or 'container'
-dl_container=false
 container_dir="$HOME/containers"
+container_url=oras://community.wave.seqera.io/library/iqtree:2.4.0--acc9e0fdeee03afe
+container_path=
 
 # Defaults - tool parameters
 auto_cores=false                    # Don't use IQ-tree's 'AUTO' core mode
@@ -40,49 +39,52 @@ root= && root_opt=                  # Pre-specified root/outgroup
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-# Help function
 script_help() {
-    echo "                          $0"
-    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
-    echo "        =============================================================="
-    echo "DESCRIPTION:"
-    echo "  $DESCRIPTION"
-    echo
-    echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage -- include 1000 ultrafast-bootstraps:"
-    echo "      sbatch $0 -i results/COI_aligned.fa -o results/iqtree --nboot 1000"
-    echo "  - Also perform dating on the tree (see http://www.iqtree.org/doc/Dating):"
-    echo "      sbatch $0 -i aln.fa -o results/iqtree --opts '--date metadata/dates.tsv --date-ci 100'"
-    echo "  - Date a previously inferred tree (see http://www.iqtree.org/doc/Dating):"
-    echo "      sbatch $0 -i aln.fa -o results/iqtree --model HKY --opts '--date metadata/dates.tsv --date-ci 100 -te results/iqtree/tree.treefile'"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile         <file>  Input FASTA file (alignment) -- should contain multiple, aligned sequences"
-    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --out_prefix        <str>   Output file prefix                      [default: basename of input file]"
-    echo "  --root              <str>   Specify outgroup/root sample ID         [default: none]"
-    echo "  --fast                      Run IQ-Tree in fast mode                [default: $fast]"    
-    echo "  --model             <str>   Mutation model                          [default: IQ-tree's default = MFP => Pick model]"
-    echo "  --modelset          <str>   Restrict ModelFinder search to a set of models [default: off]"
-    echo "  --nboot             <int>   Nr of ultrafast bootstraps              [default: no bootstrapping]"
-    echo "  --auto_cores                Use IQ-tree's 'AUTO' core mode          [default: use nr of cores for batch job]"
-    echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
-    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "                                A container will only be downloaded if an URL is provided with this option, or --dl_container is used"
-    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
-    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
-    echo "  -h/--help                   Print this help message and exit"
-    echo "  -v                          Print the version of this script and exit"
-    echo "  --version                   Print the version of $TOOL_NAME and exit"
-    echo
-    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
-    echo
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+    
+USAGE / EXAMPLE COMMANDS:
+  - Basic usage -- include 1000 ultrafast-bootstraps:
+    sbatch $0 -i results/COI_aligned.fa -o results/iqtree --nboot 1000
+  - Also perform dating on the tree (see http://www.iqtree.org/doc/Dating):
+    sbatch $0 -i aln.fa -o results/iqtree --more_opts '--date metadata/dates.tsv --date-ci 100'
+  - Date a previously inferred tree (see http://www.iqtree.org/doc/Dating):
+    sbatch $0 -i aln.fa -o results/iqtree --model HKY --more_opts '--date metadata/dates.tsv --date-ci 100 -te results/iqtree/tree.treefile'
+
+REQUIRED OPTIONS:
+  -i/--infile         <file>  Input FASTA file (alignment)
+                              Should contain multiple, aligned sequences
+  -o/--outdir         <dir>   Output dir (will be created if needed)
+    
+OTHER KEY OPTIONS:
+  --out_prefix        <str>   Output file prefix                                [default: basename of input file]
+  --root              <str>   Specify outgroup/root sample ID                   [default: none]
+  --fast                      Run IQ-Tree in fast mode                          [default: $fast]
+  --model             <str>   Mutation model                                    [default: IQ-tree's default = MFP => Pick model]
+  --modelset          <str>   Restrict ModelFinder search to a set of models    [default: off]
+  --nboot             <int>   Nr of ultrafast bootstraps                        [default: no bootstrapping]
+  --auto_cores                Use IQ-tree's 'AUTO' core mode                    [default: use nr of cores for batch job]
+  --more_opts         <str>   Quoted string with one or more additional options
+                              for $TOOL_NAME
+    
+UTILITY OPTIONS:
+  --env_type          <str>   Use a Singularity container ('container')         [default: $env_type]
+                              or a Conda environment ('conda') 
+  --conda_path        <dir>   Full path to a Conda environment to use           [default: $conda_path]
+  --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
+  --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
+  --container_path    <file>  Local singularity image file (.sif) to use        [default (if any): $container_path]
+  -h/--help                   Print this help message
+  -v/--version                Print script and $TOOL_NAME versions
+    
+TOOL DOCUMENTATION:
+  $TOOL_DOCS
+"
 }
 
 # Function to source the script with Bash functions
@@ -96,32 +98,37 @@ source_function_script() {
         script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
         SCRIPT_NAME=$(basename "$0")
     fi
-    function_script=$(realpath "$script_dir"/../dev/"$(basename "$FUNCTION_SCRIPT_URL")")
+    function_script_name="$(basename "$FUNCTION_SCRIPT_URL")"
+    function_script_path="$script_dir"/../dev/"$function_script_name"
+
     # Download the function script if needed, then source it
-    if [[ ! -f "$function_script" ]]; then
-        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
-        function_script=$(basename "$FUNCTION_SCRIPT_URL")
-        wget "$FUNCTION_SCRIPT_URL" -O "$function_script"
+    if [[ -f "$function_script_path" ]]; then
+        source "$function_script_path"
+    else
+        if [[ ! -f "$function_script_name" ]]; then
+            echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+            wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
+        fi
+        source "$function_script_name"
     fi
-    source "$function_script"
 }
 
 # Check if this is a SLURM job, then load the Bash functions
 if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
-source_function_script
+source_function_script $IS_SLURM
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
-version_only=false
+version_only=false  # When true, just print tool & script version info and exit
 infile=
 outdir=
 out_prefix=
-opts=
+more_opts=
 threads=
 
-# Parse command-line args
+# Parse command-line options
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
@@ -134,13 +141,14 @@ while [ "$1" != "" ]; do
         --root )            shift && root=$1 ;;
         --auto_cores )      auto_cores=true ;;
         --fast )            fast=true && fast_opt="-fast" ;;
-        --opts )            shift && opts=$1 ;;
-        --env_type )             shift && env_type=$1 ;;
-        --dl_container )    dl_container=true ;;
+        --more_opts )       shift && more_opts=$1 ;;
+        --env_type )        shift && env_type=$1 ;;
+        --conda_path )      shift && conda_path=$1 ;;
         --container_dir )   shift && container_dir=$1 ;;
-        --container_url )   shift && container_url=$1 && dl_container=true ;;
+        --container_url )   shift && container_url=$1 ;;
+        --container_path )  shift && container_path=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v | --version )         version_only=true ;;
+        -v | --version)     version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
@@ -153,7 +161,7 @@ done
 set -euo pipefail
 
 # Load software
-load_env "$conda_path" "$container_path" "$dl_container"
+load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$container_url"
 [[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
@@ -176,17 +184,17 @@ mem_gb=$((8*(SLURM_MEM_PER_NODE / 1000)/10))G   # 80% of available memory in GB
 # ==============================================================================
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "All options passed to this script:            $all_opts"
-echo "Input FASTA file:                             $infile"
-echo "Output dir:                                   $outdir"
-echo "Output file prefix:                           $out_prefix"
-echo "Run IQ-Tree in fast mode:                     $fast"
-echo "Use IQ-Tree's 'AUTO' core mode:               $auto_cores"
-[[ -n "$modelset" ]] && echo "Model set for MFP:                            $modelset"
-[[ -n "$model" ]] && echo "Model:                                        $model"
-[[ -n "$nboot" ]] && echo "Number of ultrafast bootstraps:               $nboot"
-[[ -n "$root" ]] && echo "Root/outgroup:                                $root"
-[[ -n $opts ]] && echo "Additional options for $TOOL_NAME:            $opts"
+echo "All options passed to this script:        $all_opts"
+echo "Input FASTA file:                         $infile"
+echo "Output dir:                               $outdir"
+echo "Output file prefix:                       $out_prefix"
+echo "Run IQ-Tree in fast mode:                 $fast"
+echo "Use IQ-Tree's 'AUTO' core mode:           $auto_cores"
+[[ -n "$modelset" ]] && echo "Model set for MFP:                        $modelset"
+[[ -n "$model" ]] && echo "Model:                                    $model"
+[[ -n "$nboot" ]] && echo "Number of ultrafast bootstraps:           $nboot"
+[[ -n "$root" ]] && echo "Root/outgroup:                            $root"
+[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
 ls -lh "$infile"
 set_threads "$IS_SLURM"
@@ -204,9 +212,11 @@ runstats $TOOL_BINARY \
     $fast_opt \
     $boot_opt \
     $root_opt \
-    -nt "$threads" -ntmax "$threads" -mem "$mem_gb" \
+    -nt "$threads" \
+    -ntmax "$threads" \
+    -mem "$mem_gb" \
     -redo \
-    $opts
+    $more_opts
 
 #? Options used:
 #> -m MFP       => Model selection with ModelFinder (is the IQ-tree default, too)
@@ -215,6 +225,9 @@ runstats $TOOL_BINARY \
 #? Consider these options, too:
 #> -alrt 1000 --wbtl -alninfo
 
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
 final_reporting "$LOG_DIR"
