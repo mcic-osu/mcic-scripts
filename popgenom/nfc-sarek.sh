@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=PAS0471
-#SBATCH --time=24:00:00
+#SBATCH --time=72:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=nfc_sarek
@@ -11,7 +11,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run the Nextflow/nf-core Sarek pipeline (https://nf-co.re/sarek) for genomic variant calling"
-SCRIPT_VERSION="2025-05-04"
+SCRIPT_VERSION="2025-05-29"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -229,7 +229,7 @@ set_threads "$IS_SLURM"
 #                              RUN
 # ==============================================================================
 # Make necessary output dirs
-log_time "Creating the output directories..."
+log_time "Creating the output and 'work' directories..."
 mkdir -pv "$work_dir" "$container_dir" "$outdir"/logs
 
 # Download the OSC config file
@@ -237,25 +237,31 @@ if [[ ! -f "$OSC_CONFIG" ]]; then
     log_time "Downloading the mcic-scripts Nextflow OSC config file to $OSC_CONFIG..."
     wget -q -O "$OSC_CONFIG" "$OSC_CONFIG_URL"
 fi
-# Modify the config file so it has the correct OSC project/account
+
+# Modify the config file so it uses the same OSC project as this job
 if [[ "$osc_account" != "PAS0471" ]]; then
     sed -i "s/--account=PAS0471/--account=$osc_account/" "$OSC_CONFIG"
 fi
 
-# Create samplesheet if a FASTQ dir was instead provided
+# Create samplesheet if a FASTQ dir was provided instead of a samplesheet
 if [[ -z "$samplesheet" ]]; then
     samplesheet="$outdir"/samplesheet.csv
-    log_time "Creating a samplesheet based on the files in FASTQ dir $fq_dir"
+    log_time "Creating samplesheet $samplesheet based on the files in FASTQ dir $fq_dir"
     
     echo "patient,sample,lane,fastq_1,fastq_2" > "$samplesheet"
-    ls -1 "$fq_dir"/*fastq.gz | paste -d, - - | sed -E 's@.*/(.*)_S[0-9]+_(L00[0-9])@\1,\1,\2,&@' >> "$samplesheet"
+    ls -1 "$fq_dir"/*fastq.gz |
+        paste -d, - - |
+        sed -E 's@.*/(.*)_S[0-9]+_(L00[0-9])@\1,\1,\2,&@' >> "$samplesheet"
 fi
-n_samples=$(tail -n+2 "$samplesheet" | wc -l)
-log_time "The samplesheet contains $n_samples samples. Showing the first lines:"
+
+# Check the samplesheet
+n_lines=$(tail -n+2 "$samplesheet" | wc -l)
+n_samples=$(tail -n+2 "$samplesheet" | cut -f1 -d, | sort -u | wc -l)
+log_time "The samplesheet contains $n_lines lines and $n_samples distinct samples. Showing the first lines:"
 head "$samplesheet"
 
 # Run the workflow
-log_time "Starting the workflow.."
+log_time "Starting the workflow run...\n"
 runstats $TOOL_BINARY $WORKFLOW_NAME \
     -r $workflow_version \
     -params-file "$params_file" \
