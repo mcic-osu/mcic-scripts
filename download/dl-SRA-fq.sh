@@ -23,7 +23,7 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
 env_type=conda
-conda_path=fs/ess/PAS0471/jelmer/conda/fastq-dl
+conda_path=/fs/ess/PAS0471/jelmer/conda/fastq-dl
 container_dir="$HOME/containers"
 container_url=
 container_path=
