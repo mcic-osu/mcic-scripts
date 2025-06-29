@@ -34,11 +34,11 @@ script_help() {
     echo
     echo "USAGE / EXAMPLE COMMANDS:"
     echo "  - Basic usage:"
-    echo "      sbatch $0 -i results/genomes --gene_id XP_014626371.3 --ortho_dir results/orthofinder -o results/orthotree"
+    echo "      sbatch $0 -i results/genomes --protein_id XP_014626371.3 --ortho_dir results/orthofinder -o results/orthotree"
     echo
     echo "REQUIRED OPTIONS:"
-    echo "  -i/--indir          <dir>   Dir with a FASTA (.fna) and GFF (.gff) file for each genome"
-    echo "  --gene_id           <str>   Protein ID of the focal gene (as found in the proteome used for Orthofinder)"
+    echo "  -i/--indir          <dir>   Dir with a FASTA (.fna) and GTF (.gtf) file for each genome"
+    echo "  --protein_id        <str>   Protein ID of the focal gene (as found in the proteome FASTA used with Orthofinder)"
     echo "  --ortho_dir         <dir>   Dir with Orthofinder output for the same set of genomes as in the --indir"
     echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
     echo
@@ -81,7 +81,7 @@ source_function_script
 # Initiate variables
 indir=
 outdir=
-gene_id=
+protein_id=
 iqtree_boot_opt=
 threads=
 
@@ -90,7 +90,7 @@ all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --indir )      shift && indir=$1 ;;
-        --gene_id )         shift && gene_id=$1 ;;
+        --protein_id )      shift && protein_id=$1 ;;
         --ortho_dir )       shift && ortho_dir=$1 ;;
         --nboot )           shift && nboot=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
@@ -126,8 +126,8 @@ orthogroups_file="$ortho_dir"/Orthogroups/Orthogroups.tsv
 [[ ! -f "$orthogroups_file" ]] && die "Orthogroups file $orthogroups_file does not exist"
 
 # Define outputs
-fna_unaln="$outdir"/fna_all/"$gene_id"_concat.fna
-fna_aln="$outdir"/fna_all/"$gene_id"_aln.fna
+fna_unaln="$outdir"/fna_all/"$protein_id"_concat.fna
+fna_aln="$outdir"/fna_all/"$protein_id"_aln.fna
 asm_list="$outdir"/assembly_list.txt
 msa="$outdir"/msa_prot.faa
 root_file="$outdir"/orthofinder_root.txt
@@ -141,13 +141,13 @@ root_file="$outdir"/orthofinder_root.txt
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options passed to this script:        $all_opts"
-echo "Output dir:                               $outdir"
+echo "Protein ID:                               $protein_id"
 echo "Input dir with genomes:                   $indir"
-echo "Orthofinder orthogroups file:             $orthogroups_file"
-echo "Number of bootstraps:                     $nboot"
-echo "Gene ID:                                  $gene_id"
-echo "Number of input genomes:                  ${#genomes[@]}"
-log_time "Listing the first few input genomes:"
+echo "  Number of input genomes:                ${#genomes[@]}"
+echo "Input orthofinder orthogroups file:       $orthogroups_file"
+echo "Output dir:                               $outdir"
+echo "Number of IQ-Tree UF bootstraps:          $nboot"
+log_time "Listing the first 3 input genomes:"
 ls -lh "${genomes[@]:0:3}"
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
@@ -160,7 +160,7 @@ mkdir -p "$outdir"/fna_each "$outdir"/fna_all "$outdir"/trees
 
 # Get orthogroup and corresponding file
 log_time "Getting the focal Orthogroup..."
-OG=$(grep "$gene_id" "$orthogroups_file" | cut -f1)
+OG=$(grep "$protein_id" "$orthogroups_file" | cut -f1)
 ortho_tree="$ortho_dir"/Gene_Trees/"$OG"_tree.txt
 
 # Extract the orthogroup tree root
@@ -169,10 +169,10 @@ if [[ -f "$ortho_tree" ]]; then
     root=$(cut -d, -f1 "$ortho_tree" | cut -d: -f1 | sed -E 's/\(+//' | sed -E 's/_([0-9])_/.\1_/')
     echo "$root" > "$root_file"
     iqtree_root_opt="-o $root"
-    log_time "Gene ID: $gene_id   Orthogroup: $OG    Orthofinder root: $root"
+    log_time "Protein ID: $protein_id   Orthogroup: $OG    Orthofinder root: $root"
 else
     iqtree_root_opt=
-    log_time "Gene ID: $gene_id   Orthogroup: $OG"
+    log_time "Protein ID: $protein_id   Orthogroup: $OG"
     log_time "WARNING: No tree file found for orthogroup $OG, so no root is known."
 fi
 
@@ -205,15 +205,13 @@ ls -lh "$msa"
 
 # Check that there are at least 3 sequences in the MSA
 nseqs=$(grep -c "^>" "$msa")
-if [[ "$nseqs" -lt 3 ]]; then
-    log_time "WARNING: Not enough sequences in MSA ($nseqs found) -- exiting..."
-    exit 1
-elif [[ "$nseqs" -eq 3 ]]; then
+if [[ "$nseqs" -eq 3 ]]; then
     log_time "WARNING: Only 3 sequences found in MSA ($msa) -- not using bootstrap on treefile"
     iqtree_boot_opt=
 fi
 
-# Assign the correct output tree file names, this depends on whether bootstraps will be done
+# Assign the correct output tree file names
+# These file names differ depending on whether bootstraps are performed
 if [[ -n "$iqtree_boot_opt" ]]; then
     nuc_tree="$outdir"/trees/"$OG"_nuc.contree
     prot_tree="$outdir"/trees/"$OG"_prot.contree
@@ -228,18 +226,24 @@ fi
 # Run IQ-Tree
 echo -e "\n====================================================================="
 log_time "Running IQ-Tree to build a protein tree..."
-runstats iqtree \
-    -s "$msa" \
-    --prefix "$outdir"/trees/"$OG"_prot \
-    $iqtree_boot_opt \
-    $iqtree_root_opt \
-    -nt "$threads" \
-    -ntmax "$threads" \
-    -mem "$mem_gb" \
-    -redo \
-    > "$outdir"/logs/iqtree_"$OG"_prot.log
-log_time "...Done. IQtree log:"
-ls -lh "$outdir"/logs/iqtree_"$OG"_prot.log
+
+if [[ "$nseqs" -lt 3 ]]; then
+    log_time "WARNING: Not enough sequences in MSA ($nseqs found) -- skipping tree building..."
+else
+    runstats iqtree \
+        -s "$msa" \
+        --prefix "$outdir"/trees/"$OG"_prot \
+        $iqtree_boot_opt \
+        $iqtree_root_opt \
+        -nt "$threads" \
+        -ntmax "$threads" \
+        -mem "$mem_gb" \
+        -redo \
+        > "$outdir"/logs/iqtree_"$OG"_prot.log
+
+    log_time "...Done. IQtree log:"
+    ls -lh "$outdir"/logs/iqtree_"$OG"_prot.log
+fi
 
 # ==============================================================================
 #                           RUN - NUCLEOTIDE TREE
@@ -249,38 +253,40 @@ log_time "Looping over sequences in protein MSA file to create nucleotide FASTAs
 
 >"$asm_list"
 grep ">" "$msa" | while read -r seq_id; do
-    # Get assembly and gene IDs
-    asm_id=$(echo "$seq_id" | sed -E 's/>(.*)_([A-Z]+_[0-9]+)\.?[0-9]?$/\1/' | sed -E 's/_([0-9])$/.\1/')
-    gene_id=$(echo "$seq_id" | sed -E 's/>(.*)_([A-Z]+_[0-9]+\.?[0-9])?$/\2/')
+    # Get assembly and protein IDs
+    asm_id=$(echo "$seq_id" | sed -E 's/>(.*)_([A-Z]+_[0-9]+)\.?[0-9]?$/\1/'| sed -E 's/_([0-9])$/.\1/')
+    protein_id=$(echo "$seq_id" | sed -E 's/>(.*)_([A-Z]+_[0-9]+\.?[0-9])?$/\2/')
+    
     # Inputs
-    gff_focal="$indir"/"$asm_id".gff
+    gtf_focal="$indir"/"$asm_id".gtf
     asm_focal="$indir"/"$asm_id".fna
+    
     # Outputs
-    gene_fna="$outdir"/fna_each/"$asm_id"_"$gene_id".fna
-    tmp_gff="$outdir"/fna_each/"$asm_id"_"$gene_id".tmp
-    log_time "asm_id: $asm_id  /  gene_id: $gene_id"
+    gene_fna="$outdir"/fna_each/"$asm_id"_"$protein_id".fna
+    gene_gtf="$outdir"/fna_each/"$asm_id"_"$protein_id".gtf
+    
+    # Get the gene ID
+    gene_id=$(awk '$3 == "CDS"' "$gtf_focal" | grep "$protein_id" | sed -E 's/.*gene_id "([^"]+)".*/\1/')
 
     # Create nucleotide FASTA
-    awk '$3 == "CDS"' "$gff_focal" | grep "$gene_id" > "$tmp_gff"
-    if [[ -s "$tmp_gff" ]]; then
+    if [[ -n "$gene_id" ]]; then
+        log_time "asm_id: $asm_id  /  protein_id: $protein_id / gene_id: $gene_id"
+        
+        # Get line from gtf
+        awk '$3 == "gene"' "$gtf_focal" | grep "$gene_id" > "$gene_gtf"
+
         # Extract FASTA by coords
-        bedtools getfasta -fi "$asm_focal" -bed "$tmp_gff" > "$gene_fna"
+        bedtools getfasta -fi "$asm_focal" -bed "$gene_gtf" > "$gene_fna"
         
         # Prepend assembly ID + gene ID to header
-        sed -i "s/>/>${asm_id}_${gene_id} /" "$gene_fna"
+        sed -i "s/>/>${asm_id}_${protein_id} /" "$gene_fna"
         
         # Check nr of entries in the FASTA
         n_entry=$(grep -c "^>" "$gene_fna")
         [[ "$n_entry" -eq 0 ]] && echo "WARNING: FASTA $gene_fna is empty "
-        
-        if [[ "$n_entry" -gt 1 ]]; then
-            echo "WARNING: FASTA $gene_fna contains >1 entries: $n_entry
-            ls -lh $gene_fna" "$tmp_gff"
-        else
-            rm "$tmp_gff"
-        fi
     else
-        log_time "WARNING: Gene not found ($asm_id / $gene_id)"
+        log_time "asm_id: $asm_id  /  protein_id: $protein_id"
+        log_time "WARNING: Gene not found ($asm_id / $protein_id)"
     fi
     # Keep track of assemblies to check for duplicates
     echo "$asm_id" >> "$asm_list"
@@ -309,16 +315,22 @@ runstats mafft \
 sed -i -E 's/^>_R_/>/' "$fna_aln"
 
 # Create the tree
-log_time "Running IQtree to build a nucleotide tree..."
-runstats iqtree \
-    -s "$fna_aln" --prefix "$outdir"/trees/"$OG"_nuc \
-    $iqtree_boot_opt -redo -nt "$threads" -ntmax "$threads" -mem "$mem_gb" \
-    > "$outdir"/logs/iqtree_"$OG"_nuc.log
-log_time "...Done. IQtree log:"
-ls -lh "$outdir"/logs/iqtree_"$OG"_nuc.log
+if [[ "$nseqs" -lt 3 ]]; then
+    log_time "WARNING: Not enough sequences in MSA ($nseqs found) -- skipping tree building..."
+else
+    log_time "Running IQtree to build a nucleotide tree..."
+    runstats iqtree \
+        -s "$fna_aln" --prefix "$outdir"/trees/"$OG"_nuc \
+        $iqtree_boot_opt -redo -nt "$threads" -ntmax "$threads" -mem "$mem_gb" \
+        > "$outdir"/logs/iqtree_"$OG"_nuc.log
+    log_time "...Done. IQtree log:"
+    ls -lh "$outdir"/logs/iqtree_"$OG"_nuc.log
+fi
 
 # ==============================================================================
 # Report
+if [[ "$nseqs" -gt 2 ]]; then
+    log_time "Listing the output trees:"
+    ls -lh "$nuc_tree" "$prot_tree" "$root_file"
+fi
 log_time "Successfully finished script orthotree.sh"
-log_time "Listing the output trees:"
-ls -lh "$nuc_tree" "$prot_tree" "$root_file"
