@@ -1,0 +1,31 @@
+---
+title: "ADD TITLE HERE"
+author: "Jelmer Poelstra"
+date: today
+format:
+  html:
+    self-contained: true
+    cache: false
+    code-fold: true
+    number-sections: true
+    number-depth: 2
+    toc: true
+    fig-dpi: 300
+    df-print: kable
+    grid:
+      body-width: 800px
+knitr:
+  opts_chunk:
+    message: FALSE
+    out.width: "85%"
+    R.options: 
+      knitr.table.html.attr: "quarto-disable-processing=true"
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+<br>
+
+-------
