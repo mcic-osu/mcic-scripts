@@ -207,5 +207,5 @@ final_reporting() {
     print_version "$VERSION_COMMAND" | tee "$VERSION_FILE" 
     env | sort > "$ENV_FILE"
     [[ "$IS_SLURM" == true ]] && resource_usage
-    log_time "Done with script $SCRIPT_NAME\n"
+    log_time "Successfully completed script $SCRIPT_NAME\n"
 }
