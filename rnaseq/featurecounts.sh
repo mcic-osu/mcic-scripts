@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=16G
+#SBATCH --time=3:00:00
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=40G
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name=featurecounts
 #SBATCH --output=slurm-featurecounts-%j.out
@@ -18,7 +18,7 @@ DESCRIPTION="Use featureCounts to create a matrix with per-gene read counts, fro
     - Only read pairs for which both members of the pair aligned will be counted (-B)
     - Read pairs with discordant mates will not be counted
     "
-SCRIPT_VERSION="2024-06-02"
+SCRIPT_VERSION="2025-06-28"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -34,7 +34,6 @@ container_path=
 container_url=
 dl_container=false
 container_dir="$HOME/containers"
-strict_bash=true
 version_only=false                 # When true, just print tool & script version info and exit
 
 # Defaults - tool parameters
@@ -71,17 +70,13 @@ script_help() {
     echo
     echo "UTILITY OPTIONS:"
     echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
-    echo "                                (NOTE: If no default '--container_url' is listed below,"
-    echo "                                 you'll have to provide one in order to run the script with a container.)"
     echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
     echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
     echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
     echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
     echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
-    echo "  --no_strict                 Don't use strict Bash settings ('set -euo pipefail') -- can be useful for troubleshooting"
     echo "  -h/--help                   Print this help message and exit"
-    echo "  -v                          Print the version of this script and exit"
-    echo "  --version                   Print the version of $TOOL_NAME and exit"
+    echo "  -v/--version                Print the version of this script and $TOOL_NAME and exit"
     echo
     echo "TOOL DOCUMENTATION: $TOOL_DOCS"
 }
@@ -129,17 +124,17 @@ while [ "$1" != "" ]; do
         -i | --indir )      shift && indir=$1 ;;
         -o | --outfile )    shift && outfile=$1 ;;
         -a | --annot )      shift && annot=$1 ;;
+        --strand )          shift && strand=$1 ;;
         --feature_type )    shift && feature_type=$1 ;;
         --gene_key )        shift && gene_key=$1 ;;
         --no_multimap )     count_multimap=false && multimap_opt= ;;
         --more_opts )       shift && more_opts=$1 ;;
-        --env_type )             shift && env_type=$1 ;;
-        --no_strict )       strict_bash=false ;;
+        --env_type )        shift && env_type=$1 ;;
         --dl_container )    dl_container=true ;;
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 && dl_container=true ;;
         -h | --help )       script_help; exit 0 ;;
-        -v | --version )         version_only=true ;;
+        -v | --version )    version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
@@ -149,7 +144,7 @@ done
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
 # Strict Bash settings
-[[ "$strict_bash" == true ]] && set -euo pipefail
+set -euo pipefail
 
 # Load software
 load_env "$conda_path" "$container_path" "$dl_container"
@@ -178,7 +173,7 @@ fi
 # Annotation format
 if [[ -z "$gene_key" ]]; then
     if [[ "$annot" =~ .*\.gff3? ]]; then
-        log_time "Annotation format is GTF, setting aggregation ID to 'Name'"
+        log_time "Annotation format is GFF, setting aggregation ID to 'Name'"
         gene_key="Name"
     elif [[ "$annot" =~ .*\.gtf ]]; then
         log_time "Annotation format is GTF, setting aggregation ID to 'gene_id'"
