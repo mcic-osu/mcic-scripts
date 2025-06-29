@@ -609,6 +609,14 @@ if [[ "$local" == true ]]; then
     else
         [[ -z "$db" ]] && db="$DEFAULT_LOCAL_DB_NT"
     fi
+
+    # Check if the local BLAST db exists
+    if [[ ! -f "$db.nhr" ]]; then
+        die "Local BLAST database $db does not exist"
+    fi
+    log_time "Showing the BLAST database files:"
+    ls -lh "$db"*
+
 else
     # Remote BLAST default DB
     if [[ "$db_type" == "prot" ]]; then

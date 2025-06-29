@@ -199,6 +199,7 @@ if [[ -n "$accession_file" ]]; then
     accession_file=$(realpath "$accession_file")
     [[ ! -f "$accession_file" ]] && die "Input accession nr. file $accession_file does not exist"
     data_arg=(accession --inputfile "$accession_file")
+    assembly_source=all
 elif [[ -n "$accession" ]]; then
     data_arg=(accession "$accession")
     # If accession nr is GCA_ or GCF_, set --assembly-source to all

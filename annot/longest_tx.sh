@@ -20,6 +20,7 @@ REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 TOOL_NAME=seqkit
 VERSION_COMMAND="seqkit | sed -n '3p'"
+export LC_ALL=C                     # Locale for sorting
 
 # Defaults - generics
 env_type=conda
@@ -177,25 +178,29 @@ awk '{print $1}' "$infile" |
     sort -k1,1 > "$iso_lens"
 
 # Create a gene to isoform ID lookup table
-log_time "Creating a gene2isoform lookup file..."
 if [[ -n "$gtf" ]]; then
-    # Use a GTF file to ID genes and proteins
-    #TODO also allow for transcript_id
+    # Use a GTF file to ID genes and proteins #TODO also allow for transcript_id
+    log_time "Creating a gene2isoform lookup file using the GTF file..."
     grep -v "^#" "$gtf" |
         awk '$3 == "CDS"' |
-        sed -E 's/.*gene_id "([^;]+)";.*protein_id "([^;]+)";.*/\1\t\2/' |
+        sed -E 's/.*gene_id "([^"]+)"; .*protein_id "([^;]+)";.*/\1\t\2/' |
         sort -u |
-        sort -k2,2 > "$gene2iso"
+        sort -t$'\t' -k2,2 > "$gene2iso"
     
     n_genes_gtf=$(grep -v "^#" "$gtf" | awk '$3 == "gene"' | wc -l)
     log_time "Total number of genes in the GTF file quantified by counting
-    'gene' entries in third column (can include noncoding): $n_genes_gtf"
+    'gene' entries in third column (may include non-coding genes): $n_genes_gtf"
+
 elif [[ "$t1_style" == true ]]; then
     # Extract gene2iso lookup directly from the FASTA file
+    log_time "Creating a gene2isoform lookup file using the FASTA file..."
     awk -v OFS="\t" '{print $1,$1}' "$iso_lens" |
         sed -E 's/\.[pt][0-9]+//' |
-        sort -k2,2 > "$gene2iso"
+        sort -t$'\t' -k2,2 > "$gene2iso"
 fi
+
+log_time "First lines of the gene2iso lookup file:"
+head -n 5 "$gene2iso"
 
 # Get a list with the longest isoform for each gene
 log_time "Getting the IDs of the longest isoforms..."
@@ -231,10 +236,12 @@ fi
 
 # Remove intermediate files
 if [[ "$keep_intermed" == false ]]; then
+    log_time "Removing intermediate files..."
     rm "$gene2iso" "$iso_lens" "$longest_iso_ids"
 fi
 
 # Final reporting
-log_time "Listing the output file:"
-ls -lh "$outfile"
+log_time "Listing the output file(s):"
+[[ "$keep_intermed" == false ]] && ls -lh "$outfile"
+[[ "$keep_intermed" == true ]] && ls -lh "$outfile" "$gene2iso" "$iso_lens" "$longest_iso_ids"
 final_reporting "$LOG_DIR"
