@@ -7,6 +7,8 @@
 #SBATCH --output=slurm-blast-%j.out
 
 #TODO - Option to make output filename contain input filename
+#TODO - Check file type to adjust BLAST type
+#TODO - Check DB type (nhr vs phr files, etc) to adjust BLAST type
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
@@ -611,7 +613,7 @@ if [[ "$local" == true ]]; then
     fi
 
     # Check if the local BLAST db exists
-    if [[ ! -f "$db.nhr" ]]; then
+    if [[ ! -f "$db.nhr" && ! -f "$db.phr" ]]; then
         die "Local BLAST database $db does not exist"
     fi
     log_time "Showing the BLAST database files:"
