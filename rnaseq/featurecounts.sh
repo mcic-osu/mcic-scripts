@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=3:00:00
+#SBATCH --time=5:00:00
 #SBATCH --cpus-per-task=10
 #SBATCH --mem=40G
 #SBATCH --mail-type=FAIL
@@ -24,12 +24,11 @@ REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 TOOL_BINARY=featureCounts
 TOOL_NAME=featureCounts
-TOOL_DOCS=
 VERSION_COMMAND="$TOOL_BINARY -v"
 
 # Defaults - generics
 env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/project/PAS0471/jelmer/conda/subread
+conda_path=/fs/ess/PAS0471/jelmer/conda/subread
 container_path=
 container_url=
 dl_container=false
@@ -77,8 +76,6 @@ script_help() {
     echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
     echo "  -h/--help                   Print this help message and exit"
     echo "  -v/--version                Print the version of this script and $TOOL_NAME and exit"
-    echo
-    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
 }
 
 # Function to source the script with Bash functions
