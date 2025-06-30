@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run MultiQC to summarize log output by e.g. FastQC, Cutadapt, STAR"
-SCRIPT_VERSION="2025-03-15"
+SCRIPT_VERSION="2025-06-30"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -27,7 +27,7 @@ auto_plot=false                     # By default, force interactive plots
 # Defaults - generics
 env_type=container                       # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/multiqc
-container_url="oras://community.wave.seqera.io/library/multiqc:1.27.1--2f34f6019140fbc5"
+container_url="oras://community.wave.seqera.io/library/multiqc:1.29--8e22d300f136081a"
 container_dir="$HOME/containers"
 version_only=false                  # When true, just print tool & script version info and exit
 
