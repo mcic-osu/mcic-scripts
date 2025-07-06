@@ -1,15 +1,15 @@
 # Packages
-if (! "janitor" %in% installed.packages()) install.packages("janitor")
-if (! "tidyverse" %in% installed.packages()) install.packages("tidyverse")
-if (! "ggiraph" %in% installed.packages()) install.packages("ggiraph")
-if (! "ggrepel" %in% installed.packages()) install.packages("ggrepel")
-if (! "pheatmap" %in% installed.packages()) install.packages("pheatmap")
-if (! "ggforce" %in% installed.packages()) install.packages("ggforce")
-if (! "patchwork" %in% installed.packages()) install.packages("patchwork")
-if (! "RColorBrewer" %in% installed.packages()) install.packages("RColorBrewer")
-if (! "ggvenn" %in% installed.packages()) install.packages("ggvenn")
-if (! "scico" %in% installed.packages()) install.packages("scico")
-if (! "PCAtools" %in% installed.packages()) BiocManager::install("PCAtools")
+if (!"janitor" %in% installed.packages()) install.packages("janitor")
+if (!"tidyverse" %in% installed.packages()) install.packages("tidyverse")
+if (!"ggiraph" %in% installed.packages()) install.packages("ggiraph")
+if (!"ggrepel" %in% installed.packages()) install.packages("ggrepel")
+if (!"pheatmap" %in% installed.packages()) install.packages("pheatmap")
+if (!"ggforce" %in% installed.packages()) install.packages("ggforce")
+if (!"patchwork" %in% installed.packages()) install.packages("patchwork")
+if (!"RColorBrewer" %in% installed.packages()) install.packages("RColorBrewer")
+if (!"ggvenn" %in% installed.packages()) install.packages("ggvenn")
+if (!"scico" %in% installed.packages()) install.packages("scico")
+if (!"PCAtools" %in% installed.packages()) BiocManager::install("PCAtools")
 
 # Function to run a DE analysis with DESeq2
 run_DE <- function(
@@ -80,23 +80,29 @@ extract_DE <- function(
   }
   
   # Get DEseq results
-  res <- results(dds,
-                 contrast = fcontrast,
-                 lfcThreshold = lfc_tres,
-                 alpha = p_tres,
-                 tidy = TRUE) |>
-    dplyr::rename(gene = row,
-                  lfc = log2FoldChange,
-                  mean = baseMean) |>
+  res <- results(
+    dds,
+    contrast = fcontrast,
+    lfcThreshold = lfc_tres,
+    alpha = p_tres,
+    tidy = TRUE
+    ) |>
+    dplyr::rename(
+      gene = row,
+      lfc = log2FoldChange,
+      mean = baseMean,
+      p = pvalue) |>
     dplyr::select(-lfcSE, -stat) |>
     arrange(padj) |>
     as_tibble()
   
   if (is.null(contrasts)) {
     res <- res |>
-      mutate(group1 = comp[1],
-             group2 = comp[2],
-             contrast = paste0(comp, collapse = "_"))
+      mutate(
+        group1 = comp[1],
+        group2 = comp[2],
+        contrast = paste0(comp, collapse = "_")
+        )
   }
 
   # Include mean normalized counts
@@ -119,17 +125,19 @@ extract_DE <- function(
 
   # Determine whether a gene is DE & add 'isDE' column to indicate this
   if (!is.null(count_df)) {
-    res <- res |>
-      mutate(isDE = ifelse(padj < p_tres &
-                             abs(lfc) > lfc_tres &
-                             (mean1 > mean_tres | mean2 > mean_tres),
-                           TRUE, FALSE))
+    res <- res |> mutate(
+      isDE = ifelse(
+        padj < p_tres & abs(lfc) > lfc_tres & (mean1 > mean_tres | mean2 > mean_tres),
+        TRUE,
+        FALSE
+        ))
   } else {
-    res <- res |>
-      mutate(isDE = ifelse(padj < p_tres &
-                             abs(lfc) > lfc_tres &
-                             mean > mean_tres,
-                           TRUE, FALSE))
+    res <- res |> mutate(
+      isDE = ifelse(
+        padj < p_tres & abs(lfc) > lfc_tres & mean > mean_tres,
+        TRUE,
+        FALSE
+        ))
   }
 
   # Only keep significant genes
@@ -138,10 +146,8 @@ extract_DE <- function(
   # Add gene annotation
   if (!is.null(annot)) res <- dplyr::left_join(res, annot, by = "gene")
 
-  # Arrange by adj p-value, remove pvalue column
-  res <- res |>
-    dplyr::select(-pvalue) |> 
-    arrange(padj, -abs(lfc))
+  # Arrange by adj p-value
+  res <- res |> arrange(padj, -abs(lfc))
   
   # Report
   n_sig <- sum(res$isDE, na.rm = TRUE)
@@ -241,11 +247,14 @@ norm_counts <- function(
 
   # Normalize the counts
   if (transform == "vst") {
+    message("Performing a vst transformation...")
     count_mat <- assay(vst(dds, blind = blind))
   } else if (transform == "rlog") {
+    message("Performing an rlog transformation...")
     # Suppress messages to avoid "vst is much faster transformation - message"
     count_mat <- suppressMessages(assay(rlog(dds, blind = blind)))
   } else if (transform == "lib_size") {
+    message("Only correcting for library size...")
     dds <- estimateSizeFactors(dds)
     count_mat <- sweep(assay(dds), 2, sizeFactors(dds), "/")
   } else {
@@ -849,8 +858,6 @@ pbox <- function(
     log_scale = FALSE,         # Whether counts (y-axis) should be on a y-scale 
     ymin = NA,                 # Force a min. value for the y-axis
     xlab = NULL,
-    save_plot = FALSE,
-    plotdir = "results/figures/geneplots",
     return_plot = FALSE        # Whether to return the plot object
     ) {
 
@@ -930,15 +937,19 @@ pbox <- function(
     
   # Plot formatting
   p <- p +
-    labs(title = ptitle,
-         subtitle = psub,
-         x = xlab) +
-    theme(legend.position = "right",
-          plot.title = element_text(hjust = 0.5, face = "bold.italic"),
-          plot.subtitle = element_text(hjust = 0.5, face = "plain"),
-          panel.grid.major.x = element_blank(),
-          panel.grid.minor.y = element_blank(),
-          plot.margin = unit(c(0.5, 0.5, 1, 0.5), "cm"))
+    labs(
+      title = ptitle,
+      subtitle = psub,
+      x = xlab
+      ) +
+    theme(
+      legend.position = "right",
+      plot.title = element_text(hjust = 0.5, face = "bold.italic"),
+      plot.subtitle = element_text(hjust = 0.5, face = "plain"),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.y = element_blank(),
+      plot.margin = unit(c(0.5, 0.5, 1, 0.5), "cm")
+      )
 
   # No legend needed if color-aes is same as x-aes
   if (!is.null(color_by)) {
@@ -952,23 +963,17 @@ pbox <- function(
       labs(y = "Gene count (log10-scale)")
   } else {
     p <- p +
-      scale_y_continuous(labels = scales::comma,
-                         limits = c(ymin, NA),
-                         expand = expansion(mult = c(0.03, 0.03))) +
+      scale_y_continuous(
+        labels = scales::comma,
+        limits = c(ymin, NA),
+        expand = expansion(mult = c(0.03, 0.03))
+        ) +
       labs(y = "Gene count")
   }
   
   # Color scheme
   if (is.null(colors)) p <- p + scale_color_brewer(palette = "Set1")
   if (!is.null(colors)) p <- p + scale_color_manual(values = colors)
-
-  # Save plot
-  if (save_plot == TRUE) {
-    dir.create(plotdir, showWarnings = FALSE, recursive = TRUE)
-    plotfile <- file.path(plotdir, paste0(gene, ".png"))
-    ggsave(filename = plotfile, plot = p,
-           width = 6, height = 6, dpi = "retina")
-  }
 
   print(p)
   if (return_plot == TRUE) return(p)
