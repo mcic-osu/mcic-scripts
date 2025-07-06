@@ -1,6 +1,8 @@
 # Packages
-if (!require("DT")) install.packages('DT')
+if (!require("DT")) install.packages("DT")
+if (!require("kableExtra")) install.packages("kableExtra")
 library(DT)
+library(kableExtra)
 
 # Function to make an exportable datatable
 make_dt <- function(df, caption = NULL,
