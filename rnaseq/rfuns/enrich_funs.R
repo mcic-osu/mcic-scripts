@@ -73,7 +73,7 @@ run_ora <- function(
   # Filter DE results to only get those for the focal contrast
   fcontrast <- contrast
   df <- df |> dplyr::filter(contrast == fcontrast)
-  stopifnot("Error: no rows in DE results dataframe after contrast filtering" = nrow(df) > 0)
+  stopifnot("ERROR: no rows in DE results dataframe after contrast filtering" = nrow(df) > 0)
   
   # Filter the DE results, if needed: only take over- or underexpressed
   if (DE_direction == "up") df <- df |> dplyr::filter(lfc > 0)
@@ -89,7 +89,7 @@ run_ora <- function(
   }
   # Skip the enrichment analysis if there are too few genes
   if (length(DEGs) <= 1) {
-    cat("Skipping enrichment: too few DE genes\n")
+    cat("WARNING: Skipping enrichment analysis: too few DE genes\n")
     return(NULL)
   }
   
@@ -122,10 +122,11 @@ run_ora <- function(
         " // Nr DE genes (with term assigned): ", length(DEGs),
         " (", length(genes_in_map), ")", sep = "")
     if (length(genes_in_map) == 0) {
-      message("\nERROR: None of the DE genes are in the GO/KEGG term dataframe ('term_map')")
+      message("WARNING: None of the DE genes are in the GO/KEGG term dataframe ('term_map')")
       cat("First gene IDs from DE results: ", head(DEGs), "\n")
       cat("First gene IDs from term_map: ", head(term2gene$gene), "\n")
-      stop()
+      cat("Skipping enrichment analysis...\n")
+      return(NULL)
     }
   } else {
     cat("Contrast: ", fcontrast, " // DE direction: ", DE_direction,
