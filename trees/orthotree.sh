@@ -164,7 +164,7 @@ OG=$(grep "$protein_id" "$orthogroups_file" | cut -f1)
 ortho_tree="$ortho_dir"/Gene_Trees/"$OG"_tree.txt
 
 # Extract the orthogroup tree root
-# Tree may be missing for very small orthogroups
+# NOTE: Tree may be missing for very small orthogroups
 if [[ -f "$ortho_tree" ]]; then
     root=$(cut -d, -f1 "$ortho_tree" | cut -d: -f1 | sed -E 's/\(+//' | sed -E 's/_([0-9])_/.\1_/')
     echo "$root" > "$root_file"
@@ -331,6 +331,8 @@ fi
 # Report
 if [[ "$nseqs" -gt 2 ]]; then
     log_time "Listing the output trees:"
-    ls -lh "$nuc_tree" "$prot_tree" "$root_file"
+    ls -lh "$nuc_tree" "$prot_tree"
+    # Root file will only be present if the orthogroup tree was found
+    [[ -f "$ortho_tree" ]] && ls -lh "$root_file"
 fi
 log_time "Successfully finished script orthotree.sh"
