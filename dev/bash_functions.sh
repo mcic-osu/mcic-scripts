@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Constants
-OSC_MODULE=miniconda3
+OSC_MODULE=miniconda3/24.1.2-py310
 
 # Dummy defaults
 [[ -z "$env_type" ]] && env_type=conda
