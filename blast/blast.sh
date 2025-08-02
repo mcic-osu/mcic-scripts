@@ -613,7 +613,7 @@ if [[ "$local" == true ]]; then
     fi
 
     # Check if the local BLAST db exists
-    if [[ ! -f "$db.nhr" && ! -f "$db.phr" ]]; then
+    if [[ ! -f "$db".00.nhr && ! -f "$db".00.phr ]]; then
         die "Local BLAST database $db does not exist"
     fi
     log_time "Showing the BLAST database files:"
