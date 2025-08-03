@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --cpus-per-task=5
-#SBATCH --mem=20G
 #SBATCH --mail-type=FAIL
-#SBATCH --job-name=align
-#SBATCH --output=slurm-align-%j.out
+#SBATCH --job-name=align-fa
+#SBATCH --output=slurm-align-fa-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
