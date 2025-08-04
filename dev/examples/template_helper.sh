@@ -39,7 +39,7 @@ while [ "$1" != "" ]; do
     esac
     shift
 done
-[[ "${#infiles[@]}" -eq 0 ]] && Die "Please specify input file(s) with -i/--infile or as positional arguments" "$all_args"
+[[ "${#infiles[@]}" -eq 0 ]] && die "Please specify input file(s) with -i/--infile or as positional arguments" "$all_opts"
 for infile in "${infiles[@]}"; do
     [[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 done
