@@ -10,7 +10,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Align nucleotide or amino acid sequences in a multi-FASTA file with MAFFT (default) or MUSCLE"
-SCRIPT_VERSION="2025-03-05"
+SCRIPT_VERSION="2025-08-10"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -20,6 +20,7 @@ env_type=conda                           # Use a 'conda' env or a Singularity 'c
 conda_path=/fs/ess/PAS0471/jelmer/conda/mafft # Also contains Muscle
 container_dir="$HOME/containers"
 container_url=
+container_path=
 
 # Defaults - tool parameters
 aligner=mafft
@@ -39,14 +40,15 @@ $DESCRIPTION
     
 USAGE / EXAMPLE COMMANDS:
   - Basic usage example:
-      sbatch $0 -i TODO -o results/TODO
+      sbatch $0 -i data/my.fasta -o results/align/aligned.fasta
     
 REQUIRED OPTIONS:
   -i/--infile         <file>  Input multi-FASTA file with sequences to be aligned
                               FASTA can contain either nucleotide or amino acid (protein) sequences
+  -o/--outfile        <file>  Path to output FASTA file                         
+                              (dir will be created if needed)
     
 OTHER KEY OPTIONS:
-  -o/--outdir         <dir>   Output dir (will be created if needed)            [default: same as input dir]
   --aligner           <str>   Aligner: 'mafft' or 'muscle'                      [default: $aligner]
   --no_header_fix             Don't fix output FASTA header                     [default: fix header]
                               By default, the script will remove aligner-added
@@ -98,7 +100,7 @@ source_function_script
 # Initiate variables
 version_only=false   # When true, just print tool & script version info and exit
 infile=
-outdir=
+outfile=
 more_opts=
 threads=
 container_path=
@@ -108,7 +110,7 @@ all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
+        -o | --outfile )    shift && outfile=$1 ;;
         --aligner )         shift && aligner=$1 ;;
         --no_header_fix )   shift && fix_header=false ;;
         --more_opts )       shift && more_opts=$1 ;;
@@ -116,7 +118,7 @@ while [ "$1" != "" ]; do
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v | --version )         version_only=true ;;
+        -v | --version )    version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
@@ -140,17 +142,17 @@ fi
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Load software
-load_env "$conda_path" "$container_path" #"$dl_container"
+load_env "$conda_path" "$container_path"
 [[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
 [[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
+[[ -z "$outfile" ]] && die "No output file specified, do so with -o/--outfile" "$all_opts"
 [[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 
 # Define outputs based on script parameters
-[[ -z "$outdir" ]] && outdir=$(dirname "$(realpath "$infile")")
+outdir=$(dirname "$outfile")
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
-outfile="$outdir"/$(basename "${infile%.*}")_aln.fa
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
