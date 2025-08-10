@@ -64,7 +64,7 @@ BLAST_FORMAT="6 qseqid sacc pident length evalue bitscore qlen slen qstart qend 
 
 # Defaults - generic
 env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/blast
+conda_path=/fs/ess/PAS0471/conda/blast-2.16.0
 container_path=
 container_url=
 container_dir="$HOME/containers"
@@ -322,8 +322,10 @@ process_blast() {
 
     n_subjects=$(cut -f 2 "$blast_out_final" | sort -u | wc -l)
     n_queries=$(cut -f 1 "$blast_out_final" | sort -u | wc -l)
-    log_time "Number of distinct subjects in the final BLAST output file: $n_subjects"
-    log_time "Number of distinct queries in the final BLAST output file: $n_queries"
+    log_time "Filtered BLAST output file stats:"
+    echo "- Number of distinct subjects:    $n_subjects"
+    echo "- Number of distinct queries:     $n_queries"
+    echo "- Total number of hits:           $(wc -l < "$blast_out_final")"
 }
 
 find_genomes() {
@@ -620,7 +622,9 @@ fi
 
 # Local BLAST DB
 if [[ -n "$local_db" ]]; then
-    if [[ ! -f "$local_db".00.nhr && ! -f "$local_db".00.phr ]]; then
+    local_db_dir=$(dirname $local_db)
+    local_db_id=$(basename $local_db)
+    if [[ -z $(find "$local_db_dir" -name "$local_db_id*nhr" -or -name "$local_db_id*phr" 2>/dev/null) ]]; then
         die "Local BLAST database $local_db does not exist"
     fi
     db_opt="-db $local_db"
