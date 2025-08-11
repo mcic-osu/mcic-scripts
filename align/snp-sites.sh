@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=3:00:00
-#SBATCH --cpus-per-task=10
-#SBATCH --mem=40G
+#SBATCH --time=2:00:00
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name=snp-sites
 #SBATCH --output=slurm-snp-sites-%j.out
@@ -19,7 +19,7 @@ FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main
 TOOL_BINARY=snp-sites
 TOOL_NAME=SNP-sites
 TOOL_DOCS=https://sanger-pathogens.github.io/snp-sites/
-VERSION_COMMAND="$TOOL_BINARY --version"
+VERSION_COMMAND="$TOOL_BINARY -V"
 
 # Defaults - generics
 env_type=conda                  # Use a 'conda' env or a Singularity 'container'
@@ -117,7 +117,7 @@ while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
         -o | --outfile )    shift && outfile=$1 ;;
-        --vcf )             outfile_type_opt="--vcf" ;;
+        --vcf )             outfile_type_opt="-v" ;;
         --more_opts )       shift && more_opts=$1 ;;
         --env_type )        shift && env_type=$1 ;;
         --conda_path )      shift && conda_path=$1 ;;
