@@ -11,9 +11,10 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Run Cutadapt to remove (metabarcoding) PRIMERS for a single pair of FASTQ files
-The script will compute and use the reverse complements of all primers as well."
-SCRIPT_VERSION="2025-03-21"
+DESCRIPTION="Run Cutadapt to remove (metabarcoding) PRIMERS for one FASTQ file
+(single-end) or a pair of FASTQ files (paired-end).
+The script will also compute and use the reverse complements of the specified primers."
+SCRIPT_VERSION="2025-09-02"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 TOOL_BINARY=cutadapt
@@ -23,17 +24,17 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
 env_type=conda                     # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/cutadapt
+conda_path=/fs/ess/PAS0471/conda/cutadapt_v5.1
 container_dir="$HOME/containers"
 container_url=
 container_path=
 
 # Defaults - tool parameters
-single_end=false
-discard_untrimmed=true
+single_end=false                # Assume that reads are paired-end
+discard_untrimmed=true          # Remove untrimmed (= no primer) reads
 save_untrimmed=false            # Save untrimmed reads to separate files
-pair_filter=any
-overlap=10
+pair_filter=any                 # Read removal strategy for paired-end sequences
+overlap=10                      # Minimum primer-to-read overlap length for adapter removal
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -50,34 +51,38 @@ $DESCRIPTION
 USAGE / EXAMPLE COMMANDS:
   - Basic usage example:
       sbatch $0 -i data/sample1_R1.fastq.gz -o results/cutadapt -f GAGTGYCAGCMGCCGCGGTAA -r ACGGACTACNVGGGTWTCTAAT
-  - Using a primer file instead:
+  - Using a file with multiple primer sequences:
       sbatch $0 -i data/sample1_R1.fastq.gz -o results/cutadapt --primer_file metadata/primers.txt
 
 REQUIRED OPTIONS:
-  -i/--R1             <file>  Input R1 FASTQ/FASTA file (name of R2 will be inferred in case of paired-end)
+  -i/--R1             <file>  Input R1 FASTQ/FASTA file
+                              (R2 filename will be inferred for paired-end)
   -o/--outdir         <dir>   Output dir (will be created if needed)
 
-There are two ways of specifying primers:
-(1) with '-f' and '-r', or
-(2) with '--primer_file' (use the latter if you have multiple primer pairs):
-  -f/--primer_f       <str>   Forward primer sequence (use with '-r')
-  -r/--primer_r       <str>   Reverse primer sequence (use with '-f')
+You also have to specify primers, and there are two ways of doing so:
+(1) with '-f' and '-r': e.g. '-f GAGTGYCAGCMGCCGCGGTAA -r ACGGACTACNVGGGTWTCTAAT'
+(2) with '--primer_file' (use the latter if you have multiple primer pairs)
+In either case, the script will also compute and use the reverse complements of
+the specified primers.
+
+  -f/--primer_f       <str>   Forward primer sequence (must combine with '-r')
+  -r/--primer_r       <str>   Reverse primer sequence (must combine with '-f')
   --primer_file       <file>  File with primer sequences, one pair per line,
-                              separated by a space
-                              (*alternative* to using -f and -r)
+                              separated by a space (*alternative* to -f & -r)
 
 OTHER KEY OPTIONS:
   --single_end                Sequences are single-end                          [default: $single_end]
-  --overlap                 Minimum overlap length for adapter removal          [default: $overlap]
-  --keep_untrimmed            Don't discard untrimmed sequences                 [default: discard]
-                              (i.e. those with no primers)
-  --save_untrimmed            Save untrimmed sequences to (a) separate file(s)                              
-  --pair_filter       <str>   For paired-end sequences:                         [default: $pair_filter]
+  --overlap           <int>   Minimum overlap length for adapter removal        [default: $overlap]
+  --keep_untrimmed            Keep untrimmed sequences                          [default: discard these]
+                              (i.e. sequences without the specified primers)
+  --save_untrimmed            Save untrimmed sequences to separate file(s)                              
+  --pair_filter       <str>   Read removal strategy for paired-end sequences:   [default: $pair_filter]
                               - 'any':  remove read pair if either read does not
                                         contain the primer
                               - 'both': remove read pair only if both reads do
                                         not contain the primer                            
-  --more_opts         <str>   Quoted string with additional argument(s) for $TOOL_NAME
+  --more_opts         <str>   Quoted string with additional argument(s) for
+                              $TOOL_NAME
 
 UTILITY OPTIONS:
   --env_type          <str>   Use a Singularity container ('container')         [default: $env_type]
@@ -88,9 +93,6 @@ UTILITY OPTIONS:
   --container_path    <file>  Pre-existing Singularity container image file (.sif) to use
   -h/--help                   Print this help message and exit
   -v/--version                Print the version of this script and of $TOOL_NAME
-
-HARDCODED OPTIONS:
-  - The CutAdapt option '--pair-filter=any' is always used.
 
 TOOL DOCUMENTATION: $TOOL_DOCS
 "

@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Construct a phylogenetic tree from a FASTA alignment using IQ-tree"
-SCRIPT_VERSION="2025-05-28"
+SCRIPT_VERSION="2025-08-204"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -23,9 +23,9 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
 env_type=conda
-conda_path=/fs/ess/PAS0471/jelmer/conda/iqtree
+conda_path=/fs/ess/PAS0471/conda/iqtree_3.0.1
 container_dir="$HOME/containers"
-container_url=oras://community.wave.seqera.io/library/iqtree:2.4.0--acc9e0fdeee03afe
+container_url=oras://community.wave.seqera.io/library/iqtree:3.0.1--340858492bd2bcb9
 container_path=
 
 # Defaults - tool parameters

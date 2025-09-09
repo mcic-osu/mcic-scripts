@@ -1,12 +1,11 @@
 #!/bin/bash
 #SBATCH --account=PAS0471
-#SBATCH --time=30
 #SBATCH --cpus-per-task=4
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name=fq2fa
 #SBATCH --output=slurm-fq2fa-%j.out
 
-# Convert FASTQ to FASTA with seqtk
+#? Script to convert a FASTQ file to a FASTA file with seqtk
 
 # Command-line args
 fq_in=$1
@@ -14,7 +13,7 @@ fa_out=$2
 
 # Software
 module load miniconda3
-source activate /fs/ess/PAS0471/jelmer/conda/seqtk
+conda activate /fs/ess/PAS0471/jelmer/conda/seqtk
 
 # Bash strict settings
 set -euo pipefail

@@ -1,36 +1,32 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=12:00:00
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=48G
-#SBATCH --mail-type=END,FAIL
-#SBATCH --job-name=orthofinder
-#SBATCH --output=slurm-orthofinder-%j.out
+#SBATCH --time=3:00:00
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32G
+#SBATCH --mail-type=FAIL
+#SBATCH --job-name=fastani
+#SBATCH --output=slurm-fastani-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Run OrthoFinder to find orthologs between genomes or proteomes"
-SCRIPT_VERSION="2025-08-02"
+DESCRIPTION="Run FastANI to compute Average Nucleotide Identity between sequences"
+SCRIPT_VERSION="2025-08-10"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
-TOOL_BINARY=orthofinder
-TOOL_NAME=Orthofinder
-TOOL_DOCS=https://github.com/davidemms/OrthoFinder
-VERSION_COMMAND="$TOOL_BINARY --help | head -n2"
+TOOL_BINARY=fastANI
+TOOL_NAME=FastANI
+TOOL_DOCS=https://github.com/ParBLiSS/FastANI
+VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=container                  # Use a 'conda' env or a Singularity 'container'
-conda_path=
-container_url=oras://community.wave.seqera.io/library/orthofinder:3.1.0--888d04d0c725fcc8
+env_type=conda                  # Use a 'conda' env or a Singularity 'container'
+conda_path=/fs/ess/PAS0471/conda/fastani-1.34
+container_url=
 container_dir="$HOME/containers"
 container_path=
-
-# Defaults - tool parameters
-tree_method=msa                    # This is NOT the Orthofinder default, which is 'dendroblast'
-fa_type=prot
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -46,21 +42,14 @@ $DESCRIPTION
     
 USAGE / EXAMPLE COMMANDS:
   - Basic usage example:
-      sbatch $0 -i TODO -o results/TODO
+      sbatch $0 --infile1 data/some.fasta --infile2 data/another.fasta -o results/fastani/fastani.out
     
 REQUIRED OPTIONS:
-  -i/--indir          <dir>   Input dir with genomes (nucleotide) or proteomes
-                              (protein FASTA files), one file per genome
-                              Accepted file extensions:
-                              .fa, .faa, .fasta, .fas, .pep
-                              (Files with different extensions will be ignored.)
-  -o/--outdir         <dir>   Output dir
-                              (NOTE: If this dir exists, it will be removed!)
+  --infile1           <file>  Input FASTA file path nr 1
+  --infile2           <file>  Input FASTA file path nr 2
+  -o/--outfile        <file>  Output file path (dir will be created if needed)
     
 OTHER KEY OPTIONS:
-  --tree_method       <str>   Gene tree inference method:'dendroblast' or 'msa' [default: $tree_method]
-  --nuc                       Use this option to indicate that input files are  [default: proteomes]
-                              nucleotide FASTA files (genomes), not proteomes 
   --more_opts         <str>   Quoted string with one or more additional options
                               for $TOOL_NAME
     
@@ -114,9 +103,9 @@ source_function_script $IS_SLURM
 # ==============================================================================
 # Initiate variables
 version_only=false  # When true, just print tool & script version info and exit
-indir=
+infile1=
+infile2=
 outdir=
-fa_type_opt=
 more_opts=
 threads=
 
@@ -124,10 +113,9 @@ threads=
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --indir )      shift && indir=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
-        --tree_method )     shift && tree_method=$1 ;;
-        --nuc )             fa_type=nuc && fa_type_opt="-d" ;;
+        --infile1 )         shift && infile1=$1 ;;
+        --infile2 )         shift && infile2=$1 ;;
+        -o | --outfile )    shift && outfile=$1 ;;
         --more_opts )       shift && more_opts=$1 ;;
         --env_type )        shift && env_type=$1 ;;
         --conda_path )      shift && conda_path=$1 ;;
@@ -152,13 +140,16 @@ load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$containe
 [[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
-[[ -z "$indir" ]] && die "No input file specified, do so with -i/--indir" "$more_opts"
-[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$more_opts"
-[[ ! -d "$indir" ]] && die "Input dir $indir does not exist"
+[[ -z "$infile1" ]] && die "No input file 1 specified, do so with --infile1" "$all_opts"
+[[ -z "$infile2" ]] && die "No input file 2 specified, do so with --infile2" "$all_opts"
+[[ -z "$outfile" ]] && die "No output file specified, do so with -o/--outfile" "$all_opts"
+[[ ! -f "$infile1" ]] && die "Input file 1 $infile1 does not exist"
+[[ ! -f "$infile2" ]] && die "Input file 2 $infile2 does not exist"
 
 # Define outputs based on script parameters
+outdir=$(dirname "$outfile")
 LOG_DIR="$outdir"/logs
-mkdir -p "$outdir" && rm -r "$outdir"
+mkdir -p "$LOG_DIR"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -168,11 +159,12 @@ echo "==========================================================================
 echo "All options passed to this script:        $all_opts"
 echo "Working directory:                        $PWD"
 echo
-echo "Input dir:                                $indir"
-echo "Input FASTA type:                         $fa_type"
-echo "Output dir:                               $outdir"
-echo "Gene tree inference method:               $tree_method"
+echo "Input file 1:                             $infile1"
+echo "Input file 2:                             $infile2"
+echo "Output file:                              $outfile"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
+log_time "Listing the input file(s):"
+ls -lh "$infile1" "$infile2"
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
@@ -181,25 +173,18 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
 runstats $TOOL_BINARY \
-    -f "$indir" \
-    -o "$outdir" \
-    -M "$tree_method" \
-    -t "$threads" \
-    -a "$threads" \
-    $fa_type_opt \
+    --query "$infile1" \
+    --ref "$infile2" \
+    --output "$outfile" \
+    --threads "$threads" \
     $more_opts
 
-# (Orthofinder puts the results within a dir called 'Results_<date>')
-log_time "Moving the output files..."
-mv "$outdir"/Results_*/* "$outdir"
-rmdir "$outdir"/Results_*
-
-# Create the log directory
-mkdir -p "$LOG_DIR"
+#? --kmer <value>
+#? --visualize output mappings for visualization
 
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
-log_time "Listing files in the output dir:"
-ls -lhd "$(realpath "$outdir")"/*
+log_time "Listing the output file:"
+ls -lh "$outfile"
 final_reporting "$LOG_DIR"

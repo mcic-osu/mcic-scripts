@@ -48,7 +48,7 @@ OUTPUT:
     17) staxids     Subject taxonomy IDs
     18) tax_string  Taxonomy string in the format: kingdom|phylum|class|order|family|genus|species
 "
-SCRIPT_VERSION="2025-03-15"
+SCRIPT_VERSION="2025-08-03"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 VERSION_COMMAND="blastn -version; datasets --version; taxonkit version"
@@ -57,9 +57,6 @@ export NCBI_API_KEY=34618c91021ccd7f17429b650a087b585f08
 export LC_ALL=C                     # Locale for sorting
 
 # Constants - settings
-DEFAULT_LOCAL_DB_DIR=/fs/ess/pub_data/blast-database/2024-07
-DEFAULT_LOCAL_DB_NT="$DEFAULT_LOCAL_DB_DIR"/nt              # Default local DB for nucleotide BLAST
-DEFAULT_LOCAL_DB_AA="$DEFAULT_LOCAL_DB_DIR"/nr              # Default local DB for protein BLAST
 # - With genome download, get separate metadata file from the NCBI datasets tool with the following fields:
 META_FIELDS="accession,assminfo-name,organism-name,assminfo-refseq-category,assminfo-level,assmstats-number-of-contigs,assmstats-contig-n50"
 BLAST_FORMAT="6 qseqid sacc pident length evalue bitscore qlen slen qstart qend sstart send qcovus mismatch gaps stitle staxids"
@@ -67,7 +64,7 @@ BLAST_FORMAT="6 qseqid sacc pident length evalue bitscore qlen slen qstart qend 
 
 # Defaults - generic
 env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/blast
+conda_path=/fs/ess/PAS0471/conda/blast-2.16.0
 container_path=
 container_url=
 container_dir="$HOME/containers"
@@ -108,9 +105,8 @@ USAGE / EXAMPLE COMMANDS:
   - Basic usage - will run BLAST remotely with the nt database & no output filtering or sequence downloading:
       sbatch $0 -i my_seq.fa -o results/blast
 
-  - Run a local BLAST using OSCs BLAST db (used by default with --local):
-    NOTE: Use multiple cores with '--cpus-per-task' or '-c' in the sbatch command
-      sbatch -c 12 $0 -i my_seq.fa -o results/blast --local
+  - Run a local BLAST (NOTE: Use multiple cores in the sbatch command)
+      sbatch -c 12 $0 -i my_seq.fa -o results/blast --local_db results/blast_db/mydb
 
   - Limit online BLAST database to specific taxa (using NCBI taxon IDs):
       sbatch $0 -i my_seq.fa -o results/blast --tax_ids '343,56448'
@@ -128,75 +124,74 @@ REQUIRED OPTIONS:
   -i/--infile         <file>  Input FASTA file (can contain one or more sequences)
   -o/--outdir         <dir>   Output dir (will be created if needed)
 
-GENERAL OPTIONS (OPTIONAL):
-  --no_header                 Don't add headers to final BLAST output file      [default: add]
-  --resume                    Don't run BLAST if the output file already exists;
-                                only rerun downstream operations like filtering.
-
 GENERAL BLAST OPTIONS (OPTIONAL):
-  --local                     Run BLAST with a local (on-disk) database         [default: $local]
-  --db                <str>   - If running remotely:                            [default: 'nt' for nucleotide, 'nr' for protein]
-                                NCBI database name like 'nt'/'nr'
-                              - If running locally:
-                                default is 'nt' or 'nr' from $DEFAULT_LOCAL_DB_DIR
-                              - To run with a custom local db, use '--local'
-                                AND specify the prefix (dir + db name, no file
-                                extensions) of a local BLAST db
-  --blast_type        <str>   BLAST type: 'blastn', 'blastp', 'blastx',         [default: $blast_type]
+  --remote_db       <str>   NCBI database name like 'nt'/'nr'                   [default: 'nt' for nucleotide, 'nr' for protein]
+  --local_db        <str>   Dir + prefix to local (on-disk) database            
+                            E.g. 'blast_db/mydb' if db files are named 
+                              'blast_db/mydb.nhr' etc.
+                            NOTE: OSC has databases available, e.g at
+                              /fs/ess/pub_data/blast-database/2024-07
+  --subject_fasta   <file>  Use a local FASTA file instead of a BLAST database
+                              as the subject
+  --blast_type      <str>   BLAST type: 'blastn', 'blastp', 'blastx',           [default: $blast_type]
                               'tblastx', or 'tblastn' 
-  --blast_task        <str>   'Task' for blastn or blastp,                      [default: BLAST program default]
-                              e.g. 'megablast' for blastn
-                              For blastn, the default is 'megablast',
-                                other options are: 'blastn', 'blastn-short',
-                                'dc-megablast', 'rmblastn'.
-                               More similar => less similar seqs, use 'megablast'
-                                => 'dc-megablast' (discontinuous megablast) =>
-                                'blastn'.
-                              For blastp, the default is 'blastp',
-                                other options are: 'blastp-fast', 'blastp-short'
-                              See https://www.ncbi.nlm.nih.gov/books/NBK569839/#usrman_BLAST_feat.Tasks
+  --blast_task      <str>   'Task' for blastn or blastp                         [default: BLAST program default]
+                            For blastn, the default is 'megablast', and
+                              other options are: 'blastn', 'blastn-short',
+                              'dc-megablast', 'rmblastn'.
+                            More similar => less similar seqs, use 'megablast'
+                              => 'dc-megablast' (discontinuous megablast) =>
+                              'blastn'.
+                            For blastp, the default is 'blastp', and
+                              other options are: 'blastp-fast', 'blastp-short'
+                            See https://www.ncbi.nlm.nih.gov/books/NBK569839/#usrman_BLAST_feat.Tasks
+
+GENERAL OPTIONS (OPTIONAL):
+  --no_header               Don't add headers to final BLAST output file      [default: add]
+  --resume                  Don't run BLAST if the output file already exists;
+                              only rerun downstream operations like filtering.
 
 BLAST THRESHOLD AND FILTERING OPTIONS (OPTIONAL):
-  --tax_ids           <str>   Comma-separated list of NCBI taxon IDs            [default: use full database]
-                                (just the numbers, no 'txid' prefix)
-                                The BLAST search will be limited to these taxa        
-                                NOTE: This only works for remote,
-                                nucleotide-based searches!
-  --max_target_seqs   <int>   Max. nr of target sequences to keep               [default: BLAST default (=500)]
-                                This option is applied *during* the BLAST run.
-                                This number should be increased from the default
-                                when ~hundreds of hits are expected.
-  --evalue            <num>   E-value threshold in scientific notation          [default: $evalue]
-                                This option is applied *during* the BLAST run.
-  --pct_id            <num>   Percentage identity threshold                     [default: none]
-                                This threshold is applied *after* running BLAST.
-  --pct_cov           <num>   Threshold for % of query covered by the alignment [default: none]
-                                This threshold is applied *after* running BLAST.
-  --top_n_query       <int>   Only keep the top N hits for each query           [default: $top_n_query]
-                                This threshold is applied *after* running BLAST.
-                                A threshold of 0 means no filtering
-  --top_n_subject     <int>   Only keep top N hits for each subject, per query. [default: keep all]
-                                This threshold is applied *after* running BLAST.
-                                A threshold of 0 means no filtering.
+  --tax_ids         <str>   Comma-separated list of NCBI taxon IDs              [default: use full database]
+                            (just the numbers, no 'txid' prefix)
+                            The BLAST search will be limited to these taxa        
+                            NOTE: This only works for remote,
+                            nucleotide-based searches!
+  --max_target_seqs <int>   Max. nr of target sequences to keep                 [default: BLAST default (=500)]
+                            This option is applied *during* the BLAST run.
+                            This number should be increased from the default
+                            when ~hundreds of hits are expected.
+  --evalue          <num>   E-value threshold in scientific notation            [default: $evalue]
+                            This option is applied *during* the BLAST run.
+  --pct_id          <num>   Percentage identity threshold                       [default: none]
+                            This threshold is applied *after* running BLAST.
+  --pct_cov         <num>   Threshold for % of query covered by the alignment   [default: none]
+                            This threshold is applied *after* running BLAST.
+  --top_n_query     <int>   Only keep the top N hits for each query             [default: $top_n_query]
+                            This threshold is applied *after* running BLAST.
+                            A threshold of 0 means no filtering
+  --top_n_subject   <int>   Only keep top N hits for each subject, per query.   [default: keep all]
+                            This threshold is applied *after* running BLAST.
+                            A threshold of 0 means no filtering.
 
 SEQUENCE LOOKUP AND DOWNLOAD OPTIONS (OPTIONAL):
-  --dl_aligned                Download aligned parts of subject (db) sequences. [default: $to_dl_aligned]
-  --dl_subjects               Download full subject (db) sequences.             [default: $to_dl_subjects]
-                                For protein BLAST, this will also download
-                                nucleotide sequences for non 'WP_'
-                                (multi-species) accessions.
-  --find_genomes              Get genome accession numbers of aligned sequences [default: $to_find_genomes]
-  --dl_genomes                Download full genomes of aligned sequences.       [default: $to_dl_genomes]
+  --dl_aligned              Download aligned parts of subject (db) sequences.   [default: $to_dl_aligned]
+  --dl_subjects             Download full subject (db) sequences.               [default: $to_dl_subjects]
+                            For protein BLAST, this will also download
+                            nucleotide sequences for non 'WP_'
+                            (multi-species) accessions.
+  --find_genomes            Get genome accession numbers of aligned sequences   [default: $to_find_genomes]
+  --dl_genomes              Download full genomes of aligned sequences.         [default: $to_dl_genomes]
 
 UTILITY OPTIONS (OPTIONAL):
-  --env_type          <str>   Use a Singularity container ('container')         [default: $env_type]
+  --env_type        <str>   Use a Singularity container ('container')           [default: $env_type]
                               or a Conda environment ('conda') 
-  --conda_path        <dir>   Full path to a Conda environment to use           [default: $conda_path]
-  --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
-  --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
-  --container_path    <file>  Local singularity image file (.sif) to use        [default (if any): $container_path]
-  -h/--help                   Print this help message
-  -v/--version                Print script and $TOOL_NAME versions
+  --conda_path      <dir>   Full path to a Conda environment to use             [default: $conda_path]
+  --container_url   <str>   URL to download a container from                    [default (if any): $container_url]
+  --container_dir   <str>   Dir to download a container to                      [default: $container_dir]
+  --container_path  <file>  Local singularity image file (.sif) to use          [default (if any): $container_path]
+  -h/--help                 Print this help message
+  -v/--version              Print script and $TOOL_NAME versions
 "
 }
 
@@ -232,7 +227,7 @@ run_blast() {
     log_time "Now running BLAST..."
     #(Options need to be awkwardly collapsed like this or BLAST will choke on the empty spaces)
     runstats $TOOL_BINARY \
-        -db "$db" \
+        $db_opt \
         -query "$infile" \
         -out "$blast_out_raw" \
         -outfmt "$BLAST_FORMAT" \
@@ -281,7 +276,7 @@ process_blast() {
         blast_out_topq="$outdir"/blast_out_topq.tsv
 
         while read -r query; do
-            grep -w -m "$top_n_query" "$query" "$blast_out_cov"
+            grep -w -m "$top_n_query" "^$query" "$blast_out_cov"
         done < <(cut -f1 "$blast_out_cov" | sort -u) |
             sort -k1,1 -k5,5g -k6,6gr -k3,3gr > "$blast_out_topq"
         
@@ -327,8 +322,10 @@ process_blast() {
 
     n_subjects=$(cut -f 2 "$blast_out_final" | sort -u | wc -l)
     n_queries=$(cut -f 1 "$blast_out_final" | sort -u | wc -l)
-    log_time "Number of distinct subjects in the final BLAST output file: $n_subjects"
-    log_time "Number of distinct queries in the final BLAST output file: $n_queries"
+    log_time "Filtered BLAST output file stats:"
+    echo "- Number of distinct subjects:    $n_subjects"
+    echo "- Number of distinct queries:     $n_queries"
+    echo "- Total number of hits:           $(wc -l < "$blast_out_final")"
 }
 
 find_genomes() {
@@ -500,6 +497,9 @@ dl_nuc_from_prot() {
 # Initiate variables
 infile=
 outdir=
+subject_fasta=
+remote_db=
+local_db=
 task_opt=
 tax_ids= && tax_opt= && tax_optarg=
 max_target_seqs= && maxtarget_opt=
@@ -518,10 +518,11 @@ while [ "$1" != "" ]; do
         --no_header )       add_header=false ;;
         --max_target_seqs ) shift && max_target_seqs=$1 ;;
         --tax_ids )         shift && tax_ids=$1 ;;
-        --db )              shift && db=$1 ;;
         --blast_type )      shift && blast_type=$1 ;;
         --blast_task )      shift && blast_task=$1 ;;
-        --local )           local=true && remote_opt= ;;
+        --local_db )        shift && local_db=$1 && local=true ;;
+        --remote_db )       shift && remote_db=$1 ;;
+        --subject_fasta )   shift && subject_fasta=$1 && local=true ;;
         --top_n_query )     shift && top_n_query=$1 ;;
         --top_n_subject )   shift && top_n_subject=$1 ;;
         --evalue )          shift && evalue=$1 ;;
@@ -600,32 +601,39 @@ fi
 [[ "$blast_type" == "blastx" || "$blast_type" == "blastp" ]] && db_type=prot
 [[ "$db_type" == "prot" ]] && dl_db=protein
 
-if [[ "$local" == true ]]; then
-    # Local BLAST nr of cores
+if [[ $local == true ]]; then
     set_threads "$IS_SLURM"
     thread_opt=" -num_threads $threads"
+    remote_opt=
+fi
 
-    # Local BLAST default db
+# ==============================================================================
+#                         SET THE BLAST DB / SUBJECT FILE
+# ==============================================================================
+# Remote BLAST DB
+if [[ "$local" == false ]]; then
     if [[ "$db_type" == "prot" ]]; then
-        [[ -z "$db" ]] && db="$DEFAULT_LOCAL_DB_AA"
+        [[ -z "$remote_db" ]] && remote_db="$remote_db_aa"
     else
-        [[ -z "$db" ]] && db="$DEFAULT_LOCAL_DB_NT"
+        [[ -z "$remote_db" ]] && remote_db="$remote_db_nt"
     fi
+    db_opt="-db $remote_db"
+fi
 
-    # Check if the local BLAST db exists
-    if [[ ! -f "$db.nhr" && ! -f "$db.phr" ]]; then
-        die "Local BLAST database $db does not exist"
+# Local BLAST DB
+if [[ -n "$local_db" ]]; then
+    local_db_dir=$(dirname $local_db)
+    local_db_id=$(basename $local_db)
+    if [[ -z $(find "$local_db_dir" -name "$local_db_id*nhr" -or -name "$local_db_id*phr" 2>/dev/null) ]]; then
+        die "Local BLAST database $local_db does not exist"
     fi
-    log_time "Showing the BLAST database files:"
-    ls -lh "$db"*
+    db_opt="-db $local_db"
+fi
 
-else
-    # Remote BLAST default DB
-    if [[ "$db_type" == "prot" ]]; then
-        [[ -z "$db" ]] && db="$remote_db_aa"
-    else
-        [[ -z "$db" ]] && db="$remote_db_nt"
-    fi
+# Local subject FASTA
+if [[ -n "$subject_fasta" ]]; then
+    [[ ! -f "$subject_fasta" ]] && die "Local subject FASTA file $subject_fasta does not exist"
+    db_opt="-subject $subject_fasta"
 fi
 
 # ==============================================================================
@@ -637,10 +645,12 @@ echo "All options passed to this script:        $all_opts"
 echo "Input file:                               $infile"
 echo "Output dir:                               $outdir"
 echo
-echo "BLAST db:                                 $db"
 echo "BLAST type:                               $blast_type"
 [[ -n "$blast_task" ]] && echo "BLAST task:                               $blast_task"
 echo "Run BLAST locally?                        $local"
+[[ -n "$remote_db" ]] && echo "Remote BLAST db:                          $remote_db"
+[[ -n "$local_db" ]] && echo "Local BLAST db:                           $local_db"
+[[ -n "$subject_fasta" ]] && echo "Local BLAST subject FASTA file:           $subject_fasta"
 echo
 echo "Force BLAST run even if output exists?    $force"
 echo "Add column header to BLAST output?        $add_header"
@@ -664,8 +674,16 @@ echo "Download full subjects?                   $to_dl_subjects"
 echo "Download aligned parts of sequences?      $to_dl_aligned"
 echo
 echo "Number of queries in the input file:      $(grep -c "^>" "$infile")"
-log_time "Listing the input file(s):"
+echo "Listing the input file(s):"
 ls -lh "$infile"
+if [[ -n "$local_db" ]]; then
+    echo -e "\nRunning with the following local BLAST database:"
+    ls -lh "$local_db"*
+fi
+if [[ -n "$subject_fasta" ]]; then
+    echo -e "\nRunning BLAST with the following local subject FASTA file:"
+    ls -lh "$subject_fasta"
+fi
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================

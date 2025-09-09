@@ -22,10 +22,10 @@ TOOL_DOCS=#TODO - URL TO TOOL DOCS WEBSITE
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=conda
+env_type=conda                  # Use a 'conda' env or a Singularity 'container'
 conda_path=#TODO
+container_url=#TODO
 container_dir="$HOME/containers"
-container_url=
 container_path=
 
 # Constants - tool parameters
@@ -59,12 +59,12 @@ OTHER KEY OPTIONS:
                               for $TOOL_NAME
     
 UTILITY OPTIONS:
-  --env_type          <str>   Use a Singularity container ('container')         [default: $env_type]
-                              or a Conda environment ('conda') 
-  --conda_path        <dir>   Full path to a Conda environment to use           [default: $conda_path]
-  --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
+  --env_type          <str>   Whether to use a Singularity/Apptainer container  [default: $env_type]
+                              ('container') or a Conda environment ('conda') 
   --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
-  --container_path    <file>  Local singularity image file (.sif) to use        [default (if any): $container_path]
+  --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
+  --container_path    <file>  Local container image file ('.sif') to use        [default (if any): $container_path]
+  --conda_path        <dir>   Full path to a Conda environment to use           [default (if any): $conda_path]
   -h/--help                   Print this help message
   -v/--version                Print script and $TOOL_NAME versions
     
