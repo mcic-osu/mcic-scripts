@@ -714,19 +714,21 @@ cdotplot <- function(
     labs(x = NULL) +
     scale_y_continuous(expand = expansion(mult = c(expand_min, 0.09))) +
     col_scale +
-    theme(legend.position = legend_pos,
-          plot.margin = margin(0.5, 0.5, 0.5, 0.5, unit = "cm"),
-          strip.text.y = element_text(angle = 270, face = "bold"),
-          strip.placement = "outside",
-          axis.title.x = element_text(
-            size = 12,
-            margin = margin(t = 0.5, b = 0.5, unit = "cm")
-          ),
-          axis.title.y = element_blank(),
-          axis.text.x = element_text(size = 10),
-          axis.text.y = element_text(size = ylab_size),
-          panel.grid.major = element_blank(),
-          panel.grid.minor.x = element_blank())
+    theme(
+      legend.position = legend_pos,
+      plot.margin = margin(0.5, 0.5, 0.5, 0.5, unit = "cm"),
+      strip.text.y = element_text(angle = 270, face = "bold"),
+      strip.placement = "outside",
+      axis.title.x = element_text(
+        size = 12,
+        margin = margin(t = 0.5, b = 0.5, unit = "cm")
+      ),
+      axis.title.y = element_blank(),
+      axis.text.x = element_text(size = 10),
+      axis.text.y = element_text(size = ylab_size),
+      panel.grid.major = element_blank(),
+      panel.grid.minor.x = element_blank()
+    )
   
   # Other formatting
   if (! is.null(x_title)) p <- p + labs(y = x_title)
@@ -737,29 +739,39 @@ cdotplot <- function(
   # Faceting
   if (!is.null(facet_var1)) {
     if (!is.null(facet_var2)) {
-      # With 2 facetting variables, use facet_grid()
+      
+      # With 2 faceting variables, use facet_grid()
       if (is.null(facet_scales)) facet_scales <- "free_y"
       p <- p +
-        facet_grid(rows = vars(.data[[facet_var1]]),
-                   cols = vars(.data[[facet_var2]]),
-                   scales = facet_scales,
-                   space = "free_y",
-                   labeller = facet_label_fun)
+        facet_grid(
+          rows = vars(.data[[facet_var1]]),
+          cols = vars(.data[[facet_var2]]),
+          scales = facet_scales,
+          space = "free_y",
+          labeller = facet_label_fun
+          )
     } else if (facet_to_columns) {
-      # Default: facet into columns with facet_row()
+      
+      # 1 faceting variable default: facet into columns with facet_row()
       if (is.null(facet_scales)) facet_scales <- "free_x"
       p <- p +
-        ggforce::facet_row(facets = vars(.data[[facet_var1]]),
-                           scales = facet_scales,
-                           space = "free",
-                           labeller = facet_label_fun)
+        ggforce::facet_row(
+          facets = vars(.data[[facet_var1]]),
+          scales = facet_scales,
+          space = "free",
+          labeller = facet_label_fun
+          )
     } else {
+      
+      # 1 faceting variable alternative: facet into rows with facet_col()
       if (is.null(facet_scales)) facet_scales <- "free_y"
       p <- p +
-        ggforce::facet_col(facets = vars(.data[[facet_var1]]),
-                           scales = facet_scales,
-                           space = "free",
-                           labeller = facet_label_fun)
+        ggforce::facet_col(
+          facets = vars(.data[[facet_var1]]),
+          scales = facet_scales,
+          space = "free",
+          labeller = facet_label_fun
+          )
     }
   }
   
