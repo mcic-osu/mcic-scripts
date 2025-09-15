@@ -183,6 +183,7 @@ runstats $TOOL_BINARY \
     $more_opts
 
 #? https://interproscan-docs.readthedocs.io/en/v5/HowToRun.html
+#? Output columns: https://interproscan-docs.readthedocs.io/en/v5/OutputFormats.html#tab-separated-values-format-tsv
 
 # ==============================================================================
 #                               WRAP-UP
