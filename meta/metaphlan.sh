@@ -196,7 +196,7 @@ runstats $TOOL_BINARY \
     --subsampling_paired "$NREADS_SUBSAMPLE" \
     --db_dir "$db" \
     --index "$db_version" \
-    --mapout "$outdir"/"$id".bowtie2out.txt \
+    --mapout "$outdir"/"$id"_bowtie2out.txt \
     --output_file "$outdir"/"$id"_profile.txt \
     --nproc "$threads" \
     $more_opts
