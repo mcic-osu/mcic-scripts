@@ -13,7 +13,7 @@
 # Constants - generic
 DESCRIPTION="Build a custom Kraken database
   Note: Standard Kraken databases can be downloaded from https://benlangmead.github.io/aws-indexes"
-SCRIPT_VERSION="2025-09-15"
+SCRIPT_VERSION="2025-09-28"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -24,7 +24,7 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
 env_type=conda                  # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/kraken2
+conda_path=/fs/ess/PAS0471/conda/kraken_2.1.6
 container_url=
 container_dir="$HOME/containers"
 container_path=
@@ -171,9 +171,8 @@ echo "Output database dir:                      $db_dir"
 [[ -n $genome_dir ]] && echo "Dir with genomes to be added to DB:       $genome_dir"
 [[ $libs != false ]] && echo "Libraries to download:                    $libs"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
-[[ -n $genome_fa || -n "$genome_dir" ]] && echo -e "\nListing the input genome(s):"
+[[ -n $genome_fa ]] && echo -e "\nListing the input genome(s):"
 [[ -n $genome_fa ]] && ls -lh "$genome_fa"
-[[ -n $genome_dir ]] && ls -lh "$genome_dir"/*.{fa,fasta,fna}
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
@@ -210,6 +209,7 @@ if [[ -n "$genome_fa" ]]; then
     $TOOL_BINARY --add-to-library "$genome_fa" --db "$db_dir" --threads "$threads"
 elif [[ -n "$genome_dir" ]]; then
     # If all genomes in a dir should be added
+    shopt -s nullglob
     for genome_fa in "$genome_dir"/*.{fa,fasta,fna}; do
         log_time "Adding custom genome $genome_fa to Kraken library..."
         $TOOL_BINARY --add-to-library "$genome_fa" --db "$db_dir" --threads "$threads"
@@ -230,5 +230,5 @@ runstats $TOOL_BINARY \
 #                               WRAP-UP
 # ==============================================================================
 log_time "Listing files in the output dir:"
-ls -lhd "$(realpath "$outdir")"/*
+ls -lhd "$(realpath "$db_dir")"/*
 final_reporting "$LOG_DIR"
