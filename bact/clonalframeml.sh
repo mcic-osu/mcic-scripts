@@ -13,10 +13,10 @@
 # Constants - generic
 DESCRIPTION="Run ClonalFrameML to infer recombination (HGT) in bacterial genomes,
 and run maskrc-svg to mask recombinant regions"
-MODULE=miniconda3
+MODULE=miniconda3/24.1.2-py310
 CONDA=/fs/ess/PAS0471/jelmer/conda/clonalframeml
 CONTAINER=/fs/ess/PAS0471/containers/depot.galaxyproject.org-singularity-mulled-v2-f5c68f1508671d5744655da9b0e8b609098f4138-7e089189af7822a6a18245830639dbfe11a4c277-0.img
-SCRIPT_VERSION="2023-07-22"
+SCRIPT_VERSION="2025-10-17"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY=ClonalFrameML
