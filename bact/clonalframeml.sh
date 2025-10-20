@@ -13,7 +13,7 @@
 # Constants - generic
 DESCRIPTION="Run ClonalFrameML to infer recombination (HGT) in bacterial genomes,
 and run maskrc-svg to mask recombinant regions"
-SCRIPT_VERSION="2025-10-18"
+SCRIPT_VERSION="2025-10-20"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -122,6 +122,7 @@ while [ "$1" != "" ]; do
         -i | --infile )     shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
         --tree_tool )       shift && tree_tool=$1 ;;
+        --out_prefix )      shift && out_prefix=$1 ;;
         --force_tree )      force_tree=true ;;
         --more_opts )       shift && more_opts=$1 ;;
         --conda_path )      shift && conda_path=$1 ;;
