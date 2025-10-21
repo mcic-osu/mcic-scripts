@@ -12,13 +12,14 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Create a local phylogenetic tree with Parsnp"
-SCRIPT_VERSION="2025-05-10"
+SCRIPT_VERSION="2025-10-21"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
-OSC_MODULE=miniconda3
-PARSNP_CONTAINER_PREFIX="singularity exec /fs/ess/PAS0471/containers/parsnp_1.7.4--d3c1e3879a4f7186.sif"
-IQTREE_CONDA=/fs/ess/PAS0471/jelmer/conda/iqtree
-BEDTOOLS_CONDA=/fs/ess/PAS0471/jelmer/conda/bedtools
+OSC_MODULE=miniconda3/24.1.2-py310
+#PARSNP_CONTAINER_PREFIX="apptainer exec oras://community.wave.seqera.io/library/parsnp:2.1.5--0605933fc69e7b20"
+PARSNP_CONTAINER_PREFIX="apptainer exec /fs/ess/PAS0471/containers/keep/parsnp_1.7.4--d3c1e3879a4f7186.sif"
+IQTREE_CONDA=/fs/ess/PAS0471/conda/iqtree_3.0.1
+BEDTOOLS_CONDA=/fs/ess/PAS0471/conda/bedtools_2.31.1
 TREE_CONDA=/fs/ess/PAS0471/jelmer/conda/r_tree
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 
@@ -146,13 +147,13 @@ ref="$indir"/"$ref_id".fna
 
 # Outputs
 locus_id=$(basename "$bedfile" .bed)
-parsnp_tree_org="$outdir"/parsnp.tree
+outdir_parsnp="$outdir"/parsnp
+parsnp_tree_org="$outdir_parsnp"/parsnp.tree
 parsnp_tree=${parsnp_tree_org/.tree/_fixnames.tree}
+aln_org="$outdir_parsnp"/parsnp.aln
+aln=${aln_org/.aln/_fixnames.aln}
 iqtree_org="$outdir"/"$locus_id".contree
 iqtree=${iqtree_org/.contree/_fixnames.contree}
-aln_org="$outdir"/parsnp.aln
-aln=${aln_org/.aln/_fixnames.aln}
-
 if [[ "$nboot" -gt 0 ]]; then
     final_tree="$iqtree"
 else
@@ -189,49 +190,73 @@ set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
-#                               RUN
+#                               BEDTOOLS
 # ==============================================================================
+# Activate the environment with bedtools
 module load "$OSC_MODULE"
+conda activate "$BEDTOOLS_CONDA"
 
 # Extract FASTA from BED file with all desired regions
-source activate "$BEDTOOLS_CONDA"
 log_time "Running bedtools getfasta..."
 bedtools getfasta -fi "$ref" -bed "$bedfile" -fo "$outdir"/"$locus_id".fa
 log_time "Showing the bedtools output FASTA file:"
 ls -lh "$outdir"/"$locus_id".fa
 
-# Run Parsnp
+
+# ==============================================================================
+#                               PARSNP
+# ==============================================================================
 log_time "Running Parsnp..."
 runstats $PARSNP_CONTAINER_PREFIX parsnp \
-    --output-dir "$outdir" \
+    --output-dir "$outdir_parsnp" \
     --reference "$outdir"/"$locus_id".fa \
     --vcf${curated_opt} \
     --threads "$threads" \
     --verbose \
     --sequences "${genomes[@]}"
+#--force-overwrite \
+
 log_time "Showing the parsnp output tree file:"
 ls -lh "$parsnp_tree_org"
 
+
+# ==============================================================================
+#                           CREATE ALIGNMENT FILE
+# ==============================================================================
 # Create a multi-FASTA alignment file (https://harvest.readthedocs.io/en/latest/content/harvest/quickstart.html)
 log_time "Running Harvesttool to convert to a FASTA alignment file..."
-runstats $PARSNP_CONTAINER_PREFIX harvesttools -i "$outdir"/parsnp.ggr -M "$aln_org"
+runstats $PARSNP_CONTAINER_PREFIX harvesttools \
+    -i "$outdir_parsnp"/parsnp.ggr \
+    -M "$aln_org"
 
 # Fix the sample IDs in the tree, so they match the IDs in the metadata file
 log_time "Fixing the sample IDs in the tree and aligment..."
-sed -e 's/.fna//g' -e "s/$locus_id.fa.ref/$ref_id/g" -e "s/'//g" "$parsnp_tree_org" > "$parsnp_tree"
-sed -e 's/.fna//g' -e "s/$locus_id.fa.ref/$ref_id/g" -e "s/'//g" "$aln_org" > "$aln"
+sed -e 's/.fna//g' \
+    -e "s/$locus_id.fa.ref/$ref_id/g" \
+    -e "s/'//g" \
+    "$parsnp_tree_org" > "$parsnp_tree"
+sed -e 's/.fna//g' \
+    -e "s/$locus_id.fa.ref/$ref_id/g" \
+    -e "s/'//g" \
+    "$aln_org" > "$aln"
 
+
+# ==============================================================================
+#                               IQTREE
+# ==============================================================================
 # Run IQtree to get bootstrap
 if [[ "$nboot" -gt 0 ]]; then
     log_time "Now running IQ-tree..."
 
-    conda deactivate && source activate "$IQTREE_CONDA" 
+    conda deactivate && conda activate "$IQTREE_CONDA" 
 
     runstats iqtree \
-        -s "$outdir"/parsnp.aln \
+        -s "$outdir_parsnp"/parsnp.aln \
         --prefix "$outdir"/"$locus_id" \
         $boot_opt \
-        -nt "$threads" -ntmax "$threads" -mem "$mem_gb" \
+        -nt "$threads" \
+        -ntmax "$threads" \
+        -mem "$mem_gb" \
         -redo \
         > "$outdir"/logs/iqtree_"$locus_id".log
 
@@ -243,12 +268,22 @@ if [[ "$nboot" -gt 0 ]]; then
     final_tree="$iqtree"
 fi
 
-# Plot the tree (Note: module purge etc is necessary or r_tree Conda env gives weird errors)
-for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
+
+# ==============================================================================
+#                               PLOT THE TREE
+# ==============================================================================
+# (Note: module purge etc is necessary or r_tree Conda env gives weird errors)
+for i in $(seq "${CONDA_SHLVL}"); do conda deactivate 2>/dev/null; done
 module purge && module load "$OSC_MODULE" && conda activate "$TREE_CONDA"
+
+# Plot the tree
 log_time "Plotting the tree in $final_tree..."
 runstats Rscript mcic-scripts/trees/ggtree.R -i "$final_tree" $root_opt $meta_opt
 
+
+# ==============================================================================
+#                               WRAP UP
+# ==============================================================================
 # Report
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
