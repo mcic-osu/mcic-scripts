@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=8:00:00
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=48G
+#SBATCH --cpus-per-task=12
+#SBATCH --mem=50G
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=iqtree
 #SBATCH --output=slurm-iqtree-%j.out
@@ -170,6 +170,7 @@ load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$containe
 [[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 
 # Define outputs based on script parameters
+set_threads "$IS_SLURM"
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 mem_gb=$((8*(SLURM_MEM_PER_NODE / 1000)/10))G   # 80% of available memory in GB
 [[ "$auto_cores" == true ]] && threads="AUTO"
@@ -190,6 +191,7 @@ echo "Output dir:                               $outdir"
 echo "Output file prefix:                       $out_prefix"
 echo "Run IQ-Tree in fast mode:                 $fast"
 echo "Use IQ-Tree's 'AUTO' core mode:           $auto_cores"
+echo "Number of threads to use:                 $threads"
 [[ -n "$modelset" ]] && echo "Model set for MFP:                        $modelset"
 [[ -n "$model" ]] && echo "Model:                                    $model"
 [[ -n "$nboot" ]] && echo "Number of ultrafast bootstraps:           $nboot"
@@ -197,7 +199,6 @@ echo "Use IQ-Tree's 'AUTO' core mode:           $auto_cores"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
 ls -lh "$infile"
-set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
