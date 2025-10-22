@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
+#SBATCH --time=3:00:00
 #SBATCH --cpus-per-task=5
 #SBATCH --mem=20G
 #SBATCH --mail-type=FAIL
@@ -12,11 +12,11 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Create a local phylogenetic tree with Parsnp"
-SCRIPT_VERSION="2025-10-21"
+SCRIPT_VERSION="2025-10-22"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 OSC_MODULE=miniconda3/24.1.2-py310
-#PARSNP_CONTAINER_PREFIX="apptainer exec oras://community.wave.seqera.io/library/parsnp:2.1.5--0605933fc69e7b20"
+# Need to this version of Parsnp - newer versions will complain about the small region being aligned
 PARSNP_CONTAINER_PREFIX="apptainer exec /fs/ess/PAS0471/containers/keep/parsnp_1.7.4--d3c1e3879a4f7186.sif"
 IQTREE_CONDA=/fs/ess/PAS0471/conda/iqtree_3.0.1
 BEDTOOLS_CONDA=/fs/ess/PAS0471/conda/bedtools_2.31.1
