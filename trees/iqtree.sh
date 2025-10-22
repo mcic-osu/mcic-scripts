@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
+#SBATCH --time=8:00:00
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
+#SBATCH --mem=48G
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=iqtree
 #SBATCH --output=slurm-iqtree-%j.out
@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Construct a phylogenetic tree from a FASTA alignment using IQ-tree"
-SCRIPT_VERSION="2025-08-204"
+SCRIPT_VERSION="2025-10-22"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
