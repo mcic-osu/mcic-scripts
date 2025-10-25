@@ -211,9 +211,13 @@ run_ora <- function(
     # Create a regular df
     res <- as_tibble(res) |>
       mutate(
-        sig = ifelse(p.adjust < p_enrich & qvalue < q_enrich & Count >= min_DE_in_cat,
-                     TRUE, FALSE),
-        contrast = fcontrast, DE_direction = DE_direction
+        sig = ifelse(
+          p.adjust < p_enrich & qvalue < q_enrich & Count >= min_DE_in_cat,
+          TRUE,
+          FALSE
+          ),
+        contrast = fcontrast,
+        DE_direction = DE_direction
         ) |>
       dplyr::select(
         contrast, DE_direction, term = ID, n_focal_in_cat = Count,
@@ -234,12 +238,16 @@ run_ora <- function(
     if (!is.null(df)) {
       w_lfc <- res |>
         separate_longer_delim(cols = gene_ids, delim = "/") |>
-        left_join(dplyr::select(df, gene, lfc),
-                  by = join_by("gene_ids" == "gene"),
-                  relationship = "many-to-many") |>
-        summarize(mean_lfc = mean(lfc),
-                  median_lfc = median(lfc),
-                  .by = c("term", "contrast", "DE_direction"))
+        left_join(
+          dplyr::select(df, gene, lfc),
+          by = join_by("gene_ids" == "gene"),
+          relationship = "many-to-many"
+          ) |>
+        summarize(
+          mean_lfc = mean(lfc),
+          median_lfc = median(lfc),
+          .by = c("term", "contrast", "DE_direction")
+          )
       res <- left_join(res, w_lfc, by = c("term", "contrast", "DE_direction"))
     }
     
@@ -608,7 +616,6 @@ tileplot <- function(
   return(p)
 }
 
-
 # Cleveland dotplot of enrichment results
 cdotplot <- function(
     enrich_df,                  # Dataframe with enrichment results from run_enrich()
@@ -636,7 +643,7 @@ cdotplot <- function(
     dplyr::filter(sig == TRUE, contrast %in% contrasts) |>
     mutate(padj_log = -log10(padj))
   
-  if (! is.null(DE_directions))
+  if (!is.null(DE_directions))
     enrich_df <- enrich_df |> dplyr::filter(DE_direction %in% DE_directions)
   
   # Modify the term description
@@ -687,19 +694,24 @@ cdotplot <- function(
   if (fill_var %in% c("mean_lfc", "median_lfc")) {
     #https://carto.com/carto-colors/
     col_scale <- colorspace::scale_color_continuous_divergingx(
-      palette = "Tropic", mid = 0.0, na.value = "grey97",
-      name = color_name, rev = TRUE
+      palette = "Tropic",
+      mid = 0.0,
+      na.value = "grey97",
+      name = color_name,
+      rev = TRUE
     )
   } else if (class(enrich_df[[fill_var]]) == "numeric") {
     col_scale <- scale_color_viridis_c(
-      option = "D", na.value = "grey95", name = color_name,
+      option = "D",
+      na.value = "grey95",
+      name = color_name,
       )
   } else {
     col_scale <- scale_color_brewer(palette = "Dark2")
   }
   
   # X-axis left-hand expansion,
-  if (x_var == "padj_log") {
+  if (x_var %in% c("padj_log", "fold_enrich")) {
     expand_min <- 0
   } else {
     expand_min <- 0.09
@@ -712,7 +724,7 @@ cdotplot <- function(
     y = x_var,
     label = label_var,
     color = fill_var,
-    sorting = "descending",       # Sort value in descending order
+    sorting = "none",       # Sort value in descending order
     add = "segments",             # Add segments from y = 0 to dots
     rotate = TRUE,                # Rotate vertically
     dot.size = point_size,
@@ -742,8 +754,8 @@ cdotplot <- function(
     )
   
   # Other formatting
-  if (! is.null(x_title)) p <- p + labs(y = x_title)
-  if (x_var %in% c("mean_lfc", "median_lfc")) {
+  if (!is.null(x_title)) p <- p + labs(y = x_title)
+  if (x_var %in% c("mean_lfc", "median_lfc", "fold_enrich")) {
     p <- p + geom_hline(yintercept = 0, color = "grey70", linewidth = 1)
   }
   
@@ -785,7 +797,7 @@ cdotplot <- function(
           )
     }
   }
-  
+
   return(p)
 }
 
