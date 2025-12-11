@@ -87,7 +87,9 @@ to_find_genomes=false               # Find genomes of subjects and create lookup
 to_dl_genomes=false                 # Download full genomes of subjects?
 to_dl_subjects=false                # Download full subjects?
 to_dl_aligned=false                 # Download aligned sequences?
+to_add_taxinfo=true                 # Add taxonomy info to final BLAST output file?
 add_header=true                     # Add column header to final BLAST output file
+strict_bash=true                    # Use 'set -euo pipefail' for strict Bash scripting
 
 # ==============================================================================
 #                           GENERIC FUNCTIONS
@@ -182,6 +184,7 @@ SEQUENCE LOOKUP AND DOWNLOAD OPTIONS (OPTIONAL):
                             (multi-species) accessions.
   --find_genomes            Get genome accession numbers of aligned sequences   [default: $to_find_genomes]
   --dl_genomes              Download full genomes of aligned sequences.         [default: $to_dl_genomes]
+  --no_taxinfo              Don't add taxonomic information to BLAST output     [default: add]
 
 UTILITY OPTIONS (OPTIONAL):
   --env_type        <str>   Use a Singularity container ('container')           [default: $env_type]
@@ -190,6 +193,7 @@ UTILITY OPTIONS (OPTIONAL):
   --container_url   <str>   URL to download a container from                    [default (if any): $container_url]
   --container_dir   <str>   Dir to download a container to                      [default: $container_dir]
   --container_path  <file>  Local singularity image file (.sif) to use          [default (if any): $container_path]
+  --no_strict               Don't use strict Bash settings('set -euo pipefail') [default: use strict settings]
   -h/--help                 Print this help message
   -v/--version              Print script and $TOOL_NAME versions
 "
@@ -301,12 +305,17 @@ process_blast() {
     fi
 
     # 5. Add taxonomy information (column 17 contains taxid)
-    #!   Note - if multiple taxids are present, only the first one will be used 
-    cut -f17 "$blast_out_tops" | cut -f1 -d";" |
+    if [[ "$to_add_taxinfo" == true ]]; then
+        log_time "Adding taxonomy information to the BLAST output"
+        #!   Note - if multiple taxids are present, only the first one will be used 
+            cut -f17 "$blast_out_tops" | cut -f1 -d";" |
         taxonkit reformat -I 1 -f "{K}|{p}|{c}|{o}|{f}|{g}|{s}" \
         > "$outdir"/taxonomy.tsv 2> /dev/null
-    sed -i 's/||||||/NA/' "$outdir"/taxonomy.tsv # If no taxid is found, replace with 'NA'
-    paste "$blast_out_tops" <(cut -f2 "$outdir"/taxonomy.tsv) > "$blast_out_final"
+        sed -i 's/||||||/NA/' "$outdir"/taxonomy.tsv # If no taxid is found, replace with 'NA'
+        paste "$blast_out_tops" <(cut -f2 "$outdir"/taxonomy.tsv) > "$blast_out_final"
+    else
+        blast_out_final="$blast_out_tops"
+    fi
 
     # Clean & report
     [[ -f "$blast_out_cov" ]] && rm "$blast_out_cov"
@@ -504,7 +513,6 @@ task_opt=
 tax_ids= && tax_opt= && tax_optarg=
 max_target_seqs= && maxtarget_opt=
 spacer=
-db=
 threads= && thread_opt=
 version_only=false # When true, just print tool & script version info and exit
 
@@ -532,6 +540,8 @@ while [ "$1" != "" ]; do
         --dl_genomes )      to_dl_genomes=true ;;
         --dl_subjects )     to_dl_subjects=true ;;
         --dl_aligned )      to_dl_aligned=true ;;
+        --no_taxinfo )      to_add_taxinfo=false ;;
+        --no_strict )       strict_bash=false ;;
         --env_type )        shift && env_type=$1 ;;
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 ;;
@@ -546,7 +556,7 @@ done
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
 # Strict Bash settings
-set -euo pipefail
+[[ "$strict_bash" == true ]] && set -euo pipefail
 
 # Load software
 TOOL_BINARY=$blast_type
@@ -672,6 +682,7 @@ echo "Find genome accessions?                   $to_find_genomes"
 echo "Download full genomes?                    $to_dl_genomes"
 echo "Download full subjects?                   $to_dl_subjects"
 echo "Download aligned parts of sequences?      $to_dl_aligned"
+echo "Add taxonomic info to BLAST output?       $to_add_taxinfo"
 echo
 echo "Number of queries in the input file:      $(grep -c "^>" "$infile")"
 echo "Listing the input file(s):"
