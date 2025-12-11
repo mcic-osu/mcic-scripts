@@ -25,9 +25,8 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 #? 2024-09-24: Using a container by default because I regularly get malloc and core dumping with the Conda env
 env_type=container                                    # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/flye
-container_path=/fs/ess/PAS0471/containers/flye_2.9.5--eb07d7b7094f222c.sif
-container_url=
-dl_container=false
+container_url=oras://community.wave.seqera.io/library/flye:2.9.6--0c4130a5dcdcfcbf
+container_path=
 container_dir="$HOME/containers"
 version_only=false                 # When true, just print tool & script version info and exit
 
@@ -66,17 +65,12 @@ script_help() {
     echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
-    echo "                                (NOTE: If no default '--container_url' is listed below,"
-    echo "                                 you'll have to provide one in order to run the script with a container.)"
+    echo "  --env_type          <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
     echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
     echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
     echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
     echo "  -h/--help                   Print this help message and exit"
-    echo "  -v                          Print the version of this script and exit"
-    echo "  --version                   Print the version of $TOOL_NAME and exit"
+    echo "  -v/--version                Print the version of this script and of $TOOL_NAME and exit"
     echo
     echo "TOOL DOCUMENTATION: $TOOL_DOCS"
 }
@@ -130,12 +124,11 @@ while [ "$1" != "" ]; do
         --iterations )      shift && iterations=$1 ;;
         --resume )          resume=true && resume_opt="--resume" ;;
         --more_opts )       shift && more_opts=$1 ;;
-        --env_type )             shift && env_type=$1 ;;
-        --dl_container )    dl_container=true ;;
+        --env_type )        shift && env_type=$1 ;;
         --container_dir )   shift && container_dir=$1 ;;
-        --container_url )   shift && container_url=$1 && dl_container=true ;;
+        --container_url )   shift && container_url=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v | --version )         version_only=true ;;
+        -v | --version )    version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
@@ -148,7 +141,7 @@ done
 set -euo pipefail
 
 # Load software
-load_env "$conda_path" "$container_path" "$dl_container"
+load_env "$conda_path" "$container_path"
 [[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
