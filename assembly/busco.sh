@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=3:00:00
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=40G
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=60G
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name=busco
 #SBATCH --output=slurm-busco-%j.out

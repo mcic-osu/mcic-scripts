@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=4:00:00
+#SBATCH --time=6:00:00
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=48G
 #SBATCH --mail-type=END,FAIL
@@ -11,73 +11,86 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-readonly DESCRIPTION="Run EggNOGmapper to functionally annotate proteins"
-readonly MODULE=miniconda3/23.3.1-py310
-readonly CONDA=/fs/ess/PAS0471/jelmer/conda/eggnogmapper
-readonly SCRIPT_VERSION="2023-06-30"
-readonly SCRIPT_AUTHOR="Jelmer Poelstra"
-readonly SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
-readonly TOOL_BINARY=emapper.py
-readonly TOOL_NAME=EggNOGmapper
-readonly TOOL_DOCS=https://github.com/eggnogdb/eggnog-mapper/wiki/eggNOG-mapper-v2.1.5-to-v2.1.11
-readonly VERSION_COMMAND="$TOOL_BINARY --version | grep emapper"
+DESCRIPTION="Run EggNOGmapper to functionally annotate proteins"
+SCRIPT_VERSION="2025-09-17"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
+TOOL_BINARY=emapper.py
+TOOL_NAME=EggNOGmapper
+TOOL_DOCS=https://github.com/eggnogdb/eggnog-mapper/wiki/eggNOG-mapper-v2.1.5-to-v2.1.11
+VERSION_COMMAND="$TOOL_BINARY --version"
+
+# Defaults - generics
+env_type=conda                  # Use a 'conda' env or a Singularity 'container'
+conda_path=/fs/ess/PAS0471/conda/eggnog-mapper_2.1.13
+container_url=
+container_dir="$HOME/containers"
+container_path=
 
 # Constants - parameters
 INPUT_TYPE=proteins             # Assume a protein (rather than nucleotide) FASTA
 
 # Parameter defaults
+db_dir=/fs/ess/PAS0471/refdata/eggnog/2025-09
 search_method=diamond           # Also the EggNOGmapper default
 go_evidence="non-electronic"    # Also the EggNOGmapper default
 sensmode="more-sensitive"       # EggNOGmapper default is 'sensitive'
 tax_scope="auto"                # Also the EggNOGmapper default
 
+
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-# Help function
 script_help() {
-    echo
-    echo "        $0 (v. $SCRIPT_VERSION): Run $TOOL_NAME"
-    echo "        =============================================="
-    echo "DESCRIPTION:"
-    echo "  $DESCRIPTION"
-    echo
-    echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage (always submit your scripts to SLURM with 'sbatch'):"
-    echo "      sbatch $0 -i results/braker/proteins.faa -d data/eggnog -o results/eggnogmapper"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--proteins   <file>  Input protein FASTA file"
-    echo "  -d/--db_dir     <dir>   Pre-downloaded eggNOGmapper database dir"
-    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --out_prefix    <str>   Output prefix, e.g. a genome ID             [default: basename of protein file]"
-    echo "  --tax_scope     <str>   Taxonomic scope (see eggNOGmapper docs)     [default: 'auto']"
-    echo "  --search_method <str>   'diamond', 'mmseqs', or 'hmmer'             [default: 'diamond']"
-    echo "  --sensmode      <str>   Diamond sensitivity                         [default: 'more-sensitive']"
-    echo "                            One of 'default', 'fast', 'mid-sensitive', 'sensitive', 'more-sensitive', 'very-sensitive' or 'ultra-sensitive'"
-    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to EggNOGmapper"
-    echo
-    echo "HARDCODED PARAMETERS:"
-    echo "  - This script is set up to work with a protein FASTA file;"
-    echo "    whereas it is also possible to run EggNOGmapper with a nucleotide FASTA file."
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  -h/--help               Print this help message and exit"
-    echo "  -v                      Print the version of this script and exit"
-    echo "  --version               Print the version of $TOOL_NAME and exit"
-    echo
-    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
-    echo
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+    
+USAGE / EXAMPLE COMMANDS:
+  - Basic usage example:
+      sbatch $0 -i proteins.faa -o results/eggnogmapper
+    
+REQUIRED OPTIONS:
+  -i/--infile         <file>  A FASTA file with protein sequences (proteome)
+  -o/--outdir         <dir>   Output dir (will be created if needed)
+    
+OTHER KEY OPTIONS:
+  --db_dir            <dir>   Pre-downloaded eggNOGmapper database dir          [default: $db_dir]
+  --out_prefix        <str>   Output prefix, e.g. a genome ID                   [default: basename of protein file]
+  --tax_scope         <str>   Taxonomic scope (see eggNOGmapper docs)           [default: 'auto']
+  --search_method     <str>   'diamond', 'mmseqs', or 'hmmer'                   [default: 'diamond']
+  --sensmode          <str>   Diamond sensitivity                               [default: 'more-sensitive']
+  --more_opts         <str>   Quoted string with one or more additional options
+                              for $TOOL_NAME
+    
+UTILITY OPTIONS:
+  --env_type          <str>   Whether to use a Singularity/Apptainer container  [default: $env_type]
+                              ('container') or a Conda environment ('conda') 
+  --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
+  --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
+  --container_path    <file>  Local container image file ('.sif') to use        [default (if any): $container_path]
+  --conda_path        <dir>   Full path to a Conda environment to use           [default (if any): $conda_path]
+  -h/--help                   Print this help message
+  -v/--version                Print script and $TOOL_NAME versions
+
+HARDCODED PARAMETERS:
+- This script is set up to work with a protein FASTA file;
+    whereas it is also possible to run EggNOGmapper with a nucleotide FASTA file.
+
+TOOL DOCUMENTATION:
+  $TOOL_DOCS
+"
 }
 
 # Function to source the script with Bash functions
 source_function_script() {
-    local is_slurm=$1
-
     # Determine the location of this script, and based on that, the function script
-    if [[ "$is_slurm" == true ]]; then
+    if [[ "$IS_SLURM" == true ]]; then
         script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
         script_dir=$(dirname "$script_path")
         SCRIPT_NAME=$(basename "$script_path")
@@ -85,19 +98,21 @@ source_function_script() {
         script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
         SCRIPT_NAME=$(basename "$0")
     fi
-    function_script=$(realpath "$script_dir"/../dev/bash_functions.sh)
-    
-    if [[ ! -f "$function_script" ]]; then
-        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
-        git clone https://github.com/mcic-osu/mcic-scripts.git
-        function_script=mcic-scripts/dev/bash_functions.sh
+    function_script_name="$(basename "$FUNCTION_SCRIPT_URL")"
+    function_script_path="$script_dir"/../dev/"$function_script_name"
+
+    # Download the function script if needed, then source it
+    if [[ -f "$function_script_path" ]]; then
+        source "$function_script_path"
+    else
+        if [[ ! -f "$function_script_name" ]]; then
+            echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+            wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
+        fi
+        source "$function_script_name"
     fi
-    source "$function_script"
 }
 
-# ==============================================================================
-#                          INFRASTRUCTURE SETUP I
-# ==============================================================================
 # Check if this is a SLURM job, then load the Bash functions
 if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
 source_function_script $IS_SLURM
@@ -106,44 +121,53 @@ source_function_script $IS_SLURM
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
+version_only=false  # When true, just print tool & script version info and exit
 infile=
 db_dir=
 out_prefix=
 outdir=
-more_args=
+more_opts=
+threads=
 
-# Parse command-line args
-all_args="$*"
+# Parse command-line options
+all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infile )     shift && readonly infile=$1 ;;
-        -o | --outdir )     shift && readonly outdir=$1 ;;
-        -d | --db_dir )     shift && readonly db_dir=$1 ;;
-        --out_prefix )      shift && readonly out_prefix=$1 ;;
-        --search_method )   shift && readonly search_method=$1 ;;
-        --sensmode )        shift && readonly sensmode=$1 ;;
-        --tax_scope )       shift && readonly tax_scope=$1 ;;
-        --more_args )       shift && readonly more_args=$1 ;;
+        -i | --infile )     shift && infile=$1 ;;
+        -o | --outdir )     shift && outdir=$1 ;;
+        --db_dir )          shift && db_dir=$1 ;;
+        --out_prefix )      shift && out_prefix=$1 ;;
+        --search_method )   shift && search_method=$1 ;;
+        --sensmode )        shift && sensmode=$1 ;;
+        --tax_scope )       shift && tax_scope=$1 ;;
+        --more_opts )       shift && more_opts=$1 ;;
+        --env_type )        shift && env_type=$1 ;;
+        --conda_path )      shift && conda_path=$1 ;;
+        --container_dir )   shift && container_dir=$1 ;;
+        --container_url )   shift && container_url=$1 ;;
+        --container_path )  shift && container_path=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v | --version )         load_env "$MODULE" "$CONDA"
-                            print_version "$VERSION_COMMAND" && exit 0 ;;
-        * )                 die "Invalid option $1" "$all_args" ;;
+        -v | --version)     version_only=true ;;
+        * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
 done
 
-# Check arguments
-[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_args"
-[[ -z "$db_dir" ]] && Die "No EggNOGmapper DB dir specified, do so with -d/--db_dir" "$all_args"
-[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_args"
-[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
-[[ ! -d "$db_dir" ]] && die "Input EggNOGmapper DB dir $db_dir does not exist"
-
 # ==============================================================================
-#                          INFRASTRUCTURE SETUP II
+#                          INFRASTRUCTURE SETUP
 # ==============================================================================
 # Strict Bash settings
 set -euo pipefail
+
+# Load software
+load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$container_url"
+[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
+
+# Check options provided to the script
+[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
+[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
+[[ ! -d "$db_dir" ]] && die "Input EggNOGmapper DB dir $db_dir does not exist"
 
 # Other variables
 if [[ -z "$out_prefix" ]]; then
@@ -163,59 +187,51 @@ fi
 # Get nr of genes in the input
 ngenes_in=$(grep -c "^>" "$infile")
 
-# Logging files and dirs
-readonly LOG_DIR="$outdir"/logs
-readonly VERSION_FILE="$LOG_DIR"/version.txt
-readonly CONDA_YML="$LOG_DIR"/conda_env.yml
-readonly ENV_FILE="$LOG_DIR"/env.txt
-mkdir -p "$LOG_DIR"
-
-# Load software and set nr of threads
-load_env "$MODULE" "$CONDA" "$CONDA_YML"
-set_threads "$IS_SLURM"
+# Define outputs based on script parameters
+LOG_DIR="$outdir"/logs
+mkdir -p "$LOG_DIR" "$temp_dir"
 
 # ==============================================================================
-#                               REPORT
+#                         REPORT PARSED OPTIONS
 # ==============================================================================
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "All options/arguments passed to this script:  $all_args"
-echo "Input file:                                   $infile"
-echo "Nr of entries (genes) in the input file:      $ngenes_in"
-echo "eggNOGmapper database dir:                    $db_dir"
-echo "Output dir:                                   $outdir"
-echo "Output prefix:                                $out_prefix"
-echo "Search method:                                $search_method"
-echo "DIAMOND sensitivity:                          $sensmode"
-echo "Taxonomic scope:                              $tax_scope"
-echo "Scratch and temp dir argument:                $tempdir_arg"
-[[ -n $more_args ]] && echo "Additional arguments for $TOOL_NAME:          $more_args"
+echo "All options passed to this script:        $all_opts"
+echo "Working directory:                        $PWD"
+echo
+echo "Input file:                               $infile"
+echo "Output dir:                               $outdir"
+echo "Nr of entries (genes) in the input file:  $ngenes_in"
+echo "eggNOGmapper database dir:                $db_dir"
+echo "Output prefix:                            $out_prefix"
+echo "Search method:                            $search_method"
+echo "DIAMOND sensitivity:                      $sensmode"
+echo "Taxonomic scope:                          $tax_scope"
+echo "Scratch and temp dir argument:            $tempdir_arg"
+[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
 ls -lh "$infile"
-[[ "$IS_SLURM" = true ]] && slurm_resources
+set_threads "$IS_SLURM"
+[[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Create the output directory
-mkdir -p "$temp_dir"
-
-# Run the tool
 log_time "Running $TOOL_NAME..."
 runstats $TOOL_BINARY \
-        -i "$infile" \
-        --itype "$INPUT_TYPE" \
-        --data_dir "$db_dir" \
-        --output_dir "$outdir" \
-        --output "$out_prefix" \
-        -m "$search_method" \
-        --sensmode "$sensmode" \
-        --tax_scope "$tax_scope" \
-        --go_evidence "$go_evidence" \
-        --cpu "$threads" \
-        --override \
-        $tempdir_arg \
-        $more_args
+    -i "$infile" \
+    --itype "$INPUT_TYPE" \
+    --data_dir "$db_dir" \
+    --output_dir "$outdir" \
+    --output "$out_prefix" \
+    -m "$search_method" \
+    --sensmode "$sensmode" \
+    --tax_scope "$tax_scope" \
+    --go_evidence "$go_evidence" \
+    --cpu "$threads" \
+    --override \
+    $tempdir_arg \
+    $more_opts
 
 # Report
 ngenes_out=$(grep -cv "^#" "$outdir"/*emapper.annotations)
@@ -232,13 +248,43 @@ echo "Nr of genes/entries with a description:   $ngenes_descrip"
 # --override => Overwrite existing output files
 
 #? Other options for Eggnogmapper
-# --pfam_realign denovo Needs some HMMer server setup
-#--list_taxa            List taxa available for --tax_scope/--tax_scope_mode, and exit
-#--tax_scope            ....
-#--resume               Resumes a previous emapper run, skipping results in existing output files.
+# --pfam_realign denovo  Needs some HMMer server setup
+# --list_taxa            List taxa available for --tax_scope/--tax_scope_mode, and exit
+# --tax_scope            ....
+# --resume               Resumes a previous emapper run, skipping results in existing output files.
 
-# List the output, report version, etc
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
-final_reporting "$VERSION_COMMAND" "$VERSION_FILE" "$ENV_FILE" "$IS_SLURM" \
-    "$SCRIPT_NAME" "$SCRIPT_AUTHOR" "$SCRIPT_VERSION" "$SCRIPT_URL"
+final_reporting "$LOG_DIR"
+
+# ==============================================================================
+#                               INSTALLATION INFO
+# ==============================================================================
+# Downloading the EggNOGmapper database:
+#! NOTE: Had to change two URLs in the download_eggnog_data.py scripts. Correct URLs:
+#! See https://github.com/eggnogdb/eggnog-mapper/issues/571
+#> BASE_URL = f'http://eggnog5.embl.de/download/emapperdb-{__DB_VERSION__}'        # JP: Changed this URL
+#> EGGNOG_URL = f'http://eggnog5.embl.de/download/eggnog_5.0/per_tax_level'
+#> EGGNOG_DOWNLOADS_URL = 'http://eggnog5.embl.de/#/app/downloads'
+#> NOVEL_FAMS_BASE_URL = f'http://eggnog5.embl.de/download/novel_fams-{__NOVEL_FAMS_DB_VERSION__}' # JP: Changed this URL
+# Then actually download:
+#db_dir=/fs/ess/PAS0471/jelmer/refdata/eggnog/2025-09
+#sbatch -A PAS0471 -t 120 --wrap="download_eggnog_data.py -y -f -F -P -M --data_dir $db_dir"
+
+#> options:
+#>   -h, --help       show this help message and exit
+#>   -D               Do not install the diamond database (default: False)
+#>   -F               Install the novel families diamond and annotation databases, required for "emapper.py -m novel_fams" (default: False)
+#>   -P               Install the Pfam database, required for de novo annotation or realignment (default: False)
+#>   -M               Install the MMseqs2 database, required for "emapper.py -m mmseqs" (default: False)
+#>   -H               Install the HMMER database specified with "-d TAXID". Required for "emapper.py -m hmmer -d TAXID" (default: False)
+#>   -d HMMER_DBS     Tax ID of eggNOG HMM database to download. e.g. "-H -d 2" for Bacteria. Required if "-H". Available tax IDs can be found at http://eggnog5.embl.de/#/app/downloads. (default: None)
+#>   --dbname DBNAME  Tax ID of eggNOG HMM database to download. e.g. "-H -d 2 --dbname 'Bacteria'" to download Bacteria (taxid 2) to a directory named Bacteria (default: None)
+#>   -y               assume "yes" to all questions (default: False)
+#>   -f               forces download even if the files exist (default: False)
+#>   -s               simulate and print commands. Nothing is downloaded (default: False)
+#>   -q               quiet_mode (default: False)
+#>   --data_dir       Directory to use for DATA_PATH. (default: None)

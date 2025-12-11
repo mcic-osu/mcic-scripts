@@ -26,7 +26,7 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
 env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/project/PAS0471/jelmer/conda/kraken2
+conda_path=/fs/ess/PAS0471/conda/kraken_2.1.6
 container_path=
 container_url=
 dl_container=false

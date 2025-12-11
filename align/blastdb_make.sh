@@ -21,7 +21,7 @@ VERSION_COMMAND="$TOOL_BINARY -version"
 
 # Defaults - generics
 env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/blast
+conda_path=/fs/ess/PAS0471/conda/blast-2.16.0
 container_dir="$HOME/containers"
 
 # Defaults - tool parameters

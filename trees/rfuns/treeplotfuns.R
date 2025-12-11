@@ -87,9 +87,7 @@ ptree <- function(
   
   # Add dating confidence intervals (CIs)
   if (!is.null(ci_name)) {
-    p <- p +
-      geom_range(range = ci_name,
-                 color = "red", size = 1, alpha = 0.3)
+    p <- p + geom_range(range = ci_name, color = "red", size = 1, alpha = 0.3)
   }
   
   # Add bootstrap support values
@@ -109,8 +107,7 @@ ptree <- function(
         aes(subset = !is.na(as.numeric(label)), fill = as.numeric(label)),
         shape = 21, size = 2, color = "grey30"
         ) +
-      scale_fill_viridis_c(name = "Bootstrap\nsupport",
-                           breaks = c(0, 50, 75, 100))
+      scale_fill_viridis_c(name = "Bootstrap\nsupport", breaks = c(0, 50, 75, 100))
   }
 
   # X-axis scale for timetree
@@ -127,7 +124,7 @@ ptree <- function(
   
   # Formatting - scales etc
   p <- p +
-    scale_color_brewer(palette = "Dark2") +
+    #scale_color_brewer(palette = "Dark2") +
     geom_rootedge(rootedge = tree_size / 50) +
     coord_cartesian(clip = "off")
   
@@ -135,7 +132,7 @@ ptree <- function(
   p <- p +
     theme(plot.margin = margin(0.2, right_margin, 0.2, 0.75, "cm"),
           legend.position = "top",
-          legend.box="vertical")
+          legend.box = "vertical")
   if (timetree) {
     p <- p +
       theme(axis.text.x = element_text(size = xlab_size, color = "grey50"),
