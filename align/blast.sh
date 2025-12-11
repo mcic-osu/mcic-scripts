@@ -48,7 +48,7 @@ OUTPUT:
     17) staxids     Subject taxonomy IDs
     18) tax_string  Taxonomy string in the format: kingdom|phylum|class|order|family|genus|species
 "
-SCRIPT_VERSION="2025-08-03"
+SCRIPT_VERSION="2025-12-11"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 VERSION_COMMAND="blastn -version; datasets --version; taxonkit version"
