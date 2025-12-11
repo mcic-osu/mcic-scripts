@@ -1,37 +1,32 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=6:00:00
+#SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name=dl_genomes
-#SBATCH --output=slurm-dl_genomes-%j.out
-
-#TODO - Implement '--prefer_refseq' option where RefSeq genomes will be downloaded
-#TODO   as available, and GenBank genomes only for those for which there is no RefSeq genome
+#SBATCH --output=slurm-dl-genomes-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Download genomes (and associated proteomes, annotations, etc) and associated metadata with the NCBI datasets tool"
-SCRIPT_VERSION="2024-09-29"
+SCRIPT_VERSION="2025-08-02"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
-TOOL_BINARY="datasets download genome"
+TOOL_BINARY=
 TOOL_NAME="NCBI datasets"
 TOOL_DOCS=https://www.ncbi.nlm.nih.gov/datasets/docs/v2/reference-docs/command-line/datasets
-VERSION_COMMAND="$TOOL_BINARY --version"
+VERSION_COMMAND="datasets --version"
 
 # Defaults - generics
-env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/ncbi-datasets
-container_path=
-container_url=
-dl_container=false
+env_type=conda                # Use a 'conda' env or a Singularity 'container'
+container_url=oras://community.wave.seqera.io/library/ncbi-datasets-cli:18.5.1--bedf5edc8afb072d
 container_dir="$HOME/containers"
-version_only=false
+container_path=
+conda_path=/fs/ess/PAS0471/conda/ncbi-datasets_18.5.1
 
 # Defaults - tool parameters
 include="all"
@@ -42,70 +37,83 @@ assembly_source=GenBank
 move_output=true
 meta_fields="accession,assminfo-name,organism-name,assminfo-refseq-category,assminfo-level,assmstats-number-of-contigs,assmstats-contig-n50,assminfo-sequencing-tech"
 
+
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-# Help function
 script_help() {
-    echo "                          $0"
-    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
-    echo "        =============================================================="
-    echo "DESCRIPTION:"
-    echo "  $DESCRIPTION"
-    echo
-    echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Download all C. elegans genomes:"
-    echo "      sbatch $0 --taxon 'Caenorhabditis elegans' -o results/refgenome"
-    echo
-    echo "  - Download all reference nematode genomes:"
-    echo "      sbatch $0 --taxon 'nematoda' --ref_only -o results/refgenomes"
-    echo
-    echo "  - Download geneomes using a file with a list of accessions:"
-    echo "      sbatch $0 --accession_file metadata/accession.txt -o results/refgenomes"
-    echo
-    echo "  - Only download genome, annotation and proteome (default is to download all available files):"
-    echo "      sbatch $0 --taxon 'human' --include 'genome,protein,gff3' -o results"
-    echo
-    echo "  - Download a single genome using its accession number:"
-    echo "      sbatch $0 --accession GCA_000001405.29 -o data/ref"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
-    echo
-    echo "To specify genomes to download, use _one_ of the following three options:"
-    echo "  -t/--taxon          <str>   Taxon string (e.g. 'bos taurus' or 'nematoda') or NCBI Taxonomy ID (e.g. '10116')"
-    echo "  -a/--accession_file <file>  Text file with list of NCBI accession numbers, one per line"
-    echo "  -A/--accession      <str>   A single accession number to download (e.g. 'GCA_003693625.1')"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --as_is                     Don't move all files into the output dir - keep subdir structure with one folder per genome"         
-    echo "  --include           <str>   Comma-separated string with one or more of the following options: [default: $include]"
-    echo "                              Options: 'all' (all of the following), 'genome', 'rna', 'protein', 'cds', 'gff3', 'gtf', 'gbff', 'seq-report'"
-    echo "  --assembly_source   <str>   'GenBank', 'RefSeq', or 'all'           [default: $assembly_source]"
-    echo "                                - 'GenBank' will likely return more records"
-    echo "                                - 'RefSeq' will likely return more annotations and proteomes" 
-    echo "                                - Does not apply when you're directly requestion GCA_ (GenBank) or GCF_ (RefSeq) accession nrs"
-    echo "  --assembly_version  <str>   'latest' or 'all'                       [default: $assembly_version]"
-    echo "  --ref_only                  When specifying a taxon, only download 'reference genomes' [default: download all matching genomes]"
-    echo "  --meta_fields       <str>   Comma-separated list of metadata fields for the 'selected' metadata file"
-    echo "                                (Note: a metadata file with all possible metadata will also be produced.)"
-    echo "                                [default: $meta_fields]"
-    echo "  --meta_only                 Don't download genomes, only metadata   [default: $meta_only]"
-    echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
-    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
-    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
-    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
-    echo "  -h/--help                   Print this help message and exit"
-    echo "  -v                          Print the version of this script and exit"
-    echo "  --version                   Print the version of $TOOL_NAME and exit"
-    echo
-    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
-    echo
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+    
+USAGE / EXAMPLE COMMANDS:
+  - Download all C. elegans genomes:
+      sbatch $0 --taxon 'Caenorhabditis elegans' -o results/refgenome
+
+  - Download all reference nematode genomes:
+      sbatch $0 --taxon 'nematoda' --ref_only -o results/refgenomes
+
+  - Download geneomes using a file with a list of accessions:
+      sbatch $0 --accession_file metadata/accession.txt -o results/refgenomes
+
+  - Only download genome, annotation and proteome (default is to download all available files):
+      sbatch $0 --taxon 'human' --include 'genome,protein,gff3' -o results
+
+  - Download a single genome using its accession number:
+      sbatch $0 --accession GCA_000001405.29 -o data/ref
+    
+REQUIRED OPTIONS:
+  -o/--outdir         <dir>   Output dir (will be created if needed)
+                              To specify genomes to download,
+                              use _one_ of the following three options:
+  -t/--taxon          <str>   Taxon string (e.g. 'bos taurus' or 'nematoda') or
+                              NCBI Taxonomy ID (e.g. '10116')
+  -a/--accession_file <file>  Text file with list of NCBI accession numbers,
+                              one per line.
+  -A/--accession      <str>   A single accession number to download
+                              (e.g. 'GCA_003693625.1')
+    
+OTHER KEY OPTIONS:
+  --as_is                     Don't move all files into the output dir, but     [default: move files]
+                              keep subdir structure with one folder per genome.        
+  --include           <str>   Comma-separated string with one or more of the    [default: $include]
+                              following options:                                
+                              'all' (all of the following), 'genome', 'rna',
+                              'protein', 'cds', 'gff3', 'gtf', 'gbff',
+                              'seq-report'
+  --assembly_source   <str>   'GenBank', 'RefSeq', or 'all'                     [default: $assembly_source]
+                                - 'GenBank' will likely return more records
+                                - 'RefSeq' will likely return more annotations
+                                   and proteomes 
+                                - Does not apply when you're directly requestion
+                                  GCA_ (GenBank) or GCF_ (RefSeq) accession nrs
+  --assembly_version  <str>   'latest' or 'all'                                 [default: $assembly_version]
+  --ref_only                  When specifying a taxon, only download genomes    [default: all matching genomes]
+                              marked as 'reference genomes'.                               
+  --meta_fields       <str>   Comma-separated list of metadata fields for the   [default: $meta_fields]
+                              'selected' metadata output file. (A metadata file
+                              with all possible metadata will also be produced.)                               
+  --meta_only                 Don't download genomes, only metadata             [default: $meta_only]
+  --more_opts         <str>   Quoted string with one or more additional options
+                              for $TOOL_NAME.
+    
+UTILITY OPTIONS:
+  --env_type          <str>   Whether to use a Singularity/Apptainer container  [default: $env_type]
+                              ('container') or a Conda environment ('conda') 
+  --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
+  --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
+  --container_path    <file>  Local container image file ('.sif') to use        [default (if any): $container_path]
+  --conda_path        <dir>   Full path to a Conda environment to use           [default (if any): $conda_path]
+  -h/--help                   Print this help message
+  -v/--version                Print script and $TOOL_NAME versions
+    
+TOOL DOCUMENTATION:
+  $TOOL_DOCS
+"
 }
 
 # Function to source the script with Bash functions
@@ -119,31 +127,37 @@ source_function_script() {
         script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
         SCRIPT_NAME=$(basename "$0")
     fi
-    function_script=$(realpath "$script_dir"/../dev/"$(basename "$FUNCTION_SCRIPT_URL")")
+    function_script_name="$(basename "$FUNCTION_SCRIPT_URL")"
+    function_script_path="$script_dir"/../dev/"$function_script_name"
+
     # Download the function script if needed, then source it
-    if [[ ! -f "$function_script" ]]; then
-        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
-        function_script=$(basename "$FUNCTION_SCRIPT_URL")
-        wget "$FUNCTION_SCRIPT_URL" -O "$function_script"
+    if [[ -f "$function_script_path" ]]; then
+        source "$function_script_path"
+    else
+        if [[ ! -f "$function_script_name" ]]; then
+            echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+            wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
+        fi
+        source "$function_script_name"
     fi
-    source "$function_script"
 }
 
 # Check if this is a SLURM job, then load the Bash functions
 if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
-source_function_script
+source_function_script $IS_SLURM
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
-outdir=
+version_only=false  # When true, just print tool & script version info and exit
 accession_file=
 accession=
 taxon=
-opts=
+outdir=
+more_opts=
 
-# Parse command-line args
+# Parse command-line options
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
@@ -158,13 +172,13 @@ while [ "$1" != "" ]; do
         --meta_fields )         shift && meta_fields=$1 ;;
         --as_is )               move_output=false ;;
         --meta_only )           meta_only=true ;;
-        --opts )                shift && opts=$1 ;;
         --env_type )            shift && env_type=$1 ;;
-        --dl_container )        dl_container=true ;;
+        --conda_path )          shift && conda_path=$1 ;;
         --container_dir )       shift && container_dir=$1 ;;
-        --container_url )       shift && container_url=$1 && dl_container=true ;;
+        --container_url )       shift && container_url=$1 ;;
+        --container_path )      shift && container_path=$1 ;;
         -h | --help )           script_help; exit 0 ;;
-        -v | --version )        version_only=true ;;
+        -v | --version)         version_only=true ;;
         * )                     die "Invalid option $1" "$all_opts" ;;
     esac
     shift
@@ -177,7 +191,8 @@ done
 set -euo pipefail
 
 # Load software
-load_env "$conda_path" "$container_path" "$dl_container"
+load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$container_url"
+echo "$TOOL_BINARY"
 export NCBI_API_KEY=34618c91021ccd7f17429b650a087b585f08
 [[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
@@ -191,7 +206,7 @@ meta_dir="$outdir"/metadata && mkdir -p "$meta_dir"
 meta_all="$meta_dir"/meta_all.tsv
 meta_sel="$meta_dir"/meta_sel.tsv
 
-# Which seq files to include
+# Specify which file types to download
 [[ "$include" == "all" ]] && include="cds,gbff,genome,gff3,gtf,protein,rna,seq-report"
 
 # Build command to specify which genomes to download
@@ -233,42 +248,39 @@ echo "Assembly source (GenBank vs RefSeq):      $assembly_source"
 echo "Download 'reference' genomes only:        $ref_only"
 echo "Which assembly version(s) to download:    $assembly_version"
 echo "Download metadata only?                   $meta_only"
-[[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
+[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 [[ -n "$accession_file" ]] && log_time "Listing the input file(s):"
 [[ -n "$accession_file" ]] && ls -lh "$accession_file"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
-#                               RUN
+#                          FUNCTIONS
 # ==============================================================================
-# Move into the output dir
-cd "$outdir" || exit 1
+get_meta() {
+    log_time "Storing *full* metadata on genomes in $meta_all..."
+    runstats $TOOL_BINARY datasets summary genome "${data_arg[@]}" --as-json-lines |
+        $TOOL_BINARY dataformat tsv genome > "$meta_all"
 
-# Get metadata on genomes
-log_time "Storing *full* metadata on genomes in $meta_all..."
-runstats datasets summary genome "${data_arg[@]}" --as-json-lines |
-    dataformat tsv genome > "$meta_all"
+    log_time "Storing *selected* metadata on genomes in $meta_sel..."
+    runstats $TOOL_BINARY datasets summary genome "${data_arg[@]}" --as-json-lines |
+        $TOOL_BINARY dataformat tsv genome --fields "$meta_fields" > "$meta_sel"
 
-log_time "Storing *selected* metadata on genomes in $meta_sel..."
-runstats datasets summary genome "${data_arg[@]}" --as-json-lines |
-    dataformat tsv genome --fields "$meta_fields" > "$meta_sel"
+    # Report metadata
+    n_genomes=$(tail -n +2 "$meta_sel" | wc -l)
+    log_time "Found $n_genomes genomes"
+    log_time "Showing genome metadata file $meta_sel"
+    column -ts $'\t' "$meta_sel"
+}
 
-# Report metadata
-n_genomes=$(tail -n +2 "$meta_sel" | wc -l)
-log_time "Found $n_genomes genomes"
-log_time "Showing genome metadata file $meta_sel"
-column -ts $'\t' "$meta_sel"
-
-# Download the genomes
-if [[ "$meta_only" == false ]]; then
+dl_genomes() {
     log_time "Downloading the genomes..."
-    runstats $TOOL_BINARY \
+    runstats $TOOL_BINARY datasets download genome \
         "${data_arg[@]}" \
         --include "$include" \
         --filename genomes.zip \
         --no-progressbar \
         --api-key "$NCBI_API_KEY" \
-        $opts
+        $more_opts
 
     # Process the output - unzip the archive
     log_time "Unzipping the downloaded archive..."
@@ -304,10 +316,23 @@ if [[ "$meta_only" == false ]]; then
     # Clean up
     log_time "Removing original ZIP file and NCBI's README file..."
     rm -r README.md genomes.zip
-fi
+}
 
-# Show output metadata files
-log_time "Output metadata files:"
-ls -lh "$meta_all" "$meta_sel"
+# ==============================================================================
+#                               RUN
+# ==============================================================================
+# Move into the output dir
+cd "$outdir" || exit 1
 
+# Get metadata on genomes
+get_meta
+
+# Download the genomes
+[[ "$meta_only" == false ]] && dl_genomes
+
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/*
 final_reporting "$LOG_DIR"

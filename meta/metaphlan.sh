@@ -1,36 +1,41 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=12:00:00
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=48G
-#SBATCH --mail-type=END,FAIL
-#SBATCH --job-name=orthofinder
-#SBATCH --output=slurm-orthofinder-%j.out
+#SBATCH --time=3:00:00
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=40G
+#SBATCH --mail-type=FAIL
+#SBATCH --job-name=metaphlan
+#SBATCH --output=slurm-metaphlan-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Run OrthoFinder to find orthologs between genomes or proteomes"
-SCRIPT_VERSION="2025-08-02"
+DESCRIPTION="Run Metaphlan to assign taxonomy to sequences"
+SCRIPT_VERSION="2025-09-18"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
-TOOL_BINARY=orthofinder
-TOOL_NAME=Orthofinder
-TOOL_DOCS=https://github.com/davidemms/OrthoFinder
-VERSION_COMMAND="$TOOL_BINARY --help | head -n2"
+TOOL_BINARY=metaphlan
+TOOL_NAME=Metaphlan
+TOOL_DOCS=https://github.com/biobakery/MetaPhlAn
+VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=container                  # Use a 'conda' env or a Singularity 'container'
-conda_path=
-container_url=oras://community.wave.seqera.io/library/orthofinder:3.1.0--888d04d0c725fcc8
+env_type=conda                  # Use a 'conda' env or a Singularity 'container'
+conda_path=/fs/ess/PAS0471/jelmer/conda/metaphlan
+container_url=
 container_dir="$HOME/containers"
 container_path=
 
+# Constants - tool parameters
+FILE_TYPE=fastq
+# This must be added or MetaPhlAn will not work with PE reads / -1 and -2 options
+# Setting to a value higher than a reasonable nr of reads, so all will be tested
+NREADS_SUBSAMPLE=1000000000
+
 # Defaults - tool parameters
-tree_method=msa                    # This is NOT the Orthofinder default, which is 'dendroblast'
-fa_type=prot
+db=/fs/ess/PAS0471/jelmer/refdata/metaphlan/dft_db
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -49,18 +54,11 @@ USAGE / EXAMPLE COMMANDS:
       sbatch $0 -i TODO -o results/TODO
     
 REQUIRED OPTIONS:
-  -i/--indir          <dir>   Input dir with genomes (nucleotide) or proteomes
-                              (protein FASTA files), one file per genome
-                              Accepted file extensions:
-                              .fa, .faa, .fasta, .fas, .pep
-                              (Files with different extensions will be ignored.)
-  -o/--outdir         <dir>   Output dir
-                              (NOTE: If this dir exists, it will be removed!)
+  -i/--R1             <file>  Input file: R1 FASTQ (name of R2 is inferred)
+  -o/--outdir         <dir>   Output dir (will be created if needed)
     
 OTHER KEY OPTIONS:
-  --tree_method       <str>   Gene tree inference method:'dendroblast' or 'msa' [default: $tree_method]
-  --nuc                       Use this option to indicate that input files are  [default: proteomes]
-                              nucleotide FASTA files (genomes), not proteomes 
+  --db                <dir>   MetaPhlAn database dir                            [default: $db]
   --more_opts         <str>   Quoted string with one or more additional options
                               for $TOOL_NAME
     
@@ -114,9 +112,8 @@ source_function_script $IS_SLURM
 # ==============================================================================
 # Initiate variables
 version_only=false  # When true, just print tool & script version info and exit
-indir=
+infile=
 outdir=
-fa_type_opt=
 more_opts=
 threads=
 
@@ -124,10 +121,9 @@ threads=
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --indir )      shift && indir=$1 ;;
+        -i | --infile )     shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
-        --tree_method )     shift && tree_method=$1 ;;
-        --nuc )             fa_type=nuc && fa_type_opt="-d" ;;
+        --db )              shift && db=$1 ;;
         --more_opts )       shift && more_opts=$1 ;;
         --env_type )        shift && env_type=$1 ;;
         --conda_path )      shift && conda_path=$1 ;;
@@ -152,13 +148,22 @@ load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$containe
 [[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
-[[ -z "$indir" ]] && die "No input file specified, do so with -i/--indir" "$more_opts"
-[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$more_opts"
-[[ ! -d "$indir" ]] && die "Input dir $indir does not exist"
+[[ -z "$infile" ]] && die "No input file specified, do so with -i/--R1" "$all_opts"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
+[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 
-# Define outputs based on script parameters
-LOG_DIR="$outdir"/logs
-mkdir -p "$outdir" && rm -r "$outdir"
+# -- Define outputs based on script parameters
+LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+# R2 file:
+R1=$infile
+file_ext=$(basename "$R1" | sed -E 's/.*(.fasta|.fastq.gz|.fq.gz)$/\1/')
+R1_suffix=$(basename "$R1" "$file_ext" | sed -E 's/.*(_R?[12]).*/\1/')
+R2_suffix=${R1_suffix/1/2}
+R2=$(echo "$R1" | sed -E "s/${R1_suffix}([._])/${R2_suffix}\1/")
+id=$(basename "$R1" "$file_ext" | sed -E "s/${R1_suffix}_?[[:digit:]]*//")
+[[ ! -f "$R2" ]] && die "Input R2 file $R2 does not exist"
+# DB version
+db_version=$(find -L "$db" -name "*.rev.1.bt2*" -print0 | xargs -0 -I{} basename {} .rev.1.bt2l)
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -168,11 +173,15 @@ echo "==========================================================================
 echo "All options passed to this script:        $all_opts"
 echo "Working directory:                        $PWD"
 echo
-echo "Input dir:                                $indir"
-echo "Input FASTA type:                         $fa_type"
+echo "Input R1 FASTQ file:                      $R1"
+echo "Input R2 FASTQ file (inferred):           $R2"
+echo "Sample ID (inferred):                     $id"
+echo "MetaPhlAn database:                       $db"
+echo "MetaPhlAn database version:               $db_version"
 echo "Output dir:                               $outdir"
-echo "Gene tree inference method:               $tree_method"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
+log_time "Listing the input file(s):"
+ls -lh "$R1" "$R2"
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
@@ -181,21 +190,16 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
 runstats $TOOL_BINARY \
-    -f "$indir" \
-    -o "$outdir" \
-    -M "$tree_method" \
-    -t "$threads" \
-    -a "$threads" \
-    $fa_type_opt \
+    --input_type "$FILE_TYPE" \
+    -1 "$R1" \
+    -2 "$R2" \
+    --subsampling_paired "$NREADS_SUBSAMPLE" \
+    --db_dir "$db" \
+    --index "$db_version" \
+    --mapout "$outdir"/"$id"_bowtie2out.txt \
+    --output_file "$outdir"/"$id"_profile.txt \
+    --nproc "$threads" \
     $more_opts
-
-# (Orthofinder puts the results within a dir called 'Results_<date>')
-log_time "Moving the output files..."
-mv "$outdir"/Results_*/* "$outdir"
-rmdir "$outdir"/Results_*
-
-# Create the log directory
-mkdir -p "$LOG_DIR"
 
 # ==============================================================================
 #                               WRAP-UP

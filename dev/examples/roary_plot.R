@@ -1,8 +1,7 @@
 #!/usr/bin/env Rscript
 #SBATCH --account=PAS0471
-#SBATCH --time=30
-#SBATCH --job-name=ggtree
-#SBATCH --output=slurm-ggtree-%j.out
+#SBATCH --job-name=roary-plot
+#SBATCH --output=slurm-roary_plot-%j.out
 
 # SET-UP -----------------------------------------------------------------------
 packages <- c("pagoo", "argparse")

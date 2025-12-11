@@ -13,16 +13,21 @@
 # Constants - generic
 DESCRIPTION="Run ClonalFrameML to infer recombination (HGT) in bacterial genomes,
 and run maskrc-svg to mask recombinant regions"
-MODULE=miniconda3
-CONDA=/fs/ess/PAS0471/jelmer/conda/clonalframeml
-CONTAINER=/fs/ess/PAS0471/containers/depot.galaxyproject.org-singularity-mulled-v2-f5c68f1508671d5744655da9b0e8b609098f4138-7e089189af7822a6a18245830639dbfe11a4c277-0.img
-SCRIPT_VERSION="2023-07-22"
+SCRIPT_VERSION="2025-10-20"
 SCRIPT_AUTHOR="Jelmer Poelstra"
-SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 TOOL_BINARY=ClonalFrameML
 TOOL_NAME=ClonalFrameML
 TOOL_DOCS=https://github.com/xavierdidelot/ClonalFrameML
 VERSION_COMMAND="$TOOL_BINARY | head -n 1"
+
+# Defaults - generics
+env_type=conda                  # Use a 'conda' env or a Singularity 'container'
+conda_path=/fs/ess/PAS0471/jelmer/conda/clonalframeml
+container_url=
+container_dir="$HOME/containers"
+container_path=/fs/ess/PAS0471/containers/keep/maskrc-svg_for-clonalframeml.img
 
 # Defaults - parameters
 tree_tool=iqtree            #! NOTE: ClonalFrameML may not accept FastTree trees?! Have had problems with this at least
@@ -31,45 +36,48 @@ force_tree=false            # If tree is found, don't rerun tree-building
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-# Help function
 script_help() {
-    echo
-    echo "        $0 (v. $SCRIPT_VERSION): Run $TOOL_NAME"
-    echo "        =============================================="
-    echo "DESCRIPTION:"
-    echo "  $DESCRIPTION"
-    echo
-    echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage:"
-    echo "      sbatch $0 -i results/roary/core_gene_alignment.aln -o results/clonalframeml"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile     <file>  Input alignment file from Roary/Panaroo or similar"
-    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --out_prefix    <str>   Output file prefix                          [default: basename of input file]"
-    echo "  --tree_tool     <str>   Tool to build initial tree, 'iqtree' or 'fasttree' [default: 'iqtree']"
-    echo "  --force_tree            Even if the initial tree file is found, rebuild it [default: use existing tree]"
-    echo "  --more_args     <str>   Quoted string with additional argument(s) for $TOOL_NAME"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  -h/--help               Print this help message and exit"
-    echo "  -v                      Print the version of this script and exit"
-    echo "  --version               Print the version of $TOOL_NAME and exit"
-    echo
-    echo "TOOL DOCUMENTATION:"
-    echo "  - ClonalFrameML: $TOOL_DOCS"
-    echo "  - maskrc-svg: https://github.com/kwongj/maskrc-svg"
-    echo
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+    
+USAGE / EXAMPLE COMMANDS:
+  - Basic usage example:
+      sbatch $0 -i results/roary/core_gene_alignment.aln -o results/clonalframeml
+    
+REQUIRED OPTIONS:
+  -i/--infile         <file>  Input alignment file from Roary/Panaroo or similar
+  -o/--outdir         <dir>   Output dir (will be created if needed)
+    
+OTHER KEY OPTIONS:
+  --out_prefix        <str>   Output file prefix                                [default: basename of input file]
+  --tree_tool         <str>   Tool to build initial tree: 'iqtree' or 'fasttree'[default: 'iqtree']
+  --force_tree                Even if initial tree file is found, rebuild it    [default: use existing tree]
+  --more_opts         <str>   Quoted string with one or more additional options
+                              for $TOOL_NAME
+    
+UTILITY OPTIONS:
+  --container_path    <file>  Local container image file ('.sif') to use        [default: $container_path]
+                              with maskrc-svg
+  --conda_path        <dir>   Full path to a Conda environment to use           [default: $conda_path]
+                              with IQ-Tree and ClonalFrameML
+  -h/--help                   Print this help message
+  -v/--version                Print script and $TOOL_NAME versions
+    
+TOOL DOCUMENTATION:
+  - ClonalFrameML: $TOOL_DOCS
+  - maskrc-svg: https://github.com/kwongj/maskrc-svg
+"
 }
 
 # Function to source the script with Bash functions
 source_function_script() {
-    local is_slurm=$1
-
     # Determine the location of this script, and based on that, the function script
-    if [[ "$is_slurm" == true ]]; then
+    if [[ "$IS_SLURM" == true ]]; then
         script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
         script_dir=$(dirname "$script_path")
         SCRIPT_NAME=$(basename "$script_path")
@@ -77,19 +85,21 @@ source_function_script() {
         script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
         SCRIPT_NAME=$(basename "$0")
     fi
-    function_script=$(realpath "$script_dir"/../dev/bash_functions.sh)
-    
-    if [[ ! -f "$function_script" ]]; then
-        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
-        git clone https://github.com/mcic-osu/mcic-scripts.git
-        function_script=mcic-scripts/dev/bash_functions.sh
+    function_script_name="$(basename "$FUNCTION_SCRIPT_URL")"
+    function_script_path="$script_dir"/../dev/"$function_script_name"
+
+    # Download the function script if needed, then source it
+    if [[ -f "$function_script_path" ]]; then
+        source "$function_script_path"
+    else
+        if [[ ! -f "$function_script_name" ]]; then
+            echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+            wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
+        fi
+        source "$function_script_name"
     fi
-    source "$function_script"
 }
 
-# ==============================================================================
-#                          INFRASTRUCTURE SETUP I
-# ==============================================================================
 # Check if this is a SLURM job, then load the Bash functions
 if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
 source_function_script $IS_SLURM
@@ -98,75 +108,75 @@ source_function_script $IS_SLURM
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
+version_only=false  # When true, just print tool & script version info and exit
 infile=
 outdir=
 out_prefix=
-more_args=
+more_opts=
+threads=
 
-# Parse command-line args
-all_args="$*"
+# Parse command-line options
+all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
         --tree_tool )       shift && tree_tool=$1 ;;
-        --force_tree )      force_tree=true ;;
         --out_prefix )      shift && out_prefix=$1 ;;
-        --more_args )       shift && more_args=$1 ;;
+        --force_tree )      force_tree=true ;;
+        --more_opts )       shift && more_opts=$1 ;;
+        --conda_path )      shift && conda_path=$1 ;;
+        --container_path )  shift && container_path=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v | --version )         load_env "$MODULE" "$CONDA"
-                            print_version "$VERSION_COMMAND" && exit 0 ;;
-        * )                 die "Invalid option $1" "$all_args" ;;
+        -v | --version)     version_only=true ;;
+        * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
 done
 
-# Check arguments
-[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_args"
-[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_args"
-[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
-
 # ==============================================================================
-#                          INFRASTRUCTURE SETUP II
+#                          INFRASTRUCTURE SETUP
 # ==============================================================================
 # Strict Bash settings
 set -euo pipefail
 
-# Logging files and dirs
-LOG_DIR="$outdir"/logs
-VERSION_FILE="$LOG_DIR"/version.txt
-CONDA_YML="$LOG_DIR"/conda_env.yml
-ENV_FILE="$LOG_DIR"/env.txt
-mkdir -p "$LOG_DIR"
+# Load software
+load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$container_url"
+[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
-# Load software and set nr of threads
-load_env "$MODULE" "$CONDA" "$CONDA_YML"
-set_threads "$IS_SLURM"
+# Check options provided to the script
+[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
+[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 
-# Define settings and outputs based on script parameters
+# Define outputs based on script parameters
+LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 mem_gb=4G && [[ "$IS_SLURM" == true ]] && mem_gb=$((8*(SLURM_MEM_PER_NODE / 1000)/10))G
 [[ -z "$out_prefix" ]] && out_prefix=$(basename "${infile%.*}")
 
 # ==============================================================================
-#                               REPORT
+#                         REPORT PARSED OPTIONS
 # ==============================================================================
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "All options/arguments passed to this script:  $all_args"
-echo "Input alignment file:                         $infile"
-echo "Output dir:                                   $outdir"
-echo "Output file prefix:                           $out_prefix"
-echo "Tool to build initial tree:                   $tree_tool"
-echo "Force tree-building even if file exists:      $force_tree"
-[[ -n $more_args ]] && echo "Additional arguments for $TOOL_NAME:          $more_args"
+echo "All options passed to this script:        $all_opts"
+echo "Working directory:                        $PWD"
+echo
+echo "Input file:                               $infile"
+echo "Output dir:                               $outdir"
+echo "Output file prefix:                       $out_prefix"
+echo "Tool to build initial tree:               $tree_tool"
+echo "Force tree-building even if file exists:  $force_tree"
+[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
 ls -lh "$infile"
-[[ "$IS_SLURM" = true ]] && slurm_resources
+set_threads "$IS_SLURM"
+[[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Get starting tree
+# Step 1: Create starting tree
 if [[ ! -f "$outdir"/"$out_prefix".treefile || "$force_tree" == true ]]; then
     log_time "Running $tree_tool to get a starting tree for ClonalFrameML..."
     
@@ -183,22 +193,23 @@ fi
 log_time "Tree file:"
 ls -lh "$outdir"/"$out_prefix".treefile
 
-# Run ClonalFrameML
+# Step 2: Run ClonalFrameML
 if [[ ! -s "$outdir"/"$out_prefix".labelled_tree.newick ]]; then
     log_time "Running ClonalFrameML..."
     runstats $TOOL_BINARY \
         "$outdir"/"$out_prefix".treefile \
         "$infile" \
         "$outdir"/"$out_prefix" \
-        $more_args
+        $more_opts
 else
     log_time "ClonalFrameML output file $outdir/$out_prefix.labelled_tree.newick exists, skipping ClonalFrameML..."
 fi
 
-# Run maskrc-svg.py to HGT-mask the alignment
-# Have to run maskrc-svg.py using a container because the Conda env doesn't work
+# Step 3:Run maskrc-svg.py to HGT-mask the alignment
+#  (Have to run maskrc-svg.py using a container because the Conda env doesn't work)
 log_time "Running maskrc-svg.py..."
-runstats singularity exec "$CONTAINER" maskrc-svg.py \
+runstats apptainer exec "$container_path" \
+    maskrc-svg.py \
     --aln "$infile" \
     --symbol '-' \
     --out "$outdir"/"$out_prefix".masked.aln \
@@ -207,8 +218,9 @@ runstats singularity exec "$CONTAINER" maskrc-svg.py \
 #? --symbol CHAR        symbol to use for masking (default="?")
 #? The positional argument is the prefix used for ClonalFrameML (or Gubbins) output files
 
-# List the output, report version, etc
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
-final_reporting "$VERSION_COMMAND" "$VERSION_FILE" "$ENV_FILE" "$IS_SLURM" \
-    "$SCRIPT_NAME" "$SCRIPT_AUTHOR" "$SCRIPT_VERSION" "$SCRIPT_URL"
+final_reporting "$LOG_DIR"

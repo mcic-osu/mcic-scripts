@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Constants
-OSC_MODULE=miniconda3
+OSC_MODULE=miniconda3/24.1.2-py310
 
 # Dummy defaults
 [[ -z "$env_type" ]] && env_type=conda
@@ -26,7 +26,7 @@ OSC_MODULE=miniconda3
 # SCRIPT_AUTHOR     - Author of the shell script
 # REPO_URL          - URL to the GitHub repo
 
-# Load Conda or Singularity env
+# Load Conda or container env
 load_env() {
     if [[ "$env_type" == "conda" ]]; then
         load_conda
@@ -73,7 +73,7 @@ load_container() {
         
         if [[ -f "$container_path" ]]; then
             log_time "No container path was provided,
-            \n   but the container $container_url
+            \n   but the container image from $container_url
             \n   was found at $container_path and will be used."
         else
             dl_container=true
@@ -84,11 +84,11 @@ load_container() {
     if [[ "$dl_container" == true ]]; then
         log_time "Downloading container from $container_url to $container_path"
         mkdir -p "$container_dir"
-        singularity pull --force "$container_path" "$container_url"
+        apptainer pull --force "$container_path" "$container_url"
     fi
 
     # Set the final 'prefix' to run the container
-    CONTAINER_PREFIX="singularity exec $container_path"
+    CONTAINER_PREFIX="apptainer exec $container_path"
     TOOL_BINARY="$CONTAINER_PREFIX $TOOL_BINARY"
     VERSION_COMMAND="$CONTAINER_PREFIX $VERSION_COMMAND"
     log_time "Using a container with base call: $CONTAINER_PREFIX"
