@@ -11,7 +11,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run the Nextflow-core metabarcoding pipeline from https://nf-co.re/ampliseq"
-SCRIPT_VERSION="2025-05-21"
+SCRIPT_VERSION="2026-01-19"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="nextflow run"
@@ -24,12 +24,12 @@ WORKFLOW_NAME=nf-core/ampliseq                              # The name of the nf
 OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config
 
 # Parameter defaults - infrastructure
-conda_path=/fs/ess/PAS0471/jelmer/conda/nextflow
+conda_path=/fs/ess/PAS0471/conda/nextflow-25.10.2
 osc_account=PAS0471                                         # If the script is submitted with another project, this will be updated (line below)
 [[ -n $SLURM_JOB_ACCOUNT ]] && osc_account=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
 
 # Parameter defaults - workflow
-workflow_version=2.13.0                                     # The version of the nf-core workflow
+workflow_version=2.16.0                                     # The version of the nf-core workflow
 work_dir=/fs/scratch/"$osc_account"/$USER/nfc-ampliseq      # 'work dir' for initial outputs (selected, final outputs go to the outdir)
 profile="singularity"
 resume=true && resume_opt="-resume"
@@ -48,15 +48,15 @@ script_help() {
 DESCRIPTION:
 $DESCRIPTION
   - Different from the Nextflow default, this script will try to 'resume' (rather than restart) a previous incomplete run by default
-  - This workflow can be used for both 16S and ITS data: default is 16S; change the settings in nfcore_ampliseq_params.yml for ITS
+  - This workflow can be used for both 16S and ITS data: default is 16S; change the settings in nfc-ampliseq.yml for ITS
     
 USAGE / EXAMPLE COMMANDS:
   - Basic usage example:
-      sbatch $0 -o results/ampliseq -p config/nfcore_ampliseq_params.yml
+      sbatch $0 -o results/ampliseq -p config/nfc-ampliseq.yml
     
 REQUIRED OPTIONS:
   -p/--params         <file>  YAML file with workflow parameters. Template:
-                              'mcic-scripts/metabar/nfcore_ampliseq_params.yml'
+                              'mcic-scripts/metabar/nfc-ampliseq.yml'
   -o/--outdir         <dir>   Dir for pipeline output files
                               (will be created if needed)
     
@@ -179,7 +179,7 @@ config_opt="-c $OSC_CONFIG"
 [[ -n "$config_file" ]] && config_opt="$config_opt -c ${config_file/,/ -c }"
 
 # Other dirs
-LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+LOG_DIR="$outdir"/logs
 
 # ==============================================================================
 #                               REPORT
