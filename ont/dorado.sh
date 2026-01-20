@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
+#SBATCH --time=2:00:00
 #SBATCH --gpus-per-node=2
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -12,72 +12,68 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Basecall ONT data with Dorado"
-SCRIPT_VERSION="2024-06-21"
+DESCRIPTION="Basecall ONT data with Dorado using GPUs"
+SCRIPT_VERSION="2026-01-19"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
-TOOL_BINARY="dorado basecaller"
+TOOL_BINARY="/fs/ess/PAS0471/software/dorado/dorado-1.3.1-linux-x64/bin/dorado"
 TOOL_NAME=Dorado
 TOOL_DOCS=https://github.com/nanoporetech/dorado
-VERSION_COMMAND="dorado --version"
+VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/dorado
-container_path=
-container_url=
-dl_container=false
-container_dir="$HOME/containers"
-strict_bash=true
 version_only=false                 # When true, just print tool & script version info and exit
+env_type=NA                        # No conda or container, Dorado is run from a specific path
+                                   # Including this so the `final_reporting` function does not error out
 
 # Defaults - tool parameters
 model=hac                          # {fast,hac,sup}@v{version}
-out_format=fastq && out_format_opt="--emit-fastq" # 'fastq' or 'bam'
+out_format=fastq                   # 'fastq' or 'bam'
+out_format_opt="--emit-fastq"      # This will be updated automatically based on out_format    
+trim=all  
 
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
 script_help() {
-    echo -e "\n                          $0"
-    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
-    echo "        =============================================================="
-    echo "DESCRIPTION:"
-    echo "  $DESCRIPTION"
-    echo
-    echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage:"
-    echo "      sbatch $0 -i data/pod5 -o results/dorado"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--input          <file>  Input file or dir; files should be in FAST5 or POD5 format."
-    echo "                              When using FAST5, the base-calling model must be a specific one."
-    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
-    echo "                              Both in case of a single or multiple input files, the output will be a single file:"
-    echo "                              - In case of a single input file, the output file will have the same name as the input file"
-    echo "                              - In case of a multiple input files, the output file will have the same name as the input dir"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --model             <str>   Basecall model                          [default: $model]"
-    echo "  --out_format        <str>   Output file format, 'bam' or 'fastq'    [default: $out_format]"    
-    echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
-    echo "                                (NOTE: If no default '--container_url' is listed below,"
-    echo "                                 you'll have to provide one in order to run the script with a container.)"
-    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
-    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
-    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
-    echo "  --no_strict                 Don't use strict Bash settings ('set -euo pipefail') -- can be useful for troubleshooting"
-    echo "  -h/--help                   Print this help message and exit"
-    echo "  -v                          Print the version of this script and exit"
-    echo "  --version                   Print the version of $TOOL_NAME and exit"
-    echo
-    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+    
+USAGE / EXAMPLE COMMANDS:
+  - Basic usage example:
+      sbatch $0 -i data/pod5 -o results/dorado
+    
+REQUIRED OPTIONS:
+-i/--input          <file>  Input file or dir; files should be in FAST5 or POD5 format.
+                            When using FAST5, the base-calling model must be a specific one.
+-o/--outdir         <dir>   Output dir (will be created if needed)
+                            Both in case of a single or multiple input files, the output will be a single file:
+                              - In case of a single input file, the output file will have the same name as the input file
+                              - In case of a multiple input files, the output file will have the same name as the input dir
+
+OTHER KEY OPTIONS:
+--model             <str>   Basecall model                          [default: $model]
+--trim              <str>   Trim adapters/primers, options:
+                            'adapters', 'primers', 'none', 'all'    [default: $trim]
+--out_format        <str>   Output file format, 'bam' or 'fastq'    [default: $out_format]
+
+OTHER KEY OPTIONS:
+  --more_opts         <str>   Quoted string with one or more additional options
+                              for $TOOL_NAME
+    
+UTILITY OPTIONS:
+  -h/--help                   Print this help message
+  -v/--version                Print script and $TOOL_NAME versions
+    
+TOOL DOCUMENTATION:
+  $TOOL_DOCS
+"
 }
 
 # Function to source the script with Bash functions
@@ -91,44 +87,46 @@ source_function_script() {
         script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
         SCRIPT_NAME=$(basename "$0")
     fi
-    function_script=$(realpath "$script_dir"/../dev/"$(basename "$FUNCTION_SCRIPT_URL")")
+    function_script_name="$(basename "$FUNCTION_SCRIPT_URL")"
+    function_script_path="$script_dir"/../dev/"$function_script_name"
+
     # Download the function script if needed, then source it
-    if [[ ! -f "$function_script" ]]; then
-        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
-        function_script=$(basename "$FUNCTION_SCRIPT_URL")
-        wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script"
+    if [[ -f "$function_script_path" ]]; then
+        source "$function_script_path"
+    else
+        if [[ ! -f "$function_script_name" ]]; then
+            echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+            wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
+        fi
+        source "$function_script_name"
     fi
-    source "$function_script"
 }
 
 # Check if this is a SLURM job, then load the Bash functions
 if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
-source_function_script
+source_function_script $IS_SLURM
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
+version_only=false  # When true, just print tool & script version info and exit
 input=
 outdir=
 more_opts=
 
-# Parse command-line args
+# Parse command-line options
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --input )      shift && input=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
         --model )           shift && model=$1 ;;
+        --trim )            shift && trim=$1 ;;
         --out_format )      shift && out_format=$1 ;;
         --more_opts )       shift && more_opts=$1 ;;
-        --env_type )             shift && env_type=$1 ;;
-        --no_strict )       strict_bash=false ;;
-        --dl_container )    dl_container=true ;;
-        --container_dir )   shift && container_dir=$1 ;;
-        --container_url )   shift && container_url=$1 && dl_container=true ;;
         -h | --help )       script_help; exit 0 ;;
-        -v | --version )         version_only=true ;;
+        -v | --version)     version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
@@ -138,11 +136,9 @@ done
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
 # Strict Bash settings
-[[ "$strict_bash" == true ]] && set -euo pipefail
+set -euo pipefail
 
 # Load software
-module load cuda/12.3.0
-load_env "$conda_path" "$container_path" "$dl_container"
 [[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
@@ -153,7 +149,6 @@ load_env "$conda_path" "$container_path" "$dl_container"
 
 # Define outputs based on script parameters
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
-
 [[ "$out_format" == "bam" ]] && out_format_opt=
 [[ -f "$input" ]] && outfile="$outdir"/$(basename "${input%.*}").$out_format
 [[ -d "$input" ]] && outfile="$outdir"/$(basename "$input").$out_format
@@ -164,10 +159,13 @@ LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options passed to this script:        $all_opts"
+echo "Working directory:                        $PWD"
+echo
 echo "Input file or dir:                        $input"
 echo "Output file:                              $outfile"
 echo "Output format:                            $out_format"
 echo "Base-calling model:                       $model"
+echo "Trimming option:                          $trim"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
 ls -lh "$input"
@@ -177,10 +175,11 @@ ls -lh "$input"
 #                               RUN
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
-runstats $TOOL_BINARY \
+runstats $TOOL_BINARY basecaller \
     $out_format_opt \
     $more_opts \
     $model \
+    --trim "$trim" \
     $input \
     > "$outfile"
 
@@ -192,6 +191,9 @@ if [[ "$out_format" == "fastq" ]]; then
     runstats gzip -f "$outfile"
 fi
 
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
-final_reporting "$LOG_DIR"
+final_reporting "$LOG_DIR" "$env_type"
