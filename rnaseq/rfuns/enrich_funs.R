@@ -523,7 +523,7 @@ tileplot <- function(
     mutate(sig = ifelse(is.na(sig), FALSE, sig))
   
   # Merge across DE directions
-  if (! "DE_direction" %in% c(x_var, facet_var1, facet_var2)) {
+  if (!"DE_direction" %in% c(x_var, facet_var1, facet_var2)) {
     message("Merging DE directions (showing only most significant)
              because DE direction is not included in any plotting variable")
     merge_directions <- TRUE
@@ -618,51 +618,58 @@ tileplot <- function(
 
 # Cleveland dotplot of enrichment results
 cdotplot <- function(
-    enrich_df,                  # Dataframe with enrichment results from run_enrich()
+    df,                         # Dataframe with enrichment results from run_enrich()
     contrasts = NULL,           # One or more contrasts (default: all)
-    DE_directions = NULL,       # One or more DE directions (default: all)
-    x_var = "padj_log",         # Column in enrich_df to plot along the x axis ('padj_log' will be computed from 'padj')
-    fill_var = "median_lfc",    # Column in enrich_df to vary fill color by ('padj_log' will be computed from 'padj')
-    label_var = "n_focal_in_cat",  # Column in enrich_df with a number to add as a label in the circles
-    facet_var1 = NULL,          # Column in enrich_df to facet by
-    facet_var2 = NULL,          # Second column in enrich_df to facet by (e.g. 'ontology' for GO)
+    DE_dirs = NULL,             # One or more DE directions (default: all)
+    x_var = "padj_log",         # Column in df to plot along the x axis ('padj_log' will be computed from 'padj')
+    fill_var = "median_lfc",    # Column in df to vary fill color by ('padj_log' will be computed from 'padj')
+    label_var = "n_focal_in_cat",  # Column in df with a number to add as a label in the circles
+    facet_var1 = NULL,          # Column in df to facet by
+    facet_var2 = NULL,          # Second column in df to facet by (e.g. 'ontology' for GO)
     facet_to_columns = TRUE,    # When only using one facet_var1, facets are columns (or rows)
     facet_scales = NULL,        # Facet scales: 'fixed', 'free', 'free_x', or 'free_y'
     facet_label_fun = "label_value", # Function to label facets with
     x_title = NULL,             # X-axis title
     ylab_size = 11,             # Size of y-axis labels (= term labels)
     add_term_id = FALSE,        # Add term ID (e.g., 'GO:009539') to its description
-    point_size = 6
+    point_size = 6,
+    label_chars = 40            # Truncate the term labels to this many character (+10 when including the term ID)
 ) {
   
+  # Constants
+  y_var <- "term"
+  
   # Select contrasts & DE directions
-  if (is.null(contrasts)) contrasts <- unique(enrich_df$contrast)
+  if (is.null(contrasts)) contrasts <- unique(df$contrast)
   
   # Prep the df
-  enrich_df <- enrich_df |>
+  df <- df |>
     dplyr::filter(sig == TRUE, contrast %in% contrasts) |>
     mutate(padj_log = -log10(padj))
-  
-  if (!is.null(DE_directions))
-    enrich_df <- enrich_df |> dplyr::filter(DE_direction %in% DE_directions)
+  if (!is.null(DE_dirs)) df <- df |> dplyr::filter(DE_direction %in% DE_dirs)
   
   # Modify the term description
-  enrich_df <- enrich_df |>
+  df <- df |>
     mutate(
       # Capitalize the first letter
-      description = paste0(toupper(substr(description, 1, 1)),
-                           substr(description, 2, nchar(description))),
+      description = paste0(
+        toupper(substr(description, 1, 1)),
+        substr(description, 2, nchar(description))
+        ),
       # If there is no description, use the term ID
       description = ifelse(is.na(description), term, description)
     )
-  trunc_width <- 40
-  if (add_term_id) {
-    enrich_df <- enrich_df |>
-      mutate(description = paste0(term, " - ", description))
-    trunc_width <- 50
+  if (add_term_id == TRUE) {
+    df <- df |> mutate(description = paste0(term, " - ", description))
+    label_chars <- label_chars + 10
   }
-  enrich_df <- enrich_df |>
-    mutate(description = str_trunc(description, width = trunc_width))
+  df <- df |> mutate(description = str_trunc(description, width = label_chars))
+  
+  # Create a label lookup for the term description
+  # The problem is that abbreviated terms could be non-unique!
+  label_df <- df |> distinct(term, .keep_all = TRUE) |> select(term, description)
+  label_lookup_vec <- label_df$description
+  names(label_lookup_vec) <- label_df$term
   
   # Legend position and title
   if (x_var == fill_var) legend_pos <- "none" else legend_pos <- "top"
@@ -677,7 +684,6 @@ cdotplot <- function(
   }
   
   # X-axis title
-  # Log-transform the p-value
   if (x_var == "padj_log") {
     x_title <- expression("-Log"[10]*" P")
   } else if (x_var == "padj") {
@@ -690,9 +696,8 @@ cdotplot <- function(
     x_title <- expression(paste("Mean log"[2]*"-fold change"))
   } 
   
-  # Color scale
+  # Color scale - https://carto.com/carto-colors/
   if (fill_var %in% c("mean_lfc", "median_lfc")) {
-    #https://carto.com/carto-colors/
     col_scale <- colorspace::scale_color_continuous_divergingx(
       palette = "Tropic",
       mid = 0.0,
@@ -700,7 +705,7 @@ cdotplot <- function(
       name = color_name,
       rev = TRUE
     )
-  } else if (class(enrich_df[[fill_var]]) == "numeric") {
+  } else if (class(df[[fill_var]]) == "numeric") {
     col_scale <- scale_color_viridis_c(
       option = "D",
       na.value = "grey95",
@@ -710,7 +715,7 @@ cdotplot <- function(
     col_scale <- scale_color_brewer(palette = "Dark2")
   }
   
-  # X-axis left-hand expansion,
+  # X-axis left-hand expansion
   if (x_var %in% c("padj_log", "fold_enrich")) {
     expand_min <- 0
   } else {
@@ -719,12 +724,12 @@ cdotplot <- function(
   
   # Create the base plot
   p <- ggpubr::ggdotchart(
-    enrich_df,
-    x = "description",
+    df,
+    x = y_var,
     y = x_var,
     label = label_var,
     color = fill_var,
-    sorting = "none",       # Sort value in descending order
+    sorting = "none",             # Sort value in descending order
     add = "segments",             # Add segments from y = 0 to dots
     rotate = TRUE,                # Rotate vertically
     dot.size = point_size,
@@ -734,9 +739,10 @@ cdotplot <- function(
   
   # Formatting
   p <- p +
-    labs(x = NULL) +
+    scale_x_discrete(labels = label_lookup_vec) +
     scale_y_continuous(expand = expansion(mult = c(expand_min, 0.09))) +
     col_scale +
+    labs(x = NULL) +
     theme(
       legend.position = legend_pos,
       plot.margin = margin(0.5, 0.5, 0.5, 0.5, unit = "cm"),
@@ -755,8 +761,16 @@ cdotplot <- function(
   
   # Other formatting
   if (!is.null(x_title)) p <- p + labs(y = x_title)
+  
+  # Vertical lines at 0
   if (x_var %in% c("mean_lfc", "median_lfc", "fold_enrich")) {
     p <- p + geom_hline(yintercept = 0, color = "grey70", linewidth = 1)
+    
+    # Find the hline layer and move it to the beginning
+    hline_idx <- which(sapply(p$layers, function(x) inherits(x$geom, "GeomHline")))
+    if (length(hline_idx) > 0) {
+      p$layers <- c(p$layers[hline_idx], p$layers[-hline_idx])
+    }
   }
   
   # Faceting
