@@ -1,37 +1,32 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=2:00:00
-#SBATCH --gpus-per-node=2
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
+#SBATCH --time=6:00:00
+#SBATCH --cpus-per-task=15
+#SBATCH --mem=60G
 #SBATCH --mail-type=FAIL
-#SBATCH --job-name=dorado
-#SBATCH --output=slurm-dorado-%j.out
+#SBATCH --job-name=nameco
+#SBATCH --output=slurm-nameco-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Basecall ONT data with Dorado using GPUs"
+DESCRIPTION="Run the NameCo pipeline for ONT 16S rRNA taxonomic classification."
 SCRIPT_VERSION="2026-01-19"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
-TOOL_BINARY="/fs/ess/PAS0471/software/dorado/dorado-1.3.1-linux-x64/bin/dorado"
-TOOL_NAME=Dorado
-TOOL_DOCS=https://github.com/nanoporetech/dorado
+TOOL_BINARY=nameco
+TOOL_NAME=NameCo
+TOOL_DOCS=https://github.com/timyerg/NaMeco
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-version_only=false                 # When true, just print tool & script version info and exit
-env_type=NA                        # No conda or container, Dorado is run from a specific path
-                                   # Including this so the `final_reporting` function does not error out
-
-# Defaults - tool parameters
-model=hac                          # {fast,hac,sup}@v{version}
-out_format=fastq                   # 'fastq' or 'bam'
-out_format_opt="--emit-fastq"      # This will be updated automatically based on out_format    
-trim=all  
+env_type=conda                  # Use a 'conda' env or a Singularity 'container'
+conda_path=/fs/ess/PAS0471/conda/nameco-1.2.1
+container_url=
+container_dir="$HOME/containers"
+container_path=
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -47,27 +42,23 @@ $DESCRIPTION
     
 USAGE / EXAMPLE COMMANDS:
   - Basic usage example:
-      sbatch $0 -i data/pod5 -o results/dorado
+      sbatch $0 -i data/fastq -o results/nameco
     
 REQUIRED OPTIONS:
--i/--input          <file>  Input file or dir; files should be in FAST5 or POD5 format.
-                            When using FAST5, the base-calling model must be a specific one.
--o/--outdir         <dir>   Output dir (will be created if needed)
-                            Both in case of a single or multiple input files, the output will be a single file:
-                              - In case of a single input file, the output file will have the same name as the input file
-                              - In case of a multiple input files, the output file will have the same name as the input dir
-
-OTHER KEY OPTIONS:
---model             <str>   Basecall model                          [default: $model]
---trim              <str>   Trim adapters/primers, options:
-                            'adapters', 'primers', 'none', 'all'    [default: $trim]
---out_format        <str>   Output file format, 'bam' or 'fastq'    [default: $out_format]
-
+  -i/--indir          <dir>   Input directory with FASTQ files
+  -o/--outdir         <dir>   Output dir (will be created if needed)
+    
 OTHER KEY OPTIONS:
   --more_opts         <str>   Quoted string with one or more additional options
                               for $TOOL_NAME
     
 UTILITY OPTIONS:
+  --env_type          <str>   Whether to use a Singularity/Apptainer container  [default: $env_type]
+                              ('container') or a Conda environment ('conda') 
+  --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
+  --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
+  --container_path    <file>  Local container image file ('.sif') to use        [default (if any): $container_path]
+  --conda_path        <dir>   Full path to a Conda environment to use           [default (if any): $conda_path]
   -h/--help                   Print this help message
   -v/--version                Print script and $TOOL_NAME versions
     
@@ -111,20 +102,23 @@ source_function_script $IS_SLURM
 # ==============================================================================
 # Initiate variables
 version_only=false  # When true, just print tool & script version info and exit
-input=
+indir=
 outdir=
 more_opts=
+threads=
 
 # Parse command-line options
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --input )      shift && input=$1 ;;
+        -i | --indir )     shift && indir=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
-        --model )           shift && model=$1 ;;
-        --trim )            shift && trim=$1 ;;
-        --out_format )      shift && out_format=$1 ;;
         --more_opts )       shift && more_opts=$1 ;;
+        --env_type )        shift && env_type=$1 ;;
+        --conda_path )      shift && conda_path=$1 ;;
+        --container_dir )   shift && container_dir=$1 ;;
+        --container_url )   shift && container_url=$1 ;;
+        --container_path )  shift && container_path=$1 ;;
         -h | --help )       script_help; exit 0 ;;
         -v | --version)     version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
@@ -139,19 +133,17 @@ done
 set -euo pipefail
 
 # Load software
+load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$container_url"
 [[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
-[[ -z "$input" ]] && die "No input file/dir specified, do so with -i/--input" "$all_opts"
+[[ -z "$indir" ]] && die "No input directory specified, do so with -i/--indir" "$all_opts"
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
-[[ ! -f "$input" && ! -d "$input" ]] && die "Input file/dir $input does not exist"
-[[ "$out_format" != "bam" && "$out_format" != "fastq" ]] && die "Output format should be 'fastq' or 'bam', not $out_format"
+[[ ! -d "$indir" ]] && die "Input directory $indir does not exist"
 
 # Define outputs based on script parameters
-LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
-[[ "$out_format" == "bam" ]] && out_format_opt=
-[[ -f "$input" ]] && outfile="$outdir"/$(basename "${input%.*}").$out_format
-[[ -d "$input" ]] && outfile="$outdir"/$(basename "$input").$out_format
+LOG_DIR="$outdir"/logs
+mkdir -p "$LOG_DIR"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -161,39 +153,36 @@ echo "==========================================================================
 echo "All options passed to this script:        $all_opts"
 echo "Working directory:                        $PWD"
 echo
-echo "Input file or dir:                        $input"
-echo "Output file:                              $outfile"
-echo "Output format:                            $out_format"
-echo "Base-calling model:                       $model"
-echo "Trimming option:                          $trim"
+echo "Input directory:                          $indir"
+echo "Output dir:                               $outdir"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
-ls -lh "$input"
+ls -lh "$indir"
+set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
-runstats $TOOL_BINARY basecaller \
-    $out_format_opt \
-    $more_opts \
-    $model \
-    --trim "$trim" \
-    $input \
-    > "$outfile"
+runstats $TOOL_BINARY \
+    --inp_dir "$indir" \
+    --out_dir "$outdir" \
+    --threads "$threads" \
+    $more_opts
 
-# Dorado options
-#? -x, --device // device string in format "cuda:0,...,N", "cuda:all", "metal", "cpu" etc.. [default: "cuda:all"]
-
-if [[ "$out_format" == "fastq" ]]; then
-    log_time "Zipping up the output FASTQ file..."
-    runstats gzip -f "$outfile"
-fi
+#? --phred PHRED           Minimum phred score for chopper (default 10)
+#? --min_length MIN_LENGTH Minimum read length for chopper (default 1300)
+#? --max_length MAX_LENGTH Maximum read length for chopper (default 1700)
+#? --db_version DB_VERSION GTDB version. Choices: "202.0", "207.0", "214.0",
+#?                        "214.1", "220.0", "226.0" (default "226.0")
+#?  --mask_taxa           Mask taxonomy ranks based on percent identity
+#?                        thresholds (default "True"). Thresholds are: d: 65, p:
+#?                        75, c: 78.5,o: 82, f: 86.5, g: 94.5, s: 97
 
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
-final_reporting "$LOG_DIR" "$env_type"
+final_reporting "$LOG_DIR"

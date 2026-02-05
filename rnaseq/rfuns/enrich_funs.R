@@ -196,14 +196,23 @@ run_ora <- function(
     }
   }
   
+  # ClusterProfiler may return NULL result for small sets
+  if(is.null(res)) return(NULL)
+  
   # Process the output
   if (return_df == FALSE) {
     
     res_sig <- res |>
-      dplyr::filter(p.adjust < p_enrich, qvalue < q_enrich, Count >= min_DE_in_cat)
+      dplyr::filter(
+        p.adjust < p_enrich,
+        qvalue < q_enrich,
+        Count >= min_DE_in_cat
+        )
+    
     if (is.null(sig_only)) sig_only <- TRUE
     if (sig_only == TRUE) res <- res_sig
     cat(" // Nr enriched:", nrow(res_sig), "\n")
+    
   } else {
     
     if (is.null(sig_only)) sig_only <- FALSE

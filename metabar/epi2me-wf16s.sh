@@ -1,44 +1,49 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=24:00:00
+#SBATCH --time=3:00:00
 #SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
 #SBATCH --mail-type=END,FAIL
-#SBATCH --job-name=nfc_ampliseq
-#SBATCH --output=slurm-nfc_ampliseq-%j.out
+#SBATCH --job-name=epi2me-wf16
+#SBATCH --output=slurm-epi2me-wf16s-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Run the Nextflow-core metabarcoding pipeline from https://nf-co.re/ampliseq"
+DESCRIPTION="Run the ONT-EPI2ME wf-16s pipeline to classify 16S rRNA gene sequences from ONT"
 SCRIPT_VERSION="2026-01-19"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
-TOOL_BINARY="nextflow run"
-export TOOL_NAME="nextflow"
-VERSION_COMMAND="nextflow -v"
-TOOL_DOCS=https://nf-co.re/ampliseq/
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
+TOOL_BINARY="nextflow run epi2me-labs/wf-16s"
+TOOL_NAME="EPI2ME wf-16s"
+TOOL_DOCS=https://github.com/epi2me-labs/wf-16s
+VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Constants - parameters
-WORKFLOW_NAME=nf-core/ampliseq                              # The name of the nf-core workflow
 OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config
+THREADS_OPT=10  # Not clear if this makes a difference, but it's a direct option of the workflow
 
-# Parameter defaults - infrastructure
+# Defaults - generics
 conda_path=/fs/ess/PAS0471/conda/nextflow-25.10.2
 osc_account=PAS0471                                         # If the script is submitted with another project, this will be updated (line below)
 [[ -n $SLURM_JOB_ACCOUNT ]] && osc_account=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
 
-# Parameter defaults - workflow
-workflow_version=2.16.0                                     # The version of the nf-core workflow
-work_dir=/fs/scratch/"$osc_account"/$USER/nfc-ampliseq      # 'work dir' for initial outputs (selected, final outputs go to the outdir)
+# Defaults - Nextflow parameters
+work_dir=/fs/scratch/"$osc_account"/$USER/epi2me-wf16s      # 'work dir' for initial outputs (selected, final outputs go to the outdir)
 profile="singularity"
 resume=true && resume_opt="-resume"
 container_dir="$work_dir"/containers                        # The workflow will download containers to this dir
 
+# Defaults - tool parameters
+classifier=minimap2                                         # Same as workflow default
+database=ncbi_16s_18s                                       # Same as workflow default
+restructure_indir=false
+
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-# Help function
 script_help() {
     echo -e "
                         $0
@@ -47,24 +52,32 @@ script_help() {
 
 DESCRIPTION:
 $DESCRIPTION
-  - Different from the Nextflow default, this script will try to 'resume' (rather than restart) a previous incomplete run by default
-  - This workflow can be used for both 16S and ITS data: default is 16S; change the settings in nfc-ampliseq.yml for ITS
     
 USAGE / EXAMPLE COMMANDS:
   - Basic usage example:
-      sbatch $0 -o results/ampliseq -p config/nfc-ampliseq.yml
+      sbatch $0 -p mcic-scripts/metabar/epi2me-wf16s.yml -o results/epi2me
     
 REQUIRED OPTIONS:
-  -p/--params         <file>  YAML file with workflow parameters. Template:
-                              'mcic-scripts/metabar/nfc-ampliseq.yml'
-  -o/--outdir         <dir>   Dir for pipeline output files
-                              (will be created if needed)
+  --infile            <file>  Input FASTQ file (use EITHER this OR --indir)
+  --indir             <dir>   Input directory with FASTQ files
+                              (use EITHER this OR --infile)
+  -o/--outdir         <dir>   Output dir (will be created if needed)
     
 OTHER KEY OPTIONS:
-  --workflow_version  <str>   Nf-core ampliseq workflow version to use          [default: $workflow_version]
-  --restart                   Don't attempt to resume workflow: start over      [default: resume workflow]
+  --classifier        <str>   Classifier to use: 'minimap2' or 'kraken2'        [default: $classifier]
+  --database          <str>   Database to use: 'ncbi_16s_18s',
+                              'ncbi_16s_18s_28s_ITS', or 'SILVA_138_1'          [default: $database]
+  -p/--params_file    <file>  YAML file with additional workflow parameters.
+                              Template:
+                              'mcic-scripts/metabar/epi2me-wf16s.yml'
+  --restructure_indir         Using this option will restructure the input dir
+                              into per-sample subdirs (true/false).
+                              This is necessary if the dir contains files for
+                              multiple different samples.                       [default: false]
+                              See <https://github.com/epi2me-labs/wf-16s?tab=readme-ov-file#input-example>
 
-NEXTFLOW OPTIONS:
+GENERAL NEXTFLOW OPTIONS:
+  --restart                   Don't attempt to resume workflow: start over      [default: resume workflow]
   --work_dir           <dir>  Scratch (work) dir for the workflow               [default: $work_dir]
                                 - This is where workflow results are created
                                   before final results are copied to the output
@@ -79,21 +92,19 @@ NEXTFLOW OPTIONS:
   --profile            <str>  'Profile' to use from one of the config files     [default: $profile]
 
 UTILITY OPTIONS:
-  --conda_path        <dir>   Full path to a Nextflow Conda environment to use  [default: $conda_path]
+  --conda_path        <dir>   Full path to a Conda environment to use           [default (if any): $conda_path]
   -h/--help                   Print this help message
   -v/--version                Print script and $TOOL_NAME versions
     
-PIPELINE DOCUMENTATION:
+TOOL DOCUMENTATION:
   $TOOL_DOCS
 "
 }
 
 # Function to source the script with Bash functions
 source_function_script() {
-    local is_slurm=$1
-
     # Determine the location of this script, and based on that, the function script
-    if [[ "$is_slurm" == true ]]; then
+    if [[ "$IS_SLURM" == true ]]; then
         script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
         script_dir=$(dirname "$script_path")
         SCRIPT_NAME=$(basename "$script_path")
@@ -101,14 +112,19 @@ source_function_script() {
         script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
         SCRIPT_NAME=$(basename "$0")
     fi
-    function_script=$(realpath "$script_dir"/../dev/bash_functions.sh)
-    
-    if [[ ! -f "$function_script" ]]; then
-        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
-        git clone https://github.com/mcic-osu/mcic-scripts.git
-        function_script=mcic-scripts/dev/bash_functions.sh
+    function_script_name="$(basename "$FUNCTION_SCRIPT_URL")"
+    function_script_path="$script_dir"/../dev/"$function_script_name"
+
+    # Download the function script if needed, then source it
+    if [[ -f "$function_script_path" ]]; then
+        source "$function_script_path"
+    else
+        if [[ ! -f "$function_script_name" ]]; then
+            echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+            wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
+        fi
+        source "$function_script_name"
     fi
-    source "$function_script"
 }
 
 nextflow_setup() {
@@ -121,9 +137,6 @@ nextflow_setup() {
     export NXF_OPTS='-Xms1g -Xmx4g'
 }
 
-# ==============================================================================
-#                          INFRASTRUCTURE SETUP I
-# ==============================================================================
 # Check if this is a SLURM job, then load the Bash functions
 if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
 source_function_script $IS_SLURM
@@ -132,18 +145,24 @@ source_function_script $IS_SLURM
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
-version_only=false                    # When true, just print tool & script version info and exit
-outdir=
-params_file=
+version_only=false  # When true, just print tool & script version info and exit
+infile=
+indir=
+input_opt=
+params_file= && params_opt=
 config_file=
 
-# Parse command-line args
+# Parse command-line options
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
         -o | --outdir )                 shift && outdir=$1 ;;
-        -p | --params )                 shift && params_file=$1 ;;
-        --workflow_version )            shift && workflow_version=$1 ;;
+        --infile )                      shift && infile=$1 ;;
+        --indir )                       shift && indir=$1 ;;
+        --classifier )                  shift && classifier=$1 ;;
+        --database )                    shift && database=$1 ;;
+        --restructure_indir )           restructure_indir=true ;;
+        -p | --params_file )            shift && params_file=$1 ;;
         --container_dir )               shift && container_dir=$1 ;;
         --config | -config )            shift && config_file=$1 ;;
         --profile | -profile )          shift && profile=$1 ;;
@@ -151,34 +170,37 @@ while [ "$1" != "" ]; do
         --restart | -restart )          resume=false && resume_opt= ;;
         --conda_path )                  shift && conda_path=$1 ;;
         -h | --help )                   script_help; exit 0 ;;
-        -v | --version )                version_only=true ;;
+        -v | --version)                 version_only=true ;;
         * )                             die "Invalid option $1" "$all_opts" ;;
     esac
     shift
 done
 
-# Check options provided to the script
-[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
-[[ -z "$params_file" ]] && die "No parameter YAML file specified, do so with -p/--params" "$all_opts"
-[[ ! -f "$params_file"  ]] && die "Input parameter YAML file $params_file does not exist"
-
 # ==============================================================================
-#                          INFRASTRUCTURE SETUP II
+#                          INFRASTRUCTURE SETUP
 # ==============================================================================
 # Strict Bash settings
 set -euo pipefail
 
-# Load software and set nr of threads
+# Load software
 load_env "$conda_path"
 nextflow_setup
 [[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
+
+# Check options provided to the script
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
+[[ -n "$params_file" && ! -f "$params_file"  ]] && die "Input parameter YAML file $params_file does not exist"
+[[ -n "$infile" ]] && [[ -n "$indir" ]] && die "Provide either --infile or --indir, not both" "$all_opts"
 
 # Build the config argument
 OSC_CONFIG="$outdir"/$(basename "$OSC_CONFIG_URL")
 config_opt="-c $OSC_CONFIG"
 [[ -n "$config_file" ]] && config_opt="$config_opt -c ${config_file/,/ -c }"
 
-# Other dirs
+# Params file option
+[[ -n "$params_file" ]] && params_opt="-params-file $params_file"
+
+# Define outputs based on script parameters
 LOG_DIR="$outdir"/logs
 
 # ==============================================================================
@@ -189,8 +211,12 @@ echo "==========================================================================
 echo "All arguments to this script:             $all_opts"
 echo
 echo "INPUT AND OUTPUT:"
-echo "Parameter YAML file:                      $params_file"
+echo "Input option:                             $input_opt"
 echo "Output dir:                               $outdir"
+echo "Classifier:                               $classifier"
+echo "Database:                                 $database"
+echo "Restructure input dir:                    $restructure_indir"
+[[ -n "$config_file" ]] && echo "Parameter YAML file:                      $params_file"
 echo
 echo "NEXTFLOW-RELATED SETTINGS:"
 echo "Resume previous run (if any):             $resume"
@@ -200,7 +226,6 @@ echo "Config 'profile':                         $profile"
 echo "Config file argument:                     $config_opt"
 [[ -n "$config_file" ]] && echo "Additional config file:             $config_file"
 echo "=========================================================================="
-set_threads "$IS_SLURM"
 [[ "$IS_SLURM" = true ]] && slurm_resources
 echo "=========================================================================="
 log_time "Printing the contents of the parameter file:"
@@ -218,6 +243,26 @@ echo "==========================================================================
 log_time "Creating the output directories..."
 mkdir -pv "$work_dir" "$container_dir" "$outdir"/logs
 
+# Build the input option
+[[ -n "$infile" ]] && input_opt="--fastq $infile"
+if [[ -n "$indir" ]]; then
+    if [[ "$restructure_indir" == true ]]; then
+        log_time "Restructuring input dir $indir into per-sample subdirs..."
+        indir_restruct="$outdir"/input_restructured && mkdir -p "$indir_restruct"
+        for fq in "$indir"/*fastq.gz; do
+            fq=$(realpath "$fq")
+            barcode=$(basename "$fq" .fastq.gz)
+            mkdir -p "$indir_restruct"/"$barcode"
+            ln -sf "$fq" "$indir_restruct"/"$barcode"
+        done
+        indir="$indir_restruct"
+    fi
+    input_opt="--fastq $indir"
+fi
+log_time "Listing the input files:"
+[[ -n "$infile" ]] && ls -lh "$infile"
+[[ -n "$indir" ]] && tree "$indir"
+
 # Download the OSC config file
 if [[ ! -f "$OSC_CONFIG" ]]; then
     log_time "Downloading the mcic-scripts Nextflow OSC config file to $OSC_CONFIG..."
@@ -230,18 +275,23 @@ if [[ "$osc_account" != "PAS0471" ]]; then
 fi
 
 # Run the workflow
-log_time "Starting the workflow.."
-runstats $TOOL_BINARY $WORKFLOW_NAME \
-    -r "$workflow_version" \
-    -params-file "$params_file" \
-    --outdir "$outdir" \
+log_time "Running $TOOL_NAME..."
+runstats $TOOL_BINARY \
+    $input_opt \
+    --out_dir "$outdir" \
+    --classifier "$classifier" \
+    --database_set "$database" \
+    $params_opt \
+    --threads "$THREADS_OPT" \
     -work-dir "$work_dir" \
     -profile "$profile" \
     -ansi-log false \
     $config_opt \
     $resume_opt
 
-# List the output, report version, etc
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
 final_reporting "$LOG_DIR"

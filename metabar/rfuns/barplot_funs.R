@@ -37,11 +37,11 @@ pbar <- function(
     ps = NULL,                  # Provide a phyloseq object (ps)
                                 # Abundances are expected to be relative: if not, set convert_abund = TRUE
     taxrank = "Phylum",         # Taxonomic rank to summarize abundance by Or 'Family', 'Genus', etc
-    x_var = "Sample",           # What to plot along the x-axis
+    axis_var = "Sample",        # What to plot along the x-axis
                                 #   'Sample' for indiv. samples, or a column name from sample_data(ps)) (quoted string)
     facet_var = NULL,           # Which column in sample_data to facet by (quoted string)
     facet_var2 = NULL,          # Which column in sample_data to also facet by (quoted string)
-    xlab = NULL,                # X-axis label
+    axis_lab = NULL,            # Non-abundance axis title
     abund_tres = 0.01,          # Lump taxa with abundances below this threshold into a category 'other (rare)'
                                 #   (use 'NA' for no threshold)
     focal_taxa = NULL,          # Instead of filtering taxa by abundance, use the taxa listed in this vector
@@ -57,11 +57,11 @@ pbar <- function(
     unknown_label = "unknown",  # Label for 'unknown' category
     rare_label = "other (rare)", # Label for 'rare' category
     alpha = 1,                  # Opacity of fill colors
-    facet_scales = "free_x"     # Scaling option for faceting
+    facet_scales = "free"     # Scaling option for faceting
     ) {
 
   # Convert to proportional if needed
-  if(convert_abund) ps <- transform_sample_counts(ps, function(x) {x / sum(x)} )
+  if (convert_abund) ps <- transform_sample_counts(ps, function(x) {x / sum(x)} )
   
   # Compute abundance stats if needed
   if (is.null(abund_df)) {
@@ -72,7 +72,7 @@ pbar <- function(
       focal_taxa = focal_taxa,
       na_to_unknown = na_to_unknown,
       sort_by_abund = sort_by_abund,
-      groupby = c(x_var, facet_var, facet_var2),
+      groupby = c(axis_var, facet_var, facet_var2),
       unknown_label = unknown_label,
       rare_label = rare_label
       )
@@ -100,13 +100,13 @@ pbar <- function(
   
   # Create the plot
   p <- ggplot(abund_df) +
-    aes(x = .data[[x_var]], y = Abundance, fill = .data[[taxrank]]) +
+    aes(x = Abundance, y = .data[[axis_var]], fill = .data[[taxrank]]) +
     geom_col(
       color = "grey20",
       alpha = alpha,
       position = position_stack(reverse = TRUE)
       ) +
-    scale_y_continuous(
+    scale_x_continuous(
       expand = expansion(mult = c(0, 0.005)),
       labels = scales::label_percent()
       ) +
@@ -114,9 +114,9 @@ pbar <- function(
       values = colors,
       guide = guide_legend(ncol = 1, reverse = TRUE)
       ) +
-    labs(x = xlab) +
+    labs(y = axis_lab) +
     theme(
-      panel.grid.major.x = element_blank(),
+      panel.grid.major.y = element_blank(),
       panel.grid.minor = element_blank()
       )
   
@@ -124,27 +124,25 @@ pbar <- function(
     if (is.null(facet_var2)) {
       p <- p +
         ggh4x::facet_grid2(
-          cols = vars(.data[[facet_var]]),
+          rows = vars(.data[[facet_var]]),
           scales = facet_scales,
-          space = "free",
+          space = "free_y",
           axes = "margins",
-          independent = "none"
+          #independent = "y"
           )
     } else {
       p <- p +
         ggh4x::facet_grid2(
-          cols = vars(.data[[facet_var]]),
-          rows = vars(.data[[facet_var2]]),
+          rows = vars(.data[[facet_var]]),
+          cols = vars(.data[[facet_var2]]),
           scales = facet_scales,
-          space = "free",
+          space = "fixed",
           axes = "margins",
-          independent = "none"
+          independent = "y"
           )
     }
   }
     
-  if (x_var == "Sample") p <- p + theme(axis.text.x = element_text(angle = 270))
-  
   return(p)
 }
 

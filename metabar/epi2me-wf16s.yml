@@ -1,0 +1,32 @@
+# Example/template parameter file for the Nextflow EPI2ME wf-16s pipeline (https://github.com/epi2me-labs/wf-16s)
+# Use with the script mcic-scripts/metabar/epi2me-wf16s.sh
+# Jelmer Poelstra, last edited 2026-01-19 (https://github.com/mcic-osu/mcic-scripts)
+
+## NOTE: set the following variables by passing them directly to the mcic-scripts/metabar/epi2me-wf16s.sh script::
+## That is, do NOT set them here in this parameter file.
+## --fastq, --out_dir, --database_set, --classifier 
+
+## Classification thresholds
+# > For abundance_threshold: To remove taxa with abundances lower than or equal to a relative value (compared to the total number of reads)
+# > use a decimal between 0-1 (1 not inclusive). To remove taxa with abundances lower than or equal to an absolute value,
+# > provide a number larger or equal to 1.
+abundance_threshold: 1            # Workflow default: 1
+min_percent_identity: 95          # Workflow default: 95
+min_ref_coverage: 90              # Workflow default: 90
+taxonomic_rank: "S"               # Workflow default: G (Genus)
+
+## Read processing options
+min_len: 800                      # Workflow default: 800
+max_len: 2000                     # Workflow default: 2000
+
+## Output options
+include_read_assignments: true
+output_unclassified: false        # If true, outputs reads that could not be classified in FASTQ
+minimap2_by_reference: false      # Add a table with the mean sequencing depth per reference, standard deviation and
+                                  # coefficient of variation. It adds a scatterplot of the sequencing depth vs. the coverage
+                                  # and a heatmap showing the depth per percentile to the report
+
+## Optional input metadata (see https://github.com/epi2me-labs/wf-16s?tab=readme-ov-file#input-example)
+## These will allow you to use sample names regardless of the FASTQ file names. 
+# sample: "barcode24"           # Optional when running the workflow for a single sample
+# sample_sheet: XXX             # Optional when running the workflow for multiple samples (demultiplexed)
