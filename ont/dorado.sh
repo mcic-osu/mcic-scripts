@@ -13,7 +13,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Basecall ONT data with Dorado using GPUs"
-SCRIPT_VERSION="2026-01-19"
+SCRIPT_VERSION="2026-02-07"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -31,7 +31,7 @@ env_type=NA                        # No conda or container, Dorado is run from a
 model=hac                          # {fast,hac,sup}@v{version}
 out_format=fastq                   # 'fastq' or 'bam'
 out_format_opt="--emit-fastq"      # This will be updated automatically based on out_format    
-trim=all  
+trim=all                           # Same as Dorado default, options: 'adapters', 'none', 'all'
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -58,10 +58,10 @@ REQUIRED OPTIONS:
                               - In case of a multiple input files, the output file will have the same name as the input dir
 
 OTHER KEY OPTIONS:
---model             <str>   Basecall model                          [default: $model]
---trim              <str>   Trim adapters/primers, options:
-                            'adapters', 'primers', 'none', 'all'    [default: $trim]
---out_format        <str>   Output file format, 'bam' or 'fastq'    [default: $out_format]
+--model             <str>   Basecall model                                      [default: $model]
+--trim              <str>   Trim adapters, options: 'adapters',
+                            'none', 'all'  (= adapters + primers + barcodes)    [default: $trim]
+--out_format        <str>   Output file format, 'bam' or 'fastq'                [default: $out_format]
 
 OTHER KEY OPTIONS:
   --more_opts         <str>   Quoted string with one or more additional options
@@ -194,6 +194,6 @@ fi
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
-log_time "Listing files in the output dir:"
-ls -lhd "$(realpath "$outdir")"/*
+log_time "Listing the output file:"
+ls -lh "$outfile".gz
 final_reporting "$LOG_DIR" "$env_type"
