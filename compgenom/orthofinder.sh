@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run OrthoFinder to find orthologs between genomes or proteomes"
-SCRIPT_VERSION="2025-08-02"
+SCRIPT_VERSION="2026-03-05"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -24,7 +24,7 @@ VERSION_COMMAND="$TOOL_BINARY --help | head -n2"
 # Defaults - generics
 env_type=container                  # Use a 'conda' env or a Singularity 'container'
 conda_path=
-container_url=oras://community.wave.seqera.io/library/orthofinder:3.1.0--888d04d0c725fcc8
+container_url=oras://community.wave.seqera.io/library/orthofinder:3.1.3--e19c3953801a7cfe
 container_dir="$HOME/containers"
 container_path=
 
@@ -50,7 +50,7 @@ USAGE / EXAMPLE COMMANDS:
     
 REQUIRED OPTIONS:
   -i/--indir          <dir>   Input dir with genomes (nucleotide) or proteomes
-                              (protein FASTA files), one file per genome
+                              (protein FASTA files), one file per genome.
                               Accepted file extensions:
                               .fa, .faa, .fasta, .fas, .pep
                               (Files with different extensions will be ignored.)
