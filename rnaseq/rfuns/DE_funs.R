@@ -66,6 +66,7 @@ extract_DE <- function(
     p_tres = 0.05,          # Adj. p-value threshold for DE significance
     lfc_tres = 0,           # Log2-fold change threshold for DE significance
     mean_tres = 0,          # Mean expression level threshold for DE significance
+    check_median_diff = FALSE, # Check whether median expression levels differ (will change isDE column)
     count_df = NULL,        # Optional: df with normalized counts to add to the results table
     annot = NULL            # Optional: df with gene annotations to add to the results table
   ) {
@@ -105,9 +106,10 @@ extract_DE <- function(
         )
   }
 
-  # Include mean normalized counts
+  # Include mean of normalized counts
   if (!is.null(count_df) & is.null(contrasts)) {
     fcount_df <- count_df |> dplyr::filter(.data[[fct]] %in% comp)
+    fcount_df[[fct]] <- factor(fcount_df[[fct]], levels = c(comp[1], comp[2]))
     
     group_means <- fcount_df |>
       group_by(gene, .data[[fct]]) |>
@@ -122,7 +124,20 @@ extract_DE <- function(
     fcount_df <- dplyr::left_join(group_means, overall_means, by = "gene")
     res <- dplyr::left_join(dplyr::select(res, -mean), fcount_df, by = "gene")
   }
-
+  
+  # Include median of normalized counts
+  if (!is.null(count_df) & is.null(contrasts)) {
+    fcount_df <- count_df |> dplyr::filter(.data[[fct]] %in% comp)
+    
+    group_medians <- fcount_df |>
+      group_by(gene, .data[[fct]]) |>
+      summarize(median = median(count), .groups = "drop") |>
+      pivot_wider(id_cols = gene, values_from = median, names_from = all_of(fct))
+    colnames(group_medians)[2:3] <- c("median1", "median2")
+    
+    res <- dplyr::left_join(res, group_medians, by = "gene")
+  }
+  
   # Determine whether a gene is DE & add 'isDE' column to indicate this
   if (!is.null(count_df)) {
     res <- res |> mutate(
@@ -140,6 +155,18 @@ extract_DE <- function(
         ))
   }
 
+  # Only mark genes with a difference in the median count as significant
+  if (check_median_diff == TRUE)
+  res <- res |>
+    mutate(
+      median_diff = case_when(
+        lfc > 0 & round(median1, 1) > round(median2, 1) ~ TRUE,
+        lfc < 0 & round(median1, 1) < round(median2, 1) ~ TRUE,
+        .default = FALSE
+      ),
+      isDE = ifelse(median_diff == FALSE, FALSE, isDE) 
+    )
+  
   # Only keep significant genes
   if (sig_only == TRUE) res <- res |> dplyr::filter(isDE == TRUE)
 
@@ -257,6 +284,8 @@ norm_counts <- function(
     message("Only correcting for library size...")
     dds <- estimateSizeFactors(dds)
     count_mat <- sweep(assay(dds), 2, sizeFactors(dds), "/")
+  } else if (transform == "none") {
+    count_mat <- counts(dds)
   } else {
     stop("Unknown transformation method '", transform, "'")
   }
