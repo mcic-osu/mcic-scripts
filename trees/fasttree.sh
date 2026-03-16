@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
+#SBATCH --time=2:00:00
 #SBATCH --cpus-per-task=5
 #SBATCH --mem=20G
 #SBATCH --mail-type=FAIL
@@ -11,54 +11,72 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Build a phylogenetic tree from a nucleotide alignment with fasttree"
-MODULE=miniconda3
-CONDA=/fs/ess/PAS0471/jelmer/conda/fasttree-2.1.11
-SCRIPT_VERSION="2023-07-22"
+DESCRIPTION="Build a phylogenetic tree from a nucleotide alignment with fasttree.
+Note: always uses options -nt (nucleotide alignment), -gamma and -gtr."
+SCRIPT_VERSION="2026-03-16"
 SCRIPT_AUTHOR="Jelmer Poelstra"
-SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 TOOL_BINARY=fasttree
 TOOL_NAME=FastTree
-TOOL_DOCS=http://www.microbesonline.org/fasttree/
+TOOL_DOCS=http://www.microbesonline.org/fasttree
 VERSION_COMMAND="$TOOL_BINARY 2>&1 | head -n 1"
+
+# Defaults - generics
+env_type=conda                  # Use a 'conda' env or a Singularity 'container'
+conda_path=/fs/ess/PAS0471/conda/fasttree-2.2.0
+container_url=
+container_dir="$HOME/containers"
+container_path=
+
+# Constants - tool parameters
+#! NOTE: fasttree is always run with options -nt (nucleotide alignment), -gamma and -gtr
 
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
-# Help function
 script_help() {
-    echo
-    echo "        $0 (v. $SCRIPT_VERSION): Run $TOOL_NAME"
-    echo "        =============================================="
-    echo "DESCRIPTION:"
-    echo "  $DESCRIPTION"
-    echo
-    echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage:"
-    echo "      sbatch $0 -i results/maff/alignment.fa -o results/fasttree"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile     <file>  Input alignment FASTA file"
-    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --more_args     <str>   Quoted string with additional argument(s) for $TOOL_NAME"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  -h/--help               Print this help message and exit"
-    echo "  -v                      Print the version of this script and exit"
-    echo "  --version               Print the version of $TOOL_NAME and exit"
-    echo
-    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
-    echo
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+    
+USAGE / EXAMPLE COMMANDS:
+  - Basic usage example:
+      sbatch $0 -i results/aligned.fa -o results/tree.tre
+    
+REQUIRED OPTIONS:
+  -i/--infile         <file>  Input aligned FASTA file
+  -o/--outfile        <file>  Output file (dir will be created if needed)
+                              This is in Newick format;
+                              suitable file extensions are '.tre' or '.nwk'
+    
+OTHER KEY OPTIONS:
+  --more_opts         <str>   Quoted string with one or more additional options
+                              for $TOOL_NAME
+    
+UTILITY OPTIONS:
+  --env_type          <str>   Whether to use a Singularity/Apptainer container  [default: $env_type]
+                              ('container') or a Conda environment ('conda') 
+  --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
+  --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
+  --container_path    <file>  Local container image file ('.sif') to use        [default (if any): $container_path]
+  --conda_path        <dir>   Full path to a Conda environment to use           [default (if any): $conda_path]
+  -h/--help                   Print this help message
+  -v/--version                Print script and $TOOL_NAME versions
+    
+TOOL DOCUMENTATION:
+  $TOOL_DOCS
+"
 }
 
 # Function to source the script with Bash functions
 source_function_script() {
-    local is_slurm=$1
-
     # Determine the location of this script, and based on that, the function script
-    if [[ "$is_slurm" == true ]]; then
+    if [[ "$IS_SLURM" == true ]]; then
         script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
         script_dir=$(dirname "$script_path")
         SCRIPT_NAME=$(basename "$script_path")
@@ -66,19 +84,21 @@ source_function_script() {
         script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
         SCRIPT_NAME=$(basename "$0")
     fi
-    function_script=$(realpath "$script_dir"/../dev/bash_functions.sh)
-    
-    if [[ ! -f "$function_script" ]]; then
-        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
-        git clone https://github.com/mcic-osu/mcic-scripts.git
-        function_script=mcic-scripts/dev/bash_functions.sh
+    function_script_name="$(basename "$FUNCTION_SCRIPT_URL")"
+    function_script_path="$script_dir"/../dev/"$function_script_name"
+
+    # Download the function script if needed, then source it
+    if [[ -f "$function_script_path" ]]; then
+        source "$function_script_path"
+    else
+        if [[ ! -f "$function_script_name" ]]; then
+            echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+            wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
+        fi
+        source "$function_script_name"
     fi
-    source "$function_script"
 }
 
-# ==============================================================================
-#                          INFRASTRUCTURE SETUP I
-# ==============================================================================
 # Check if this is a SLURM job, then load the Bash functions
 if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
 source_function_script $IS_SLURM
@@ -87,81 +107,83 @@ source_function_script $IS_SLURM
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
+version_only=false  # When true, just print tool & script version info and exit
 infile=
-outdir=
-more_args=
+outfile=
+more_opts=
 
-# Parse command-line args
-all_args="$*"
+# Parse command-line options
+all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
-        --more_args )       shift && more_args=$1 ;;
+        -o | --outfile )    shift && outfile=$1 ;;
+        --more_opts )       shift && more_opts=$1 ;;
+        --env_type )        shift && env_type=$1 ;;
+        --conda_path )      shift && conda_path=$1 ;;
+        --container_dir )   shift && container_dir=$1 ;;
+        --container_url )   shift && container_url=$1 ;;
+        --container_path )  shift && container_path=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v | --version )         load_env "$MODULE" "$CONDA"
-                            print_version "$VERSION_COMMAND" && exit 0 ;;
-        * )                 die "Invalid option $1" "$all_args" ;;
+        -v | --version)     version_only=true ;;
+        * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
 done
 
-# Check arguments
-[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_args"
-[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_args"
-[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
-
 # ==============================================================================
-#                          INFRASTRUCTURE SETUP II
+#                          INFRASTRUCTURE SETUP
 # ==============================================================================
 # Strict Bash settings
 set -euo pipefail
 
-# Logging files and dirs
-LOG_DIR="$outdir"/logs
-VERSION_FILE="$LOG_DIR"/version.txt
-CONDA_YML="$LOG_DIR"/conda_env.yml
-ENV_FILE="$LOG_DIR"/env.txt
-mkdir -p "$LOG_DIR"
+# Load software
+load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$container_url"
+[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
-# Load software and set nr of threads
-load_env "$MODULE" "$CONDA" "$CONDA_YML"
-set_threads "$IS_SLURM"
+# Check options provided to the script
+[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
+[[ -z "$outfile" ]] && die "No output file specified, do so with -o/--outfile" "$all_opts"
+[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 
-# Define outputs based on script options
-tree="$outdir"/$(basename "${infile%.*}").tre
+# Define outputs based on script parameters
+outdir=$(dirname "$outfile")
+LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 
 # ==============================================================================
-#                               REPORT
+#                         REPORT PARSED OPTIONS
 # ==============================================================================
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "All options/arguments passed to this script:  $all_args"
-echo "Input file:                                   $infile"
-echo "Output dir:                                   $outdir"
-echo "Output tree:                                  $tree"
-[[ -n $more_args ]] && echo "Additional arguments for $TOOL_NAME:          $more_args"
+echo "All options passed to this script:        $all_opts"
+echo "Working directory:                        $PWD"
+echo
+echo "Input FASTA file:                         $infile"
+echo "Output tree file:                         $outfile"
+[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
 ls -lh "$infile"
-[[ "$IS_SLURM" = true ]] && slurm_resources
+set_threads "$IS_SLURM"
+[[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Run the tool
 log_time "Running $TOOL_NAME..."
 runstats $TOOL_BINARY \
     -nt \
     -gamma \
     -gtr \
+    $more_opts \
     < "$infile" \
-    > "$tree"
+    > "$outfile"
 
 #?  -gamma -- after optimizing the tree under the CAT approximation, rescale the lengths to optimize the Gamma20 likelihood
 #? -gtr -- generalized time-reversible model (nucleotide alignments only)
 
-# List the output, report version, etc
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
-final_reporting "$VERSION_COMMAND" "$VERSION_FILE" "$ENV_FILE" "$IS_SLURM" \
-    "$SCRIPT_NAME" "$SCRIPT_AUTHOR" "$SCRIPT_VERSION" "$SCRIPT_URL"
+final_reporting "$LOG_DIR"
