@@ -91,7 +91,8 @@ extract_DE <- function(
       gene = row,
       lfc = log2FoldChange,
       mean = baseMean,
-      p = pvalue) |>
+      p = pvalue
+    ) |>
     dplyr::select(-lfcSE, -stat) |>
     arrange(padj) |>
     as_tibble()
