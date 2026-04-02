@@ -54,7 +54,8 @@ run_ora <- function(
   min_cat_size = 5,          # Min. nr. of genes in a category (= clusterProfiler 'minGSSize' argument - NOTE: clusterProfiler default is 10)
   max_cat_size = 500,        # Min. nr. of genes in a category (= clusterProfiler 'maxGSSize' argument)
   filter_no_descrip = TRUE,  # Remove categories/terms with no description (at least for GO terms, these tend to be old/deprecated ones)
-  exclude_nontested = TRUE,  # Exclude genes that weren't tested for DE from the 'universe' of genes
+  exclude_nontested = TRUE,  # Exclude genes that weren't tested (i.e., have 'NA' in the 'padj' column) for DE from the 'universe' of genes
+  universe = NULL,           # Manually specify a background 'universe' of genes (vector with gene IDs)
   allow_dups = FALSE,        # Allow a gene ID to be present multiple times in a (single-contrast, single DE-direction) list of DEGs
                              #   This should typically *not* be the case, but could be so when working with gene IDs (orthologs)
                              #   from another species than the focal species to run the GO analysis
@@ -63,6 +64,8 @@ run_ora <- function(
                              #   Should be FALSE if you want to use the enrichPlot functions directly 
 ) {
 
+  init_df <- df
+  
   if (is.null(focal_genes)) {
     # Check for name of lfc column, and presence of isDE column
     if ("log2FoldChange" %in% colnames(df) & !"lfc" %in% colnames(df)) {
@@ -93,11 +96,6 @@ run_ora <- function(
     if (allow_dups) focal_genes <- unique(focal_genes)
     if (!allow_dups) stop("Found duplicated gene IDs: you probably have multiple 'contrasts' in your input df")
   }
-  # Skip the enrichment analysis if there are too few genes
-  if (length(focal_genes) <= 1) {
-    cat("WARNING: Skipping enrichment analysis: too few DE genes\n")
-    return(NULL)
-  }
   
   # Prepare the term map
   if (!is.null(term_map)) {
@@ -122,11 +120,43 @@ run_ora <- function(
       term2name <- NA
     }
   
+    # Get the background 'universe' of genes:
+    # genes that were tested for DE *and* occur in the ontology term map
+    # (Excluding the latter is equivalent to goseq's 'use_genes_without_cat=FALSE',
+    # and this is done by default by ClusterProfiler -- but non-tested genes *are* included)
+    if (!is.null(universe)) {
+      univ_vec <- universe[universe %in% term_map$gene]
+    } else if (exclude_nontested == TRUE) {
+      univ_df <- init_df |> dplyr::filter(!is.na(padj))
+      if (!is.null(term_map)) univ_df <- univ_df |> dplyr::filter(gene %in% term_map$gene)
+      univ_vec <- unique(univ_df$gene)
+    } else {
+      univ_vec <- NULL
+    }
+    
     # Check nr of DE genes in the term map
     genes_in_map <- focal_genes[focal_genes %in% term2gene$gene]
-    cat("Contrast: ", fcontrast, " // DE direction: ", DE_direction,
-        " // Nr DE genes (with term assigned): ", length(focal_genes),
-        " (", length(genes_in_map), ")", sep = "")
+    
+    # Report
+    cat(
+      "Contrast: ", fcontrast,
+      " // DE direction: ",
+      DE_direction,
+      " // DEGs (w/ term): ",
+      length(focal_genes),
+      " (",
+      length(genes_in_map),
+      ")",
+      " // background genes w/ term: ",
+      length(univ_vec),
+      sep = ""
+    )
+    
+    # Skip the enrichment analysis if there are too few genes
+    if (length(focal_genes) <= 1) {
+      message(" // Skipping enrichment analysis: only 1 or 0 DEGs\n")
+      return(NULL)
+    }
     if (length(genes_in_map) == 0) {
       message("WARNING: None of the DE genes are in the GO/KEGG term dataframe ('term_map')")
       cat("First gene IDs from DE results: ", head(focal_genes), "\n")
@@ -134,23 +164,22 @@ run_ora <- function(
       cat("Skipping enrichment analysis...\n")
       return(NULL)
     }
+    
   } else {
-    cat("Contrast: ", fcontrast, " // DE direction: ", DE_direction,
-        " // Nr DE genes: ", length(focal_genes), sep = "")
-  }
-
-  # Get the background 'universe' of genes:
-  # genes that were tested for DE *and* occur in the ontology term map
-  # (Excluding the latter is equivalent to goseq's 'use_genes_without_cat=FALSE',
-  # and this is done by default by ClusterProfiler -- but non-tested genes *are* included)
-  if (exclude_nontested == TRUE) {
-    univ_df <- df |> dplyr::filter(!is.na(padj))
-    if (!is.null(term_map)) univ_df <- univ_df |> dplyr::filter(gene %in% term_map$gene)
-    univ_vec <- unique(univ_df$gene)
-  } else {
-    univ_vec <- NULL
+    cat(
+      "Contrast: ", fcontrast,
+      " // DE direction: ", DE_direction,
+      " // Nr DE genes: ", length(focal_genes),
+      sep = ""
+      )
   }
   
+  # Skip the enrichment analysis if there are too few genes
+  if (length(focal_genes) <= 1) {
+    message("// Skipping enrichment analysis: 1 or 0 DEGs\n")
+    return(NULL)
+  }
+
   # Run the enrichment analysis
   if (!is.null(term_map)) {
     # With manual term map
@@ -176,8 +205,8 @@ run_ora <- function(
         keyType = keyType,
         universe = univ_vec,
         ont = GO_ontology,
-        minGSSize = 1,
-        maxGSSize = 1000,
+        minGSSize = min_cat_size,
+        maxGSSize = max_cat_size,
         pAdjustMethod = "BH",
         pvalueCutoff = 1,
         qvalueCutoff = 1
@@ -197,21 +226,18 @@ run_ora <- function(
   }
   
   # ClusterProfiler may return NULL result for small sets
-  if(is.null(res)) return(NULL)
+  if (is.null(res)) return(NULL)
   
   # Process the output
   if (return_df == FALSE) {
     
     res_sig <- res |>
-      dplyr::filter(
-        p.adjust < p_enrich,
-        qvalue < q_enrich,
-        Count >= min_DE_in_cat
+      dplyr::filter(p.adjust < p_enrich, qvalue < q_enrich, Count >= min_DE_in_cat
         )
     
     if (is.null(sig_only)) sig_only <- TRUE
     if (sig_only == TRUE) res <- res_sig
-    cat(" // Nr enriched:", nrow(res_sig), "\n")
+    cat(" // enriched terms:", nrow(res_sig), "\n")
     
   } else {
     
@@ -224,7 +250,7 @@ run_ora <- function(
           p.adjust < p_enrich & qvalue < q_enrich & Count >= min_DE_in_cat,
           TRUE,
           FALSE
-          ),
+        ),
         contrast = fcontrast,
         DE_direction = DE_direction
         ) |>
@@ -277,7 +303,7 @@ run_ora <- function(
       mutate(fold_enrich = (n_focal_in_cat / n_focal) / (n_cat / n_total))
     
     # Report
-    cat(" // Nr enriched:", sum(res$sig), "\n")
+    cat(" // enriched terms:", sum(res$sig), "\n")
   }
   
   return(res)
