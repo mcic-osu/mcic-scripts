@@ -35,7 +35,7 @@ cols_kelly <- c("#f3c300", "#875692", "#f38400", "#a1caf1", "#be0032",
 # Function to create a barplot showing taxon abundances
 pbar <- function(
     ps = NULL,                  # Provide a phyloseq object (ps)
-                                # Abundances are expected to be relative: if not, set convert_abund = TRUE
+                                #   (Abundances are expected to be relative: if not, set convert_abund = TRUE)
     taxrank = "Phylum",         # Taxonomic rank to summarize abundance by Or 'Family', 'Genus', etc
     axis_var = "Sample",        # What to plot along the x-axis
                                 #   'Sample' for indiv. samples, or a column name from sample_data(ps)) (quoted string)
@@ -54,10 +54,11 @@ pbar <- function(
                                 # With columns 'OTU', 'Sample', 'Abundance', any metadata grouping variables,
                                 # and the focal taxonomic rank
     convert_abund = FALSE,      # If the ps object has absolute counts, set to TRUE to convert to relative 
+    return_abund = FALSE,       # Just return the abundance table, don't plot
     unknown_label = "unknown",  # Label for 'unknown' category
     rare_label = "other (rare)", # Label for 'rare' category
     alpha = 1,                  # Opacity of fill colors
-    facet_scales = "free"     # Scaling option for faceting
+    facet_scales = "free"       # Scaling option for faceting
     ) {
 
   # Convert to proportional if needed
@@ -76,6 +77,7 @@ pbar <- function(
       unknown_label = unknown_label,
       rare_label = rare_label
       )
+    if (return_abund) return(abund_df)
   }
   
   # Set colors
@@ -107,15 +109,17 @@ pbar <- function(
       position = position_stack(reverse = TRUE)
       ) +
     scale_x_continuous(
-      expand = expansion(mult = c(0, 0.005)),
+      expand = expansion(mult = c(0, 0.003)),
       labels = scales::label_percent()
       ) +
+    scale_y_discrete(expand = c(0, 0)) +
     scale_fill_manual(
       values = colors,
       guide = guide_legend(ncol = 1, reverse = TRUE)
       ) +
     labs(y = axis_lab) +
     theme(
+      panel.background = element_rect(fill = "white"),
       panel.grid.major.y = element_blank(),
       panel.grid.minor = element_blank()
       )
@@ -179,7 +183,10 @@ abund_stats <- function(
       group_by(Sample) |>
       summarize(Abundance = sum(Abundance)) |>
       left_join(meta, by = "Sample")
+    
     NA_df[[taxrank]] <- NA
+    NA_df$OTU <- "unknown"
+    
     df <- df |>
       filter(!is.na(.data[[taxrank]])) |>
       bind_rows(NA_df)
@@ -190,17 +197,27 @@ abund_stats <- function(
     df[[taxrank]][is.na(df[[taxrank]])] <- unknown_label
   }
   
+  # In some cases, multiple instances of a single taxlevel remain
+  df <- df |>
+    group_by_at(c(taxrank, "Sample")) |>
+    summarize(Abundance = sum(Abundance), .groups = "drop")
+  # Need to merge metadata back
+  df <- df |>
+    left_join(meta, by = "Sample") |>
+    select(!contains(".y")) # Remove duplicated columns!
+  colnames(df) <- sub("\\.x$", "", colnames(df))
+  
   # If not plotting by sample, compute mean by a grouping variable
   if (!is.null(groupby)) {
     df <- df |>
       group_by_at(c(groupby, taxrank)) |> 
       summarize(Abundance = mean(Abundance), .groups = "drop")
     
+    # Merge metadata back:
     if (groupby[1] == "Sample") {
       df <- df |>
         left_join(meta, by = "Sample") |>
-        # Remove duplicated columns!
-        select(!contains(".y"))
+        select(!contains(".y")) # Remove duplicated columns!
       colnames(df) <- sub("\\.x$", "", colnames(df))
     }
   }
@@ -217,7 +234,7 @@ abund_stats <- function(
     
   } else if (!is.null(focal_taxa)) {
     to_lump <- df |>
-      filter(! .data[[taxrank]] %in% focal_taxa) |>
+      filter(!.data[[taxrank]] %in% focal_taxa) |>
       pull(.data[[taxrank]])
     message(length(to_lump), " non-focal taxa will be lumped into a new category 'other'")
   }
@@ -241,7 +258,7 @@ abund_stats <- function(
     
     # Filter out original low-abund taxa and add lumped one
     df <- df |>
-      filter(! .data[[taxrank]] %in% to_lump) |>
+      filter(!.data[[taxrank]] %in% to_lump) |>
       bind_rows(other_df)
     
     # Sort ASVs by mean overall abundance
