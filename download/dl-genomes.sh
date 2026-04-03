@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Download genomes (and associated proteomes, annotations, etc) and associated metadata with the NCBI datasets tool"
-SCRIPT_VERSION="2025-08-02"
+SCRIPT_VERSION="2026-03-16"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -22,8 +22,8 @@ TOOL_DOCS=https://www.ncbi.nlm.nih.gov/datasets/docs/v2/reference-docs/command-l
 VERSION_COMMAND="datasets --version"
 
 # Defaults - generics
-env_type=conda                # Use a 'conda' env or a Singularity 'container'
-container_url=oras://community.wave.seqera.io/library/ncbi-datasets-cli:18.5.1--bedf5edc8afb072d
+env_type=container                # Use a 'conda' env or a Singularity 'container'
+container_url=oras://community.wave.seqera.io/library/ncbi-datasets-cli:18.21.0--42e888b3fc6602f6
 container_dir="$HOME/containers"
 container_path=
 conda_path=/fs/ess/PAS0471/conda/ncbi-datasets_18.5.1
