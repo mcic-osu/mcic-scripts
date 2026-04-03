@@ -11,7 +11,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run the Nextflow-core metabarcoding pipeline from https://nf-co.re/ampliseq"
-SCRIPT_VERSION="2026-01-19"
+SCRIPT_VERSION="2026-03-16"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="nextflow run"
@@ -24,12 +24,12 @@ WORKFLOW_NAME=nf-core/ampliseq                              # The name of the nf
 OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config
 
 # Parameter defaults - infrastructure
-conda_path=/fs/ess/PAS0471/conda/nextflow-25.10.2
+conda_path=/fs/ess/PAS0471/jelmer/conda/nextflow
 osc_account=PAS0471                                         # If the script is submitted with another project, this will be updated (line below)
 [[ -n $SLURM_JOB_ACCOUNT ]] && osc_account=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
 
 # Parameter defaults - workflow
-workflow_version=2.16.0                                     # The version of the nf-core workflow
+workflow_version=2.16.1                                     # The version of the nf-core workflow
 work_dir=/fs/scratch/"$osc_account"/$USER/nfc-ampliseq      # 'work dir' for initial outputs (selected, final outputs go to the outdir)
 profile="singularity"
 resume=true && resume_opt="-resume"
@@ -73,8 +73,8 @@ NEXTFLOW OPTIONS:
                                 - Required images will be downloaded here
   --config            <file>  Additional config file                            [default: none]
                                 - Settings in this file will override defaults
-                                - Note that the mcic-scripts OSC config file will
-                                  always be included, too
+                                - Note that the mcic-scripts OSC config file
+                                   will always be included, too
                                   (https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config)
   --profile            <str>  'Profile' to use from one of the config files     [default: $profile]
 
