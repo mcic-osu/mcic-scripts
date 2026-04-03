@@ -1,0 +1,53 @@
+# Example/template parameter file for the Nextflow/nf-core smrnaseq pipeline (https://nf-co.re/smrnaseq)
+# Use with the shell script mcic-scripts/meta/nfcore_smrnaseq.sh
+# Jelmer Poelstra, last edited 2026-03-16 (https://github.com/mcic-osu/mcic-scripts)
+
+# ==============================================================================
+#           PIPELINE PARAMETERS THAT SHOULD *NOT* BE SPECIFIED HERE
+# ==============================================================================
+# When using the script mcic-scripts/meta/nfcore_smrnaseq.sh,
+# don't use any of the following workflow parameters in this file,
+# but instead, pass those to the script directly:
+## 'input:'       => Use the shell script's '--fq_dir' or '--samplesheet' option
+## 'outdir:'      => Use the shell script's '--outdir' option
+
+# ==============================================================================
+#                         INPUT/OUTPUT SETTINGS
+# ==============================================================================
+fasta: /path/to/genome.fa #! Change
+
+# ==============================================================================
+#                         MIRNA DATABASE/FILE SETTINGS
+# ==============================================================================
+# Mirbase or custom annotation files:
+mirgenedb: false        # Could use mirgeneDB instead of mirtrace
+#mirgenedb_species: use this if wanting to use mirgeneDB instead of mirtrace.
+#mirna_gtf: custom gtf file with miRNA annotations
+#mature: custom fasta file with mature mirna sequences
+#hairpin: custom fasta file with hairpin mirna sequences
+
+# Mirtrace species must match the species prefix in FASTA headers (gac-...),
+#  otherwise the quantification will fail.
+# But for non-model organisms, you'll want to disable mirtrace using a config file,
+#  because it will not work with a non-supported species.
+mirtrace_species: dme   #! Change
+
+# ==============================================================================
+#                        FILTERING NON-MIRNA SEQUENCES
+# ==============================================================================
+#? See <https://nf-co.re/smrnaseq/2.4.1/docs/usage/#contamination-filtering>
+#? and <https://nf-co.re/smrnaseq/2.4.1/parameters/#contamination-filtering>
+filter_contamination:   false
+#rrna:                  FASTA file
+#trna:                  FASTA file
+#cdna:                  FASTA file
+#ncrna:                 FASTA file
+#pirna:                 FASTA file
+#other_contamination:   FASTA file
+
+# ==============================================================================
+#                         OTHER SETTINGS
+# ==============================================================================
+skip_fastqc:            false
+skip_mirdeep:           false
+save_intermediates:     true
