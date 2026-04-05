@@ -91,13 +91,13 @@ pbar <- function(
   # Set last color ('other' category) to grey:
   if (any(abund_df[[taxrank]] == rare_label)) {
     if (any(abund_df[[taxrank]] == unknown_label)) {
-      colors[length(colors) - 1] <- "grey80"
-      colors[length(colors)] <- "grey60"
+      colors[length(colors) - 1] <- "grey65"
+      colors[length(colors)] <- "grey85"
     } else {
-      colors[length(colors)] <- "grey80"
+      colors[length(colors)] <- "grey65"
     }
   } else if (any(abund_df[[taxrank]] == unknown_label)) {
-    colors[length(colors)] <- "grey60"
+    colors[length(colors)] <- "grey85"
   }
   
   # Create the plot
@@ -115,7 +115,7 @@ pbar <- function(
     scale_y_discrete(expand = c(0, 0)) +
     scale_fill_manual(
       values = colors,
-      guide = guide_legend(ncol = 1, reverse = TRUE)
+      guide = guide_legend(ncol = 1, reverse = FALSE)
       ) +
     labs(y = axis_lab) +
     theme(
@@ -289,6 +289,11 @@ abund_stats <- function(
   # Change NA taxa to "unknown"
   if (na_to_unknown == TRUE) {
     df[[taxrank]] <- fct_relevel(df[[taxrank]], unknown_label, after = Inf)
+  }
+  
+  # For genera, italicize names
+  if (taxrank %in% c("Genus", "genus")) {
+    df <- df |> mutate(Genus = sub("([A-Z].*)", "*\\1*", Genus))
   }
   
   return(tibble(df))
