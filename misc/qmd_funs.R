@@ -5,10 +5,17 @@ library(DT)
 library(kableExtra)
 
 # Function to make an exportable datatable
-make_dt <- function(df, caption = NULL,
-                    filter = filter, pageLength = 10,
-                    numr_cols = "auto", big_cols = NULL,
-                    simple_mode = FALSE, center = "all") {
+make_dt <- function(
+    df,
+    caption = NULL,
+    filter = filter,
+    pageLength = 10,
+    numr_cols = "auto",    # Which columns are numeric
+    big_cols = NULL,       # Which columns have big numbers
+    sci_notation = TRUE,   # Use scientific number notation
+    simple_mode = FALSE,
+    center = "all"
+    ) {
   
   if (simple_mode == TRUE) {
     dom <- "t"
@@ -23,8 +30,8 @@ make_dt <- function(df, caption = NULL,
   integer_idx <- as.integer(which(sapply(df, class) == "integer"))
   char_idx <- as.integer(which(sapply(df, class) == "character"))
   numr_idx <- as.integer(which(sapply(df, class) == "character"))
-  if(center == "integer") center_idx <- integer_idx
-  if(center == "all") center_idx <- c(integer_idx, char_idx, numr_idx)
+  if (center == "integer") center_idx <- integer_idx
+  if (center == "all") center_idx <- c(integer_idx, char_idx, numr_idx)
   
   dt <- datatable(
     df,
@@ -44,14 +51,15 @@ make_dt <- function(df, caption = NULL,
       columnDefs = list(list(className = 'dt-center', targets = center_idx))
     )
   )
+  
   if (numr_cols == "auto") {
     numr_cols <- names(df)[which(sapply(df, class) == "numeric")]
   }
-  if (!is.null(numr_cols) & length(numr_cols) > 0) {
+  if (sci_notation == TRUE & length(numr_cols) > 0) {
     dt <- dt %>% formatSignif(numr_cols, digits = 3)
   }
   
-  ## 1000-separator
+  # 1000-separator
   if (!is.null(big_cols)) {
     dt <- dt %>% formatCurrency(
       big_cols, currency = "", interval = 3, mark = ",", digits = 0
