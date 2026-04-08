@@ -11,7 +11,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run the Nextflow/nf-core Sarek pipeline (https://nf-co.re/sarek) for genomic variant calling"
-SCRIPT_VERSION="2025-05-29"
+SCRIPT_VERSION="2026-03-22"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -25,12 +25,11 @@ OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/next
 TOOL_DOCS=https://nf-co.re/sarek
 
 # Defaults - pipeline parameters
-workflow_version=3.5.1                                 # The version of the nf-core workflow
+workflow_version=3.8.1                                 # The version of the nf-core workflow
 resume=true && resume_arg="-resume"                    # Resume the workflow from wherever it left off
 
 # Defaults - generics
 conda_path=/fs/ess/PAS0471/jelmer/conda/nextflow
-container_dir="$HOME/containers"
 osc_account=PAS0471
 [[ -n $SLURM_JOB_ACCOUNT ]] && osc_account=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
 work_dir=/fs/scratch/"$osc_account"/$USER/nfc-sarek    # 'work dir' for initial outputs (selected, final outputs go to the outdir)
@@ -144,6 +143,7 @@ ref_fasta=
 outdir=
 config_file=
 params_file=
+container_dir=
 
 # Parse command-line options
 all_opts="$*"
@@ -183,10 +183,6 @@ done
 # ==============================================================================
 # Bash strict settings
 set -euo pipefail
-
-# Load software
-load_env "$conda_path"
-nextflow_setup
 [[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Build the config argument
@@ -195,6 +191,7 @@ config_arg="-c $OSC_CONFIG"
 [[ -n "$config_file" ]] && config_arg="$config_arg -c ${config_file/,/ -c }"
 
 # Other output dirs
+[[ -z "$container_dir" ]] && container_dir="$work_dir"/containers
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 
 # ==============================================================================
@@ -222,6 +219,8 @@ echo "==========================================================================
 echo "Listing the input files:"
 ls -lh "$ref_fasta"
 echo "=========================================================================="
+load_env "$conda_path"
+nextflow_setup
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" = true ]] && slurm_resources
 
