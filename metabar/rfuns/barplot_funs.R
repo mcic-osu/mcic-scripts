@@ -121,7 +121,8 @@ pbar <- function(
     theme(
       panel.background = element_rect(fill = "white"),
       panel.grid.major.y = element_blank(),
-      panel.grid.minor = element_blank()
+      panel.grid.minor = element_blank(),
+      legend.text = ggtext::element_markdown()
       )
   
   if (!is.null(facet_var)) {
@@ -292,8 +293,11 @@ abund_stats <- function(
   }
   
   # For genera, italicize names
-  if (taxrank %in% c("Genus", "genus")) {
+  if (taxrank == "Genus") {
     df <- df |> mutate(Genus = sub("([A-Z].*)", "*\\1*", Genus))
+  }
+  if (taxrank == "genus") {
+    df <- df |> mutate(genus = sub("([A-Z].*)", "*\\1*", genus))
   }
   
   return(tibble(df))
