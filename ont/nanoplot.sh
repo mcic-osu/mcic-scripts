@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run NanoPlot to QC ONT/PacBio reads using sequencing summary/FASTQ/BAM input"
-SCRIPT_VERSION="2024-06-29"
+SCRIPT_VERSION="2026-04-06"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -22,46 +22,50 @@ TOOL_DOCS=https://github.com/wdecoster/NanoPlot
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=container                      # Use a 'conda' env or a Singularity 'container'
+env_type=container              # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/nanoplot
-container_path=
-container_url=oras://community.wave.seqera.io/library/nanoplot:1.42.0--72a9f293be813c68
-dl_container=false
+container_url=oras://community.wave.seqera.io/library/nanoplot:1.46.2--df666265eb467952
 container_dir="$HOME/containers"
-version_only=false                 # When true, just print tool & script version info and exit
+container_path=
 
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
 script_help() {
-    echo -e "\n                          $0"
-    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
-    echo "        =============================================================="
-    echo "DESCRIPTION:"
-    echo "  $DESCRIPTION"
-    echo
-    echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage:"
-    echo "      sbatch $0 -i sequencing_summary.txt -o results/nanoplot"
-    echo "      sbatch $0 -i sampleA.fastq.gz -o results/nanoplot"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile         <file>  Input file: sequencing summary text file, FASTQ, or BAM"
-    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --env_type         <str>    Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
-    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
-    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
-    echo "  -h/--help                   Print this help message and exit"
-    echo "  -v/--version                Print the version of this script and of $TOOL_NAME and exit"
-    echo
-    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
+        echo -e "
+                                                $0
+        v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL
+                        =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+    
+USAGE / EXAMPLE COMMANDS:
+    - Basic usage examples:
+            sbatch $0 -i sequencing_summary.txt -o results/nanoplot
+            sbatch $0 -i sampleA.fastq.gz -o results/nanoplot
+    
+REQUIRED OPTIONS:
+    -i/--infile         <file>  Input file: sequencing summary text file, FASTQ, or BAM
+    -o/--outdir         <dir>   Output dir (will be created if needed)
+    
+OTHER KEY OPTIONS:
+    --more_opts         <str>   Quoted string with one or more additional
+                                options for $TOOL_NAME
+    
+UTILITY OPTIONS:
+    --env_type          <str>   Whether to use a Singularity/Apptainer container [default: $env_type]
+                                ('container') or a Conda environment ('conda') 
+    --container_url     <str>   URL to download a container from                [default (if any): $container_url]
+    --container_dir     <str>   Dir to download a container to                  [default: $container_dir]
+    --container_path    <file>  Local container image file ('.sif') to use      [default (if any): $container_path]
+    --conda_path        <dir>   Full path to a Conda environment to use         [default (if any): $conda_path]
+    -h/--help                   Print this help message
+    -v/--version                Print script and $TOOL_NAME versions
+    
+TOOL DOCUMENTATION:
+    $TOOL_DOCS
+"
 }
 
 # Function to source the script with Bash functions
@@ -75,30 +79,38 @@ source_function_script() {
         script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
         SCRIPT_NAME=$(basename "$0")
     fi
-    function_script=$(realpath "$script_dir"/../dev/"$(basename "$FUNCTION_SCRIPT_URL")")
+    function_script_name="$(basename "$FUNCTION_SCRIPT_URL")"
+    function_script_path="$script_dir"/../dev/"$function_script_name"
+
     # Download the function script if needed, then source it
-    if [[ ! -f "$function_script" ]]; then
-        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
-        function_script=$(basename "$FUNCTION_SCRIPT_URL")
-        wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script"
+    if [[ -f "$function_script_path" ]]; then
+        # shellcheck source=/dev/null
+        source "$function_script_path"
+    else
+        if [[ ! -f "$function_script_name" ]]; then
+            echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+            wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
+        fi
+        # shellcheck source=/dev/null
+        source "$function_script_name"
     fi
-    source "$function_script"
 }
 
 # Check if this is a SLURM job, then load the Bash functions
 if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
-source_function_script
+source_function_script $IS_SLURM
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
+version_only=false  # When true, just print tool & script version info and exit
 infile=
 outdir=
 more_opts=
 threads=
 
-# Parse command-line args
+# Parse command-line options
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
@@ -106,11 +118,12 @@ while [ "$1" != "" ]; do
         -o | --outdir )     shift && outdir=$1 ;;
         --more_opts )       shift && more_opts=$1 ;;
         --env_type )        shift && env_type=$1 ;;
-        --dl_container )    dl_container=true ;;
+        --conda_path )      shift && conda_path=$1 ;;
         --container_dir )   shift && container_dir=$1 ;;
-        --container_url )   shift && container_url=$1 && dl_container=true ;;
+        --container_url )   shift && container_url=$1 ;;
+        --container_path )  shift && container_path=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v | --version )    version_only=true ;;
+        -v | --version)     version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
@@ -123,7 +136,7 @@ done
 set -euo pipefail
 
 # Load software
-load_env "$conda_path" "$container_path" "$dl_container"
+load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$container_url"
 [[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
@@ -132,7 +145,8 @@ load_env "$conda_path" "$container_path" "$dl_container"
 [[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 
 # Define outputs based on script parameters
-LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+LOG_DIR="$outdir"/logs
+mkdir -p "$LOG_DIR"
 
 # Output prefix
 prefix=$(basename "${infile%%.*}")_
@@ -157,8 +171,10 @@ fi
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options passed to this script:        $all_opts"
+echo "Working directory:                        $PWD"
+echo
 echo "Input file:                               $infile"
-echo "Inferred input file type:                 $filetype" 
+echo "Inferred input file type:                 $filetype"
 echo "Output dir:                               $outdir"
 echo "Output prefix:                            $prefix"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
@@ -178,8 +194,14 @@ runstats $TOOL_BINARY \
     --prefix "$prefix" \
     --tsv_stats \
     --info_in_report \
+    --no_static \
     $more_opts
 
+#? --no-static: No static plots. Otherwise lots of Google Chrome warnings are produced.
+
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
 final_reporting "$LOG_DIR"
