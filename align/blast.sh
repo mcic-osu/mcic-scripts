@@ -42,11 +42,12 @@ OUTPUT:
     11) sstart      Start position of the alignment in the subject
     12) send        End position of the alignment in the subject
     13) qcovus      Query coverage per subject
-    14) mismatch    Number of mismatches
-    15) gaps        Number of gaps
-    16) stitle      Subject title
-    17) staxids     Subject taxonomy IDs
-    18) tax_string  Taxonomy string in the format: kingdom|phylum|class|order|family|genus|species
+    14) qcovhsp     Query coverage per HSP
+    15) mismatch    Number of mismatches
+    16) gaps        Number of gaps
+    17) stitle      Subject title
+    18) staxids     Subject taxonomy IDs
+    19) tax_string  Taxonomy string in the format: kingdom|phylum|class|order|family|genus|species
 "
 SCRIPT_VERSION="2025-12-11"
 SCRIPT_AUTHOR="Jelmer Poelstra"
@@ -59,7 +60,7 @@ export LC_ALL=C                     # Locale for sorting
 # Constants - settings
 # - With genome download, get separate metadata file from the NCBI datasets tool with the following fields:
 META_FIELDS="accession,assminfo-name,organism-name,assminfo-refseq-category,assminfo-level,assmstats-number-of-contigs,assmstats-contig-n50"
-BLAST_FORMAT="6 qseqid sacc pident length evalue bitscore qlen slen qstart qend sstart send qcovus mismatch gaps stitle staxids"
+BLAST_FORMAT="6 qseqid sacc pident length evalue bitscore qlen slen qstart qend sstart send qcovus qcovhsp mismatch gaps stitle staxids"
 #? - See https://www.ncbi.nlm.nih.gov/books/NBK279684/table/appendices.T.options_common_to_all_blast/
 
 # Defaults - generic
@@ -81,7 +82,8 @@ top_n_query=100                     # Keep the top-N hits only for each query (e
 top_n_subject=                      # Keep the top-N hits only for each subject, per query (empty => keep all)
 evalue="1e-6"                       # E-value threshold
 pct_id=                             # % identity threshold (empty => no threshold)
-pct_cov=                            # Threshold for % of query covered by the alignment length (empty => no threshold)
+pct_qcov=                            # Threshold for % of query covered by the alignment length (empty => no threshold)
+qcov_metric="total"                 # Query coverage metric for % cov filtering: 'total' (qcovus) or 'hsp' (qcovhsp)
 force=true                          # Rerun BLAST if the output file already exists
 to_find_genomes=false               # Find genomes of subjects and create lookup tables with subject acessions?
 to_dl_genomes=false                 # Download full genomes of subjects?
@@ -117,7 +119,7 @@ USAGE / EXAMPLE COMMANDS:
       sbatch $0 -i my_seq.fa -o results/blast --dl_aligned --dl_subjects --dl_genomes
 
   - Use % identity and query coverage thresholds:
-      sbatch $0 -i my_seq.fa -o results/blast --pct_id 90 --pct_cov 90
+      sbatch $0 -i my_seq.fa -o results/blast --pct_id 90 --pct_qcov 90
 
   - Keep only the best 10 hits per query:
       sbatch $0 -i my_seq.fa -o results/blast --top_n 10
@@ -167,8 +169,10 @@ BLAST THRESHOLD AND FILTERING OPTIONS (OPTIONAL):
                             This option is applied *during* the BLAST run.
   --pct_id          <num>   Percentage identity threshold                       [default: none]
                             This threshold is applied *after* running BLAST.
-  --pct_cov         <num>   Threshold for % of query covered by the alignment   [default: none]
+  --pct_qcov        <num>   Threshold for % of query covered by the alignment   [default: none]
                             This threshold is applied *after* running BLAST.
+  --qcov_metric     <str>   Query coverage metric for % cov filtering:          [default: $qcov_metric]
+                            'total' across HSPs (qcovus) or 'hsp' (qcovhsp)                            
   --top_n_query     <int>   Only keep the top N hits for each query             [default: $top_n_query]
                             This threshold is applied *after* running BLAST.
                             A threshold of 0 means no filtering
@@ -262,13 +266,19 @@ process_blast() {
         blast_out_id="$blast_out_sorted"
     fi
 
-    # 2. Filter by percent coverage
-    if [[ -n "$pct_cov" ]]; then
-        log_time "Filtering output using a percent coverage threshold of $pct_cov"
+    # 2. Filter by percent query coverage
+    if [[ -n "$pct_qcov" ]]; then
         blast_out_cov="$outdir"/blast_out_cov.tsv
 
-        awk -F"\t" -v OFS="\t" -v pct_cov="$pct_cov" \
-            '$13 >= pct_cov' "$blast_out_id" > "$blast_out_cov"
+        if [[ "$qcov_metric" == "total" ]]; then
+            log_time "Filtering output using a percent total query coverage threshold of $pct_qcov"
+            awk -F"\t" -v OFS="\t" -v pct_qcov="$pct_qcov" '$13 >= pct_qcov' "$blast_out_id" > "$blast_out_cov"
+        fi
+        if [[ "$qcov_metric" == "hsp" ]]; then
+            log_time "Filtering output using a percent HSP query coverage threshold of $pct_qcov"
+            awk -F"\t" -v OFS="\t" -v pct_qcov="$pct_qcov" '$14 >= pct_qcov' "$blast_out_id" > "$blast_out_cov"
+        fi
+
         log_time "Retained $(wc -l < "$blast_out_cov") of $(wc -l < "$blast_out_id") hits"
     else
         blast_out_cov="$blast_out_id"
@@ -316,7 +326,7 @@ process_blast() {
         paste "$blast_out_tops" <(cut -f2 "$outdir"/taxonomy.tsv) > "$blast_out_final"
         set -euo pipefail # Restore strict Bash settings
     else
-        blast_out_final="$blast_out_tops"
+        mv "$blast_out_tops" "$blast_out_final"
     fi
 
     # Clean & report
@@ -537,7 +547,8 @@ while [ "$1" != "" ]; do
         --top_n_subject )   shift && top_n_subject=$1 ;;
         --evalue )          shift && evalue=$1 ;;
         --pct_id )          shift && pct_id=$1 ;;
-        --pct_cov )         shift && pct_cov=$1 ;;
+        --pct_qcov )        shift && pct_qcov=$1 ;;
+        --qcov_metric )     shift && qcov_metric=$1 ;;
         --find_genomes )    to_find_genomes=true ;;
         --dl_genomes )      to_dl_genomes=true ;;
         --dl_subjects )     to_dl_subjects=true ;;
@@ -669,7 +680,7 @@ echo "Add column header to BLAST output?        $add_header"
 echo
 echo "Evalue threshold:                         $evalue"
 [[ -n "$pct_id" ]] && echo "Percent identity threshold:               $pct_id"
-[[ -n "$pct_cov" ]] && echo "Alignment coverage threshold:             $pct_cov"
+[[ -n "$pct_qcov" ]] && echo "Alignment coverage threshold:             $pct_qcov"
 [[ -n "$top_n_query" ]] && echo "Filter to top N hits per query:           $top_n_query"
 [[ -n "$top_n_subject" ]] && echo "Filter to top N hits per subject:         $top_n_subject"
 [[ -n "$max_target_seqs" ]] && echo "Max. nr. of target sequences:             $max_target_seqs"

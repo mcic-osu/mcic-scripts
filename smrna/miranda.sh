@@ -1,32 +1,41 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=8G
 #SBATCH --mail-type=FAIL
-#SBATCH --job-name=filtlong
-#SBATCH --output=slurm-filtlong-%j.out
+#SBATCH --job-name=miranda
+#SBATCH --output=slurm-miranda-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Run Filtlong to filter long reads, keeping the longest and highest-quality reads"
+DESCRIPTION="Run Miranda for miRNA target prediction"
 SCRIPT_VERSION="2026-04-13"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
-TOOL_BINARY=filtlong
-TOOL_NAME=Filtlong
-TOOL_DOCS=https://github.com/rrwick/Filtlong
+TOOL_BINARY=miranda
+TOOL_NAME=Miranda
+TOOL_DOCS=http://www.microrna.org/microrna/getDownloads.do
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=container                       # Use a 'conda' env or a Singularity 'container'
+env_type=container                  # Use a 'conda' env or a Singularity 'container'
 conda_path=
-container_url=oras://community.wave.seqera.io/library/filtlong:0.3.1--7502fb4914398c78
+container_url="oras://community.wave.seqera.io/library/miranda:3.3a--e4b92f5b9bbf6eb1"
 container_dir="$HOME/containers"
 container_path=
+
+# Constants - tool parameters
+DEFAULT_SC=140
+DEFAULT_EN=-20
+
+# Defaults - tool parameters
+sc=$DEFAULT_SC
+en=$DEFAULT_EN
+strict=true
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -39,34 +48,33 @@ script_help() {
 
 DESCRIPTION:
 $DESCRIPTION
-
+    
 USAGE / EXAMPLE COMMANDS:
-  - Filter using target nr of bases: best and longest reads will be kept:
-      sbatch $0 -i reads.fastq.gz -o results/filtlong --more_opts '--target_bases 1000000'
-  - Filter by length:
-      sbatch $0 -i reads.fastq.gz -o results/filtlong --more_opts '--min_length 1000 --max_length 100000'
-  - Filter by quality:
-      sbatch $0 -i reads.fastq.gz -o results/filtlong --more_opts '--min_mean_q 20'
-
+  - Basic usage example:
+      sbatch $0 -m mirnas.fa -u utr_sequences.fa -o results/miranda
+    
 REQUIRED OPTIONS:
-  -i/--infile         <file>  Input FASTQ file
+  -m/--mirna_file     <file>  Input miRNA sequences (FASTA format)
+  -u/--utr_file       <file>  Input 3' UTR sequences (FASTA format)
   -o/--outdir         <dir>   Output dir (will be created if needed)
-  NOTE: You should also add one of Filtlong's options for filtering with --more_opts
-        to actually filter the FASTQ file, see the example commands above.
-
+    
 OTHER KEY OPTIONS:
-  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME
-
+  --sc                <int>   Score threshold                                   [default: $DEFAULT_SC]
+  --en                <int>   Energy threshold                                  [default: $DEFAULT_EN]
+  --strict                    Use strict seed model (no mismatches/wobbles)     [default: $strict]
+  --more_opts         <str>   Quoted string with one or more additional options
+                              for $TOOL_NAME
+    
 UTILITY OPTIONS:
   --env_type          <str>   Whether to use a Singularity/Apptainer container  [default: $env_type]
-                              ('container') or a Conda environment ('conda')
-  --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
+                              ('container') or a Conda environment ('conda') 
+  --container_url     <str>   URL to download a container from                  [default: $container_url]
   --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
   --container_path    <file>  Local container image file ('.sif') to use        [default (if any): $container_path]
   --conda_path        <dir>   Full path to a Conda environment to use           [default (if any): $conda_path]
   -h/--help                   Print this help message
   -v/--version                Print script and $TOOL_NAME versions
-
+    
 TOOL DOCUMENTATION:
   $TOOL_DOCS
 "
@@ -107,25 +115,30 @@ source_function_script $IS_SLURM
 # ==============================================================================
 # Initiate variables
 version_only=false  # When true, just print tool & script version info and exit
-infile=
+mirna_file=
+utr_file=
 outdir=
 more_opts=
 
-# Parse command-line args
+# Parse command-line options
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infile )     shift && infile=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
-        --more_opts )       shift && more_opts=$1 ;;
-        --env_type )        shift && env_type=$1 ;;
-        --conda_path )      shift && conda_path=$1 ;;
-        --container_dir )   shift && container_dir=$1 ;;
-        --container_url )   shift && container_url=$1 ;;
-        --container_path )  shift && container_path=$1 ;;
-        -h | --help )       script_help; exit 0 ;;
-        -v | --version )    version_only=true ;;
-        * )                 die "Invalid option $1" "$all_opts" ;;
+        -m | --mirna_file )   shift && mirna_file=$1 ;;
+        -u | --utr_file )     shift && utr_file=$1 ;;
+        -o | --outdir )       shift && outdir=$1 ;;
+        --sc )                shift && sc=$1 ;;
+        --en )                shift && en=$1 ;;
+        --strict )            strict=true ;;
+        --more_opts )         shift && more_opts=$1 ;;
+        --env_type )          shift && env_type=$1 ;;
+        --conda_path )        shift && conda_path=$1 ;;
+        --container_dir )     shift && container_dir=$1 ;;
+        --container_url )     shift && container_url=$1 ;;
+        --container_path )    shift && container_path=$1 ;;
+        -h | --help )         script_help; exit 0 ;;
+        -v | --version)       version_only=true ;;
+        * )                   die "Invalid option $1" "$all_opts" ;;
     esac
     shift
 done
@@ -141,17 +154,22 @@ load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$containe
 [[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
-[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
+[[ -z "$mirna_file" ]] && die "No miRNA file specified, do so with -m/--mirna_file" "$all_opts"
+[[ -z "$utr_file" ]] && die "No UTR file specified, do so with -u/--utr_file" "$all_opts"
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
-[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
-indir=$(dirname "$infile")
-[[ "$outdir" == "$indir" ]] && die "Output dir cannot be the same as the input dir: both are $outdir"
+[[ ! -f "$mirna_file" ]] && die "miRNA file $mirna_file does not exist"
+[[ ! -f "$utr_file" ]] && die "UTR file $utr_file does not exist"
 
 # Define outputs based on script parameters
-LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
-outfile="$outdir"/$(basename "$infile")
-file_id=$(basename "$infile" .fastq.gz)
-REPORT_FILE="$LOG_DIR"/"$file_id"_stats.tsv  # For nr of in/output reads
+LOG_DIR="$outdir"/logs
+out_raw="$outdir"/miranda_results.txt
+out_parsed="$outdir"/miranda_parsed.tsv
+mkdir -p "$LOG_DIR" "$outdir"
+
+# Build Miranda command options
+miranda_opts="-sc $sc -en $en"
+[[ "$strict" == true ]] && miranda_opts="$miranda_opts -strict"
+[[ -n "$more_opts" ]] && miranda_opts="$miranda_opts $more_opts"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -161,31 +179,44 @@ echo "==========================================================================
 echo "All options passed to this script:        $all_opts"
 echo "Working directory:                        $PWD"
 echo
-echo "Input file:                               $infile"
+echo "miRNA file:                               $mirna_file"
+echo "UTR file:                                 $utr_file"
 echo "Output dir:                               $outdir"
+echo "Score threshold (--sc):                   $sc"
+echo "Energy threshold (--en):                  $en"
+echo "Strict mode:                              $strict"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
+echo "Miranda command options:                  $miranda_opts"
+echo "Raw output file:                          $out_raw"
+echo "Parsed output file:                       $out_parsed"
 log_time "Listing the input file(s):"
-ls -lh "$infile"
+ls -lh "$mirna_file" "$utr_file"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
+# Run Miranda
 log_time "Running $TOOL_NAME..."
 runstats $TOOL_BINARY \
-    $more_opts \
-    "$infile" |
-    gzip > "$outfile"
+    "$mirna_file" \
+    "$utr_file" \
+    $miranda_opts \
+    -out "$out_raw"
 
-# Count reads in input and output
-n_in=$(zcat "$infile" | awk '{s++} END {print s/4}')
-n_out=$(zcat "$outfile" | awk '{s++} END {print s/4}')
-pct=$(python3 -c "print(round(($n_out / $n_in) * 100, 2))")
-log_time "Number of reads in in/output file(s): $n_in // $n_out ($pct% retained)"
-echo -e "file_id\treads_in\treads_out\tpct_retained" > "$REPORT_FILE"
-echo -e "${file_id}\t${n_in}\t${n_out}\t${pct}" >> "$REPORT_FILE"
+# Post-process the raw Miranda output into a more usable format (tab-delimited with header)
+# Create the header row and append the parsed data into a final file
+log_time "Parsing $TOOL_NAME output into a TSV file with per-transcript results..."
+echo -e "miRNA\tTarget\tTot_Score\tTot_Energy\tMax_Score\tMax_Energy\tStrand\tLen_miRNA\tLen_Target\tPositions" \
+    > "$out_parsed"
+grep ">>" "$out_raw" | sed 's/>>//g' >> "$out_parsed"
 
-# Final reporting
+echo "# Showing the first few lines of the parsed output file:"
+head -n 5 "$out_parsed"
+
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
 log_time "Listing files in the output dir:"
-ls -lhd "$(realpath "$outdir")"/*
+ls -lh "$out_raw" "$out_parsed"
 final_reporting "$LOG_DIR"

@@ -1,32 +1,35 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
+#SBATCH --time=6:00:00
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=40G
 #SBATCH --mail-type=FAIL
-#SBATCH --job-name=filtlong
-#SBATCH --output=slurm-filtlong-%j.out
+#SBATCH --job-name=freebayes
+#SBATCH --output=slurm-freebayes-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Run Filtlong to filter long reads, keeping the longest and highest-quality reads"
-SCRIPT_VERSION="2026-04-13"
+DESCRIPTION="Run FreeBayes for variant calling"
+SCRIPT_VERSION="2026-03-22"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
-TOOL_BINARY=filtlong
-TOOL_NAME=Filtlong
-TOOL_DOCS=https://github.com/rrwick/Filtlong
+TOOL_BINARY=freebayes
+TOOL_NAME=FreeBayes
+TOOL_DOCS=https://github.com/freebayes/freebayes
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=container                       # Use a 'conda' env or a Singularity 'container'
+env_type=container                  # Use a 'conda' env or a Singularity 'container'
 conda_path=
-container_url=oras://community.wave.seqera.io/library/filtlong:0.3.1--7502fb4914398c78
+container_url=oras://community.wave.seqera.io/library/freebayes:1.3.10--d8c0349f8e346ad1
 container_dir="$HOME/containers"
 container_path=
+
+# Constants - tool parameters
+PLOIDY=2
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -39,34 +42,33 @@ script_help() {
 
 DESCRIPTION:
 $DESCRIPTION
-
+    
 USAGE / EXAMPLE COMMANDS:
-  - Filter using target nr of bases: best and longest reads will be kept:
-      sbatch $0 -i reads.fastq.gz -o results/filtlong --more_opts '--target_bases 1000000'
-  - Filter by length:
-      sbatch $0 -i reads.fastq.gz -o results/filtlong --more_opts '--min_length 1000 --max_length 100000'
-  - Filter by quality:
-      sbatch $0 -i reads.fastq.gz -o results/filtlong --more_opts '--min_mean_q 20'
-
+  - Basic usage example:
+      sbatch $0 --bam results/sample.bam --ref_fasta reference.fa -o results/sample.vcf.gz
+    
 REQUIRED OPTIONS:
-  -i/--infile         <file>  Input FASTQ file
-  -o/--outdir         <dir>   Output dir (will be created if needed)
-  NOTE: You should also add one of Filtlong's options for filtering with --more_opts
-        to actually filter the FASTQ file, see the example commands above.
-
+  --ref_fasta         <file>  Input reference FASTA file
+  -o/--vcf            <file>  Output gzipped VCF file (extension 'vcf.gz')
+  USE ONE OF THE FOLLOWING TO SPECIFY INPUT BAM FILE(S):
+  --bam               <file>  Input BAM file
+  --bam_list          <file>  A file listing all BAM files to be used
+    
 OTHER KEY OPTIONS:
-  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME
-
+  --allsites                  Output ALL sites in the VCF, not just variants
+  --more_opts         <str>   Quoted string with one or more additional options
+                              for $TOOL_NAME
+    
 UTILITY OPTIONS:
   --env_type          <str>   Whether to use a Singularity/Apptainer container  [default: $env_type]
-                              ('container') or a Conda environment ('conda')
+                              ('container') or a Conda environment ('conda') 
   --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
   --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
   --container_path    <file>  Local container image file ('.sif') to use        [default (if any): $container_path]
   --conda_path        <dir>   Full path to a Conda environment to use           [default (if any): $conda_path]
   -h/--help                   Print this help message
   -v/--version                Print script and $TOOL_NAME versions
-
+    
 TOOL DOCUMENTATION:
   $TOOL_DOCS
 "
@@ -107,16 +109,21 @@ source_function_script $IS_SLURM
 # ==============================================================================
 # Initiate variables
 version_only=false  # When true, just print tool & script version info and exit
-infile=
-outdir=
+ref_fasta=
+bam= && bam_list= && bam_opt=
+vcf=
 more_opts=
+threads=
 
-# Parse command-line args
+# Parse command-line options
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infile )     shift && infile=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
+        --ref_fasta )       shift && ref_fasta=$1 ;;
+        --bam )             shift && bam=$1 ;;
+        --bam_list )        shift && bam_list=$1 ;;
+        -o | --vcf )        shift && vcf=$1 ;;
+        --allsites )        allsites=true && allsites_opt=--report-monomorphic;;
         --more_opts )       shift && more_opts=$1 ;;
         --env_type )        shift && env_type=$1 ;;
         --conda_path )      shift && conda_path=$1 ;;
@@ -124,7 +131,7 @@ while [ "$1" != "" ]; do
         --container_url )   shift && container_url=$1 ;;
         --container_path )  shift && container_path=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v | --version )    version_only=true ;;
+        -v | --version)     version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
@@ -141,17 +148,19 @@ load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$containe
 [[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
-[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
-[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
-[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
-indir=$(dirname "$infile")
-[[ "$outdir" == "$indir" ]] && die "Output dir cannot be the same as the input dir: both are $outdir"
+[[ -z "$ref_fasta" ]] && die "No reference FASTA file specified, do so with --ref_fasta" "$all_opts"
+[[ -z "$bam" && -z "$bam_list" ]] && die "No BAM file specified, do so with --bam or --bam_list" "$all_opts"
+[[ -z "$vcf" ]] && die "No output VCF file specified, do so with -o/--vcf" "$all_opts"
+[[ ! -f "$ref_fasta" ]] && die "Reference FASTA file $ref_fasta does not exist"
+[[ -n "$bam" && ! -f "$bam" ]] && die "BAM file $bam does not exist"
+[[ -n "$bam_list" && ! -f "$bam_list" ]] && die "BAM list file $bam_list does not exist"
 
 # Define outputs based on script parameters
+outdir=$(dirname "$vcf")
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
-outfile="$outdir"/$(basename "$infile")
-file_id=$(basename "$infile" .fastq.gz)
-REPORT_FILE="$LOG_DIR"/"$file_id"_stats.tsv  # For nr of in/output reads
+# Set BAM option
+[[ -n "$bam" ]] && bam_opt="--bam $bam"
+[[ -n "$bam_list" ]] && bam_opt="--bam-list $bam_list"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -161,11 +170,21 @@ echo "==========================================================================
 echo "All options passed to this script:        $all_opts"
 echo "Working directory:                        $PWD"
 echo
-echo "Input file:                               $infile"
-echo "Output dir:                               $outdir"
+echo "Reference FASTA file:                     $ref_fasta"
+[[ -n "$bam" ]] && echo "BAM file:                                 $bam"
+[[ -n "$bam_list" ]] && echo "BAM list file:                            $bam_list"
+echo "Output VCF file:                          $vcf"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
+[[ "$allsites" == true ]] && echo "All sites option enabled:                 $allsites_opt"
 log_time "Listing the input file(s):"
-ls -lh "$infile"
+ls -lh "$ref_fasta"
+[[ -n "$bam" ]] && ls -lh "$bam"
+if [[ -n "$bam_list" ]]; then
+    ls -lh "$bam_list"
+    echo "BAM files listed in $bam_list:"
+    cat "$bam_list"
+fi
+set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
@@ -173,19 +192,16 @@ ls -lh "$infile"
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
 runstats $TOOL_BINARY \
-    $more_opts \
-    "$infile" |
-    gzip > "$outfile"
+    -f "$ref_fasta" \
+    --ploidy "$PLOIDY" \
+    --vcf "$vcf" \
+    $bam_opt \
+    $allsites_opt \
+    $more_opts
 
-# Count reads in input and output
-n_in=$(zcat "$infile" | awk '{s++} END {print s/4}')
-n_out=$(zcat "$outfile" | awk '{s++} END {print s/4}')
-pct=$(python3 -c "print(round(($n_out / $n_in) * 100, 2))")
-log_time "Number of reads in in/output file(s): $n_in // $n_out ($pct% retained)"
-echo -e "file_id\treads_in\treads_out\tpct_retained" > "$REPORT_FILE"
-echo -e "${file_id}\t${n_in}\t${n_out}\t${pct}" >> "$REPORT_FILE"
-
-# Final reporting
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
 final_reporting "$LOG_DIR"

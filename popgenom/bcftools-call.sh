@@ -1,32 +1,40 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
+#SBATCH --time=6:00:00
+#SBATCH --cpus-per-task=15
+#SBATCH --mem=60G
 #SBATCH --mail-type=FAIL
-#SBATCH --job-name=filtlong
-#SBATCH --output=slurm-filtlong-%j.out
+#SBATCH --job-name=bcftools-call
+#SBATCH --output=slurm-bcftools-call-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Run Filtlong to filter long reads, keeping the longest and highest-quality reads"
-SCRIPT_VERSION="2026-04-13"
+DESCRIPTION="Run 'bcftools mpileup' and 'bcftools call' to call variants using BAM files and a reference FASTA"
+SCRIPT_VERSION="2026-03-21"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
-TOOL_BINARY=filtlong
-TOOL_NAME=Filtlong
-TOOL_DOCS=https://github.com/rrwick/Filtlong
-VERSION_COMMAND="$TOOL_BINARY --version"
+TOOL_BINARY=        # Leave empty so it will just be replaced by the container call
+TOOL_NAME=BCFtools
+TOOL_DOCS="https://samtools.github.io/bcftools/bcftools.html; https://samtools.github.io/bcftools/howtos/variant-calling.html"
+VERSION_COMMAND="bcftools --version"
 
 # Defaults - generics
-env_type=container                       # Use a 'conda' env or a Singularity 'container'
+env_type=container                  # Use a 'conda' env or a Singularity 'container'
 conda_path=
-container_url=oras://community.wave.seqera.io/library/filtlong:0.3.1--7502fb4914398c78
+# Container has samtools v1.21 and bcftools v1.23
+container_url=oras://community.wave.seqera.io/library/bcftools_samtools:7fe67bba6ab148dd
 container_dir="$HOME/containers"
 container_path=
+
+# Constants - tool parameters
+VARCALL_METHOD="--multiallelic-caller"
+
+# Defaults - tool parameters
+allsites=false      # Only output variant sites
+maxdepth=500        # Vs. mpileup default of 250
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -39,34 +47,35 @@ script_help() {
 
 DESCRIPTION:
 $DESCRIPTION
-
+    
 USAGE / EXAMPLE COMMANDS:
-  - Filter using target nr of bases: best and longest reads will be kept:
-      sbatch $0 -i reads.fastq.gz -o results/filtlong --more_opts '--target_bases 1000000'
-  - Filter by length:
-      sbatch $0 -i reads.fastq.gz -o results/filtlong --more_opts '--min_length 1000 --max_length 100000'
-  - Filter by quality:
-      sbatch $0 -i reads.fastq.gz -o results/filtlong --more_opts '--min_mean_q 20'
-
+  - Basic usage example:
+      sbatch $0 --fasta data/assembly.fa --bam_dir results/bwa -o results/mpileup.vcf
+    
 REQUIRED OPTIONS:
-  -i/--infile         <file>  Input FASTQ file
-  -o/--outdir         <dir>   Output dir (will be created if needed)
-  NOTE: You should also add one of Filtlong's options for filtering with --more_opts
-        to actually filter the FASTQ file, see the example commands above.
-
+  --ref_fasta         <file>  Input reference FASTA file
+  --bam_dir           <dir>   Directory with input BAM files
+  -o/--vcf            <file>  Output gzipped VCF file (extension 'vcf.gz')
+    
 OTHER KEY OPTIONS:
-  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME
-
+  --allsites                  Output ALL sites in the VCF, not just variants
+  --maxdepth          <int>   Max depth for mpileup                             [default: $maxdepth]
+                                Note: this applies separately for each BAM file.
+                                A higher value is mostly needed for BAM files
+                                that have been merged across samples.
+  --opts_mpileup      <str>   Quoted string with additional argument(s) for bcftools mpileup
+  --opts_call         <str>   Quoted string with additional argument(s) for bcftools call
+    
 UTILITY OPTIONS:
   --env_type          <str>   Whether to use a Singularity/Apptainer container  [default: $env_type]
-                              ('container') or a Conda environment ('conda')
+                              ('container') or a Conda environment ('conda') 
   --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
   --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
   --container_path    <file>  Local container image file ('.sif') to use        [default (if any): $container_path]
   --conda_path        <dir>   Full path to a Conda environment to use           [default (if any): $conda_path]
   -h/--help                   Print this help message
   -v/--version                Print script and $TOOL_NAME versions
-
+    
 TOOL DOCUMENTATION:
   $TOOL_DOCS
 "
@@ -107,24 +116,31 @@ source_function_script $IS_SLURM
 # ==============================================================================
 # Initiate variables
 version_only=false  # When true, just print tool & script version info and exit
-infile=
-outdir=
-more_opts=
+fasta=
+bam_dir=
+vcf=
+opts_mpileup=
+opts_call=
+threads=
 
-# Parse command-line args
+# Parse command-line options
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infile )     shift && infile=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
-        --more_opts )       shift && more_opts=$1 ;;
+        --ref_fasta )       shift && fasta=$1 ;;
+        --bam_dir )         shift && bam_dir=$1 ;;
+        -o | --vcf )        shift && vcf=$1 ;;
+        --maxdepth )        shift && maxdepth=$1 ;;
+        --allsites )        allsites=true ;;
+        --opts_mpileup )    shift && opts_mpileup=$1 ;;
+        --opts_call )       shift && opts_call=$1 ;;
         --env_type )        shift && env_type=$1 ;;
         --conda_path )      shift && conda_path=$1 ;;
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 ;;
         --container_path )  shift && container_path=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v | --version )    version_only=true ;;
+        -v | --version)     version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
@@ -141,17 +157,16 @@ load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$containe
 [[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
-[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
-[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
-[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
-indir=$(dirname "$infile")
-[[ "$outdir" == "$indir" ]] && die "Output dir cannot be the same as the input dir: both are $outdir"
+[[ -z "$fasta" ]] && die "No input reference genome FASTA file specified, do so with --ref_fasta" "$all_opts"
+[[ -z "$bam_dir" ]] && die "No dir with BAM files specified, do so with --bam_dir" "$all_opts"
+[[ -z "$vcf" ]] && die "No output VCF file specified, do so with -o/--vcf" "$all_opts"
+[[ ! -f "$fasta" ]] && die "Input reference genome FASTA file $fasta does not exist"
+[[ ! -d "$bam_dir" ]] && die "BAM directory $bam_dir does not exist"
 
 # Define outputs based on script parameters
+outdir=$(dirname "$vcf")
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
-outfile="$outdir"/$(basename "$infile")
-file_id=$(basename "$infile" .fastq.gz)
-REPORT_FILE="$LOG_DIR"/"$file_id"_stats.tsv  # For nr of in/output reads
+if [[ "$allsites" == true ]]; then allsites_opt=; else allsites_opt="-v"; fi
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -161,31 +176,44 @@ echo "==========================================================================
 echo "All options passed to this script:        $all_opts"
 echo "Working directory:                        $PWD"
 echo
-echo "Input file:                               $infile"
-echo "Output dir:                               $outdir"
-[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
+echo "Input reference genome FASTA file:        $fasta"
+echo "BAM directory:                            $bam_dir"
+echo "Number of BAM files:                      $(ls "$bam_dir"/*bam | wc -l)"
+echo "Output all sites in the VCF:              $allsites"
+echo "Max depth for mpileup:                    $maxdepth"
+echo "Output VCF file:                          $vcf"
+[[ -n $opts_mpileup ]] && echo "Additional options for mpileup:          $opts_mpileup"
+[[ -n $opts_call ]] && echo "Additional options for call:             $opts_call"
 log_time "Listing the input file(s):"
-ls -lh "$infile"
+ls -lh "$fasta" "$bam_dir"/*bam
 [[ "$IS_SLURM" == true ]] && slurm_resources
+set_threads "$IS_SLURM"
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
-runstats $TOOL_BINARY \
-    $more_opts \
-    "$infile" |
-    gzip > "$outfile"
+runstats $TOOL_BINARY bcftools mpileup \
+    --max-depth "$maxdepth" \
+    --fasta-ref "$fasta" \
+    --output-type u \
+    $opts_mpileup \
+    "$bam_dir"/*bam |
+    runstats $TOOL_BINARY bcftools call \
+        "$VARCALL_METHOD" \
+        --output "$vcf" \
+        --output-type z \
+        --threads "$threads" \
+        --write-index \
+        $opts_call \
+        $allsites_opt
 
-# Count reads in input and output
-n_in=$(zcat "$infile" | awk '{s++} END {print s/4}')
-n_out=$(zcat "$outfile" | awk '{s++} END {print s/4}')
-pct=$(python3 -c "print(round(($n_out / $n_in) * 100, 2))")
-log_time "Number of reads in in/output file(s): $n_in // $n_out ($pct% retained)"
-echo -e "file_id\treads_in\treads_out\tpct_retained" > "$REPORT_FILE"
-echo -e "${file_id}\t${n_in}\t${n_out}\t${pct}" >> "$REPORT_FILE"
+#? '--output-type u/z' => uncompressed BCF / compressed VCF
+#? -m: default calling methods (vs -c, old consensus calling method)
 
-# Final reporting
-log_time "Listing files in the output dir:"
-ls -lhd "$(realpath "$outdir")"/*
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
+log_time "Listing the output VCF file:"
+ls -lh "$vcf"
 final_reporting "$LOG_DIR"
