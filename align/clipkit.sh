@@ -61,7 +61,7 @@ OTHER KEY OPTIONS:
     
 UTILITY OPTIONS:
   --env_type          <str>   Whether to use a Singularity/Apptainer container  [default: $env_type]
-                                ('container') or a Conda environment ('conda')
+                              ('container') or a Conda environment ('conda')
   --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
   --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
   --container_path    <file>  Local container image file ('.sif') to use        [default (if any): $container_path]
@@ -151,8 +151,7 @@ load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$containe
 
 # Define outputs based on script parameters
 outdir=$(dirname "$outfile")
-LOG_DIR="$outdir"/logs
-mkdir -p "$LOG_DIR"
+LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -186,5 +185,5 @@ runstats $TOOL_BINARY \
 #                               WRAP-UP
 # ==============================================================================
 log_time "Listing files in the output dir:"
-ls -lhd "$(realpath "$outdir")"/*
+ls -lh "$outfile"
 final_reporting "$LOG_DIR"
