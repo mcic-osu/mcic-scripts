@@ -12,20 +12,20 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run RepeatModeler to identify repetitive elements in a genome"
-SCRIPT_VERSION="2025-05-22"
+SCRIPT_VERSION="2026-05-13"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
-TOOL_BINARY=RepeatModeler
+TOOL_BINARY=
 TOOL_NAME=RepeatModeler
 TOOL_DOCS=https://github.com/Dfam-consortium/RepeatModeler
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=conda
-conda_path=/fs/ess/PAS0471/jelmer/conda/repeatmodeler
+env_type=container
+conda_path=
+container_url=oras://community.wave.seqera.io/library/repeatmodeler:2.0.8--dfebca4d70c8d59c
 container_dir="$HOME/containers"
-container_url=
 container_path=
 
 # Defaults - RepeatModeler parameters
@@ -181,12 +181,12 @@ set_threads "$IS_SLURM"
 cd "$outdir" || exit
 
 log_time "Building the RepeatModeler database..."
-runstats BuildDatabase \
+runstats $TOOL_BINARY BuildDatabase \
     -name "$genomeID" \
     "$infile"
 
 log_time "Runnning RepeatModeler..."
-runstats RepeatModeler \
+runstats $TOOL_BINARY RepeatModeler \
     -database "$genomeID" \
     -threads "$threads" \
     $LTRStruct_opt \

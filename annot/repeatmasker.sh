@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run RepeatMasker on a genome assembly to identify and mask repetitive elements."
-SCRIPT_VERSION="2025-05-26"
+SCRIPT_VERSION="2026-05-13"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -22,10 +22,10 @@ TOOL_DOCS=https://www.repeatmasker.org/
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=conda
-conda_path=/fs/ess/PAS0471/jelmer/conda/repeatmasker
+env_type=container
+conda_path=
+container_url=oras://community.wave.seqera.io/library/repeatmasker:4.2.3--bf81e1c6f13e0d00
 container_dir="$HOME/containers"
-container_url=
 container_path=
 
 # ==============================================================================
