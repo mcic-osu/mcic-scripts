@@ -24,12 +24,15 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 # Defaults - generics
 env_type=container
 conda_path=
-container_url=oras://community.wave.seqera.io/library/repeatmodeler:2.0.8--dfebca4d70c8d59c
+container_url=oras://community.wave.seqera.io/library/repeatmodeler:2.0.6--33ecba32dc152693
 container_dir="$HOME/containers"
 container_path=
 
 # Defaults - RepeatModeler parameters
 run_LTRStruct=true
+
+# NOTE (2026-05-13): Container 2.0.8 has RECON/eledef failures (exit 256)
+# Using 2.0.6 instead (known to work with conda env previously)
 
 # ==============================================================================
 #                                   FUNCTIONS
